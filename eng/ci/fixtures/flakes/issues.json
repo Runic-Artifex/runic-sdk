@@ -1,0 +1,43 @@
+[
+ {
+  "number": 1093,
+  "state": "closed",
+  "closed_at": "2026-11-17T15:19:52Z",
+  "title": "Flaky on macOS: VoiceOver side-panel return reads the usage hint instead of 'Finish' (voiceover-side-panel-return)",
+  "body": "## Flake\n\nThe macOS native leg's accessibility smoke (`Runic.Desktop.WebViewSmoke --side-panel`, step \"Check what screen readers read in the embedded window\") sometimes fails in `voiceover-side-panel-return`:\n\n```text\nPROBE REQUEST shift-tab\nACCESSIBILITY pressed Shift+Tab.\n  event FocusChanged from '' (AXGroup): AXFocusedUIElementChanged\nFAIL           voiceover-side-panel-return: VoiceOver did not say 'Finish'; it said: You are currently on a button. To click this button, press Control-Option-Space.\n  focused after the return: AXButton () 'Finish'\n```\n\nFocus does move to the page's `Finish` ",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/issues/1093"
+ },
+ {
+  "number": 1008,
+  "state": "open",
+  "closed_at": null,
+  "title": "Flaky on Windows: a replaced directory's file is not reported as changed (PathWatcher)",
+  "body": "`PathWatcherTests.DirectoryReplacedWithoutAReadIsWatchedAgain` failed in #973's merge-queue run (run 43675934962, job \"Native / win-arm64\", step \"Test file watching on Windows and macOS\"), unrelated to that PR (web packages only):\n\n```\n  TUnit.Engine.Exceptions.TestFailedException: [Test Failure] TimeoutException: No path change was reported within 10 s. Watcher: disposed=False events=4 evaluations=4 deliveries=0 poll=00:00:30 pending= watches=[n|C:\\Users\\runneradmin\\AppData\\Local\\Temp\\runic-watch-qrahxpc3.oke\\checkout, n|C:\\Users\\runneradmin\\AppData\\Local\\Temp\\runic-watch-qrahxpc3.oke] failed",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/issues/1008"
+ },
+ {
+  "number": 1054,
+  "state": "closed",
+  "closed_at": "2026-11-16T16:30:08Z",
+  "title": "Flaky: vite-plugin-runic inspect.browser.test exerciseMessages — \"No editor was launched\"",
+  "body": "`packages/web/vite-plugin-runic/test/inspect.browser.test.mjs` failed twice on 2026-11-16 in the \"Web packages and framework consumers\" job with the same error, on changes unrelated to it:\n\n```\nerror: No editor was launched: /tmp/runic-inspect-browser-…/editor-arguments.txt holds no arguments.\n  at readRecord (tests/support/recording-editor.mjs:37:42)\n  at async exerciseMessages (packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:399:60)\n  at async … (inspect.browser.test.mjs:447:11)\n  at async withPage (inspect.browser.test.mjs:227:11)\n```\n\n- main at 2c1e41db2 (#1038): run 437875269",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/issues/1054"
+ },
+ {
+  "number": 1108,
+  "state": "open",
+  "closed_at": null,
+  "title": "Flaky on Linux (GTK 4): js-debug window-restart does not stop at the click breakpoint after the Window restarts",
+  "body": "## Flake\n\nThe WebKitGTK debugging job (`WebKitGTK debugging / js-debug`, step \"Debug the template's Window with js-debug through dotnet runic dev\", `tests/webkit-cdp/dap-scenarios.mjs`) sometimes fails the `window-restart` scenario: js-debug does not stop at the click breakpoint in the restarted Window.\n\n```text\n[25.16s] PASS late-module: 2000 + 203 modules; ...\n[44.80s] FAIL window-restart: after the Window restarted: NOT stopped\nSCENARIO_WINDOW|window-restart|22:07:04.505|22:07:23.635\n[46.03s] PASS hmr: after HMR edit: stopped at onClick src/App.tsx:31:49; header 'Runic Views (edited)'\n[57.3",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/issues/1108"
+ },
+ {
+  "number": 1100,
+  "state": "closed",
+  "closed_at": "2026-11-17T14:50:00Z",
+  "title": "a pull request",
+  "body": "DirectoryReplacedWithoutAReadIsWatchedAgain",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/pull/1100",
+  "pull_request": {}
+ }
+]

@@ -213,7 +213,7 @@ The `plan` job runs `eng/ci/plan.mjs`. On a pull request it diffs GitHub's merge
 commit against its base parent and maps each changed path to its component in
 `eng/workspace.json`, adding every component that depends on it. The base branch's
 planner and component map make that decision (`--affected`), so a pull request cannot
-narrow its own plan; changes to the planner or `eng/workspace.json` are unowned and run
+narrow its own plan; a change to `eng/workspace.json` is a shared input and runs
 everything. The pull request's checkout then enumerates the suites (`--plan`). Scheduled
 and manual runs, local `act` runs and an unavailable diff or base result plan every job.
 
@@ -300,6 +300,37 @@ files. Preview the plan for a branch with
 `bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`. To run every
 job for a pull request, start the workflow manually on its branch; to run every leg of
 its planned jobs, add the `ci:all-platforms` label.
+
+### File ownership
+
+Every tracked file is in one of four groups, and `plan.test.mjs` fails on a file in
+none, listing it, so a new file cannot silently plan every job and leg (I11: in 0.21
+an `eng/` script nobody owned ran a whole plan):
+
+- **Owned** by a component in `eng/workspace.json`. The CI component (`ci`) owns the
+  planner (`plan.mjs`, `platforms.mjs`), the `verify` gate, the local runner
+  (`local.mjs`, `snapshot.mjs`, `runner.Containerfile`, the `act` patch), the
+  fixtures, the flake report, the reliability and dependency-audit tooling,
+  `eng/json-schema.mjs`, `CODEOWNERS` and `.gitignore`: files that only the
+  always-run jobs (plan, build, engineering, verify), other workflows or the
+  coordinator read. Its checks are the engineering job's, so a change to it alone
+  runs no skippable job and no Windows or macOS leg. A change to a leg's runner or
+  matrix values in `platforms.mjs` takes the `ci:all-platforms` label. A CI script
+  that a platform step runs belongs to that step's component, with a platform
+  rule: the macOS scripts and `hdiutil.sh` plan osx-arm64, the Windows ones their
+  Windows legs, `windows-nvda.ps1` the NVDA leg, `real-portal.sh`,
+  `native-musl.sh` and `packaging-rpm.sh` Linux only.
+- **Engineering-only** (`engineeringOnly` in `eng/run.mjs`): documentation, the
+  engineering tests (`eng/ci/*.test.mjs` and the other engineering directories),
+  other workflows and `eng/train`. They affect no component.
+- **Neutral** (`neutralPaths`): unowned files no Windows or macOS job reads (Nix,
+  release tooling, the solutions, the Linux-only CI helpers). Every Linux job.
+- **Global** (`globalPaths`): shared inputs of every job, such as `global.json`,
+  the MSBuild defaults, lock files, `ci.yml` and its actions, `eng/build`,
+  `eng/run.mjs` and the shared CI scripts. Every job and leg.
+
+Give a new file an owner where one fits; list it as neutral or global only when it
+really is a shared input.
 
 ## Merge queue
 
@@ -495,6 +526,34 @@ diagnostics and a TRX report to `artifacts/native-tests`. A case fails after two
 minutes, `--timeout 3m` ends the session, and the five-minute Actions step limit
 backs up stalls outside the test application. Failure artifacts are retained by
 the following `always()` upload step. No crash dumps are requested.
+
+## Flakes
+
+The policy (D069, C10): a merge queue entry that failed only in a known flake is
+re-queued without investigation; a failure seen twice gets an issue the same day,
+and within the cycle a fix, or a skip that links the issue. `eng/ci/flakes.mjs`
+applies it to recent runs. It reads the failed jobs of `ci.yml` (pull requests, the
+merge queue, `main`, schedules; every attempt, so a failure that passed on rerun
+counts) through `gh api` and gives each failure a signature: its failing test (TUnit,
+bun and node:test failure lines, a probe's `FAIL name:`, or the test active when a
+session hit its `--timeout`) and first error line, or, when the log names no test,
+its failed step and first `##[error]` line. Paths, numbers and JSON are left out, so
+one signature on several runs, jobs or legs is one entry:
+
+```sh
+bun eng/ci/flakes.mjs              # the last two days
+bun eng/ci/flakes.mjs --since 7d   # or 36h, or a date; --min 3, --json, --repo owner/name
+```
+
+It lists the entries seen twice or more that no issue mentions (file one), those that
+failed again after their issue closed, repeated failures in steps whose log names no
+test (read one: a real break or a flake), known flakes (an open issue names the test
+or quotes the error), fixed ones and first sightings, and says for each failed merge
+queue entry whether to re-queue it. An entry whose job passed on a rerun of the same
+commit is marked a flake. Cancelled runs are counted, not classified. A server error
+on a page retries it with a smaller page size. It only reads: the coordinator runs
+it, not a CI job, and it files, comments on and reruns nothing. `flakes.test.mjs`
+runs it on recorded API responses (`fixtures/flakes`).
 
 ## GitHub reruns
 

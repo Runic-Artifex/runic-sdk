@@ -1,0 +1,107 @@
+2026-11-16T09:35:38.0769534Z (pass) forwards a Views BridgeError with its .NET detail to the timeline [36.54ms]
+2026-11-16T09:35:38.1066935Z (pass) forwards the connection state without a View connecting (client-first) [29.77ms]
+2026-11-16T09:35:38.1400259Z (pass) forwards the connection state without a View connecting (views-first) [33.29ms]
+2026-11-16T09:35:38.1402981Z (pass) the dock shows the connection state the page forwards [0.40ms]
+2026-11-16T09:35:38.1411287Z (pass) component validates its options and needs a relocatable base [0.78ms]
+2026-11-16T09:35:38.1411777Z 
+2026-11-16T09:35:38.1412381Z ##[endgroup]
+2026-11-16T09:35:38.1412630Z 
+2026-11-16T09:35:38.1413042Z ##[group]test/calls.test.mjs:
+2026-11-16T09:35:38.1430077Z (pass) a call names its C# handler from the source map [0.45ms]
+2026-11-16T09:35:38.1432221Z (pass) the handler's own duration shows when the reply carried it, and .NET's name when the map has none [0.18ms]
+2026-11-16T09:35:38.1436643Z (pass) a call report has a closed shape: names, finite durations, and a redacted failure only for an error [0.39ms]
+2026-11-16T09:35:38.1443084Z (pass) the call history is bounded, and failures stay out of the state endpoint [0.65ms]
+2026-11-16T09:35:38.1444444Z (pass) the .NET frames with a source location are the stack's links [0.15ms]
+2026-11-16T09:35:38.1445588Z 
+2026-11-16T09:35:38.1446161Z ##[endgroup]
+2026-11-16T09:35:38.1446376Z 
+2026-11-16T09:35:38.1446820Z ##[group]test/package-consumer.test.mjs:
+2026-11-16T09:35:47.7024494Z (pass) packed package is source-free and works from an isolated consumer [9556.62ms]
+2026-11-16T09:35:47.7024929Z 
+2026-11-16T09:35:47.7025438Z ##[endgroup]
+2026-11-16T09:35:47.7025581Z 
+2026-11-16T09:35:47.7025869Z ##[group]test/inspect.browser.test.mjs:
+2026-11-16T09:35:49.2276787Z (pass) Runic Inspect on a React page in chromium [1521.99ms]
+2026-11-16T09:36:35.7180211Z 32 |     // The rename makes a record complete when it appears; an empty read is still not taken as one.
+2026-11-16T09:36:35.7181307Z 33 |     if (text.endsWith("\n")) {
+2026-11-16T09:36:35.7181971Z 34 |       await rm(record, { force: true });
+2026-11-16T09:36:35.7182638Z 35 |       return text.trimEnd().split("\n");
+2026-11-16T09:36:35.7182967Z 36 |     }
+2026-11-16T09:36:35.7184007Z 37 |     if (Date.now() > deadline) throw new Error(`No editor was launched: ${record} holds no arguments.`);
+2026-11-16T09:36:35.7185073Z                                               ^
+2026-11-16T09:36:35.7186239Z error: No editor was launched: /tmp/runic-inspect-browser-5jnA3t/editor-arguments.txt holds no arguments.
+2026-11-16T09:36:35.7187702Z       at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:37:42)
+2026-11-16T09:36:35.7189189Z       at async exerciseMessages (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:399:60)
+2026-11-16T09:36:35.7191261Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:447:11)
+2026-11-16T09:36:35.7193268Z       at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:227:11)
+2026-11-16T09:36:35.7195594Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:436:9)
+2026-11-16T09:36:35.7196896Z       at async <anonymous> (node:test:1445:26)
+2026-11-16T09:36:35.7197911Z       at async executeTestNode (node:test:1448:63)
+2026-11-16T09:36:35.7198330Z 
+2026-11-16T09:36:35.7237712Z ##[error]
+      at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:37:42)
+      at async exerciseMessages (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:399:60)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:447:11)
+      at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:227:11)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:436:9)
+      at async <anonymous> (node:test:1445:26)
+      at async executeTestNode (node:test:1448:63)
+2026-11-16T09:36:35.7250825Z (fail) Runic Inspect on a React page in webkit [46490.42ms]
+2026-11-16T09:36:37.0900581Z (pass) Runic Inspect on a Svelte page [1371.98ms]
+2026-11-16T09:36:38.3037920Z (pass) Runic Inspect on a Vue page [1213.66ms]
+2026-11-16T09:36:39.4730265Z (pass) Runic Inspect before the first click on a Vue single-file component [1169.22ms]
+2026-11-16T09:36:40.4729740Z (pass) Runic Inspect before the first click through a React component and another file [999.96ms]
+2026-11-16T09:36:41.7069452Z (pass) Runic Inspect before the first click on an Angular component [1233.93ms]
+2026-11-16T09:36:53.1295841Z 
+2026-11-16T09:36:53.1296431Z ##[endgroup]
+2026-11-16T09:36:53.1296660Z 
+2026-11-16T09:36:53.1297133Z ##[group]test/stale-input.test.mjs:
+2026-11-16T09:36:53.1333838Z (pass) warns once per element when script writes an older burst value during a request [1.44ms]
+2026-11-16T09:36:53.1335534Z (pass) does not warn without a request in flight [0.26ms]
+2026-11-16T09:36:53.1340059Z (pass) does not warn for the latest, a new, or an unfocused value, or after the burst [0.37ms]
+2026-11-16T09:36:53.1342630Z (pass) wraps a Bridge installed or replaced after the client, and skips a read-only one [0.28ms]
+2026-11-16T09:36:53.1347956Z (pass) is turned off by the registered symbol and by the plugin option [0.48ms]
+2026-11-16T09:36:53.1348928Z (pass) does nothing without a DOM [0.05ms]
+2026-11-16T09:36:53.1702488Z (pass) the development client installs once across HMR and forwards the warning to the timeline [35.35ms]
+2026-11-16T09:36:53.3305421Z (pass) without runic() the client posts to /__runic/diagnostics in order [160.22ms]
+2026-11-16T09:36:53.4100874Z (pass) the client stops when nothing answers /__runic/diagnostics [79.55ms]
+2026-11-16T09:36:53.4101486Z 
+2026-11-16T09:36:53.4102032Z ##[endgroup]
+2026-11-16T09:36:53.4102240Z 
+2026-11-16T09:36:53.4102736Z ##[group]test/cold-cache.browser.test.mjs:
+2026-11-16T09:36:57.0124724Z (pass) serves the development client with a cold optimizer cache without a reload or late optimization [3601.29ms]
+2026-11-16T09:36:57.0126134Z 
+2026-11-16T09:36:57.0129389Z ##[endgroup]
+2026-11-16T09:36:57.0129640Z 
+2026-11-16T09:36:57.0130260Z ##[group]test/inpage-edit.translations.browser.test.mjs:
+2026-11-16T09:36:57.0151501Z (skip) edit a translation on the page with the real Runic Translations dev server
+2026-11-16T09:36:57.0152946Z (skip) from another machine with the real Runic Translations dev server: 403, then RUNIC_DEV_ALLOW
+2026-11-16T09:36:57.0153633Z 
+2026-11-16T09:36:57.0154124Z ##[endgroup]
+2026-11-16T09:36:57.0154387Z 
+2026-11-16T09:36:57.0154877Z ##[group]test/inpage-edit.browser.test.mjs:
+2026-11-16T09:36:58.5059772Z (pass) edit a translation on the page in chromium [1488.65ms]
+2026-11-16T09:36:59.7280270Z (pass) edit a translation on the page in webkit [1222.03ms]
+2026-11-16T09:37:01.8026838Z (pass) from another machine: refused without configuration, editable with RUNIC_DEV_ALLOW, never opened [2074.58ms]
+2026-11-16T09:37:01.8028598Z 
+2026-11-16T09:37:01.8029466Z ##[endgroup]
+2026-11-16T09:37:01.8029721Z 
+2026-11-16T09:37:01.8029920Z 2 tests skipped:
+2026-11-16T09:37:01.8030834Z (skip) edit a translation on the page with the real Runic Translations dev server
+2026-11-16T09:37:01.8031826Z (skip) from another machine with the real Runic Translations dev server: 403, then RUNIC_DEV_ALLOW
+2026-11-16T09:37:01.8032233Z 
+2026-11-16T09:37:01.8032240Z 
+2026-11-16T09:37:01.8032341Z 1 tests failed:
+2026-11-16T09:37:01.8032748Z (fail) Runic Inspect on a React page in webkit [46490.42ms]
+2026-11-16T09:37:01.8033011Z 
+2026-11-16T09:37:01.8033125Z  116 pass
+2026-11-16T09:37:01.8033334Z  2 skip
+2026-11-16T09:37:01.8033523Z  1 fail
+2026-11-16T09:37:01.8033811Z Ran 119 tests across 21 files. [87.75s]
+2026-11-16T09:37:01.8452537Z error: script "test" exited with code 1
+2026-11-16T09:37:01.8471342Z ##[error]Process completed with exit code 1.
+2026-11-16T09:37:01.8523588Z ##[group]Run bun run --bun test
+2026-11-16T09:37:01.8523909Z bun run --bun test
+2026-11-16T09:37:01.8544516Z shell: /usr/bin/bash -e {0}
+2026-11-16T09:37:01.8545081Z env:
+2026-11-16T09:37:01.8558216Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1

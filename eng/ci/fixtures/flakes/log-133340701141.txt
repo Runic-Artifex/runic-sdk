@@ -1,0 +1,133 @@
+2026-11-16T13:53:04.8861097Z ##[endgroup]
+2026-11-16T13:53:04.8861222Z 
+2026-11-16T13:53:04.8861447Z ##[group]test/calls.test.mjs:
+2026-11-16T13:53:04.8873394Z (pass) a call names its C# handler from the source map [0.25ms]
+2026-11-16T13:53:04.8874950Z (pass) the handler's own duration shows when the reply carried it, and .NET's name when the map has none [0.17ms]
+2026-11-16T13:53:04.8877373Z (pass) a call report has a closed shape: names, finite durations, and a redacted failure only for an error [0.23ms]
+2026-11-16T13:53:04.8881460Z (pass) the call history is bounded, and failures stay out of the state endpoint [0.36ms]
+2026-11-16T13:53:04.8882319Z (pass) the .NET frames with a source location are the stack's links [0.10ms]
+2026-11-16T13:53:04.8882704Z 
+2026-11-16T13:53:04.8883173Z ##[endgroup]
+2026-11-16T13:53:04.8883295Z 
+2026-11-16T13:53:04.8883523Z ##[group]test/package-consumer.test.mjs:
+2026-11-16T13:53:13.6603926Z (pass) packed package is source-free and works from an isolated consumer [8771.15ms]
+2026-11-16T13:53:13.6604279Z 
+2026-11-16T13:53:13.6604612Z ##[endgroup]
+2026-11-16T13:53:13.6604724Z 
+2026-11-16T13:53:13.6604956Z ##[group]test/inspect.browser.test.mjs:
+2026-11-16T13:53:14.9106254Z (pass) Runic Inspect on a React page in chromium [1247.47ms]
+2026-11-16T13:53:18.4823894Z (pass) Runic Inspect on a React page in webkit [3571.72ms]
+2026-11-16T13:53:19.6883300Z (pass) Runic Inspect on a Svelte page [1205.93ms]
+2026-11-16T13:53:20.8635363Z (pass) Runic Inspect on a Vue page [1175.21ms]
+2026-11-16T13:53:22.5844695Z (pass) Runic Inspect before the first click on a Vue single-file component [1720.89ms]
+2026-11-16T13:53:25.5334515Z (pass) Runic Inspect before the first click through a React component and another file [2948.97ms]
+2026-11-16T13:53:26.6129319Z (pass) Runic Inspect before the first click on an Angular component [1079.49ms]
+2026-11-16T13:54:08.0213974Z 35 |       await rm(record, { force: true });
+2026-11-16T13:54:08.0214529Z 36 |       return text.trimEnd().split("\n");
+2026-11-16T13:54:08.0214782Z 37 |     }
+2026-11-16T13:54:08.0228289Z 38 |     if (Date.now() > deadline) {
+2026-11-16T13:54:08.0229103Z 39 |       const detail = explain === undefined ? "" : await Promise.resolve().then(explain).catch((error) => `(${error})`);
+2026-11-16T13:54:08.0230211Z 40 |       throw new Error(`No editor was launched within ${timeout} ms: ${record} holds no arguments.${detail ? `\n${detail}` : ""}`);
+2026-11-16T13:54:08.0230907Z                      ^
+2026-11-16T13:54:08.0231565Z error: No editor was launched within 40000 ms: undefined holds no arguments.
+2026-11-16T13:54:08.0232513Z       at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:40:17)
+2026-11-16T13:54:08.0233691Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:789:30)
+2026-11-16T13:54:08.0234858Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:793:11)
+2026-11-16T13:54:08.0236150Z       at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:263:11)
+2026-11-16T13:54:08.0237624Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:762:9)
+2026-11-16T13:54:08.0238334Z       at async <anonymous> (node:test:1445:26)
+2026-11-16T13:54:08.0238852Z       at async executeTestNode (node:test:1448:63)
+2026-11-16T13:54:08.0239082Z 
+2026-11-16T13:54:08.0270553Z ##[error]
+      at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:40:17)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:789:30)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:793:11)
+      at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:263:11)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:762:9)
+      at async <anonymous> (node:test:1445:26)
+      at async executeTestNode (node:test:1448:63)
+2026-11-16T13:54:08.0280786Z (fail) Runic Inspect keeps a pressed card link through a refresh in chromium [41408.56ms]
+2026-11-16T13:54:49.2033761Z 35 |       await rm(record, { force: true });
+2026-11-16T13:54:49.2034261Z 36 |       return text.trimEnd().split("\n");
+2026-11-16T13:54:49.2034602Z 37 |     }
+2026-11-16T13:54:49.2034911Z 38 |     if (Date.now() > deadline) {
+2026-11-16T13:54:49.2035716Z 39 |       const detail = explain === undefined ? "" : await Promise.resolve().then(explain).catch((error) => `(${error})`);
+2026-11-16T13:54:49.2036837Z 40 |       throw new Error(`No editor was launched within ${timeout} ms: ${record} holds no arguments.${detail ? `\n${detail}` : ""}`);
+2026-11-16T13:54:49.2037556Z                      ^
+2026-11-16T13:54:49.2037981Z error: No editor was launched within 40000 ms: undefined holds no arguments.
+2026-11-16T13:54:49.2038548Z       at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:40:17)
+2026-11-16T13:54:49.2039333Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:789:30)
+2026-11-16T13:54:49.2040113Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:793:11)
+2026-11-16T13:54:49.2040885Z       at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:263:11)
+2026-11-16T13:54:49.2041657Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:762:9)
+2026-11-16T13:54:49.2042168Z       at async <anonymous> (node:test:1445:26)
+2026-11-16T13:54:49.2042478Z       at async executeTestNode (node:test:1448:63)
+2026-11-16T13:54:49.2042660Z 
+2026-11-16T13:54:49.2051682Z ##[error]
+      at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:40:17)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:789:30)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:793:11)
+      at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:263:11)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:762:9)
+      at async <anonymous> (node:test:1445:26)
+      at async executeTestNode (node:test:1448:63)
+2026-11-16T13:54:49.2055216Z (fail) Runic Inspect keeps a pressed card link through a refresh in webkit [41181.91ms]
+2026-11-16T13:54:49.2055515Z 
+2026-11-16T13:54:49.2055787Z ##[endgroup]
+2026-11-16T13:54:49.2055907Z 
+2026-11-16T13:54:49.2056134Z ##[group]test/access.test.mjs:
+2026-11-16T13:54:49.2067063Z (pass) the allow list: addresses, CIDR networks, host names; loopback always; invalid entries name themselves [1.18ms]
+2026-11-16T13:55:01.1905506Z 
+2026-11-16T13:55:01.1906117Z ##[endgroup]
+2026-11-16T13:55:01.1906241Z 
+2026-11-16T13:55:01.1906538Z ##[group]test/stale-input.test.mjs:
+2026-11-16T13:55:01.1920233Z (pass) warns once per element when script writes an older burst value during a request [1.07ms]
+2026-11-16T13:55:01.1921798Z (pass) does not warn without a request in flight [0.18ms]
+2026-11-16T13:55:01.1924465Z (pass) does not warn for the latest, a new, or an unfocused value, or after the burst [0.22ms]
+2026-11-16T13:55:01.1926329Z (pass) wraps a Bridge installed or replaced after the client, and skips a read-only one [0.19ms]
+2026-11-16T13:55:01.1930532Z (pass) is turned off by the registered symbol and by the plugin option [0.37ms]
+2026-11-16T13:55:01.1931217Z (pass) does nothing without a DOM [0.03ms]
+2026-11-16T13:55:01.2219761Z (pass) the development client installs once across HMR and forwards the warning to the timeline [28.77ms]
+2026-11-16T13:55:01.3704934Z (pass) without runic() the client posts to /__runic/diagnostics in order [148.51ms]
+2026-11-16T13:55:01.4435482Z (pass) the client stops when nothing answers /__runic/diagnostics [73.06ms]
+2026-11-16T13:55:01.4436381Z 
+2026-11-16T13:55:01.4436822Z ##[endgroup]
+2026-11-16T13:55:01.4436975Z 
+2026-11-16T13:55:01.4437314Z ##[group]test/cold-cache.browser.test.mjs:
+2026-11-16T13:55:04.9678813Z (pass) serves the development client with a cold optimizer cache without a reload or late optimization [3523.13ms]
+2026-11-16T13:55:04.9679580Z 
+2026-11-16T13:55:04.9680310Z ##[endgroup]
+2026-11-16T13:55:04.9680907Z 
+2026-11-16T13:55:04.9681296Z ##[group]test/inpage-edit.translations.browser.test.mjs:
+2026-11-16T13:55:04.9700923Z (skip) edit a translation on the page with the real Runic Translations dev server
+2026-11-16T13:55:04.9701941Z (skip) from another machine with the real Runic Translations dev server: 403, then RUNIC_DEV_ALLOW
+2026-11-16T13:55:04.9702441Z 
+2026-11-16T13:55:04.9702797Z ##[endgroup]
+2026-11-16T13:55:04.9702966Z 
+2026-11-16T13:55:04.9703488Z ##[group]test/inpage-edit.browser.test.mjs:
+2026-11-16T13:55:06.4809900Z (pass) edit a translation on the page in chromium [1509.15ms]
+2026-11-16T13:55:07.5086045Z (pass) edit a translation on the page in webkit [1027.23ms]
+2026-11-16T13:55:09.2955952Z (pass) from another machine: refused without configuration, editable with RUNIC_DEV_ALLOW, never opened [1787.25ms]
+2026-11-16T13:55:09.2956549Z 
+2026-11-16T13:55:09.2956980Z ##[endgroup]
+2026-11-16T13:55:09.2957136Z 
+2026-11-16T13:55:09.2957268Z 2 tests skipped:
+2026-11-16T13:55:09.2957874Z (skip) edit a translation on the page with the real Runic Translations dev server
+2026-11-16T13:55:09.2958727Z (skip) from another machine with the real Runic Translations dev server: 403, then RUNIC_DEV_ALLOW
+2026-11-16T13:55:09.2959032Z 
+2026-11-16T13:55:09.2959039Z 
+2026-11-16T13:55:09.2959124Z 2 tests failed:
+2026-11-16T13:55:09.2959550Z (fail) Runic Inspect keeps a pressed card link through a refresh in chromium [41408.56ms]
+2026-11-16T13:55:09.2960112Z (fail) Runic Inspect keeps a pressed card link through a refresh in webkit [41181.91ms]
+2026-11-16T13:55:09.2960378Z 
+2026-11-16T13:55:09.2960494Z  125 pass
+2026-11-16T13:55:09.2960682Z  2 skip
+2026-11-16T13:55:09.2960852Z  2 fail
+2026-11-16T13:55:09.2961085Z Ran 129 tests across 22 files. [128.04s]
+2026-11-16T13:55:09.3396573Z error: script "test" exited with code 1
+2026-11-16T13:55:09.3410698Z ##[error]Process completed with exit code 1.
+2026-11-16T13:55:09.3456475Z ##[group]Run bun run --bun test
+2026-11-16T13:55:09.3456731Z bun run --bun test
+2026-11-16T13:55:09.3475019Z shell: /usr/bin/bash -e {0}
+2026-11-16T13:55:09.3475241Z env:
+2026-11-16T13:55:09.3475423Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1

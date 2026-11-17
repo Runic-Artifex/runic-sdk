@@ -1,0 +1,107 @@
+2026-11-16T13:54:44.8901901Z (skip) two components on one page share no tags, CSS or state (webkit)
+2026-11-16T13:54:44.8906947Z 
+2026-11-16T13:54:44.8907439Z ##[endgroup]
+2026-11-16T13:54:44.8907591Z 
+2026-11-16T13:54:44.8907885Z ##[group]test/inspect-host.browser.test.mjs:
+2026-11-16T13:54:45.6673709Z (pass) dotnet runic dev's page: Runic Inspect gets C# locations and opens them over Vite's connection [775.39ms]
+2026-11-16T13:54:45.6674201Z 
+2026-11-16T13:54:45.6674642Z ##[endgroup]
+2026-11-16T13:54:45.6674771Z 
+2026-11-16T13:54:45.6675059Z ##[group]test/access.test.mjs:
+2026-11-16T13:54:45.6698875Z (pass) the allow list: addresses, CIDR networks, host names; loopback always; invalid entries name themselves [0.94ms]
+2026-11-16T13:54:45.7592277Z (pass) from another machine: the data endpoints answer only when allowed, /__runic/open never [89.31ms]
+2026-11-16T13:54:45.8141973Z (pass) over Vite's HMR connection: reads answer only when allowed, open never from another machine [54.92ms]
+2026-11-16T13:54:45.8150786Z 
+2026-11-16T13:54:45.8172863Z ##[endgroup]
+2026-11-16T13:54:45.8188801Z 
+2026-11-16T13:54:45.8189645Z ##[group]test/inspect.browser.test.mjs:
+2026-11-16T13:54:46.8469735Z (pass) Runic Inspect on a React page in chromium [1028.82ms]
+2026-11-16T13:54:46.8470344Z (skip) Runic Inspect on a React page in webkit
+2026-11-16T13:54:47.9493839Z (pass) Runic Inspect on a Svelte page [1102.44ms]
+2026-11-16T13:54:48.8990128Z (pass) Runic Inspect on a Vue page [949.56ms]
+2026-11-16T13:54:49.8033116Z (pass) Runic Inspect before the first click on a Vue single-file component [904.18ms]
+2026-11-16T13:54:50.5152490Z (pass) Runic Inspect before the first click through a React component and another file [712.03ms]
+2026-11-16T13:54:51.4097892Z (pass) Runic Inspect before the first click on an Angular component [894.58ms]
+2026-11-16T13:55:32.6418265Z 35 |       await rm(record, { force: true });
+2026-11-16T13:55:32.6419145Z 36 |       return text.trimEnd().split("\n");
+2026-11-16T13:55:32.6419603Z 37 |     }
+2026-11-16T13:55:32.6420428Z 38 |     if (Date.now() > deadline) {
+2026-11-16T13:55:32.6421194Z 39 |       const detail = explain === undefined ? "" : await Promise.resolve().then(explain).catch((error) => `(${error})`);
+2026-11-16T13:55:32.6422769Z 40 |       throw new Error(`No editor was launched within ${timeout} ms: ${record} holds no arguments.${detail ? `\n${detail}` : ""}`);
+2026-11-16T13:55:32.6423218Z                      ^
+2026-11-16T13:55:32.6423590Z error: No editor was launched within 40000 ms: undefined holds no arguments.
+2026-11-16T13:55:32.6424220Z       at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:40:17)
+2026-11-16T13:55:32.6424938Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:789:30)
+2026-11-16T13:55:32.6425663Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:793:11)
+2026-11-16T13:55:32.6426393Z       at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:263:11)
+2026-11-16T13:55:32.6427101Z       at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:762:9)
+2026-11-16T13:55:32.6427578Z       at async <anonymous> (node:test:1445:26)
+2026-11-16T13:55:32.6427884Z       at async executeTestNode (node:test:1448:63)
+2026-11-16T13:55:32.6428059Z 
+2026-11-16T13:55:32.6454494Z ##[error]
+      at readRecord (/home/runner/work/runic-sdk/runic-sdk/tests/support/recording-editor.mjs:40:17)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:789:30)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:793:11)
+      at async withPage (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:263:11)
+      at async <anonymous> (/home/runner/work/runic-sdk/runic-sdk/packages/web/vite-plugin-runic/test/inspect.browser.test.mjs:762:9)
+      at async <anonymous> (node:test:1445:26)
+      at async executeTestNode (node:test:1448:63)
+2026-11-16T13:55:32.6461637Z (fail) Runic Inspect keeps a pressed card link through a refresh in chromium [41232.03ms]
+2026-11-16T13:55:32.6462343Z (skip) Runic Inspect keeps a pressed card link through a refresh in webkit
+2026-11-16T13:55:32.6462605Z 
+2026-11-16T13:55:32.6462895Z ##[endgroup]
+2026-11-16T13:55:32.6463004Z 
+2026-11-16T13:55:32.6463229Z ##[group]test/otlp.test.mjs:
+2026-11-16T13:55:37.4838475Z ##[group]test/package-consumer.test.mjs:
+2026-11-16T13:55:44.4142233Z (pass) packed package is source-free and works from an isolated consumer [6929.69ms]
+2026-11-16T13:55:44.4143500Z 
+2026-11-16T13:55:44.4143970Z ##[endgroup]
+2026-11-16T13:55:44.4145848Z 
+2026-11-16T13:55:44.4146219Z ##[group]test/inpage-edit.translations.browser.test.mjs:
+2026-11-16T13:55:44.4165569Z (skip) edit a translation on the page with the real Runic Translations dev server
+2026-11-16T13:55:44.4166295Z (skip) from another machine with the real Runic Translations dev server: 403, then RUNIC_DEV_ALLOW
+2026-11-16T13:55:44.4166645Z 
+2026-11-16T13:55:44.4166896Z ##[endgroup]
+2026-11-16T13:55:44.4167027Z 
+2026-11-16T13:55:44.4167285Z ##[group]test/calls.browser.test.mjs:
+2026-11-16T13:55:45.1097346Z (pass) vite dev: a click's command is a Runic Performance track entry, and the reply's subscriber has the click's async stack [692.32ms]
+2026-11-16T13:55:45.1097891Z 
+2026-11-16T13:55:45.1098489Z ##[endgroup]
+2026-11-16T13:55:45.1098628Z 
+2026-11-16T13:55:45.1098896Z ##[group]test/dock-timeline.browser.test.mjs:
+2026-11-16T13:55:46.0697296Z (pass) vite dev: a click's command is a dock row with its C# handler, and its button opens the [RelayCommand] method [958.40ms]
+2026-11-16T13:55:46.0698090Z 
+2026-11-16T13:55:46.0699183Z ##[endgroup]
+2026-11-16T13:55:46.0699443Z 
+2026-11-16T13:55:46.0699923Z ##[group]test/calls.test.mjs:
+2026-11-16T13:55:46.0714635Z (pass) a call names its C# handler from the source map [0.30ms]
+2026-11-16T13:55:46.0715314Z (pass) the handler's own duration shows when the reply carried it, and .NET's name when the map has none [0.10ms]
+2026-11-16T13:55:46.0717789Z (pass) a call report has a closed shape: names, finite durations, and a redacted failure only for an error [0.25ms]
+2026-11-16T13:55:46.0720781Z (pass) the call history is bounded, and failures stay out of the state endpoint [0.30ms]
+2026-11-16T13:55:46.0731755Z (pass) the .NET frames with a source location are the stack's links [0.07ms]
+2026-11-16T13:55:46.0732070Z 
+2026-11-16T13:55:46.0732452Z ##[endgroup]
+2026-11-16T13:55:46.0732562Z 
+2026-11-16T13:55:46.0732663Z 6 tests skipped:
+2026-11-16T13:55:46.0732979Z (skip) edit a translation on the page in webkit
+2026-11-16T13:55:46.0733395Z (skip) two components on one page share no tags, CSS or state (webkit)
+2026-11-16T13:55:46.0733761Z (skip) Runic Inspect on a React page in webkit
+2026-11-16T13:55:46.0734149Z (skip) Runic Inspect keeps a pressed card link through a refresh in webkit
+2026-11-16T13:55:46.0734618Z (skip) edit a translation on the page with the real Runic Translations dev server
+2026-11-16T13:55:46.0735150Z (skip) from another machine with the real Runic Translations dev server: 403, then RUNIC_DEV_ALLOW
+2026-11-16T13:55:46.0735419Z 
+2026-11-16T13:55:46.0735424Z 
+2026-11-16T13:55:46.0735503Z 1 tests failed:
+2026-11-16T13:55:46.0735881Z (fail) Runic Inspect keeps a pressed card link through a refresh in chromium [41232.03ms]
+2026-11-16T13:55:46.0736121Z 
+2026-11-16T13:55:46.0736203Z  122 pass
+2026-11-16T13:55:46.0736375Z  6 skip
+2026-11-16T13:55:46.0736540Z  1 fail
+2026-11-16T13:55:46.0736767Z Ran 129 tests across 22 files. [72.07s]
+2026-11-16T13:55:46.0927960Z error: script "test" exited with code 1
+2026-11-16T13:55:46.0938996Z ##[error]Process completed with exit code 1.
+2026-11-16T13:55:46.0975414Z ##[group]Run node --version | grep '^v26\.'
+2026-11-16T13:55:46.0975704Z node --version | grep '^v26\.'
+2026-11-16T13:55:46.0975936Z bun run test
+2026-11-16T13:55:46.1003432Z shell: /usr/bin/bash -e {0}
+2026-11-16T13:55:46.1003654Z env:

@@ -92,6 +92,12 @@ export const skippableJobs = ["managed", "web", "node-26", "views", "package-con
   "screen-readers", "webkit-cdp"];
 export const reusedSkip = [...skippableJobs, "native-libraries", "build", "engineering"];
 
+// The CI component (eng/workspace.json) owns the planner, the gates, the local CI runner and other files that only the
+// always-run jobs (plan, build, engineering, verify), other workflows or the coordinator read. Its checks are the
+// engineering job's (eng/ci/*.test.mjs and the contracts), so a change to it alone plans no skippable job and no
+// Windows or macOS leg. A change to a leg's runner or matrix values in platforms.mjs takes the ci:all-platforms label.
+export const ciComponent = "ci";
+
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
 
@@ -142,8 +148,8 @@ export function planFor({ full, components, screenReaders: readers = true, webKi
   const web = webTests().filter(test => full || has(owner(`packages/web/${test.package}`))).map(test => test.package);
   // The Svelte and SvelteKit type checks and the isolated npm framework consumers.
   const frameworks = full || has("svelte");
-  // Package consumers and templates cover every shipped component.
-  const packages = full || components.length > 0;
+  // Package consumers and templates cover every shipped component (every component but the CI component).
+  const packages = full || components.some(name => name !== ciComponent);
   // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration.
   const native = full || has("desktop", "platform", "application", "examples", "administration-windows") ? legs(nativeLegs, planned) : [];
   // The WPF hosts and their packed consumer run on Windows only.

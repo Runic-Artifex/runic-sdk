@@ -1,0 +1,52 @@
+2026-11-16T18:14:27.4581386Z TEMPLATE_OK|vue|npm|desktop-gtk4|toolkit|tests
+2026-11-16T18:14:27.9194363Z The template "Runic application" was created successfully.
+2026-11-16T18:14:28.0244921Z 
+2026-11-16T18:14:28.5565753Z Tool 'dotnet-runic' (version '0.21.0') was restored. Available commands: dotnet-runic
+2026-11-16T18:14:28.5567921Z Tool 'dotnet-runic-translations' (version '0.13.0') was restored. Available commands: runic-translations
+2026-11-16T18:14:28.5569217Z 
+2026-11-16T18:14:28.5570686Z Restore was successful.
+2026-11-16T18:14:29.8453190Z   Determining projects to restore...
+2026-11-16T18:14:30.2589510Z   Restored /tmp/runic-views-templates.0LNCHA7BCr/vue-bun-cswebui-reactiveui-translations/AcceptanceVueBunCswebuiReactiveuiTranslations.csproj (in 203 ms).
+2026-11-16T18:14:33.7148786Z   AcceptanceVueBunCswebuiReactiveuiTranslations -> /tmp/runic-views-templates.0LNCHA7BCr/vue-bun-cswebui-reactiveui-translations/obj/runic-bridge/bootstrap/bin/Release/net10.0/AcceptanceVueBunCswebuiReactiveuiTranslations.dll
+2026-11-16T18:14:34.0310172Z   Generated Preferences bridge from compiled PreferencesViewModel: 1 properties, 1 commands.
+2026-11-16T18:14:34.0345128Z   Generated Settings bridge from compiled SettingsViewModel: 1 properties, 1 commands.
+2026-11-16T18:14:34.0428424Z   Generated Workspace bridge from compiled WorkspaceViewModel: 2 properties, 3 commands.
+2026-11-16T18:14:34.0451377Z   Generated Welcome bridge from compiled WelcomeViewModel: 1 properties, 0 commands.
+2026-11-16T18:14:34.0476434Z   Generated Counter bridge from compiled CounterViewModel: 3 properties, 1 commands.
+2026-11-16T18:14:34.1062190Z   Installing frontend dependencies in /tmp/runic-views-templates.0LNCHA7BCr/vue-bun-cswebui-reactiveui-translations/Frontend with bun. Set RunicApplicationFrontendInstallEnabled=false to install them yourself.
+2026-11-16T18:14:34.1107423Z   bun install v1.4.4 (38afee6c8)
+2026-11-16T18:14:34.1494159Z   error: Integrity check failed for tarball: @runic-artifex/vite-plugin-runic-translations
+2026-11-16T18:14:34.1512742Z   error: IntegrityCheckFailed extracting tarball from @runic-artifex/vite-plugin-runic-translations
+2026-11-16T18:14:34.7372624Z /tmp/runic-views-templates.0LNCHA7BCr/vue-bun-cswebui-reactiveui-translations/AcceptanceVueBunCswebuiReactiveuiTranslations.csproj : error RUNICBRIDGE016: The frontend install 'bun install --frozen-lockfile --ignore-scripts' in /tmp/runic-views-templates.0LNCHA7BCr/vue-b
+2026-11-16T18:14:34.7530990Z 
+2026-11-16T18:14:34.7536474Z Build FAILED.
+2026-11-16T18:14:34.7536694Z 
+2026-11-16T18:14:34.7538962Z /tmp/runic-views-templates.0LNCHA7BCr/vue-bun-cswebui-reactiveui-translations/AcceptanceVueBunCswebuiReactiveuiTranslations.csproj : error RUNICBRIDGE016: The frontend install 'bun install --frozen-lockfile --ignore-scripts' in /tmp/runic-views-templates.0LNCHA7BCr/vue-b
+2026-11-16T18:14:34.7540632Z     0 Warning(s)
+2026-11-16T18:14:34.7540836Z     1 Error(s)
+2026-11-16T18:14:34.7540946Z 
+2026-11-16T18:14:34.7541069Z Time Elapsed 00:00:01.91
+2026-11-16T18:14:34.7681062Z Terminated
+2026-11-16T18:14:44.8821686Z 30 |     stdio: "inherit",
+2026-11-16T18:14:44.8822194Z 31 |     env: { ...(compatibility?.env ?? process.env), ...extraEnv },
+2026-11-16T18:14:44.8822470Z 32 |   });
+2026-11-16T18:14:44.8822712Z 33 |   if (result.error) throw result.error;
+2026-11-16T18:14:44.8822988Z 34 |   if (result.status !== 0)
+2026-11-16T18:14:44.8823372Z 35 |     throw new Error(`${command} exited with ${result.status ?? result.signal}`);
+2026-11-16T18:14:44.8823700Z                    ^
+2026-11-16T18:14:44.8823908Z error: bash exited with 1
+2026-11-16T18:14:44.8824259Z       at run (/home/runner/work/runic-sdk/runic-sdk/eng/run.mjs:35:15)
+2026-11-16T18:14:44.8824666Z       at /home/runner/work/runic-sdk/runic-sdk/eng/verify-templates.mjs:13:1
+2026-11-16T18:14:44.8824889Z 
+2026-11-16T18:14:44.8837586Z ##[error]
+      at run (/home/runner/work/runic-sdk/runic-sdk/eng/run.mjs:35:15)
+      at /home/runner/work/runic-sdk/runic-sdk/eng/verify-templates.mjs:13:1
+2026-11-16T18:14:44.8838913Z 
+2026-11-16T18:14:44.8839133Z Bun v1.4.4 (Linux x64)
+2026-11-16T18:14:44.8852252Z error: script "verify:templates" exited with code 1
+2026-11-16T18:14:44.8860442Z ##[error]Process completed with exit code 1.
+2026-11-16T18:14:44.8904436Z ##[group]Run bun run verify:templates
+2026-11-16T18:14:44.8904679Z bun run verify:templates
+2026-11-16T18:14:44.8915643Z shell: /usr/bin/bash -e {0}
+2026-11-16T18:14:44.8915845Z env:
+2026-11-16T18:14:44.8916024Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1

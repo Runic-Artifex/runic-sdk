@@ -1,0 +1,102 @@
+2026-11-17T13:39:20.3718382Z running... 751 completed, 0 failed | active: DevelopmentOpensALoopbackEndpointInAnInstalledBrowser
+2026-11-17T13:39:36.0500014Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.GeneratedOptionsExposeAreBrowserExtensionsEnabled(System.Boolean, System.Int32).1.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0503031Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0505120Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0507411Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0511125Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.GeneratedOptionsExposeAreBrowserExtensionsEnabled(System.Boolean, System.Int32).2.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0514330Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0516406Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0518695Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0522188Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.DevToolsInterfacesMatchThePinnedMicrosoftSdkHeader.1.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0525013Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0527069Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0529367Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0534001Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.TitleBarFollowsTheSystemsAppMode(Runic.Platform.DesktopColorScheme, System.Boolean, System.Boolean, System.Int32).4.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0535820Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0536981Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0538221Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0540779Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.BrowserExtensionCompletionReportsFailuresAndAMissingExtension.1.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0543359Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0546003Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0548115Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0551088Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.CompletionOwnsExactlyOneReferenceToTheBorrowedNativeResult.1.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0552657Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0553807Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0555042Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0556846Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.StartupProgressInterfacesMatchThePinnedMicrosoftSdkHeader.1.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0558367Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0559662Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0560909Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0562933Z Unhandled exception in test Runic.Desktop.Tests.WindowsWebView2InteropTests.1.1.TitleBarFollowsTheAppModeAndContrastSettingChanges.1.1.0: System.Threading.Tasks.TaskCanceledException: A task was canceled.
+2026-11-17T13:39:36.0564697Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterExclusiveAsync(CancellationToken cancellationToken)
+2026-11-17T13:39:36.0565821Z    at TUnit.Engine.Scheduling.NotInParallelLock.EnterEnabledAsync(Boolean exclusive, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0567062Z    at TUnit.Engine.Scheduling.TestRunner.ExecuteTestInternalAsync(AbstractExecutableTest test, CancellationToken cancellationToken)
+2026-11-17T13:39:36.0567815Z The test run was cancelled.
+2026-11-17T13:39:36.0568080Z 
+2026-11-17T13:39:36.0568957Z Test run summary: Aborted - D:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Desktop.Tests\bin\Release\net10.0\Runic.Desktop.Tests.dll (net10.0|x64)
+2026-11-17T13:39:36.0569815Z   total: 751
+2026-11-17T13:39:36.0570028Z   failed: 0
+2026-11-17T13:39:36.0570278Z   succeeded: 751
+2026-11-17T13:39:36.0570512Z   skipped: 0
+2026-11-17T13:39:36.0570740Z   duration: 2m 59s 991ms
+2026-11-17T13:39:36.1878118Z Test session was aborted; recovered 751 test result(s) from the TRX streaming sidecar (additional results that were in flight at termination time may be missing).
+2026-11-17T13:39:36.2168181Z 
+2026-11-17T13:39:36.2168716Z Canceling the test session...
+2026-11-17T13:39:36.2170058Z Press Ctrl+C again to force exit.
+2026-11-17T13:39:36.2170644Z 
+2026-11-17T13:39:36.2212081Z   Out of process file artifacts produced:
+2026-11-17T13:39:36.2214254Z     - D:\a\runic-sdk\runic-sdk\artifacts\native-tests\desktop.trx
+2026-11-17T13:39:36.2214563Z 
+2026-11-17T13:39:36.2254738Z Test application process didn't exit gracefully, exit code is '3'
+2026-11-17T13:39:41.4366705Z ##[error]Process completed with exit code 1.
+2026-11-17T13:39:41.4634321Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-11-17T13:39:41.4634812Z with:
+2026-11-17T13:39:41.4635046Z   name: native-tests-win-x64-44093502841
+2026-11-17T13:39:41.4635335Z   path: artifacts/native-tests
+2026-11-17T13:39:41.4635599Z   if-no-files-found: ignore
+2026-11-17T13:39:41.4637935Z   NUGET_PACKAGES: D:\a\runic-sdk\runic-sdk/.cache/nuget
+2026-11-17T13:39:41.4638511Z   FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+2026-11-17T13:39:41.4639137Z   RUNIC_TEST_TIMEOUT_SCALE: 5
+2026-11-17T13:39:41.4639433Z   DOTNET_ROOT: C:\hostedtoolcache\windows\runic-dotnet
+2026-11-17T13:39:41.4640064Z   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: C:\Users\runneradmin\AppData\Local\ms-playwright\chromium-1243\chrome-win64\chrome.exe
+2026-11-17T13:39:41.4640623Z ##[endgroup]
+2026-11-17T13:39:41.6851737Z With the provided path, there will be 3 files uploaded
+2026-11-17T13:39:41.9599875Z Artifact name is valid!
+2026-11-17T13:39:41.9600771Z Root directory input is valid!
+2026-11-17T13:39:42.3064881Z Uploading artifact: native-tests-win-x64-44093502841.zip
+2026-11-17T13:39:42.3120598Z Beginning upload of artifact content to blob storage
+2026-11-17T13:39:42.9377839Z Uploaded bytes 236924
+2026-11-17T13:39:43.0102960Z Finished uploading artifact content to blob storage!
+2026-11-17T13:39:43.0104607Z SHA256 digest of uploaded artifact is 07909b697a238f5b238cdd171d8f28f1010699c4ad4d03ddccb93eb391f394de
+2026-11-17T13:39:43.0105859Z Finalizing artifact upload
+2026-11-17T13:39:43.5656717Z Artifact native-tests-win-x64-44093502841 successfully finalized. Artifact ID 14333172359
+2026-11-17T13:39:43.5658340Z Artifact native-tests-win-x64-44093502841 has been successfully uploaded! Final size is 236924 bytes. Artifact ID is 14333172359
+2026-11-17T13:39:43.5668004Z Artifact download URL: https://github.com/Runic-Artifex/runic-sdk/actions/runs/44093502841/artifacts/14333172359
+2026-11-17T13:39:43.6267177Z ##[group]Run if [[ "$RUNNER_OS" == Windows ]]; then
+2026-11-17T13:39:43.6267695Z if [[ "$RUNNER_OS" == Windows ]]; then
+2026-11-17T13:39:43.6268426Z   dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --restore-desktop
+2026-11-17T13:39:43.6269117Z else
+2026-11-17T13:39:43.6269477Z   defaults write com.apple.universalaccess increaseContrast -bool false
+2026-11-17T13:39:43.6269898Z fi
+2026-11-17T13:39:43.6290119Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-11-17T13:39:43.6290536Z env:
+2026-11-17T13:39:43.6290731Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1
+2026-11-17T13:39:43.6290982Z   DOTNET_NOLOGO: 1
+2026-11-17T13:39:43.6291187Z   CONFIGURATION: Release
+2026-11-17T13:39:43.6291465Z   NUGET_PACKAGES: D:\a\runic-sdk\runic-sdk/.cache/nuget
+2026-11-17T13:39:43.6292105Z   FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+2026-11-17T13:39:43.6292638Z   RUNIC_TEST_TIMEOUT_SCALE: 5
+2026-11-17T13:39:43.6292937Z   DOTNET_ROOT: C:\hostedtoolcache\windows\runic-dotnet
+2026-11-17T13:39:43.6293568Z   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: C:\Users\runneradmin\AppData\Local\ms-playwright\chromium-1243\chrome-win64\chrome.exe
+2026-11-17T13:39:43.6294126Z ##[endgroup]
+2026-11-17T13:39:45.4309503Z Could not execute because the specified command or file was not found.
+2026-11-17T13:39:45.4310940Z Possible reasons for this include:
+2026-11-17T13:39:45.4311605Z   * You misspelled a built-in dotnet command.
+2026-11-17T13:39:45.4312551Z   * You intended to execute a .NET program, but dotnet-tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll does not exist.
+2026-11-17T13:39:45.4314110Z   * You intended to run a global tool, but a dotnet-prefixed executable with this name could not be found on the PATH.
+2026-11-17T13:39:45.4455553Z ##[error]Process completed with exit code 1.
+2026-11-17T13:39:45.4768760Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-11-17T13:39:45.4769614Z with:
+2026-11-17T13:39:45.4770106Z   name: accessibility-win-x64-44093502841
+2026-11-17T13:39:45.4770781Z   path: artifacts/accessibility
+2026-11-17T13:39:45.4771051Z   if-no-files-found: ignore

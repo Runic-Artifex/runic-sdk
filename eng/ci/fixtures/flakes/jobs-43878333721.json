@@ -1,0 +1,46 @@
+{
+ "jobs": [
+  {
+   "id": 133340701096,
+   "name": "npm packages / Node 26",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T13:50:16Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43878333721/job/133340701096",
+   "steps": [
+    {
+     "name": "Test vite-plugin-runic on Node 26",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133340701141,
+   "name": "Web packages and framework consumers",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T13:51:07Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43878333721/job/133340701141",
+   "steps": [
+    {
+     "name": "Test vite-plugin-runic",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133358037110,
+   "name": "verify",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T14:18:04Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43878333721/job/133358037110",
+   "steps": [
+    {
+     "name": "Require every planned verification job to pass",
+     "conclusion": "failure"
+    }
+   ]
+  }
+ ]
+}

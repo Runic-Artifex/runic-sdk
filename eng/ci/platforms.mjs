@@ -39,7 +39,8 @@ export const screenReaderLegs = [
 // probe.
 export const screenReaderPaths = ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Gtk4",
   "packages/dotnet/Runic.Application.Views.Wpf", "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.Gtk4.Smoke",
-  "tests/native/Runic.Desktop.AccessibilityProbe", "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/ScreenReaderChecks.cs"];
+  "tests/native/Runic.Desktop.AccessibilityProbe", "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/ScreenReaderChecks.cs",
+  "eng/ci/windows-nvda.ps1"];
 // The files the webkit-cdp job reads: dotnet runic dev's CDP adapter for WebKitGTK (#1029), the Linux hosts it attaches
 // to, the template it checks and the check itself. It runs on Linux only.
 export const webKitCdpPaths = ["tools/dotnet-runic", "packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Gtk4",
@@ -88,7 +89,9 @@ export const windowsFileReplacePaths = [
 export const platformRules = [
   // GTK 4, the Linux providers and the manual global menu check run on the Linux legs only.
   { platforms: [], paths: ["packages/dotnet/Runic.Desktop.Gtk4", "tests/native/Runic.Desktop.Gtk4.Smoke", "tests/native/Runic.Desktop.GlobalMenuCheck",
-    "packages/dotnet/Runic.Platform.Linux*", "tests/dotnet/Runic.Platform.Linux*", "eng/portals"] },
+    "packages/dotnet/Runic.Platform.Linux*", "tests/dotnet/Runic.Platform.Linux*", "eng/portals",
+    // The CI scripts of Linux-only steps: the real portal container, the musl checks in Alpine and the RPM install.
+    "eng/ci/real-portal.sh", "eng/ci/native-musl.sh", "eng/ci/packaging-rpm.sh"] },
   // The native window layer, platform contracts and runtime, and the packaging recipes, dotnet runic package and the probe.
   { platforms: all, paths: ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Kestrel", "tests/dotnet/Runic.Desktop.Tests", "tests/fixtures/desktop",
     "tests/native/Runic.Desktop.ComparativeStressAdapter", "packages/dotnet/Runic.Platform", "packages/dotnet/Runic.Platform.Runtime",
@@ -97,7 +100,9 @@ export const platformRules = [
     "tests/native/Runic.Application.HostedWindows.Smoke",
     "eng/build/desktop.props", "eng/branding/desktop", "tools/Runic.Application.Templates/content/runic-app/packaging",
     "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs", "tools/Runic.Application.Templates/content/runic-app/icons",
-    "tests/native/Runic.Packaging.Probe", "tools/dotnet-runic/Packaging"] },
+    "tests/native/Runic.Packaging.Probe", "tools/dotnet-runic/Packaging",
+    // The packaging job's receipt check, which its Windows and macOS legs run too.
+    "eng/ci/packaging-probe-check.mjs"] },
   // The managed Windows and View runtime, its NativeAOT apps, probes and file watching, the development asset source,
   // and the test host whose tests
   // run there (Runic.Application.Views.Wpf.Windows.Tests references it too): x64 Windows and macOS.
@@ -108,7 +113,9 @@ export const platformRules = [
     // and its Desktop adapter, which the Runic Desktop Views host references.
     "packages/dotnet/Runic.Assets", "packages/dotnet/Runic.Assets.Desktop", "tests/dotnet/Runic.Assets.Tests",
     // The CS-WebUI blob endpoint's checks, which the native job's Windows and macOS steps run.
-    "tests/dotnet/Runic.Application.Views.Desktop.Tests/CsWebUiBlobEndpointChecks*", "eng/ci/windows-httpsys-*"] },
+    "tests/dotnet/Runic.Application.Views.Desktop.Tests/CsWebUiBlobEndpointChecks*", "eng/ci/windows-httpsys-*",
+    // The Bridge diagnostics catalog, which the Views build targets and the generator read.
+    "docs/runicbridge-diagnostics.json"] },
   // The hosted components widget's Angular frontend and its browser smoke run in the views job on Linux only; the
   // Windows probe builds the default frontend.
   { platforms: [], paths: ["examples/hosted-components/Widget/Angular", "examples/hosted-components/angular-component-smoke.mjs"] },
@@ -127,9 +134,14 @@ export const platformRules = [
   { platforms: ["win-x64"], paths: windowsProgramStartPaths },
   // How dotnet runic replaces a file that another process holds on Windows (#1102), above.
   { platforms: ["win-x64"], paths: windowsFileReplacePaths },
+  // The NVDA leg's driver, which runs in the screen reader job on Windows x64 only.
+  { platforms: ["win-x64"], paths: ["eng/ci/windows-nvda.ps1"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
-    "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },
+    "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications",
+    // The Windows legs' CI scripts: the first-sign-in dismissal (native and WPF jobs) and the test host runner with its
+    // crash report (native job).
+    "eng/ci/windows-dismiss-oobe.ps1", "eng/ci/windows-native-run.mjs", "eng/ci/windows-crash-report.ps1"] },
   // WPF hosts, the navigation engine they host, the ReactiveUI adapters (the WPF suite checks their failure bookkeeping
   // under WPF's dispatcher; Runic.Navigation also carries their model-turn flow), the Bridge generator, the IDE host
   // and Windows administration.
@@ -147,12 +159,27 @@ export const platformRules = [
     "examples/dotnet/Runic.Administration.Console", "tools/Runic.Administration.Verify"] },
   // The macOS providers and the App Sandbox fixtures (the sandboxed Runic Desktop app runs in the macOS packaging leg).
   { platforms: ["osx-arm64"], paths: ["packages/dotnet/Runic.Platform.MacOS*", "tests/dotnet/Runic.Platform.MacOS*", "tests/native/platform-sandbox",
-    "tests/native/Runic.Sandbox.Probe"] },
+    "tests/native/Runic.Sandbox.Probe",
+    // The macOS legs' CI scripts: VoiceOver, appearance and open probes (native job), hdiutil retries (packaging job).
+    "eng/ci/macos-*", "eng/ci/hdiutil.sh"] },
 ];
 
-// Unowned files that no Windows or macOS job reads: Nix, release tooling, the solutions and the
-// shipping-project generator. They still plan every Linux job.
-export const neutralPaths = ["nix", "nixos", "flake.nix", "flake.lock", "eng/release", "eng/verify-packages.mjs",
-  "RunicSdk.slnx", "RunicSdk.Core.slnx", "eng/generate-shipping-projects.mjs"];
+// Unowned files that no Windows or macOS job reads: Nix, release tooling, the solutions, the
+// shipping-project generator and the Linux-only CI helpers. They still plan every Linux job.
+export const neutralPaths = ["nix", "nixos", "flake.nix", "flake.lock", ".envrc", "eng/release", "eng/verify-packages.mjs",
+  "RunicSdk.slnx", "RunicSdk.Core.slnx", "eng/generate-shipping-projects.mjs",
+  "eng/ci/apt-install.sh", "eng/ci/permit-webkit-sandbox.sh", "eng/ci/test-managed.mjs"];
+
+// Unowned on purpose: shared inputs of every job (the SDK and package versions, MSBuild defaults, lock files, the
+// workflow and its actions, the shared CI and build scripts, the test timeouts). A change to one plans every
+// job and every leg. Every tracked file is owned by a component, engineering-only (eng/run.mjs), neutral or listed
+// here; plan.test.mjs fails on a file that is none of these, so a new file gets an owner instead of silently
+// planning everything.
+export const globalPaths = [".config/dotnet-tools.json", ".editorconfig", ".gitattributes", ".node-version", "global.json", "package.json",
+  "bun.lock", "NuGet.config", "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props", "LICENSE",
+  ".github/workflows/ci.yml", ".github/actions", "eng/Versions.props", "eng/build", "eng/workspace.json", "eng/run.mjs", "eng/test.mjs",
+  "eng/toolchain.mjs", "eng/version.mjs", "eng/support.json", "eng/support.mjs", "eng/nupkg.mjs", "eng/node-compatibility.mjs",
+  "eng/source-map-comments.mjs", "eng/verify-templates.mjs", "eng/dependencies", "eng/ci/build-artifact.mjs", "eng/ci/source-state.mjs",
+  "eng/ci/retry.sh", "eng/ci/test-timeout-scale.mjs", "eng/ci/train-feed.mjs", "tests/support"];
 
 export const matchesPath = (file, path) => path.endsWith("*") ? file.startsWith(path.slice(0, -1)) : file === path || file.startsWith(`${path}/`);
