@@ -353,7 +353,8 @@
     },
     "scaling": {
       "dependsOn": [
-        "application"
+        "application",
+        "views-translations"
       ],
       "paths": [
         "tests/dotnet/Runic.Application.Scaling.Tests",
