@@ -340,6 +340,14 @@ test('template lanes cover every framework once and run the creator check in one
   assert.match(steps[node + 1].run, /npm install --global "pnpm@\$\(bun eng\/toolchain\.mjs pnpm\)"/);
   assert.doesNotMatch(steps[node + 1].run, /[\s"]npm@/);
   assert.match(steps[node + 1].run, /npm --version \| grep "\^11\\\."/);
+  // That npm differs from the pinned npm that the starters declare in packageManager: the template check compares
+  // packageManager with the pin, and doctor's package-manager result with the active npm.
+  const templates = readFileSync(resolve(root, 'tests/templates/Test-Templates.sh'), 'utf8');
+  assert.match(templates, /^npm_version="\$\(bun "\$repository_root\/eng\/toolchain\.mjs" npm\)"$/m);
+  assert.match(templates, /\[\[ "\$manager" != npm \]\] \|\| declared_manager_version="\$npm_version"/);
+  assert.match(templates, /"packageManager\\": \\"\$manager@\$declared_manager_version\\""/);
+  assert.doesNotMatch(templates, /packageManager\\": \\"\$manager@\$expected_manager_version/);
+  assert.match(templates, /WARN package-manager: npm \$expected_manager_version is supported/);
   const [step, second] = steps.filter(item => item.run === 'bun run verify:templates');
   assert.equal(step?.name, 'Verify generated ${{ matrix.first }} template applications');
   assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.first }}');
