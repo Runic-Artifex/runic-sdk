@@ -375,6 +375,32 @@ internal sealed class PathWatcherTests
         Require(!joining.Revalidate(), "The lease that restarted the watch reported its own restart.");
     }
 
+    // #1123: a watcher has one sink for all its leases. After a stopped watch it releases the old lease on the thread
+    // pool, and its next evaluation can acquire the replacement's first; disposing the old lease must not stop the new.
+    [Test]
+    public async Task DisposingOneOfTwoLeasesOfASinkKeepsTheOtherWatching()
+    {
+        using var root = new TempDirectory();
+        var directory = root.Directory("d");
+        var sink = new RecordingSink();
+        var stale = SharedDirectoryWatches.Acquire(directory, recursive: false, sink);
+        using var current = SharedDirectoryWatches.Acquire(directory, recursive: false, sink);
+        stale.Dispose();
+
+        File.WriteAllText(Path.Combine(directory, "after"), "1");
+        var reported = await Task.WhenAny(sink.Path.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        Require(reported == sink.Path.Task, "Disposing one lease of a sink stopped the watch its other lease holds.");
+    }
+
+    private sealed class RecordingSink : IDirectoryWatchSink
+    {
+        public TaskCompletionSource<string> Path { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void OnPath(string fullPath) => Path.TrySetResult(fullPath);
+
+        public void OnFailure(string key, string directory, Exception exception, bool stopped, bool replaced) { }
+    }
+
     private sealed class NullSink : IDirectoryWatchSink
     {
         public static readonly NullSink Instance = new();
