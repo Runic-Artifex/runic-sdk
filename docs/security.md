@@ -76,6 +76,13 @@ is not available, so another local process that reads the browser's command line
 can use the code first. The browser then shows an error and opening the window
 fails visibly, rather than the surface being taken over silently.
 
+A browser that restarts itself at launch (Edge with a Windows compatibility layer,
+or leaving elevation) hands the launch address to a new copy. The code then stays
+valid for that copy until the connection deadline, as it would for a browser that
+starts slowly; it is still single-use and is withdrawn at the deadline or when the
+window closes. Runic does not keep Edge elevated (`--do-not-de-elevate`) to avoid
+the restart.
+
 For a page that shows less-trusted content, or an application that runs on
 machines shared with other users, prefer embedded windows. If such an
 application can run in a browser, give the less-trusted surface its own listener

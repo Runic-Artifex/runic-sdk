@@ -80,6 +80,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly string _sessionCredential;
     private string? _frameAncestorsPolicy;
     private Process? _browserProcess;
+    // The browser process Runic started when it exited before its first request (#1097): a browser that restarts
+    // itself, such as Edge leaving a compatibility layer or elevation, hands its window off to a new copy that Runic
+    // did not start. The presentation then lives on its connection, not on a process (MonitorHandedOffBrowserAsync).
+    private Process? _handedOffProcess;
     private Task _browserOutputClosed = Task.CompletedTask;
     private IWebUiEmbeddedHost? _embeddedHost;
     private Func<CancellationToken, ValueTask<bool>>? _confirmClose;
@@ -202,6 +206,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     /// <summary>Gets whether this window currently owns a browser process or authenticated client.</summary>
     public bool IsShown =>
         (_browserProcess is { HasExited: false }) || (_embeddedHost?.IsOpen ?? false)
+        || IsHandedOff(Volatile.Read(ref _browserProcess))
         || _sessions.Values.Any(static session => session.IsAuthenticated);
 
     /// <summary>Gets the operating-system identifier of the owned browser process.</summary>
@@ -459,11 +464,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             {
                 throw new InvalidOperationException("This window is already hosted by an embedded WebView.");
             }
-            if (_browserProcess is { HasExited: true })
+            if (_browserProcess is { HasExited: true } && !IsHandedOff(_browserProcess))
             {
                 await StopBrowserAsync().ConfigureAwait(false);
             }
-            if (_browserProcess is { HasExited: false })
+            if (_browserProcess is { HasExited: false } || IsHandedOff(_browserProcess))
             {
                 if (browser is not WebUiBrowser.AnyBrowser and not WebUiBrowser.ChromiumBased && browser != _currentBrowser)
                 {
@@ -2555,16 +2560,91 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
-        if (ReferenceEquals(Volatile.Read(ref _browserProcess), process))
+        if (ReferenceEquals(Volatile.Read(ref _browserProcess), process) && !TryAcceptHandOff(process))
         {
-            if (_runtimeOptions is null)
+            await CloseBrowserPresentationAsync().ConfigureAwait(false);
+        }
+    }
+
+    // The browser presentation ended: a process Runic started exited, or a handed-off window's page went away.
+    private Task CloseBrowserPresentationAsync() =>
+        _runtimeOptions is null ? CloseCoreAsync(CancellationToken.None) : StopBrowserAsync();
+
+    // Whether process is the current browser process and handed its window off (#1097).
+    private bool IsHandedOff(Process? process) =>
+        process is not null
+        && ReferenceEquals(Volatile.Read(ref _handedOffProcess), process)
+        && ReferenceEquals(Volatile.Read(ref _browserProcess), process);
+
+    // A browser can restart itself at launch: Edge does when its environment carries a compatibility layer, and to
+    // shed elevation (#1097). The process Runic started then exits before the new copy requests the launch address.
+    // While the window waits for its connection and nothing has requested the page, that exit is a hand-off, not a
+    // close: the launch code stays pending, still single-use, and the connection deadline that already bounds it
+    // decides (WaitForConnectionAsync). Elevation is not kept with --do-not-de-elevate, which would leave the browser
+    // running elevated, against its own protection.
+    private bool TryAcceptHandOff(Process process)
+    {
+        if (!WaitForConnection
+            || _externalUrl is not null
+            || _browserConnected.Task.IsCompleted
+            || (ConnectionProgress)Volatile.Read(ref _connectionProgress) != ConnectionProgress.NoRequest)
+        {
+            return false;
+        }
+        Volatile.Write(ref _handedOffProcess, process);
+        if (!IsHandedOff(process))
+        {
+            // The presentation was stopped meanwhile.
+            return true;
+        }
+        HandshakeLog.Record($"the browser process exited{DescribeExitCode(process)} before its first request; waiting for the copy it handed off to");
+        _ = MonitorHandedOffBrowserAsync(process);
+        return true;
+    }
+
+    private static string DescribeExitCode(Process process)
+    {
+        try
+        {
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $" with code {process.ExitCode}");
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return string.Empty;
+        }
+    }
+
+    // How long a handed-off window may have no authenticated page before it counts as closed. A navigation or reload
+    // closes the page's Bridge connection before the next page authenticates.
+    internal static readonly TimeSpan HandOffReconnectGrace = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan HandOffPollInterval = TimeSpan.FromMilliseconds(250);
+
+    // No process of Runic's own shows a handed-off window, so its close is its page's: once the window connected and
+    // then had no authenticated page for HandOffReconnectGrace, the presentation closes as if the browser exited.
+    // Before it connects, the connection deadline ends the wait instead.
+    private async Task MonitorHandedOffBrowserAsync(Process process)
+    {
+        var time = TimeProvider;
+        long? lostSince = null;
+        while (IsHandedOff(process))
+        {
+            if (!_browserConnected.Task.IsCompletedSuccessfully
+                || _sessions.Values.Any(static session => session.IsAuthenticated))
             {
-                await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
+                lostSince = null;
             }
-            else
+            else if (lostSince is not { } since)
             {
-                await StopBrowserAsync().ConfigureAwait(false);
+                lostSince = time.GetTimestamp();
             }
+            else if (time.GetElapsedTime(since) >= HandOffReconnectGrace)
+            {
+                HandshakeLog.Record("the handed-off window's page disconnected");
+                await CloseBrowserPresentationAsync().ConfigureAwait(false);
+                return;
+            }
+            await Task.Delay(HandOffPollInterval, time).ConfigureAwait(false);
         }
     }
 
@@ -2605,8 +2685,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
 
         var process = _browserProcess;
+        var handedOff = IsHandedOff(process);
+        Volatile.Write(ref _handedOffProcess, null);
         var outputClosed = _browserOutputClosed;
         _browserOutputClosed = Task.CompletedTask;
+        // A code that no client used is withdrawn with the browser it was given to, also at its deadline. A hosted
+        // launch (BeginHostedLaunch) has no browser process and keeps its code.
+        if (process is not null)
+        {
+            _launchBinding.Withdraw();
+        }
         if ((process is not null || embeddedHost is not null)
             && WaitForConnection && _externalUrl is null)
         {
@@ -2640,6 +2728,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 await outputClosed.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch (InvalidOperationException)
+            {
+            }
+            // The copy a browser handed off to can hold the pipes it inherited for as long as it runs; Runic cannot stop
+            // it, and the profile's deletion is retried below.
+            catch (TimeoutException) when (handedOff)
             {
             }
             finally
@@ -2794,7 +2887,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                         {
                             stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
                         }
-                        var timeout = new TimeoutException(stalled, exception);
+                        var timeout = IsHandedOff(browserProcess)
+                            ? new BrowserHandOffTimeoutException(stalled, exception)
+                            : new TimeoutException(stalled, exception);
                         await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
                         throw timeout;
                     }
@@ -3033,8 +3128,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             _ => "the Bridge WebSocket opened, but authentication did not complete",
         };
         var presentation = browserProcess is null ? "The embedded WebView" : "The browser";
+        var subject = $"{presentation} did not connect";
         var process = string.Empty;
-        if (browserProcess is not null)
+        // An exited browser is not relaunched, so a hand-off names no attempt.
+        var handedOff = IsHandedOff(browserProcess);
+        if (handedOff)
+        {
+            // The process Runic started exited before any request (TryAcceptHandOff); a browser that failed to start
+            // looks the same, so the exit code is reported.
+            subject = "The browser handed off to another process and no window connected";
+            process = $"; the browser process Runic started exited{DescribeExitCode(browserProcess!)} before its first request, as a browser that restarts itself does";
+        }
+        else if (browserProcess is not null)
         {
             try
             {
@@ -3050,7 +3155,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             process = "; the browser process exited before it could be relaunched";
         }
-        var attemptText = attempts > 1 ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
+        var attemptText = attempts > 1 && !handedOff ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
         var deadline = Volatile.Read(ref _connectionDeadline);
         var timeout = deadline?.Timeout ?? ConnectionTimeout;
         if (deadline?.Expired is { Progress: { } extendedBy } expired)
@@ -3060,11 +3165,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 ? $"its limit of {ConnectionDeadline.CapFactor} times the timeout"
                 : $"{expired.Elapsed.TotalSeconds:0.#} seconds";
             return string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"{presentation} did not connect within {expired.Elapsed.TotalSeconds:0.#} seconds{attemptText}: {progress}{process}, although the WebView was still making progress ({extendedBy}); the {timeout.TotalSeconds:0.###}-second connection timeout was extended to {limit}. {HandshakeLog.Describe()}");
+                $"{subject} within {expired.Elapsed.TotalSeconds:0.#} seconds{attemptText}: {progress}{process}, although the WebView was still making progress ({extendedBy}); the {timeout.TotalSeconds:0.###}-second connection timeout was extended to {limit}. {HandshakeLog.Describe()}");
         }
         // With a request, the timeout counted from the first one (WaitWithinConnectionDeadlineAsync).
         var since = deadline?.HasRequest == true ? " of its first request" : string.Empty;
-        return $"{presentation} did not connect within {timeout.TotalSeconds:0.###} seconds{since}{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
+        return $"{subject} within {timeout.TotalSeconds:0.###} seconds{since}{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
     }
 
     private Task HandleRequestAsync(PresentationExchange context) => PrepareResponseAsync(context, DispatchRequestAsync);

@@ -11,6 +11,9 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
     private const string ConnectionTimeoutCode = "presentation-connection-timeout";
     private const string ConnectionTimeoutMessage =
         "The presentation opened, but its page did not connect before the connection timeout.";
+    private const string BrowserHandedOffCode = "presentation-browser-handed-off";
+    private const string BrowserHandedOffMessage =
+        "The browser handed off to another process and no window connected before the connection timeout.";
 
     private readonly DesktopHost _host;
     private readonly Guid _id;
@@ -264,7 +267,7 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
                 // A presentation that opened but never connected is not
                 // unavailable: the next one would load the same frontend, so report it.
                 catch (DesktopException exception) when (
-                    attempts is not null && exception.Code != ConnectionTimeoutCode)
+                    attempts is not null && exception.Code is not (ConnectionTimeoutCode or BrowserHandedOffCode))
                 {
                     attempts.Add(new DesktopPresentationAttempt(candidate, exception));
                     if (index == chain.Count - 1) throw new DesktopPresentationException(attempts);
@@ -830,6 +833,27 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
         catch (Internal.WindowClosedWhileOpeningException)
         {
             throw;
+        }
+        catch (Internal.BrowserHandOffTimeoutException exception)
+        {
+            // A browser that restarted itself (#1097): its new copy may still open a window, so no fallback opens.
+            var correlationId = Guid.NewGuid().ToString("N");
+            const string remediation =
+                "Check that nothing else stops the browser's new copy, or increase DesktopHostOptions.ConnectionTimeout.";
+            _host.Report(new DesktopDiagnostic(
+                DesktopErrorCategory.TimedOut,
+                BrowserHandedOffCode,
+                BrowserHandedOffMessage,
+                Retryable: true,
+                correlationId,
+                remediation));
+            throw new DesktopException(
+                DesktopErrorCategory.TimedOut,
+                BrowserHandedOffCode,
+                BrowserHandedOffMessage,
+                retryable: true,
+                exception,
+                correlationId);
         }
         catch (TimeoutException exception)
         {
