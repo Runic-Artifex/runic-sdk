@@ -629,10 +629,12 @@ jobs:
           dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -p:ILLinkTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/desktop-views-trimmed
           RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-trimmed/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
       # ReadyToRun, which docs/packaging.md recommends for framework-dependent publishes, reached the Views generator's
-      # own build and its bootstrap pass, which clear the runtime identifier, and failed them with NETSDK1191 (S1).
-      - name: Publish the Runic Desktop Views host framework-dependent with ReadyToRun, and exercise it
+      # own build and its bootstrap pass, which clear the runtime identifier, and failed them with NETSDK1191 (S1), as
+      # PublishSingleFile did until 0.22 (D072.7, FD3). The one publish covers both; the smoke runs the single file.
+      - name: Publish the Runic Desktop Views host framework-dependent with ReadyToRun as a single file, and exercise it
         run: |
-          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained false -p:PublishReadyToRun=true -o artifacts/desktop-views-r2r
+          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -o artifacts/desktop-views-r2r
+          test ! -e artifacts/desktop-views-r2r/FirstWindowDesktop.dll
           RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-r2r/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
