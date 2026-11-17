@@ -80,6 +80,14 @@ fields with the text-field binding of your framework package
 `runic({ staleInputWarning: false })`, or from the page by setting
 `globalThis[Symbol.for("runic.vite.staleInputWarning")] = false`.
 
+While serving, the plugin also makes the `sources` of the module source maps
+that Vite sends absolute file paths, with forward slashes
+(`/home/me/App/Frontend/src/App.tsx`, `C:/Users/me/App/Frontend/src/App.tsx`).
+Vite 8 writes them relative to each module, which a JavaScript debugger can
+resolve only with a web root, and Visual Studio's attaches to the page with
+none. `vite build` and `vite preview` keep Vite's relative paths. See
+[The development server's source maps](../../../docs/debugging.md#the-development-servers-source-maps).
+
 ### State inspector
 
 With `@runic-artifex/views` 0.15 or later the development client also reports
