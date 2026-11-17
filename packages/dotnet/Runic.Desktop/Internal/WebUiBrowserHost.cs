@@ -13,7 +13,8 @@ internal sealed record WebUiBrowserLaunchOptions(
     uint? Height,
     int? X,
     int? Y,
-    DesktopPermissionGrant AllowedPermissions = DesktopPermissionGrant.None);
+    DesktopPermissionGrant AllowedPermissions = DesktopPermissionGrant.None,
+    int? RemoteDebuggingPort = null);
 
 internal static class WebUiBrowserHost
 {
@@ -116,6 +117,15 @@ internal static class WebUiBrowserHost
             else if (options.BrowserArguments.Count == 0)
             {
                 arguments.Add("--no-proxy-server");
+            }
+
+            // D070.7: Development's CDP endpoint (WebUiRemoteDebugging), beside the defaults or the application's own
+            // arguments; an application that names the switch keeps its own value, and there is never a second one.
+            if (options.RemoteDebuggingPort is int debuggingPort
+                && !string.IsNullOrWhiteSpace(options.ProfilePath)
+                && !WebUiRemoteDebugging.NamesPort(options.BrowserArguments))
+            {
+                arguments.Add(WebUiRemoteDebugging.Argument(debuggingPort));
             }
 
             arguments.AddRange(options.BrowserArguments);

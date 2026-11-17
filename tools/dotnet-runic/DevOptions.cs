@@ -34,7 +34,8 @@ internal sealed record DevOptions(
 
     /// <summary>
     /// False with <c>--no-debug-endpoint</c>: on Linux, dev opens neither WebKit's remote inspector nor Runic's CDP adapter
-    /// for the Window (<see cref="WebKit.WebKitDebugging"/>).
+    /// for the Window (<see cref="WebKit.WebKitDebugging"/>), and a CS-WebUI Window's browser opens no DevTools Protocol
+    /// port (<see cref="CsWebUiDebugging"/>).
     /// </summary>
     internal bool DebugEndpoint { get; init; } = true;
 

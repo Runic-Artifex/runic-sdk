@@ -15,6 +15,14 @@
         "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--remote-debugging-port=9222"
       },
       "jsWebView2Debugging": true
+//#else
+    },
+    "RunicWindowApp (CS-WebUI script debugging)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "RUNIC_WEBUI_REMOTE_DEBUGGING_PORT": "9225"
+      }
 //#endif
     }
   }

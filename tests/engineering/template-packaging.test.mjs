@@ -605,9 +605,17 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.ok(attachSelects(webView2, { type: "page", url: "http://127.0.0.1:49152/index.html" }));
     assert.ok(!attachSelects(webView2, { type: "service_worker", url: "http://127.0.0.1:49152/sw.js" }));
 
-    // CS-WebUI has no WebView2 of its own: no script-debugging profile or configurations.
+    // CS-WebUI has no WebView2 of its own; its profile opens the DevTools Protocol of the Window's Chrome or Edge (D070.7)
+    // on the fixed port that dotnet runic dev --no-window lists, for Visual Studio's Attach to Process.
     const cswebui = create("cswebui", "--editor", "vscode", "--host", "cswebui");
-    assert.deepEqual(Object.keys(JSON.parse(cswebui["Properties/launchSettings.json"]).profiles), ["Ide.App"]);
+    const cswebuiProfiles = JSON.parse(cswebui["Properties/launchSettings.json"]).profiles;
+    assert.deepEqual(Object.keys(cswebuiProfiles), ["Ide.App", "Ide.App (CS-WebUI script debugging)"]);
+    assert.deepEqual(cswebuiProfiles["Ide.App"], profiles["Ide.App"]);
+    const noWindowPort = /internal const int NoWindowPort = (\d+);/.exec(readFileSync(resolve(root, "tools/dotnet-runic/CsWebUiDebugging.cs"), "utf8"))?.[1];
+    assert.deepEqual(cswebuiProfiles["Ide.App (CS-WebUI script debugging)"],
+      { commandName: "Project", environmentVariables: { ...environment, RUNIC_WEBUI_REMOTE_DEBUGGING_PORT: noWindowPort } });
+    assert.match(cswebui["README.md"], /`Ide\.App \(CS-WebUI script debugging\)`.*http:\/\/127\.0\.0\.1:9225\//);
+    assert.doesNotMatch(plain["README.md"], /CS-WebUI script debugging/);
     // Its page in Chrome or Edge (dotnet runic dev --browser) uses Visual Studio's JavaScript debugger too.
     assert.equal(cswebui[".vsconfig"], plain[".vsconfig"]);
     const cswebuiLaunch = parseJsonc(cswebui[".vscode/launch.json"]);

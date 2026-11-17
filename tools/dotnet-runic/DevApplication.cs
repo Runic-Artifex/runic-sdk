@@ -138,7 +138,7 @@ internal static class DevApplication
         string? devToolsExtension = DevToolsExtension.Find();
         options = options with
         {
-            DebugEnvironment = debugging.WindowEnvironment,
+            DebugEnvironment = [.. debugging.WindowEnvironment, .. CsWebUiDebugging.WindowEnvironment(configuration, options)],
             WindowDevToolsExtension = DevToolsExtension.ForWindow(configuration, options, devToolsExtension, OperatingSystem.IsWindows()),
         };
         // On Linux the adapter and --browser's address accept only connections of this user, and the adapter talks only to an
@@ -155,6 +155,12 @@ internal static class DevApplication
             : null;
         var webKitEndpoints = new List<DevSession.DebugEndpoint>(debugging.Endpoints);
         var debuggingHints = new List<string>(debugging.Hints);
+        // A CS-WebUI Window that the IDE starts (--no-window) opens the fixed port; one that dev starts reports its own.
+        foreach (DevSession.DebugEndpoint endpoint in CsWebUiDebugging.NoWindowEndpoints(configuration, options))
+        {
+            webKitEndpoints.Add(endpoint);
+            debuggingHints.Add(CsWebUiDebugging.NoWindowHint(endpoint));
+        }
         if (adapter is not null)
         {
             // A fixed inspector port (--no-window, or the developer's) that another user holds already: say so now.
@@ -313,7 +319,8 @@ internal static class DevApplication
             configuration,
             options,
             developmentServer?.HostEnvironment,
-            contract.ServeOnlyLine);
+            contract.ServeOnlyLine,
+            CsWebUiDebugging.Applies(configuration, options) ? contract.DebugEndpointLine : null);
         using (PhaseTimer phase = PhaseTimer.Start("Starting native application host"))
         {
             await host.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -988,6 +995,24 @@ internal static class DevApplication
             if (served.Type is not null) return;
             writeLine(BrowserServedLine(served));
             if (served.Index == 0) Ready();
+        }
+
+        /// <summary>
+        /// A debugging endpoint line of the Window's output (<see cref="CsWebUiDebugging"/>): the file lists or drops the
+        /// endpoint, then dev prints where to attach.
+        /// </summary>
+        internal void DebugEndpointLine(string line)
+        {
+            if (!CsWebUiDebugging.TryRead(line, out DevSession.DebugEndpoint? opened, out string? closed)) return;
+            if (opened is not null)
+            {
+                writeSession(() => session.WindowEndpointOpened(opened));
+                writeLine(CsWebUiDebugging.OpenedHint(opened));
+            }
+            else
+            {
+                writeSession(() => session.WindowEndpointClosed(closed!));
+            }
         }
 
         /// <summary>The frontend and the Window can be used: the file says ready, then <see cref="ReadyLine"/>.</summary>

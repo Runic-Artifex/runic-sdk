@@ -52,6 +52,7 @@ internal sealed partial class DevSession
     private bool _frontendPublished;
     private string? _browserUrl;
     private IReadOnlyList<BrowserEntry.ServedWindow> _browserWindows = [];
+    private readonly List<DebugEndpoint> _windowEndpoints = [];
 
     internal DevSession(
         DevProjectConfiguration configuration,
@@ -186,6 +187,8 @@ internal sealed partial class DevSession
         lock (_gate)
         {
             if (_windowProcessId == processId) _windowProcessId = null;
+            // Its browsers ended with it.
+            _windowEndpoints.Clear();
             // Usable again when the next Window process starts.
             if (_state == ReadyState) _state = Starting;
         }
@@ -210,6 +213,29 @@ internal sealed partial class DevSession
         Write();
     }
 
+    /// <summary>
+    /// A debugging endpoint that the running Window opened (a CS-WebUI browser's, <see cref="CsWebUiDebugging"/>): listed
+    /// in <c>debugEndpoints</c> until <see cref="WindowEndpointClosed"/> or the Window exits.
+    /// </summary>
+    internal void WindowEndpointOpened(DebugEndpoint endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        lock (_gate)
+        {
+            _windowEndpoints.RemoveAll(existing => existing.Url == endpoint.Url);
+            _windowEndpoints.Add(endpoint);
+        }
+        Write();
+    }
+
+    /// <summary>The Window's endpoint at <paramref name="url"/> closed, with its browser.</summary>
+    internal void WindowEndpointClosed(string url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        lock (_gate) _windowEndpoints.RemoveAll(existing => existing.Url == url);
+        Write();
+    }
+
     internal void Ready()
     {
         lock (_gate) _state = ReadyState;
@@ -224,6 +250,7 @@ internal sealed partial class DevSession
             _state = Stopped;
             _windowProcessId = null;
             _browserWindows = [];
+            _windowEndpoints.Clear();
         }
         try
         {
@@ -350,7 +377,8 @@ internal sealed partial class DevSession
             }
 
             json.WriteStartArray("debugEndpoints");
-            foreach (DebugEndpoint endpoint in _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is null))
+            foreach (DebugEndpoint endpoint in _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is null)
+                .Concat(_windowEndpoints))
             {
                 json.WriteStartObject();
                 json.WriteString("engine", endpoint.Engine);

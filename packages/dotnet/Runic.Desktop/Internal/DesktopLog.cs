@@ -126,4 +126,8 @@ internal static partial class DesktopLog
         else
             ConfigurationLimited(logger, diagnostic.Code, option, diagnostic.Message, remediation);
     }
+
+    [LoggerMessage(EventId = 3042, EventName = "WebUiRemoteDebuggingUnavailable", Level = LogLevel.Warning,
+        Message = "The browser did not open its DevTools Protocol endpoint (requested port {Port}); set RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=0 for a free port.")]
+    internal static partial void RemoteDebuggingUnavailable(ILogger logger, int port);
 }

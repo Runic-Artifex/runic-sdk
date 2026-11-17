@@ -95,6 +95,8 @@ the first one:
 | `RunicWindowApp` | The Window with `DOTNET_ENVIRONMENT=Development`: the browser's developer tools on the page (F12 or Inspect) and detailed Bridge errors. |
 <!--#if (desktopHost) -->
 | `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). WebView2 ignores the variable while the Window runs elevated (Runtime 150 and later), for example under an IDE started as administrator; start the IDE without elevation. |
+<!--#else -->
+| `RunicWindowApp (CS-WebUI script debugging)` | The same, with the DevTools Protocol of the Window's Chrome or Edge on `http://127.0.0.1:9225/` (`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, honoured in Development only). In Visual Studio, start it, then Debug > Attach to Process, connection type "Chrome devtools protocol websocket (no authentication)", target `http://127.0.0.1:9225/`, and pick the page. Firefox and the platform WebView fallback open no port. |
 <!--#endif -->
 
 `.vsconfig` names the Visual Studio components these profiles need: the .NET
@@ -128,6 +130,14 @@ from your IDE's JavaScript debugger with Chrome or Edge. The page runs on
 Chromium rather than the Window's WebView (WebKit on Linux and macOS), and native
 window features such as file dialogs and menus are unavailable there. Open the
 address again after `dotnet watch` restarts the Window.
+<!--#if (host == "cswebui") -->
+
+`dotnet runic dev` also opens the DevTools Protocol of the Window's own Chrome
+or Edge, on a free loopback port that `[dev] Debugging:` and the session file's
+`debugEndpoints` name, so a JavaScript debugger can attach to the Window you
+are using; `--no-window` uses port 9225, as the profile does. Turn it off with
+`dotnet runic dev --no-debug-endpoint`.
+<!--#endif -->
 
 <!--#if (editor == "vscode") -->
 ### VS Code

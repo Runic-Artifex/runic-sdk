@@ -513,6 +513,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var installation = WebUiBrowserDiscovery.Find(requestedBrowser, BrowserFolder)
             ?? throw new InvalidOperationException($"No supported installation was found for {requestedBrowser}.");
         var profilePath = GetOrCreateProfilePath(installation.Browser);
+        int? debuggingPort = installation.IsChromiumBased
+            && !string.IsNullOrWhiteSpace(profilePath)
+            && !WebUiRemoteDebugging.NamesPort(_browserArgumentList)
+            && WebUiRemoteDebugging.RequestedPort(Environment.GetEnvironmentVariable, _webContent.DevTools) is int requestedPort
+                ? WebUiRemoteDebugging.Available(requestedPort)
+                : null;
+        if (debuggingPort is not null)
+        {
+            WebUiRemoteDebugging.DeleteStaleRecord(profilePath!);
+        }
         var options = new WebUiBrowserLaunchOptions(
             _profileName,
             profilePath,
@@ -524,7 +534,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             _height,
             _x,
             _y,
-            _allowedPermissions);
+            _allowedPermissions,
+            debuggingPort);
         connection = BeginConnection();
         // The command line is readable by other users of a Linux or macOS machine: give the browser a one-time
         // code that binds it to the surface instead of the surface's address.
@@ -550,7 +561,24 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _browserOutputClosed = outputClosed;
         _currentBrowser = installation.Browser;
         _ = MonitorBrowserAsync(process);
+        if (debuggingPort is int port)
+        {
+            _ = WebUiRemoteDebugging.ReportAsync(process.WaitForExitAsync(), profilePath!, port, WebUiRemoteDebugging.WriteLine, ReportDebuggingPortUnavailable);
+        }
         return process;
+    }
+
+    private void ReportDebuggingPortUnavailable(int port)
+    {
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.RemoteDebuggingUnavailable(logger, port);
+        }
+        else
+        {
+            Trace.TraceWarning(
+                $"The browser did not open its DevTools Protocol endpoint (requested port {port}); set {WebUiRemoteDebugging.PortVariable}=0 for a free port.");
+        }
     }
 
     private enum RelaunchOutcome
