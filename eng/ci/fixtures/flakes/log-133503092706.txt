@@ -1,0 +1,52 @@
+2026-11-16T18:15:41.1705636Z   	Actual: sha512-RY5bUgcmC55B1qsvalmPNZQE7n2TJcEWXzpKGgNzmYgasbNpGgmpgbsGOTiXuhr3nWY9zN4y3AK8P74ibjadHQ==) — 2
+2026-11-16T18:15:41.1706325Z   Will retry in 1m. 0 retries left.
+2026-11-16T18:16:41.1935083Z   Error: ERR_PNPM_TARBALL_INTEGRITY
+2026-11-16T18:16:41.1935498Z   
+2026-11-16T18:16:41.1936070Z     × installing dependencies
+2026-11-16T18:16:41.1936636Z     ╰─▶ Failed to verify the integrity of http://127.0.0.1:40111/@runic-artifex/
+2026-11-16T18:16:41.1937251Z         vite-plugin-runic-translations/-/vite-plugin-runic-translations-
+2026-11-16T18:16:41.1937725Z         0.13.0.tgz: Integrity check failed.
+2026-11-16T18:16:41.1938161Z         	Wanted: sha512-LJIxzQwwq7lSUZY8TfKibLaG9+8Qy13A4OQYnoV/
+2026-11-16T18:16:41.1938606Z         Rykqx2IzYIdt7pyx9rlmYWJyqsXc/7wh2AT4Ery5Wwim6Q==
+2026-11-16T18:16:41.1938932Z         	Actual: sha512-
+2026-11-16T18:16:41.1939375Z         RY5bUgcmC55B1qsvalmPNZQE7n2TJcEWXzpKGgNzmYgasbNpGgmpgbsGOTiXuhr3nWY9zN4y
+2026-11-16T18:16:41.1939829Z         3AK8P74ibjadHQ==
+2026-11-16T18:16:41.1940471Z     help: The downloaded tarball does not match the integrity recorded in the
+2026-11-16T18:16:41.1941061Z           lockfile. If you trust the new content (legitimate republish, or stale
+2026-11-16T18:16:41.1941853Z           local metadata cache), run `pnpm install --update-checksums`.
+2026-11-16T18:16:41.1942422Z           Otherwise treat this as a potential supply-chain issue and verify the
+2026-11-16T18:16:41.1942853Z           new content first.
+2026-11-16T18:16:41.1943645Z   
+2026-11-16T18:16:41.6904954Z /tmp/runic-views-templates.JiqGMuuoLu/react-pnpm-desktop-toolkit-translations/AcceptanceReactPnpmDesktopToolkitTranslations.csproj : error RUNICBRIDGE016: The frontend install 'pnpm install --frozen-lockfile --ignore-scripts' in /tmp/runic-views-templates.JiqGMuuoLu/reac
+2026-11-16T18:16:41.7054362Z 
+2026-11-16T18:16:41.7062741Z Build FAILED.
+2026-11-16T18:16:41.7062904Z 
+2026-11-16T18:16:41.7065615Z /tmp/runic-views-templates.JiqGMuuoLu/react-pnpm-desktop-toolkit-translations/AcceptanceReactPnpmDesktopToolkitTranslations.csproj : error RUNICBRIDGE016: The frontend install 'pnpm install --frozen-lockfile --ignore-scripts' in /tmp/runic-views-templates.JiqGMuuoLu/reac
+2026-11-16T18:16:41.7066912Z     0 Warning(s)
+2026-11-16T18:16:41.7067107Z     1 Error(s)
+2026-11-16T18:16:41.7067218Z 
+2026-11-16T18:16:41.7067335Z Time Elapsed 00:01:11.95
+2026-11-16T18:16:41.7190096Z Terminated
+2026-11-16T18:16:42.2228912Z 30 |     stdio: "inherit",
+2026-11-16T18:16:42.2229384Z 31 |     env: { ...(compatibility?.env ?? process.env), ...extraEnv },
+2026-11-16T18:16:42.2229679Z 32 |   });
+2026-11-16T18:16:42.2229931Z 33 |   if (result.error) throw result.error;
+2026-11-16T18:16:42.2230217Z 34 |   if (result.status !== 0)
+2026-11-16T18:16:42.2230617Z 35 |     throw new Error(`${command} exited with ${result.status ?? result.signal}`);
+2026-11-16T18:16:42.2230961Z                    ^
+2026-11-16T18:16:42.2231422Z error: bash exited with 1
+2026-11-16T18:16:42.2231783Z       at run (/home/runner/work/runic-sdk/runic-sdk/eng/run.mjs:35:15)
+2026-11-16T18:16:42.2232205Z       at /home/runner/work/runic-sdk/runic-sdk/eng/verify-templates.mjs:13:1
+2026-11-16T18:16:42.2232440Z 
+2026-11-16T18:16:42.2238408Z ##[error]
+      at run (/home/runner/work/runic-sdk/runic-sdk/eng/run.mjs:35:15)
+      at /home/runner/work/runic-sdk/runic-sdk/eng/verify-templates.mjs:13:1
+2026-11-16T18:16:42.2239342Z 
+2026-11-16T18:16:42.2239466Z Bun v1.4.4 (Linux x64)
+2026-11-16T18:16:42.2249196Z error: script "verify:templates" exited with code 1
+2026-11-16T18:16:42.2261683Z ##[error]Process completed with exit code 1.
+2026-11-16T18:16:42.2369956Z Post job cleanup.
+2026-11-16T18:16:42.2463201Z Post job cleanup.
+2026-11-16T18:16:42.2468275Z ##[start-action display=Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020;id=__a5dd5707-c2d2-48a5-96e8-a4b6c8a9b5d4.__actions_setup-node]
+2026-11-16T18:16:42.2469960Z ##[end-action id=__a5dd5707-c2d2-48a5-96e8-a4b6c8a9b5d4.__actions_setup-node;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-11-16T18:16:42.2471777Z ##[start-action display=Run oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6;id=__a5dd5707-c2d2-48a5-96e8-a4b6c8a9b5d4.__oven-sh_setup-bun]

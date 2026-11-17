@@ -1,0 +1,50 @@
+{
+ "jobs": [
+  {
+   "id": 133208287719,
+   "name": "Web packages and framework consumers",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T09:32:45Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43839542745/job/133208287719",
+   "steps": [
+    {
+     "name": "Test vite-plugin-runic",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133220737486,
+   "name": "verify",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T09:57:20Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43839542745/job/133220737486",
+   "steps": [
+    {
+     "name": "Require every planned verification job to pass",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133221451882,
+   "name": "Web packages and framework consumers",
+   "run_attempt": 2,
+   "conclusion": "success",
+   "started_at": "2026-11-16T09:58:51Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43839542745/job/133221451882",
+   "steps": []
+  },
+  {
+   "id": 133225641912,
+   "name": "verify",
+   "run_attempt": 2,
+   "conclusion": "success",
+   "started_at": "2026-11-16T10:13:57Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43839542745/job/133225641912",
+   "steps": []
+  }
+ ]
+}

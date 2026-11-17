@@ -1,5 +1,125 @@
+2026-11-16T11:48:30.4997128Z passed DocumentScriptCompletionIgnoresTheBorrowedIdentifierAndReportsFailures (10ms)
+2026-11-16T11:48:30.5007346Z passed FailedAndNullCompletionsFailWithoutDereferencingTheResult (0ms)
+2026-11-16T11:48:30.5008973Z passed TitleBarFollowsTheSystemsAppMode(colorScheme: NoPreference, systemDark: True, highContrast: True) (0ms)
+2026-11-16T11:48:30.5010665Z passed TitleBarFollowsTheSystemsAppMode(colorScheme: NoPreference, systemDark: True, highContrast: False) (0ms)
+2026-11-16T11:48:30.5054720Z passed DesktopDoesNotReferenceTheManagedWebView2Wrapper (0ms)
+2026-11-16T11:48:30.8712671Z 
+2026-11-16T11:48:30.8728740Z   In process file artifacts produced:
+2026-11-16T11:48:30.8732923Z     - C:\a\runic-sdk\runic-sdk\artifacts\native-tests\Runic.Desktop.Tests-windows-net10.0-report.html
+2026-11-16T11:48:30.8733381Z 
 2026-11-16T11:48:30.8747502Z Test run summary: Passed! - C:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Desktop.Tests\bin\Release\net10.0\Runic.Desktop.Tests.dll (net10.0|arm64)
+2026-11-16T11:48:30.8749089Z   total: 846
+2026-11-16T11:48:30.8749613Z   failed: 0
+2026-11-16T11:48:30.8750003Z   succeeded: 846
+2026-11-16T11:48:30.8750231Z   skipped: 0
+2026-11-16T11:48:30.8751148Z   duration: 54s 950ms
+2026-11-16T11:48:30.9691133Z   Out of process file artifacts produced:
+2026-11-16T11:48:30.9695476Z     - C:\a\runic-sdk\runic-sdk\artifacts\native-tests\desktop.trx
+2026-11-16T11:48:30.9695772Z 
+2026-11-16T11:48:31.1972526Z ##[group]Run dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release -- --treenode-filter "/*/*/PathWatcherTests/*" --timeout 3m --output detailed
+2026-11-16T11:48:31.1973924Z dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release -- --treenode-filter "/*/*/PathWatcherTests/*" --timeout 3m --output detailed
+2026-11-16T11:48:31.2033081Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-11-16T11:48:31.2033411Z env:
+2026-11-16T11:48:31.2033595Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1
+2026-11-16T11:48:31.2033813Z   DOTNET_NOLOGO: 1
+2026-11-16T11:48:31.2034002Z   CONFIGURATION: Release
+2026-11-16T11:48:31.2034256Z   NUGET_PACKAGES: C:\a\runic-sdk\runic-sdk/.cache/nuget
+2026-11-16T11:48:31.2034788Z   FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+2026-11-16T11:48:31.2035301Z   RUNIC_TEST_TIMEOUT_SCALE: 6
+2026-11-16T11:48:31.2035676Z   DOTNET_ROOT: C:\hostedtoolcache\windows\runic-dotnet
+2026-11-16T11:48:31.2036268Z   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: C:\Users\runneradmin\AppData\Local\ms-playwright\chromium-1243\chrome-win64\chrome.exe
+2026-11-16T11:48:31.2036779Z ##[endgroup]
+2026-11-16T11:49:25.9346376Z passed SymlinkRepointedByRenameIsReported (744ms)
+2026-11-16T11:49:26.5727511Z passed ProfileLinkChainIsFollowed (650ms)
+2026-11-16T11:49:26.5960907Z skipped DirectoryLinkReplacedByLnIsReported (21ms)
+2026-11-16T11:49:26.5962113Z   `ln -sfn` is the Unix way to re-point /run/current-system.
+2026-11-16T11:49:26.6668572Z passed FileWrittenInPlaceIsReported (71ms)
+2026-11-16T11:49:27.3193413Z passed DirectoryEntriesAddedAndRemovedAreReported (651ms)
+2026-11-16T11:49:27.3627369Z passed TransferredEntriesAreReported (43ms)
+2026-11-16T11:49:31.3751513Z passed FilesReplacedByRenameAreReported (4s 002ms)
+2026-11-16T11:49:32.9981540Z passed WatchedDirectoryDeletedAndRecreatedIsReported (1s 631ms)
 2026-11-16T11:49:34.1424511Z failed DirectoryReplacedWithoutAReadIsWatchedAgain(False) (1s 054ms)
+2026-11-16T11:49:34.1447822Z   TUnit.Engine.Exceptions.TestFailedException: [Test Failure] InvalidOperationException: The watcher polls instead of watching. disposed=False events=5 evaluations=2 deliveries=1 poll=00:00:02 pending= watches=[n|C:\Users\runneradmin\AppData\Local\Temp\runic-watch-o25s4z
+2026-11-16T11:49:34.1452209Z     at Runic.Application.Testing.Tests.PathWatcherTests.Require(Boolean condition, String message) in /_/tests/dotnet/Runic.Application.Testing.Tests/PathWatcherTests.cs:722
+2026-11-16T11:49:34.1454305Z     at Runic.Application.Testing.Tests.PathWatcherTests.EventAsync(RunicPathWatchTester tester, RunicPathWatcher watcher) in /_/tests/dotnet/Runic.Application.Testing.Tests/PathWatcherTests.cs:374
+2026-11-16T11:49:34.1465673Z     at Runic.Application.Testing.Tests.PathWatcherTests.DirectoryReplacedWithoutAReadIsWatchedAgain(Boolean moveAway) in /_/tests/dotnet/Runic.Application.Testing.Tests/PathWatcherTests.cs:300
+2026-11-16T11:49:34.1468318Z     at Runic.Application.Testing.Tests.PathWatcherTests.DirectoryReplacedWithoutAReadIsWatchedAgain(Boolean moveAway) in /_/tests/dotnet/Runic.Application.Testing.Tests/PathWatcherTests.cs:304
+2026-11-16T11:49:34.1470319Z        --- TUnit internals omitted (run with --detailed-stacktrace for full trace) ---
+2026-11-16T11:49:35.4529016Z passed DirectoryReplacedWithoutAReadIsWatchedAgain(True) (1s 320ms)
+2026-11-16T11:49:39.2054931Z passed BackstopReadReportsChangesWithoutEvents (3s 758ms)
+2026-11-16T11:49:39.2101050Z passed RevalidateReportsARestartByAnotherLease (4ms)
+2026-11-16T11:49:39.2109979Z skipped DirectoryIdentityMatchesStat (1ms)
+2026-11-16T11:49:39.2111329Z   Windows identifies a directory by volume serial number and file index; there is no stat command.
+2026-11-16T11:49:39.8360485Z passed DebounceCoalescesABurst (624ms)
+2026-11-16T11:49:42.1091628Z passed GitHeadMovesAreReported (2s 272ms)
+2026-11-16T11:49:43.7364591Z passed GitWorktreeHeadMovesAreReported (1s 626ms)
+2026-11-16T11:49:45.4019135Z passed GitReftableWorktreeHeadMovesAreReported (1s 665ms)
+2026-11-16T11:49:46.1812725Z passed GitHeadOfANonRepositoryReportsItAndWaitsForOne (779ms)
+2026-11-16T11:49:47.2016319Z passed GitHeadFollowsSymbolicLooseRefs (1s 020ms)
+2026-11-16T11:49:48.1406310Z passed DisposalStopsCallbacks (938ms)
+2026-11-16T11:49:48.7591492Z passed DisposingTheTesterStopsItsWatchers (618ms)
+2026-11-16T11:49:48.8255953Z passed CallbacksRunInTheModelContextWithRealTime (66ms)
+2026-11-16T11:49:48.8301626Z passed PollingReportsChanges (4ms)
+2026-11-16T11:49:48.8370880Z passed TriggerReportsAPathTheTestCannotChange (3ms)
+2026-11-16T11:49:49.1743069Z 
+2026-11-16T11:49:49.1759446Z   In process file artifacts produced:
+2026-11-16T11:49:49.1761881Z     - C:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Application.Testing.Tests\bin\Release\net10.0\TestResults\Runic.Application.Testing.Tests-windows-net10.0-report.html
+2026-11-16T11:49:49.1762563Z 
 2026-11-16T11:49:49.1778304Z Test run summary: Failed! - C:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Application.Testing.Tests\bin\Release\net10.0\Runic.Application.Testing.Tests.dll (net10.0|arm64)
+2026-11-16T11:49:49.1779661Z   total: 24
+2026-11-16T11:49:49.1780037Z   failed: 1
+2026-11-16T11:49:49.1780457Z   succeeded: 21
+2026-11-16T11:49:49.1780845Z   skipped: 2
+2026-11-16T11:49:49.1781626Z   duration: 24s 265ms
 2026-11-16T11:49:49.3912794Z ##[error]Process completed with exit code 1.
+2026-11-16T11:49:49.4231336Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-11-16T11:49:49.4231927Z with:
+2026-11-16T11:49:49.4232189Z   name: native-tests-win-arm64-43859727850
+2026-11-16T11:49:49.4232514Z   path: artifacts/native-tests
+2026-11-16T11:49:49.4232830Z   if-no-files-found: ignore
+2026-11-16T11:49:49.4235223Z   NUGET_PACKAGES: C:\a\runic-sdk\runic-sdk/.cache/nuget
+2026-11-16T11:49:49.4235801Z   FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+2026-11-16T11:49:49.4236424Z   RUNIC_TEST_TIMEOUT_SCALE: 6
+2026-11-16T11:49:49.4236743Z   DOTNET_ROOT: C:\hostedtoolcache\windows\runic-dotnet
+2026-11-16T11:49:49.4237390Z   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: C:\Users\runneradmin\AppData\Local\ms-playwright\chromium-1243\chrome-win64\chrome.exe
+2026-11-16T11:49:49.4237980Z ##[endgroup]
+2026-11-16T11:49:49.7076185Z With the provided path, there will be 6 files uploaded
+2026-11-16T11:49:49.8321014Z Artifact name is valid!
+2026-11-16T11:49:49.8323977Z Root directory input is valid!
+2026-11-16T11:49:50.0793580Z Uploading artifact: native-tests-win-arm64-43859727850.zip
+2026-11-16T11:49:50.0834316Z Beginning upload of artifact content to blob storage
+2026-11-16T11:49:50.5391470Z Uploaded bytes 1027277
+2026-11-16T11:49:50.5755691Z Finished uploading artifact content to blob storage!
+2026-11-16T11:49:50.5758731Z SHA256 digest of uploaded artifact is 48f69f223d40f7ab1e19d0bbf5b73cb960003bf1acea5b14256cd7f2e2b0366f
+2026-11-16T11:49:50.5759250Z Finalizing artifact upload
+2026-11-16T11:49:50.9434193Z Artifact native-tests-win-arm64-43859727850 successfully finalized. Artifact ID 14223605269
+2026-11-16T11:49:50.9435148Z Artifact native-tests-win-arm64-43859727850 has been successfully uploaded! Final size is 1027277 bytes. Artifact ID is 14223605269
+2026-11-16T11:49:50.9448951Z Artifact download URL: https://github.com/Runic-Artifex/runic-sdk/actions/runs/43859727850/artifacts/14223605269
+2026-11-16T11:49:51.0113045Z ##[group]Run if [[ "$RUNNER_OS" == Windows ]]; then
+2026-11-16T11:49:51.0113624Z if [[ "$RUNNER_OS" == Windows ]]; then
+2026-11-16T11:49:51.0114219Z   dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --restore-desktop
+2026-11-16T11:49:51.0114766Z else
+2026-11-16T11:49:51.0115081Z   defaults write com.apple.universalaccess increaseContrast -bool false
+2026-11-16T11:49:51.0115456Z fi
+2026-11-16T11:49:51.0135693Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-11-16T11:49:51.0136074Z env:
+2026-11-16T11:49:51.0136266Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1
+2026-11-16T11:49:51.0143397Z   DOTNET_NOLOGO: 1
+2026-11-16T11:49:51.0143615Z   CONFIGURATION: Release
+2026-11-16T11:49:51.0143882Z   NUGET_PACKAGES: C:\a\runic-sdk\runic-sdk/.cache/nuget
+2026-11-16T11:49:51.0144490Z   FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+2026-11-16T11:49:51.0144995Z   RUNIC_TEST_TIMEOUT_SCALE: 6
+2026-11-16T11:49:51.0145279Z   DOTNET_ROOT: C:\hostedtoolcache\windows\runic-dotnet
+2026-11-16T11:49:51.0145846Z   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: C:\Users\runneradmin\AppData\Local\ms-playwright\chromium-1243\chrome-win64\chrome.exe
+2026-11-16T11:49:51.0146366Z ##[endgroup]
+2026-11-16T11:49:51.3657884Z Could not execute because the specified command or file was not found.
+2026-11-16T11:49:51.3658396Z Possible reasons for this include:
+2026-11-16T11:49:51.3658729Z   * You misspelled a built-in dotnet command.
+2026-11-16T11:49:51.3659532Z   * You intended to execute a .NET program, but dotnet-tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll does not exist.
+2026-11-16T11:49:51.3660515Z   * You intended to run a global tool, but a dotnet-prefixed executable with this name could not be found on the PATH.
 2026-11-16T11:49:51.3867685Z ##[error]Process completed with exit code 1.
+2026-11-16T11:49:51.4280887Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-11-16T11:49:51.4281504Z with:
+2026-11-16T11:49:51.4281719Z   name: accessibility-win-arm64-43859727850
+2026-11-16T11:49:51.4281996Z   path: artifacts/accessibility
+2026-11-16T11:49:51.4282236Z   if-no-files-found: ignore

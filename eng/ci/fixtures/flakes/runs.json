@@ -8,6 +8,7 @@
    "run_attempt": 2,
    "head_branch": "tests/voiceover-return-flake",
    "created_at": "2026-11-17T13:31:04Z",
+   "head_sha": "3f951d8eab86d8c078b82b996c3a726c0cb862d5",
    "pull_requests": []
   },
   {
@@ -18,6 +19,7 @@
    "run_attempt": 2,
    "head_branch": "template/remove-webview2-script-profile",
    "created_at": "2026-11-17T10:55:11Z",
+   "head_sha": "f4a02b882d49e081f2c6e5eb976d0910911bf43c",
    "pull_requests": []
   },
   {
@@ -28,6 +30,7 @@
    "run_attempt": 1,
    "head_branch": "gh-readonly-queue/main/pr-1073-483568c9c379a27b658b7823bd6f613b3b4c5197",
    "created_at": "2026-11-16T16:39:44Z",
+   "head_sha": "dbdd20f9c9a83ae4e3123a87140c8b1c93b6f226",
    "pull_requests": []
   },
   {
@@ -38,6 +41,7 @@
    "run_attempt": 1,
    "head_branch": "main",
    "created_at": "2026-11-17T12:36:48Z",
+   "head_sha": "dd8ce35bc64919dc860844126eeba433fa0261d1",
    "pull_requests": []
   },
   {
@@ -48,6 +52,7 @@
    "run_attempt": 1,
    "head_branch": "gh-readonly-queue/main/pr-1052-de7ec80a10dab4efa5be2fd20273db3d360e2af7",
    "created_at": "2026-11-16T13:42:18Z",
+   "head_sha": "5d60ad4ab95cf782eda007a5d65ee88375ad99b3",
    "pull_requests": []
   },
   {
@@ -58,27 +63,60 @@
    "run_attempt": 2,
    "head_branch": "v021/win-arm64-evidence",
    "created_at": "2026-11-16T11:39:53Z",
+   "head_sha": "aa17895186dd58ba19ef74d57f0eabad27a3d51a",
    "pull_requests": []
   },
   {
-   "id": 44107926807,
-   "event": "merge_group",
+   "id": 43839542745,
+   "event": "pull_request",
+   "status": "completed",
+   "conclusion": "success",
+   "run_attempt": 2,
+   "head_branch": "v021/gtk4-menu-choice",
+   "created_at": "2026-11-16T09:25:05Z",
+   "head_sha": "bdb22fdf211bf653769d171ee460838f5d713f81",
+   "pull_requests": []
+  },
+  {
+   "id": 43923148252,
+   "event": "pull_request",
+   "status": "completed",
+   "conclusion": "failure",
+   "run_attempt": 1,
+   "head_branch": "v021/gate-run-listing",
+   "created_at": "2026-11-16T17:53:51Z",
+   "head_sha": "a6f4e9e7e805da291fdb3f8de08718ca8cfa2f2c",
+   "pull_requests": []
+  },
+  {
+   "id": 44115833251,
+   "event": "pull_request",
    "status": "completed",
    "conclusion": "success",
    "run_attempt": 1,
-   "head_branch": "gh-readonly-queue/main/pr-1094-52ff487e6df32f30168a9423ee56c531e7919373",
-   "created_at": "2026-11-17T14:52:39Z",
-   "pull_requests": []
+   "head_branch": "train/select-by-commit",
+   "created_at": "2026-11-17T15:34:11Z",
+   "head_sha": "d97d4f1a4b5f7308f51fca0ac35aa8260d5b11e3",
+   "pull_requests": [
+    {
+     "number": 1104
+    }
+   ]
   },
   {
-   "id": 44113071102,
-   "event": "push",
+   "id": 44119563647,
+   "event": "pull_request",
    "status": "completed",
    "conclusion": "cancelled",
    "run_attempt": 1,
-   "head_branch": "main",
-   "created_at": "2026-11-17T15:19:52Z",
-   "pull_requests": []
+   "head_branch": "desktop/graduate-side-panel-close-drain",
+   "created_at": "2026-11-17T15:53:54Z",
+   "head_sha": "fe429e6150a19ba6188593724c4adb97c06e89c1",
+   "pull_requests": [
+    {
+     "number": 1107
+    }
+   ]
   }
  ]
 }

@@ -27,6 +27,24 @@
      "conclusion": "failure"
     }
    ]
+  },
+  {
+   "id": 133305853317,
+   "name": "Native / win-arm64",
+   "run_attempt": 2,
+   "conclusion": "success",
+   "started_at": "2026-11-16T12:44:59Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43859727850/job/133305853317",
+   "steps": []
+  },
+  {
+   "id": 133319483444,
+   "name": "verify",
+   "run_attempt": 2,
+   "conclusion": "success",
+   "started_at": "2026-11-16T13:11:44Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43859727850/job/133319483444",
+   "steps": []
   }
  ]
 }

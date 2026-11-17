@@ -1,0 +1,60 @@
+{
+ "jobs": [
+  {
+   "id": 133503092656,
+   "name": "Templates / vue+angular",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T18:06:25Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43923148252/job/133503092656",
+   "steps": [
+    {
+     "name": "Verify generated vue template applications",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133503092706,
+   "name": "Templates / react+ / .NET 11 SDK",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T18:06:25Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43923148252/job/133503092706",
+   "steps": [
+    {
+     "name": "Verify generated react template applications",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133503092854,
+   "name": "Templates / react+svelte",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T18:06:26Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43923148252/job/133503092854",
+   "steps": [
+    {
+     "name": "Verify generated react template applications",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 133518285987,
+   "name": "verify",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-16T18:31:05Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/43923148252/job/133518285987",
+   "steps": [
+    {
+     "name": "Require every planned verification job to pass",
+     "conclusion": "failure"
+    }
+   ]
+  }
+ ]
+}

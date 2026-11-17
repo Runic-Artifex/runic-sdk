@@ -1,8 +1,66 @@
-2026-11-17T10:58:27.5018240Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Desktop.Tests/bin/Release/net10.0/Runic.Desktop.Tests.dll (net10.0|arm64)
-2026-11-17T11:00:06.8167360Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Testing.Tests/bin/Release/net10.0/Runic.Application.Testing.Tests.dll (net10.0|arm64)
-2026-11-17T11:00:24.0517680Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Assets.Tests/bin/Release/net10.0/Runic.Assets.Tests.dll (net10.0|arm64)
-2026-11-17T11:01:01.5593950Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll (net10.0|arm64)
-2026-11-17T11:02:09.4723060Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll (net10.0|arm64)
-2026-11-17T11:06:09.2787080Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll (net10.0|arm64)
+2026-11-17T11:10:53.4149970Z   VoiceOver: 
+2026-11-17T11:10:56.0029970Z   VoiceOver: You are currently on a list box. To begin interacting with the items in this list, press Control-Option-Shift-Down Arrow.
+2026-11-17T11:10:57.8210520Z   VoiceOver: Apple selected (1 of 3)
+2026-11-17T11:10:57.9652870Z PASS           voiceover-listbox-selection: VoiceOver said 'Apple selected (1 of 3)'
+2026-11-17T11:10:57.9670060Z VoiceOver phrases: Runic polite announcement | You are currently on a button. To click this button, press Control-Option-Space. | Runic assertive announcement | Save button | Saved version 2 Saved version 2 | You are currently on a slider. To start interacting with the s
+2026-11-17T11:10:58.4868840Z PASS wkwebview accessibility fixture: the probe read and changed the page through the platform accessibility API.
+2026-11-17T11:10:58.6391340Z Runic Desktop embedded WebView smoke passed.
+2026-11-17T11:11:00.4516380Z PROBE LISTENING
+2026-11-17T11:11:02.5112800Z   event ValueChanged from 'Runic accessibility fixture' (AXStaticText): AXValueChanged Runic accessibility fixture
+2026-11-17T11:11:02.6117910Z ACCESSIBILITY region frame from http://[::1]:50690.
+2026-11-17T11:11:02.6182610Z ACCESSIBILITY READY host=wkwebview.
+2026-11-17T11:11:02.6370580Z PASS           region-host-control: Finish: AXButton (button)
+2026-11-17T11:11:02.9020930Z PASS           region-guest-control: Run system check: AXButton (button), inside the region's frame
+2026-11-17T11:11:02.9043830Z PASS           region-guest-press: pressed through the accessibility API; the fixture checks that the guest's page saw it
+2026-11-17T11:11:02.9912950Z PASS wkwebview accessibility region: the probe found and pressed the guest's button inside the region through the platform accessibility API.
+2026-11-17T11:11:03.0929540Z Runic Desktop embedded WebView smoke passed.
+2026-11-17T11:11:04.7928770Z 2026-11-17 11:11:04.791 VoiceOverStarter[26129:77214] VoiceOverDebug: _ScreenReaderStartWithTarget with option 0
+2026-11-17T11:11:04.7951910Z 2026-11-17 11:11:04.794 VoiceOverStarter[26129:77214] VoiceOverDebug: after boostrap_look_up succeeded
+2026-11-17T11:11:04.7988770Z 2026-11-17 11:11:04.794 VoiceOverStarter[26129:77214] VoiceOverDebug: calling _SCRStartup returned 0
+2026-11-17T11:11:04.7990520Z ******** Launching VoiceOver from starter application ********
+2026-11-17T11:11:04.7992070Z 
+2026-11-17T11:11:05.7368650Z PROBE LISTENING
+2026-11-17T11:11:08.6198150Z   event ValueChanged from 'Runic accessibility fixture' (AXStaticText): AXValueChanged Runic accessibility fixture
+2026-11-17T11:11:08.8049120Z PASS           side-panel-page-control: Page action: AXButton (button)
+2026-11-17T11:11:09.6564830Z ACCESSIBILITY side panel open on the right edge.
+2026-11-17T11:11:09.6569200Z ACCESSIBILITY READY host=wkwebview.
+2026-11-17T11:11:10.1063800Z PASS           side-panel-control: Panel action: AXButton (button), in the panel's view of the same window
+2026-11-17T11:11:10.6430030Z PASS           side-panel-landmark: 'Debug tools': AXGroup (AXLandmarkComplementary), before the panel's button
+2026-11-17T11:11:10.6432290Z PASS           side-panel-order-right: the page's button before the panel's (right edge)
+2026-11-17T11:11:10.7589360Z PROBE REQUEST tab
+2026-11-17T11:11:10.9659320Z ACCESSIBILITY pressed Tab.
+2026-11-17T11:11:10.9764020Z   event FocusChanged from '' (AXGroup): AXFocusedUIElementChanged
+2026-11-17T11:11:11.2910530Z   VoiceOver: application Runic accessibility fixture window Panel action button
+2026-11-17T11:11:11.3014350Z PASS           voiceover-side-panel-focus: VoiceOver said 'application Runic accessibility fixture window Panel action button'
+2026-11-17T11:11:11.3052840Z   focused in the panel: AXButton () 'Panel action'
+2026-11-17T11:11:16.8969050Z   VoiceOver: You are currently on a button. To click this button, press Control-Option-Space.
+2026-11-17T11:11:21.3669840Z PASS           voiceover-side-panel-landmark: VoiceOver does not speak a landmark on a focus change; the focused button's landmark for its rotor is Debug tools (AXLandmarkComplementary)
+2026-11-17T11:11:21.3678280Z PROBE REQUEST shift-tab
+2026-11-17T11:11:21.4499620Z ACCESSIBILITY pressed Shift+Tab.
+2026-11-17T11:11:21.4791420Z   event FocusChanged from '' (AXGroup): AXFocusedUIElementChanged
 2026-11-17T11:11:31.4578130Z FAIL           voiceover-side-panel-return: VoiceOver did not say 'Finish'; it said: You are currently on a button. To click this button, press Control-Option-Space.
+2026-11-17T11:11:31.4593250Z   focused after the return: AXButton () 'Finish'
+2026-11-17T11:11:31.4613740Z VoiceOver phrases: application Runic accessibility fixture window Panel action button | You are currently on a button. To click this button, press Control-Option-Space.
+2026-11-17T11:11:31.5924740Z ACCESSIBILITY side panel moved to the left edge.
+2026-11-17T11:11:32.0672160Z PASS           side-panel-order-left: the panel's button before the page's (left edge)
+2026-11-17T11:11:32.5159770Z System.InvalidOperationException: The accessibility probe failed with exit code 1.
+2026-11-17T11:11:32.5165630Z    at AccessibilitySmoke.RunAsync(DesktopHost host, String hostName, IReadOnlyList`1 probe, Func`4 announce, Boolean region, Boolean sidePanel, Func`3 pressTab) in /_/tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs:line 262
+2026-11-17T11:11:32.5170000Z    at AccessibilitySmoke.RunAsync(DesktopHost host, String hostName, IReadOnlyList`1 probe, Func`4 announce, Boolean region, Boolean sidePanel, Func`3 pressTab) in /_/tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs:line 279
+2026-11-17T11:11:32.5718450Z    at AccessibilitySmoke.RunAsync(DesktopHost host, String hostName, IReadOnlyList`1 probe, Func`4 announce, Boolean region, Boolean sidePanel, Func`3 pressTab) in /_/tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs:line 279
+2026-11-17T11:11:32.5760530Z    at AccessibilitySmoke.RunAsync(DesktopHost host, String hostName, IReadOnlyList`1 probe, Func`4 announce, Boolean region, Boolean sidePanel, Func`3 pressTab) in /_/tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs:line 279
+2026-11-17T11:11:32.5762410Z    at Runic.Desktop.DesktopEventLoop.<>c__DisplayClass5_0.<<Run>g__RunHostAsync|0>d.MoveNext() in /_/packages/dotnet/Runic.Desktop/DesktopEventLoop.cs:line 93
+2026-11-17T11:11:32.5763400Z --- End of stack trace from previous location ---
+2026-11-17T11:11:32.5765030Z    at Runic.Desktop.DesktopEventLoop.<>c__DisplayClass5_0.<<Run>g__RunHostAsync|0>d.MoveNext() in /_/packages/dotnet/Runic.Desktop/DesktopEventLoop.cs:line 93
+2026-11-17T11:11:32.5766030Z --- End of stack trace from previous location ---
+2026-11-17T11:11:32.5767070Z    at Runic.Desktop.DesktopEventLoop.<>c__DisplayClass5_1.<<Run>b__1>d.MoveNext() in /_/packages/dotnet/Runic.Desktop/DesktopEventLoop.cs:line 113
+2026-11-17T11:11:32.5768070Z --- End of stack trace from previous location ---
+2026-11-17T11:11:32.5842490Z    at Runic.Desktop.DesktopEventLoop.RunCore(Func`1 application, String entryPoint, Boolean presentsWindows) in /_/packages/dotnet/Runic.Desktop/DesktopEventLoop.cs:line 199
+2026-11-17T11:11:32.5852030Z    at Runic.Desktop.DesktopEventLoop.Run(DesktopHostOptions options, Func`2 application, Boolean presentsWindows) in /_/packages/dotnet/Runic.Desktop/DesktopEventLoop.cs:line 113
+2026-11-17T11:11:32.5868460Z    at Runic.Desktop.DesktopEventLoop.Run(DesktopHostOptions options, Func`2 application) in /_/packages/dotnet/Runic.Desktop/DesktopEventLoop.cs:line 64
+2026-11-17T11:11:32.5875800Z    at Program.<Main>$(String[] args) in /_/tests/native/Runic.Desktop.WebViewSmoke/Program.cs:line 71
 2026-11-17T11:11:33.8644640Z ##[error]Process completed with exit code 1.
+2026-11-17T11:11:33.9018110Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-11-17T11:11:33.9018610Z with:
+2026-11-17T11:11:33.9018920Z   name: accessibility-osx-arm64-44069231087
+2026-11-17T11:11:33.9019370Z   path: artifacts/accessibility
+2026-11-17T11:11:33.9019730Z   if-no-files-found: ignore

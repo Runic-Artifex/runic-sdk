@@ -534,22 +534,26 @@ re-queued without investigation; a failure seen twice gets an issue the same day
 and within the cycle a fix, or a skip that links the issue. `eng/ci/flakes.mjs`
 applies it to recent runs. It reads the failed jobs of `ci.yml` (pull requests, the
 merge queue, `main`, schedules; every attempt, so a failure that passed on rerun
-counts) through `gh api`, names each by its failing test (TUnit, bun and node:test
-failure lines, a probe's `FAIL name:`, or the test active when a session hit its
-`--timeout`) or else its failed step, and groups the names by job across runs:
+counts) through `gh api` and gives each failure a signature: its failing test (TUnit,
+bun and node:test failure lines, a probe's `FAIL name:`, or the test active when a
+session hit its `--timeout`) and first error line, or, when the log names no test,
+its failed step and first `##[error]` line. Paths, numbers and JSON are left out, so
+one signature on several runs, jobs or legs is one entry:
 
 ```sh
 bun eng/ci/flakes.mjs              # the last two days
 bun eng/ci/flakes.mjs --since 7d   # or 36h, or a date; --min 3, --json, --repo owner/name
 ```
 
-It lists the names seen twice or more that no issue mentions (file one), those that
+It lists the entries seen twice or more that no issue mentions (file one), those that
 failed again after their issue closed, repeated failures in steps whose log names no
-test (read one: a real break or a flake), known flakes (an open issue mentions the
-name, so name the test or probe check in the issue), fixed ones and first sightings,
-and says for each failed merge queue entry whether to re-queue it. It only reads:
-the coordinator runs it, not a CI job, and it files, comments on and reruns
-nothing. `flakes.test.mjs` runs it on recorded API responses (`fixtures/flakes`).
+test (read one: a real break or a flake), known flakes (an open issue names the test
+or quotes the error), fixed ones and first sightings, and says for each failed merge
+queue entry whether to re-queue it. An entry whose job passed on a rerun of the same
+commit is marked a flake. Cancelled runs are counted, not classified. A server error
+on a page retries it with a smaller page size. It only reads: the coordinator runs
+it, not a CI job, and it files, comments on and reruns nothing. `flakes.test.mjs`
+runs it on recorded API responses (`fixtures/flakes`).
 
 ## GitHub reruns
 

@@ -1,0 +1,52 @@
+2026-11-16T18:15:40.1771984Z   	Actual: sha512-RY5bUgcmC55B1qsvalmPNZQE7n2TJcEWXzpKGgNzmYgasbNpGgmpgbsGOTiXuhr3nWY9zN4y3AK8P74ibjadHQ==) — 2
+2026-11-16T18:15:40.1772457Z   Will retry in 1m. 0 retries left.
+2026-11-16T18:16:40.1993891Z   Error: ERR_PNPM_TARBALL_INTEGRITY
+2026-11-16T18:16:40.1994495Z   
+2026-11-16T18:16:40.1995683Z     × installing dependencies
+2026-11-16T18:16:40.1996790Z     ╰─▶ Failed to verify the integrity of http://127.0.0.1:42021/@runic-artifex/
+2026-11-16T18:16:40.1997412Z         vite-plugin-runic-translations/-/vite-plugin-runic-translations-
+2026-11-16T18:16:40.1997906Z         0.13.0.tgz: Integrity check failed.
+2026-11-16T18:16:40.1998346Z         	Wanted: sha512-LJIxzQwwq7lSUZY8TfKibLaG9+8Qy13A4OQYnoV/
+2026-11-16T18:16:40.1998816Z         Rykqx2IzYIdt7pyx9rlmYWJyqsXc/7wh2AT4Ery5Wwim6Q==
+2026-11-16T18:16:40.1999186Z         	Actual: sha512-
+2026-11-16T18:16:40.1999677Z         RY5bUgcmC55B1qsvalmPNZQE7n2TJcEWXzpKGgNzmYgasbNpGgmpgbsGOTiXuhr3nWY9zN4y
+2026-11-16T18:16:40.2000304Z         3AK8P74ibjadHQ==
+2026-11-16T18:16:40.2000748Z     help: The downloaded tarball does not match the integrity recorded in the
+2026-11-16T18:16:40.2001463Z           lockfile. If you trust the new content (legitimate republish, or stale
+2026-11-16T18:16:40.2002023Z           local metadata cache), run `pnpm install --update-checksums`.
+2026-11-16T18:16:40.2002601Z           Otherwise treat this as a potential supply-chain issue and verify the
+2026-11-16T18:16:40.2003045Z           new content first.
+2026-11-16T18:16:40.2003322Z   
+2026-11-16T18:16:40.6742711Z /tmp/runic-views-templates.BmJ8aSte2A/react-pnpm-desktop-toolkit-translations/AcceptanceReactPnpmDesktopToolkitTranslations.csproj : error RUNICBRIDGE016: The frontend install 'pnpm install --frozen-lockfile --ignore-scripts' in /tmp/runic-views-templates.BmJ8aSte2A/reac
+2026-11-16T18:16:40.6879672Z 
+2026-11-16T18:16:40.6885224Z Build FAILED.
+2026-11-16T18:16:40.6885412Z 
+2026-11-16T18:16:40.6886946Z /tmp/runic-views-templates.BmJ8aSte2A/react-pnpm-desktop-toolkit-translations/AcceptanceReactPnpmDesktopToolkitTranslations.csproj : error RUNICBRIDGE016: The frontend install 'pnpm install --frozen-lockfile --ignore-scripts' in /tmp/runic-views-templates.BmJ8aSte2A/reac
+2026-11-16T18:16:40.6888494Z     0 Warning(s)
+2026-11-16T18:16:40.6888747Z     1 Error(s)
+2026-11-16T18:16:40.6888867Z 
+2026-11-16T18:16:40.6889014Z Time Elapsed 00:01:11.83
+2026-11-16T18:16:40.7010799Z Terminated
+2026-11-16T18:16:41.1747266Z 30 |     stdio: "inherit",
+2026-11-16T18:16:41.1747768Z 31 |     env: { ...(compatibility?.env ?? process.env), ...extraEnv },
+2026-11-16T18:16:41.1748067Z 32 |   });
+2026-11-16T18:16:41.1748371Z 33 |   if (result.error) throw result.error;
+2026-11-16T18:16:41.1748654Z 34 |   if (result.status !== 0)
+2026-11-16T18:16:41.1749044Z 35 |     throw new Error(`${command} exited with ${result.status ?? result.signal}`);
+2026-11-16T18:16:41.1749378Z                    ^
+2026-11-16T18:16:41.1749601Z error: bash exited with 1
+2026-11-16T18:16:41.1749938Z       at run (/home/runner/work/runic-sdk/runic-sdk/eng/run.mjs:35:15)
+2026-11-16T18:16:41.1750348Z       at /home/runner/work/runic-sdk/runic-sdk/eng/verify-templates.mjs:13:1
+2026-11-16T18:16:41.1750577Z 
+2026-11-16T18:16:41.1756070Z ##[error]
+      at run (/home/runner/work/runic-sdk/runic-sdk/eng/run.mjs:35:15)
+      at /home/runner/work/runic-sdk/runic-sdk/eng/verify-templates.mjs:13:1
+2026-11-16T18:16:41.1756980Z 
+2026-11-16T18:16:41.1757117Z Bun v1.4.4 (Linux x64)
+2026-11-16T18:16:41.1766957Z error: script "verify:templates" exited with code 1
+2026-11-16T18:16:41.1775110Z ##[error]Process completed with exit code 1.
+2026-11-16T18:16:41.1815889Z ##[group]Run bun run verify:templates
+2026-11-16T18:16:41.1816160Z bun run verify:templates
+2026-11-16T18:16:41.1843424Z shell: /usr/bin/bash -e {0}
+2026-11-16T18:16:41.1843774Z env:
+2026-11-16T18:16:41.1844003Z   DOTNET_CLI_TELEMETRY_OPTOUT: 1

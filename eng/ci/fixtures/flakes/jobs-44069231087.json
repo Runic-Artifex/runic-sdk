@@ -27,6 +27,24 @@
      "conclusion": "failure"
     }
    ]
+  },
+  {
+   "id": 134009192214,
+   "name": "Native / osx-arm64",
+   "run_attempt": 2,
+   "conclusion": "success",
+   "started_at": "2026-11-17T11:30:15Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44069231087/job/134009192214",
+   "steps": []
+  },
+  {
+   "id": 134023835016,
+   "name": "verify",
+   "run_attempt": 2,
+   "conclusion": "success",
+   "started_at": "2026-11-17T11:58:48Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44069231087/job/134023835016",
+   "steps": []
   }
  ]
 }
