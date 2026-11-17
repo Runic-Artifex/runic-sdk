@@ -273,7 +273,8 @@ Any local process can attach to the endpoint, so it opens only when you or your 
 
 The endpoint exists only in untrimmed builds, such as the one `dotnet runic dev` runs. A trimmed or NativeAOT publish
 turns the `Runic.Desktop.WebUiRemoteDebugging` feature switch off, so the trimmer removes the endpoint and its HTTP
-client, and such a build opens no endpoint even in Development.
+client, and such a build opens no endpoint even in Development. Only the publish turns it off: a project that sets
+`PublishAot` or `PublishTrimmed` keeps the endpoint in `dotnet build`, `dotnet run` and IDE debugging.
 
 The browser listens on 127.0.0.1. Each window's browser gets its own port. When the endpoint is open, the Window process
 prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:<port>/` on its standard output, and

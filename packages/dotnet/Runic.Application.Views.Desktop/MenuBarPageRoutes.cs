@@ -236,13 +236,13 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         try
         {
             states = open && items.Count > 0
-                ? await window!.GetStatesAsync([.. items.Select(static entry => entry.Item!)], _stop.Token).ConfigureAwait(false)
-                : [.. items.Select(static entry => (false, entry.Item!.IsChecked))];
+                ? await window!.GetStatesAsync(ItemsOf(items), _stop.Token).ConfigureAwait(false)
+                : DeclaredStates(items);
         }
         catch (ObjectDisposedException)
         {
             open = false;
-            states = [.. items.Select(static entry => (false, entry.Item!.IsChecked))];
+            states = DeclaredStates(items);
         }
         var enabled = new HashSet<string>(StringComparer.Ordinal);
         var toggles = new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -294,6 +294,21 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
             if (entry.Kind == PlannedMenuKind.Menu) CollectItems(entry.Children, items);
             else if (entry.Item is not null) items.Add(entry);
         }
+    }
+
+    private static DesktopMenuItem[] ItemsOf(List<PlannedMenuEntry> items)
+    {
+        var result = new DesktopMenuItem[items.Count];
+        for (var index = 0; index < result.Length; index++) result[index] = items[index].Item!;
+        return result;
+    }
+
+    // The states without a window to ask: every item disabled, with its declared check mark.
+    private static (bool Enabled, bool? Checked)[] DeclaredStates(List<PlannedMenuEntry> items)
+    {
+        var states = new (bool Enabled, bool? Checked)[items.Count];
+        for (var index = 0; index < states.Length; index++) states[index] = (false, items[index].Item!.IsChecked);
+        return states;
     }
 
     // Called under the gate: the new state, pushed to every watching connection.

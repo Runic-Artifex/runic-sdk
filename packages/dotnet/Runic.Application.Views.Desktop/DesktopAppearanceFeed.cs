@@ -80,7 +80,13 @@ internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDe
     }
 
     // Caller holds the gate.
-    private ILogger Logger() => _sessions.Count > 0 ? _sessions.Values.Last().Logger : NullLogger.Instance;
+    private ILogger Logger()
+    {
+        // The latest session's logger: without removals, a Dictionary enumerates in insertion order.
+        ILogger logger = NullLogger.Instance;
+        foreach (var (_, session) in _sessions) logger = session.Logger;
+        return logger;
+    }
 
     private void Remove(object session)
     {

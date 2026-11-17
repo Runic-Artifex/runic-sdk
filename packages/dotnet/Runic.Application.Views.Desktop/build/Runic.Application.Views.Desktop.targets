@@ -13,6 +13,15 @@
     <!-- RunicApplicationFrontendDelivery=Embedded stages the client with the frontend instead of copying it. -->
     <_RunicApplicationHostStageTargets>$(_RunicApplicationHostStageTargets);RunicViewsStageDesktopClient</_RunicApplicationHostStageTargets>
   </PropertyGroup>
+  <!-- The live frontend directory of dotnet runic dev (DevelopmentAssets) is for its untrimmed development builds: a
+       trimmed or NativeAOT publish turns it off, so the trimmer removes it and its file watcher. Only the publish:
+       PrepareForILLink runs before ILLink and before ILC writes its options, never in a build, so a project that sets
+       PublishAot or PublishTrimmed keeps the live directory in its builds and in their runtimeconfig.json. -->
+  <Target Name="_RunicViewsDesktopPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
+    <ItemGroup>
+      <RuntimeHostConfigurationOption Include="Runic.Application.Views.Desktop.DevelopmentAssets" Value="false" Trim="true" />
+    </ItemGroup>
+  </Target>
   <Target Name="RunicViewsStageDesktopClient" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ItemGroup>
       <_RunicViewsEmbeddedHostFile Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../www/runic-desktop-views.js'))" RunicFrontendPath="runic-desktop-views.js" />
