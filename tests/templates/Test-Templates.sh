@@ -286,20 +286,39 @@ serve_and_fetch() {
   # WebUI admits one client and identifies it by the cookie set on the first
   # response, so later requests must send it back.
   local cookies="$document.cookies"
-  curl -fsS -c "$cookies" -b "$cookies" "$url/index.html" > "$document"
-  curl -fsS -c "$cookies" -b "$cookies" "$url/runic-cswebui.js" > /dev/null
-  curl -fsS -c "$cookies" -b "$cookies" "$url/runic-views.js" > "$document.runic-views.js"
-  grep -Fq 'CS-WebUI owns the browser transport' "$document.runic-views.js"
+  # Each fetch and check names what failed and shows the answer and the log, instead of ending the script silently.
+  fetch_served() {
+    if ! curl -fsS -D "$2.headers" -c "$cookies" -b "$cookies" "$url/$1" > "$2"; then
+      echo "Fetching $url/$1 from the served application failed: $*" >&2
+      cat "$2.headers" >&2 2>/dev/null || true
+      tail -n 80 "$log" >&2
+      exit 1
+    fi
+  }
+  expect_served() {
+    if ! grep -Fq "$1" "$2"; then
+      echo "The served $3 does not contain '$1'. Headers and start of the answer:" >&2
+      cat "$2.headers" >&2 2>/dev/null || true
+      head -c 2000 "$2" >&2
+      echo >&2
+      tail -n 80 "$log" >&2
+      exit 1
+    fi
+  }
+  fetch_served index.html "$document"
+  fetch_served runic-cswebui.js "$document.runic-cswebui.js"
+  fetch_served runic-views.js "$document.runic-views.js"
+  expect_served 'CS-WebUI owns the browser transport' "$document.runic-views.js" runic-views.js
   # A second window's page is served from the same web root as index.html.
   local pages=("$document")
   if [[ -f "$directory/Frontend/settings.html" ]]; then
-    curl -fsS -c "$cookies" -b "$cookies" "$url/settings.html" > "$document.settings.html"
-    grep -Fq '<title>Second window</title>' "$document.settings.html"
+    fetch_served settings.html "$document.settings.html"
+    expect_served '<title>Second window</title>' "$document.settings.html" settings.html
     pages+=("$document.settings.html")
   fi
   if [[ "$expect_development" == true ]]; then
     local page
-    for page in "${pages[@]}"; do grep -Fq 'http://127.0.0.1:' "$page"; done
+    for page in "${pages[@]}"; do expect_served 'http://127.0.0.1:' "$page" "development document $page"; done
     # An IDE or terminal may end only dotnet runic dev; it must stop the
     # frontend and native host processes it started.
     kill -TERM "$served_group"

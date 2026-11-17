@@ -4809,7 +4809,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private static bool IsPath(string path, string expected) => string.Equals(path, expected, StringComparison.OrdinalIgnoreCase);
 
-    private static string GetDecodedPath(string path)
+    internal static string GetDecodedPath(string path)
     {
         var value = path.Length == 0 ? "/" : path;
         try
@@ -4880,6 +4880,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             : location;
         context.SetResponseHeader("Location", target + context.QueryString);
     }
+
+    // A response outside every surface (DesktopHost.ListenerResources), which has no surface policy of its own.
+    internal static Task SendContentAsync(PresentationExchange context, string path, WebUiContent content,
+        CancellationToken cancellationToken) =>
+        SendVirtualContentAsync(context, path, content, contentSecurityPolicy: null, cancellationToken);
 
     private static async Task SendVirtualContentAsync(
         PresentationExchange context,

@@ -564,6 +564,19 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             };
             if (Resources is { } chooseResources && chooseResources(opening.Window) is { } resources)
                 surfaceOptions = surfaceOptions with { Resources = resources };
+            // dotnet runic dev with a development server: what www/ and the resources do not serve, such as a URL the
+            // page builds relative to its document, comes from the server (DevelopmentServerForwarding, #1085, #1086). Not
+            // for the embedded frontend archive, which dev's development server never writes.
+            if (DevelopmentServerForwarding.IsSupported && SurfaceOptions is null && development is null && archive is null &&
+                DevelopmentServer is { } forwarding)
+            {
+                surfaceOptions = surfaceOptions with
+                {
+                    Resources = DevelopmentServerContent.ForWindow(forwarding, surfaceOptions.Resources),
+                };
+                if (Desktop.ListenerResources is null)
+                    Desktop.ListenerResources = DevelopmentServerContent.ForListener(forwarding);
+            }
             if (surfaceOptions.ContentSecurityPolicy is null && _contentSecurityPolicy is not null)
                 surfaceOptions = surfaceOptions with { ContentSecurityPolicy = _contentSecurityPolicy };
             surface = await Desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
@@ -856,6 +869,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     // The process environment; tests replace it.
     internal Func<string, string?> ReadEnvironment { get; init; } = Environment.GetEnvironmentVariable;
+
+    // dotnet runic dev's development server, read once from ReadEnvironment (DevelopmentServerForwarding).
+    private Lazy<DevelopmentServerForwarding?>? _developmentServer;
+    internal DevelopmentServerForwarding? DevelopmentServer => LazyInitializer.EnsureInitialized(ref _developmentServer,
+        () => new Lazy<DevelopmentServerForwarding?>(() => DevelopmentServerForwarding.Resolve(ReadEnvironment))).Value;
 
     private sealed class Bindings(IDisposable first, IDisposable second) : IDisposable
     {
