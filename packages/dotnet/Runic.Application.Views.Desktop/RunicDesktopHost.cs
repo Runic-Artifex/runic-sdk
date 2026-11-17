@@ -567,7 +567,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // dotnet runic dev with a development server: what www/ and the resources do not serve, such as a URL the
             // page builds relative to its document, comes from the server (DevelopmentServerForwarding, #1085, #1086). Not
             // for the embedded frontend archive, which dev's development server never writes.
-            if (SurfaceOptions is null && development is null && archive is null && DevelopmentServer is { } forwarding)
+            if (DevelopmentServerForwarding.IsSupported && SurfaceOptions is null && development is null && archive is null &&
+                DevelopmentServer is { } forwarding)
             {
                 surfaceOptions = surfaceOptions with
                 {

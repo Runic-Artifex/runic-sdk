@@ -24,7 +24,8 @@ internal static class DevelopmentServerContent
     /// The listener's requests outside every Window's path, redirected to the same path on the development server
     /// rather than forwarded: a script or connection file loaded there resolves its own relative URLs against the server.
     /// The Vite DevTools dock, for example, opens its WebSocket relative to the <c>/__devtools/__connection.json</c> it
-    /// read, which the Window's origin does not forward.
+    /// read, which the Window's origin does not forward. The dock's script itself is answered with a module that imports
+    /// it from the server (<see cref="DevelopmentServerForwarding.DockScriptModule"/>).
     /// </summary>
     internal static ContentHandler ForListener(DevelopmentServerForwarding forwarding) =>
         (request, _) =>
@@ -33,6 +34,10 @@ internal static class DevelopmentServerContent
                     Header(request, "Sec-Fetch-Site")) ||
                 forwarding.RootTarget(request.Path, request.QueryString, request.RawPath) is not { } target)
                 return ValueTask.FromResult<ContentResponse?>(null);
+            if (string.Equals(request.Path, DevelopmentServerForwarding.DockScriptPath, StringComparison.Ordinal))
+                return ValueTask.FromResult<ContentResponse?>(new ContentResponse(
+                    System.Text.Encoding.UTF8.GetBytes(forwarding.DockScriptModule()), "text/javascript; charset=utf-8", 200,
+                    NoStore));
             return ValueTask.FromResult<ContentResponse?>(new ContentResponse(ReadOnlyMemory<byte>.Empty,
                 "text/plain; charset=utf-8", 307, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -49,7 +54,7 @@ internal static class DevelopmentServerContent
                 Header(request, "Sec-Fetch-Site")))
             return null;
         var head = string.Equals(request.Method, "HEAD", StringComparison.OrdinalIgnoreCase);
-        var forwarded = await forwarding.SendAsync(target, head, Header(request, "Accept"), cancellationToken)
+        var forwarded = await DevelopmentServerProxy.SendAsync(target, head, Header(request, "Accept"), cancellationToken)
             .ConfigureAwait(false);
         if (forwarded is null) return null;
         if (head)
@@ -62,6 +67,12 @@ internal static class DevelopmentServerContent
         return ContentResponse.Stream(async token => await forwarded.OpenAsync(token).ConfigureAwait(false),
             forwarded.ContentType, forwarded.StatusCode, forwarded.ContentLength, forwarded.Headers);
     }
+
+    private static readonly IReadOnlyDictionary<string, string> NoStore = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Cache-Control"] = "no-store",
+        ["X-Content-Type-Options"] = "nosniff",
+    };
 
     private static string? Header(ContentRequest request, string name) =>
         request.Headers.TryGetValue(name, out var value) ? value : null;

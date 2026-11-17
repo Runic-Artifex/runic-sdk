@@ -31,19 +31,31 @@ internal static class CsWebUiDevelopmentServer
         Func<bool> local)
     {
         var requestPath = path.StartsWith('/') ? path : "/" + path;
-        // Whatever the folder has, and every path that is not plain, stays WebUI's.
+        // What the folder has stays WebUI's, as without the handler: WebUI serves it and sets its authentication cookie.
+        // For a path the handler leaves, WebUI probes "<path>/index.html" through the handler again; that probe, below a
+        // file of the folder, stays WebUI's too, so WebUI then serves the file instead of following a redirect.
+        // Refused paths also stay WebUI's, which answers 404.
+        if (InFolder(root, requestPath)) return WebUiFileHandlerResult.NotHandled;
         // civetweb hands over the path decoded, with "//" and dot segments removed; the dock's root endpoints go to the
         // server's root, everything else below its base, both through the same checked target rule.
         var target = DevelopmentServerForwarding.IsDockPath(requestPath)
             ? forwarding.RootTarget(requestPath, query: null, rawPath: requestPath)
             : forwarding.DocumentTarget(requestPath, query: null, rawPath: requestPath);
-        if (InFolder(root, requestPath) || target is null || !local())
-            return WebUiFileHandlerResult.NotHandled;
+        if (target is null || !local()) return WebUiFileHandlerResult.NotHandled;
+        if (string.Equals(requestPath, DevelopmentServerForwarding.DockScriptPath, StringComparison.Ordinal))
+        {
+            // As on Runic Desktop: one module instance of the dock's script, under the server's URL.
+            var module = Encoding.UTF8.GetBytes(forwarding.DockScriptModule());
+            var head = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                $"HTTP/1.1 200 OK\r\nContent-Type: text/javascript; charset=utf-8\r\nContent-Length: {module.Length}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"));
+            return WebUiFileHandlerResult.FromResponse((byte[])[.. head, .. module]);
+        }
         return WebUiFileHandlerResult.FromResponse(Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
             $"HTTP/1.1 307 Temporary Redirect\r\nLocation: {target.AbsoluteUri}\r\nCache-Control: no-store\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")));
     }
 
-    // Whether the path names a file or folder below the window's root folder, which WebUI serves itself.
+    // Whether the path, or a path it lies below, names a file or folder below the window's root folder (or lies outside
+    // it); WebUI serves those.
     private static bool InFolder(string root, string requestPath)
     {
         string candidate;
@@ -53,6 +65,12 @@ internal static class CsWebUiDevelopmentServer
         if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
             Path.IsPathRooted(relative))
             return true;
-        return File.Exists(candidate) || Directory.Exists(candidate);
+        if (Directory.Exists(candidate)) return true;
+        // The path itself, or one of its ancestors below the root, is a file.
+        for (var current = candidate; current.Length > root.Length; current = Path.GetDirectoryName(current) ?? root)
+        {
+            if (File.Exists(current)) return true;
+        }
+        return false;
     }
 }

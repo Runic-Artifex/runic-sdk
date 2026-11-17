@@ -89,15 +89,6 @@ internal static partial class FrontendDevelopmentDocument
                 match.Groups["prefix"].Value +
                 new Uri(documentUrl, match.Groups["path"].Value).AbsoluteUri +
                 match.Groups["suffix"].Value);
-        // The Vite DevTools dock's loader is an inline module that sets a script's src to the root-relative
-        // /__devtools/embedded.js, which names the native host. Point it at the server, the URL the Runic development
-        // client also loads the dock from, so the dock loads once and from the server only (#1086).
-        document = DevToolsLoaderSource().Replace(
-            document,
-            match =>
-                match.Groups["prefix"].Value +
-                new Uri(origin, match.Groups["path"].Value).AbsoluteUri +
-                match.Groups["suffix"].Value);
         string destination = Path.GetFullPath(
             destinationDocument,
             configuration.RuntimeWebRoot);
@@ -146,9 +137,6 @@ internal static partial class FrontendDevelopmentDocument
 
     [GeneratedRegex("(?<prefix>\\b(?:from|import)\\s*[\"'])(?<path>/[^\"']+)(?<suffix>[\"'])")]
     private static partial Regex RootModuleSpecifier();
-
-    [GeneratedRegex("(?<prefix>\\.src\\s*=\\s*[\"'])(?<path>/__devtools/[^\"'\\s]+)(?<suffix>[\"'])")]
-    private static partial Regex DevToolsLoaderSource();
 
     [GeneratedRegex("(?<prefix>\\bimport\\s*\\(\\s*[\"'])(?<path>(?:\\.{1,2})?/[^\"']+)(?<suffix>[\"'])")]
     private static partial Regex DynamicImportSpecifier();

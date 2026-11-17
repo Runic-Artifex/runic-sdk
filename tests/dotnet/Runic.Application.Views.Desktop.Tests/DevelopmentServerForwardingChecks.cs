@@ -220,6 +220,15 @@ internal sealed class DevelopmentServerForwardingChecks
                 Check(status is 404 or 400 or 421, $"'{target}' was answered {status}.");
             }
             Check(server.Requests.IsEmpty, $"The server was asked: {string.Join(", ", server.Requests)}.");
+            // The dock's script is one module instance under the server's URL, whichever loader asks first.
+            using (var dock = await http.SendAsync(Get(new Uri(listener, "/__devtools/embedded.js"), "same-origin"), cancellation.Token))
+            {
+                var module = await dock.Content.ReadAsStringAsync(cancellation.Token);
+                Check(dock.StatusCode == HttpStatusCode.OK && dock.Content.Headers.ContentType?.MediaType == "text/javascript" &&
+                    module == $"import \"{new Uri(server.Origin, "/__devtools/embedded.js").AbsoluteUri}\";\n",
+                    $"The dock's script was answered {dock.StatusCode} '{module}'.");
+            }
+            Check(server.Requests.IsEmpty, "The dock's script was fetched from the server by the Window.");
             var (iconStatus, iconLocation) = await RawGetAsync(listener, "/__devtools-assets/vite-plus.svg", cancellation.Token);
             Check(iconStatus == 307 && iconLocation == new Uri(server.Origin, "/__devtools-assets/vite-plus.svg").AbsoluteUri,
                 $"The dock's icon was answered {iconStatus} {iconLocation}.");
@@ -281,27 +290,35 @@ internal sealed class DevelopmentServerForwardingChecks
             Write(root, "index.html", "<p>document</p>");
             Write(root, "assets/runic-cswebui.js", "// host client");
             var forwarding = new CsWebUiForwarding(new Uri("http://127.0.0.1:5173/"));
+            // The folder's files stay WebUI's, which serves them with its authentication cookie. So does WebUI's
+            // "<path>/index.html" probe below such a file, which otherwise redirected the file (the template check of #1096).
             Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/index.html", () => true).IsHandled,
                 "A file of the folder was not left to WebUI.");
+            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/index.html/index.html", () => true).IsHandled,
+                "WebUI's index probe below a file was redirected.");
             Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/assets", () => true).IsHandled,
                 "A folder was not left to WebUI.");
+            var dockModule = Encoding.UTF8.GetString(CsWebUiDevelopmentServer.Respond(root, forwarding, "/__devtools/embedded.js", () => true).Response.Span);
+            Check(dockModule.StartsWith("HTTP/1.1 200 ", StringComparison.Ordinal) &&
+                dockModule.EndsWith("import \"http://127.0.0.1:5173/__devtools/embedded.js\";\n", StringComparison.Ordinal),
+                $"The dock's script was answered '{dockModule}'.");
             var redirect = CsWebUiDevelopmentServer.Respond(root, forwarding, "/__devtools/__connection.json", () => true);
             var text = Encoding.ASCII.GetString(redirect.Response.Span);
             Check(redirect.IsHandled && text.StartsWith("HTTP/1.1 307 ", StringComparison.Ordinal) &&
                 text.Contains("\r\nLocation: http://127.0.0.1:5173/__devtools/__connection.json\r\n", StringComparison.Ordinal),
                 $"The dock's connection file was answered '{text}'.");
-            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/brand/logo.svg", () => false).IsHandled,
+            Check(NotHandled(CsWebUiDevelopmentServer.Respond(root, forwarding, "/brand/logo.svg", () => false)),
                 "A window reachable from other machines redirected.");
-            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/__open-in-editor", () => true).IsHandled,
+            Check(NotHandled(CsWebUiDevelopmentServer.Respond(root, forwarding, "/__open-in-editor", () => true)),
                 "The editor launcher was redirected.");
-            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/__runic/sources", () => true).IsHandled,
+            Check(NotHandled(CsWebUiDevelopmentServer.Respond(root, forwarding, "/__runic/sources", () => true)),
                 "A Runic endpoint was redirected.");
-            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "//evil.example/x", () => true).IsHandled,
+            Check(NotHandled(CsWebUiDevelopmentServer.Respond(root, forwarding, "//evil.example/x", () => true)),
                 "An empty segment was redirected.");
             var logo = Encoding.ASCII.GetString(CsWebUiDevelopmentServer.Respond(root, forwarding, "/brand/logo.svg", () => true).Response.Span);
             Check(logo.Contains("\r\nLocation: http://127.0.0.1:5173/brand/logo.svg\r\n", StringComparison.Ordinal),
                 $"A page-relative file was answered '{logo}'.");
-            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/../outside.txt", () => true).IsHandled,
+            Check(NotHandled(CsWebUiDevelopmentServer.Respond(root, forwarding, "/../outside.txt", () => true)),
                 "A path outside the folder was redirected.");
         }
         finally
@@ -329,6 +346,8 @@ internal sealed class DevelopmentServerForwardingChecks
         }
         return (status, location);
     }
+
+    private static bool NotHandled(global::CsWebUi.WebUiFileHandlerResult result) => !result.IsHandled;
 
     private static HttpRequestMessage Get(Uri url, string? fetchSite)
     {

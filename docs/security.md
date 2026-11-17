@@ -312,7 +312,10 @@ back to the server for what its own origin cannot serve. Its origin serves only
   native server does (cs-webui#33).
 - **When.** Only in the `Development` environment, only with the address that
   `dev` passes (`http://127.0.0.1:<port>/`, never `localhost`), and only when
-  the Window serves its build folder, not the embedded frontend archive. The
+  the Window serves its build folder, not the embedded frontend archive. A
+  trimmed or NativeAOT publish contains no fallback: the
+  `Runic.Application.DevelopmentServerForwarding` feature switch is off there,
+  and the trimmer removes the code. The
   gate is the process environment, not the host's `IHostEnvironment`: an app
   started with `--environment Production` but with `DOTNET_ENVIRONMENT=Development`
   in its environment still forwards.
@@ -331,7 +334,8 @@ back to the server for what its own origin cannot serve. Its origin serves only
   Those judge the browser's `Origin` and `Sec-Fetch-Site`, which a forwarded
   request does not carry, so none of them is forwarded. Only the dock's
   `__devtools` and `__devtools-assets` are redirected, at the root, where the
-  browser itself asks the server.
+  browser itself asks the server; the dock's `/__devtools/embedded.js` is
+  answered with a one-line module that imports it from the server.
 - **What is not sent or passed on.** No cookies, credentials or `Origin` go to
   the server. Its redirects are not followed, and only successful answers
   return, with their type, cache headers and `nosniff`, up to 256 MiB and two

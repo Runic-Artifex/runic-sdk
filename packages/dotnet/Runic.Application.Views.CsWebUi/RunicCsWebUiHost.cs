@@ -323,7 +323,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             {
                 if (assets is not null) CsWebUiAssets.Serve(native, assets);
                 // dotnet runic dev with a development server: what www/ does not have comes from the server (#1085).
-                else if (DevelopmentServer is { } forwarding)
+                else if (DevelopmentServerForwarding.IsSupported && DevelopmentServer is { } forwarding)
                     CsWebUiDevelopmentServer.Serve(native, options.ResolveContentRoot(), forwarding);
                 else native.SetRootFolder(options.ResolveContentRoot());
                 if (options.Width is { } width && options.Height is { } height) native.SetSize((uint)width, (uint)height);

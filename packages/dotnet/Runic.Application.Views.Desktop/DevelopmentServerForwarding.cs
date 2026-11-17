@@ -1,5 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using System.Net.Http.Headers;
 
 namespace Runic.Application.Views.Desktop;
 
@@ -32,7 +32,7 @@ namespace Runic.Application.Views.Desktop;
 /// would answer the Window's page without the provenance headers they judge, so only the dock's <c>__devtools</c> and
 /// <c>__devtools-assets</c> pass, at the root. Requests carry no cookies, credentials, <c>Origin</c> or
 /// <c>Sec-Fetch-*</c>; redirects are not followed; only successful answers come back, with their type, cache headers and
-/// <c>nosniff</c>, within a size and time limit. WebSockets are not forwarded. Another local process that learns a
+/// <c>nosniff</c>, within a size and time limit (DevelopmentServerProxy, Runic Desktop only). WebSockets are not forwarded. Another local process that learns a
 /// Window's random path reads through it what it could read from the server directly.
 /// </para>
 /// </remarks>
@@ -42,36 +42,21 @@ internal sealed class DevelopmentServerForwarding
     internal const string FrontendVariable = "RUNIC_APPLICATION_FRONTEND_DEV_SERVER";
 
     private const int MaximumQueryLength = 4096;
-    internal const long MaximumBodyBytes = 256L * 1024 * 1024;
-    private static readonly TimeSpan ResponseHeadersTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan ResponseBodyTimeout = TimeSpan.FromMinutes(2);
 
     // The root-level server endpoints the Vite DevTools dock needs; every other "__" or "@" first segment stays unforwarded.
     private static readonly string[] RootEndpoints = ["__devtools", "__devtools-assets"];
 
-    // One client per process: the development server is one loopback origin, so its connections are pooled.
-    private static readonly Lazy<HttpClient> SharedClient = new(() => new HttpClient(new SocketsHttpHandler
-    {
-        AllowAutoRedirect = false,
-        AutomaticDecompression = DecompressionMethods.None,
-        ConnectTimeout = TimeSpan.FromSeconds(5),
-        UseCookies = false,
-        UseProxy = false,
-    })
-    {
-        Timeout = Timeout.InfiniteTimeSpan,
-    });
+    internal DevelopmentServerForwarding(Uri origin) => Origin = origin;
 
-    // The headers passed back from the development server; everything else (Set-Cookie, CORS, its own policies) stays.
-    private static readonly string[] PassedResponseHeaders = ["Cache-Control", "ETag", "Last-Modified"];
+    /// <summary>
+    /// Whether the fallback exists in this build. A trimmed or NativeAOT publish sets the switch to false
+    /// (Runic.Application.Views.targets), so the trimmer removes the fallback and its HTTP client from the application;
+    /// <c>dotnet runic dev</c> runs an untrimmed build, where it is on.
+    /// </summary>
+    [FeatureSwitchDefinition(FeatureSwitch)]
+    internal static bool IsSupported => !AppContext.TryGetSwitch(FeatureSwitch, out var enabled) || enabled;
 
-    private readonly HttpClient _client;
-
-    internal DevelopmentServerForwarding(Uri origin, HttpClient? client = null)
-    {
-        Origin = origin;
-        _client = client ?? SharedClient.Value;
-    }
+    internal const string FeatureSwitch = "Runic.Application.DevelopmentServerForwarding";
 
     /// <summary>The development server's origin, with its base path, such as <c>http://127.0.0.1:5173/</c>.</summary>
     internal Uri Origin { get; }
@@ -83,7 +68,7 @@ internal sealed class DevelopmentServerForwarding
     internal static DevelopmentServerForwarding? Resolve(Func<string, string?> read)
     {
         ArgumentNullException.ThrowIfNull(read);
-        if (!IsDevelopment(read)) return null;
+        if (!IsSupported || !IsDevelopment(read)) return null;
         var configured = read(ViteVariable);
         if (string.IsNullOrWhiteSpace(configured)) configured = read(FrontendVariable);
         return ParseOrigin(configured) is { } origin ? new DevelopmentServerForwarding(origin) : null;
@@ -135,6 +120,20 @@ internal sealed class DevelopmentServerForwarding
             string.Equals(fetchSite, "same-origin", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(fetchSite, "none", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>The dock's script, which its loader requests from the document's origin.</summary>
+    internal const string DockScriptPath = "/__devtools/embedded.js";
+
+    /// <summary>
+    /// The Window's answer to <see cref="DockScriptPath"/>: a module that imports the dock's script from the server.
+    /// Vite serves the dock's inline loader as a module of its own (<c>index.html?html-proxy</c>), whose root-relative
+    /// <c>/__devtools/embedded.js</c> names the Window's origin, and the Runic development client loads the same script
+    /// from the server. A redirect would evaluate the script under two URLs, defining its element twice; this module
+    /// imports it under the server's URL, so the page runs it once, whichever loader comes first.
+    /// </summary>
+    internal string DockScriptModule() =>
+        // AbsoluteUri escapes quotes, backslashes and line breaks, so the URL is a plain string literal.
+        $"import \"{new Uri(Origin, DockScriptPath).AbsoluteUri}\";\n";
 
     /// <summary>Whether a root-relative path names one of the dock's root endpoints (<see cref="RootEndpoints"/>).</summary>
     internal static bool IsDockPath(string path) =>
@@ -191,54 +190,6 @@ internal sealed class DevelopmentServerForwarding
 
     private static bool IsRootEndpoint(string segment) =>
         Array.Exists(RootEndpoints, endpoint => string.Equals(endpoint, segment, StringComparison.Ordinal));
-
-    /// <summary>
-    /// Sends <paramref name="target"/> to the development server, or returns null when it cannot be reached or does
-    /// not answer with a success. The caller disposes the result.
-    /// </summary>
-    internal async Task<Forwarded?> SendAsync(Uri target, bool head, string? accept, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(target);
-        using var request = new HttpRequestMessage(head ? HttpMethod.Head : HttpMethod.Get, target);
-        if (!string.IsNullOrEmpty(accept)) request.Headers.TryAddWithoutValidation("Accept", accept);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ResponseHeadersTimeout);
-        HttpResponseMessage response;
-        try
-        {
-            response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
-                .ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is HttpRequestException ||
-            error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            return null;
-        }
-        var status = (int)response.StatusCode;
-        if (status is < 200 or > 299 or 204 or 205 or 206)
-        {
-            response.Dispose();
-            return null;
-        }
-        if (response.Content.Headers.ContentLength is > MaximumBodyBytes)
-        {
-            response.Dispose();
-            return null;
-        }
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["X-Content-Type-Options"] = "nosniff",
-        };
-        foreach (var name in PassedResponseHeaders)
-        {
-            if ((Value(response.Headers, name) ?? Value(response.Content.Headers, name)) is { } value) headers[name] = value;
-        }
-        return new Forwarded(status, response.Content.Headers.ContentType?.ToString(),
-            response.Content.Headers.ContentLength, headers, response);
-    }
-
-    private static string? Value(HttpHeaders headers, string name) =>
-        headers.TryGetValues(name, out var values) ? string.Join(", ", values) : null;
 
     // The path without its leading slash, or null for a path that is not plain: empty, with an empty segment (a trailing
     // slash aside), a dot segment, a backslash or a control character, or, as received, an encoded slash or backslash.
@@ -297,83 +248,5 @@ internal sealed class DevelopmentServerForwarding
         // The Window's own Host: browsers name it as localhost or a loopback address.
         return name.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
             IPAddress.TryParse(name, out var address) && IPAddress.IsLoopback(address);
-    }
-
-    /// <summary>A successful answer of the development server; disposing it releases the connection.</summary>
-    internal sealed class Forwarded(int statusCode, string? contentType, long? contentLength,
-        IReadOnlyDictionary<string, string> headers, HttpResponseMessage response) : IDisposable
-    {
-        internal int StatusCode { get; } = statusCode;
-        internal string? ContentType { get; } = contentType;
-        internal long? ContentLength { get; } = contentLength;
-        internal IReadOnlyDictionary<string, string> Headers { get; } = headers;
-
-        /// <summary>Opens the body; disposing the stream releases the response.</summary>
-        internal async Task<Stream> OpenAsync(CancellationToken cancellationToken)
-        {
-            var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            return new OwningStream(stream, response, MaximumBodyBytes, ResponseBodyTimeout);
-        }
-
-        public void Dispose() => response.Dispose();
-    }
-
-    // The body of an answer: at most maximumBytes, read within timeout; disposing it releases the response.
-    private sealed class OwningStream(Stream inner, IDisposable owner, long maximumBytes, TimeSpan timeout) : Stream
-    {
-        private readonly CancellationTokenSource _deadline = new(timeout);
-        private long _read;
-
-        public override bool CanRead => true;
-        public override bool CanSeek => false;
-        public override bool CanWrite => false;
-        public override long Length => throw new NotSupportedException();
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-        public override void Flush() { }
-        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
-
-        public override int Read(Span<byte> buffer)
-        {
-            if (_deadline.IsCancellationRequested) throw new IOException("The development server's answer took too long.");
-            return Count(inner.Read(buffer));
-        }
-
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _deadline.Token);
-            try
-            {
-                return Count(await inner.ReadAsync(buffer, linked.Token).ConfigureAwait(false));
-            }
-            catch (OperationCanceledException) when (_deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                throw new IOException("The development server's answer took too long.");
-            }
-        }
-
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-
-        private int Count(int read)
-        {
-            _read += read;
-            if (_read > maximumBytes) throw new IOException("The development server's answer is too large.");
-            return read;
-        }
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _deadline.Dispose();
-                inner.Dispose();
-                owner.Dispose();
-            }
-            base.Dispose(disposing);
-        }
     }
 }

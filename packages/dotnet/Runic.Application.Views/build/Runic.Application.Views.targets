@@ -117,6 +117,11 @@
   <ItemGroup Condition="'$(_RunicApplicationFrontendWebRoot)' != 'www'">
     <RuntimeHostConfigurationOption Include="Runic.Application.FrontendWebRoot" Value="$(_RunicApplicationFrontendWebRoot)" Trim="true" />
   </ItemGroup>
+  <!-- dotnet runic dev's development server fallback (#1085, #1086) is for untrimmed development builds only: a trimmed
+       or NativeAOT publish turns it off, so the trimmer removes it and its HTTP client. -->
+  <ItemGroup Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">
+    <RuntimeHostConfigurationOption Include="Runic.Application.DevelopmentServerForwarding" Value="false" Trim="true" />
+  </ItemGroup>
 
   <!-- The generator and the frontend commands run with IgnoreExitCode, so a
        failure is not repeated as MSB3073 ("The command exited with code 1").

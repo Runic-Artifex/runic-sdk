@@ -350,9 +350,10 @@ Its **Runic** panel shows:
   ([failure detail in development](../packages/dotnet/Runic.Application.Views/README.md#failure-detail-in-development)).
 - **Connection**, each View's **state** as a tree, and **superseded commands**.
 
-Under `dev` the dock loads from the development server's origin, not the Window's: the development document points the
-dock's loader at the server, and the Window redirects the dock's `/__devtools/` and `/__devtools-assets/` requests to
-it, so the dock's connection and icons come from the server
+Under `dev` the dock loads from the development server's origin, not the Window's. The Window answers the dock's
+`/__devtools/embedded.js` with a module that imports the script from the server, so the page runs it once, and
+redirects the dock's other `/__devtools/` and `/__devtools-assets/` requests to the server, so the dock's connection and
+icons come from there
 ([security guide, "Development server"](security.md#development-server)).
 
 The first time a page opens the dock, it asks for the **one-time code** that Vite DevTools prints in the

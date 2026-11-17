@@ -630,21 +630,6 @@ internal sealed partial class ToolTests
         Contains(routed, "import('http://127.0.0.1:5173/src/start.js')");
     }
 
-    [Test, DisplayName("development documents load the Vite DevTools dock from the development server")]
-    public void DevelopmentDocumentLoadsTheDockFromTheServer()
-    {
-        using var workspace = new TestWorkspace();
-        var configuration = CreateConfiguration(workspace, "vite");
-        // @vitejs/devtools 0.7.6's inline loader (#1086); a base path of the server does not apply to the dock's files.
-        string html = "<html><head></head><body><script type=\"module\">const s = document.createElement('script'); s.type = 'module'; s.src = \"/__devtools/embedded.js\"; document.body.appendChild(s);</script><script>img.src = \"/brand/logo.svg\";</script></body></html>";
-        FrontendDevelopmentDocument.Write(configuration,
-            new Uri("http://127.0.0.1:5173/app/"), "index.html", html);
-        string generated = File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "index.html"));
-        Contains(generated, "s.src = \"http://127.0.0.1:5173/__devtools/embedded.js\"");
-        // Only the dock's loader: the page's own run-time URLs are left to the Window, which forwards them.
-        Contains(generated, "img.src = \"/brand/logo.svg\"");
-    }
-
     [Test, DisplayName("development documents follow every Vite HTML build input")]
     public void DevelopmentDocumentsFollowViteInputs()
     {
