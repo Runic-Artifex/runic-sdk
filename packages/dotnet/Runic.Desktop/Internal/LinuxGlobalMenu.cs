@@ -125,7 +125,13 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
     private int Add(Dictionary<int, DBusMenuNode> nodes, PlannedMenuEntry entry)
     {
         var id = _ids[entry.Key];
-        ImmutableArray<int> children = entry.Kind == PlannedMenuKind.Menu ? [.. entry.Children.Select(child => Add(nodes, child))] : [];
+        var children = ImmutableArray<int>.Empty;
+        if (entry.Kind == PlannedMenuKind.Menu)
+        {
+            var ids = ImmutableArray.CreateBuilder<int>(entry.Children.Length);
+            foreach (var child in entry.Children) ids.Add(Add(nodes, child));
+            children = ids.MoveToImmutable();
+        }
         nodes[id] = new DBusMenuNode(id, Describe(entry, Available(entry), Checked(entry)), children, entry);
         return id;
     }
@@ -210,7 +216,7 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
         {
             // A layout replaced meanwhile already has the new state.
             if (!ReferenceEquals(layout, _layout)) return true;
-            var nodes = layout.Nodes.ToDictionary();
+            var nodes = new Dictionary<int, DBusMenuNode>(layout.Nodes);
             foreach (var update in changed) nodes[update.Id] = update;
             _layout = new DBusMenuLayout(layout.Revision, nodes);
         }

@@ -9,13 +9,15 @@ using Microsoft.Extensions.Logging;
 namespace Runic.Application.Views.CsWebUi;
 
 // blobs/1 on CS-WebUI. WebUI's file handler sees only a path and answers with one buffered response, so it can neither
-// stream a blob nor read an upload. Each window therefore serves its blobs and uploads from a loopback HttpListener of
-// its own, at http://localhost:{port}/_runic/blobs/{token} and /_runic/upload:
+// stream a blob nor read an upload. Each window therefore serves its blobs and uploads from a loopback listener of its
+// own, at http://localhost:{port}/_runic/blobs/{token} and /_runic/upload. The listener is http.sys (HttpListener) on
+// Windows and Runic's own loopback HTTP/1.1 server elsewhere (LoopbackHttpServer), whose parser refuses what it does not
+// need: the managed HttpListener of other systems keeps the TLS stack and an HttpClient in every NativeAOT application.
 //
 // - The page's origin is WebUI's (another port), so the listener answers CORS for that origin only, and with
 //   credentials, as the runtime sends uploads with them. A preflight from another origin, an upload whose Origin is not
 //   the window's, and a blob request whose fetch metadata names another site are refused.
-// - The Host must be the listener's own host name and port (no DNS rebinding); HttpListener refuses others. Only
+// - The Host must be the listener's own host name and port (no DNS rebinding); both listeners refuse others. Only
 //   loopback peers are served, also on Windows, where http.sys would route a remote client that names localhost.
 // - Every loopback address that localhost names on the port is the window's: a client that resolves localhost to ::1
 //   and one that resolves it to 127.0.0.1 both reach this listener, never another process's (see Listen). After it
@@ -30,16 +32,15 @@ namespace Runic.Application.Views.CsWebUi;
 // - On Windows, HttpListener is http.sys, which lets a user without administrator rights listen on localhost only.
 internal sealed class CsWebUiBlobEndpoint : IDisposable
 {
-    private readonly HttpListener _listener;
+    private readonly ICsWebUiBlobListener _listener;
     private readonly CsWebUiLoopbackRelay? _relay;
     private readonly BridgeBlobs _blobs;
     private readonly Func<int> _pagePort;
-    private readonly CancellationTokenSource _stop = new();
-    private readonly Task _loop;
+    private bool _closed;
     // The pending ownership check: its path and the client its request came from, as this listener saw it.
     private volatile OwnershipCheck? _check;
 
-    private CsWebUiBlobEndpoint(HttpListener listener, CsWebUiLoopbackRelay? relay, int port, string host, BridgeBlobs blobs, Func<int> pagePort)
+    private CsWebUiBlobEndpoint(ICsWebUiBlobListener listener, CsWebUiLoopbackRelay? relay, int port, string host, BridgeBlobs blobs, Func<int> pagePort)
     {
         _listener = listener;
         _relay = relay;
@@ -47,7 +48,7 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         _blobs = blobs;
         _pagePort = pagePort;
         BaseUrl = new Uri(string.Create(CultureInfo.InvariantCulture, $"http://{host}:{port}/"));
-        _loop = Task.Run(AcceptAsync);
+        listener.Serve(HandleAsync);
     }
 
     internal int Port { get; }
@@ -91,11 +92,12 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
                 CsWebUiBlobEndpoint? endpoint = null;
                 try
                 {
-                    var (listener, other) = Listen(host, port, relay);
+                    var (listener, other) = Listen(host, port, relay, blobs);
                     endpoint = new CsWebUiBlobEndpoint(listener, other, port, host, blobs, pagePort);
                     endpoint.ConfirmOwnership(host);
                 }
-                catch (Exception error) when (error is HttpListenerException or SocketException or PlatformNotSupportedException)
+                catch (Exception error) when (error is SocketException or PlatformNotSupportedException
+                    || OperatingSystem.IsWindows() && CsWebUiHttpSysListener.IsListenerError(error))
                 {
                     endpoint?.Close();
                     last = error;
@@ -144,43 +146,33 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         internal IReadOnlyList<string> Prefixes { get; } = prefixes;
     }
 
-    // Listens on host:port. For localhost outside Windows, the managed HttpListener binds only the first address that
-    // .NET resolves localhost to (Dns.GetHostAddresses("localhost")[0]): ::1 or 127.0.0.1, depending on the hosts file
-    // and the system's address sorting. Browsers and Node resolve localhost themselves, may try ::1 first and fall back
-    // to 127.0.0.1 only when ::1 refuses. So the listener takes the first address and a relay of its own listens on
-    // the other one, and the port is given up when another process holds either. The URLs then reach this listener on
-    // whichever address a client picks, and an upload's token never reaches another process's listener.
-    private static (HttpListener Listener, CsWebUiLoopbackRelay? Relay) Listen(string host, int port, bool relay)
+    // Listens on host:port. On Windows, http.sys listens on every address of localhost. Elsewhere, the loopback server
+    // binds one address: for localhost, the first that .NET resolves it to (Dns.GetHostAddresses("localhost")[0]), ::1
+    // or 127.0.0.1 depending on the hosts file and the system's address sorting, as HttpListener did. Browsers and Node
+    // resolve localhost themselves, may try ::1 first and fall back to 127.0.0.1 only when ::1 refuses. So a relay of the
+    // endpoint's own listens on the other address, and the port is given up when another process holds either. The URLs
+    // then reach this listener on whichever address a client picks, and an upload's token never reaches another
+    // process's listener.
+    private static (ICsWebUiBlobListener Listener, CsWebUiLoopbackRelay? Relay) Listen(string host, int port, bool relay, BridgeBlobs blobs)
     {
-        // http.sys refuses another process a URL under the listener's, unless a URL reservation names the port.
-        if (OperatingSystem.IsWindows() && Reservations(port, CsWebUiUrlReservations.Naming) is [_, ..] reservations)
-            throw new PortReservedException(reservations, port);
-        var listener = new HttpListener { IgnoreWriteExceptions = true };
-        listener.Prefixes.Add(string.Create(CultureInfo.InvariantCulture, $"http://{host}:{port}/"));
-        if (OperatingSystem.IsWindows() || host != "localhost")
-        {
-            // http.sys listens on every address of localhost, and refuses a port where another socket holds either.
-            try { Start(listener); }
-            catch (HttpListenerException error) when (HeldBy(host, port, error) is { } held)
-            {
-                throw new PortHeldException(held, port, $"the listener could not listen there (error {error.ErrorCode})");
-            }
-            return (listener, null);
-        }
-        var bound = ResolveLocalhost();
-        try { Start(listener); }
-        catch (HttpListenerException) when (IsHeld(bound, port))
+        if (OperatingSystem.IsWindows()) return (ListenHttpSys(host, port), null);
+        var bound = host == "localhost" ? ResolveLocalhost() : IPAddress.Parse(host);
+        LoopbackHttpServer server;
+        // The body limit is the window's upload limit, which the upload's own check answers first (LoopbackHttpLimits).
+        var limits = new LoopbackHttpLimits { MaxBodyBytes = () => blobs.MaximumUploadBytes };
+        // A failed accept is retried; it is logged once per run of failures (event 2105).
+        Action<SocketException> acceptFailed = error => CsWebUiLog.BlobEndpointAcceptFailed(blobs.Logger, error, error.SocketErrorCode.ToString());
+        try { server = LoopbackHttpServer.Listen(new IPEndPoint(bound, port), host, limits, acceptFailed); }
+        catch (SocketException error) when (error.SocketErrorCode == SocketError.AddressAlreadyInUse)
         {
             throw new PortHeldException(bound, port, "the listener could not listen there");
         }
+        if (host != "localhost" || !relay) return (server, null);
         try
         {
-            // HttpListener resolved localhost itself: make sure it holds the address resolved here.
-            if (!IsHeld(bound, port))
-                throw new PlatformNotSupportedException($"HttpListener did not listen on {bound} for localhost.");
-            if (!relay) return (listener, null);
             var other = bound.AddressFamily == AddressFamily.InterNetwork ? IPAddress.IPv6Loopback : IPAddress.Loopback;
-            try { return (listener, CsWebUiLoopbackRelay.Start(other, port, new IPEndPoint(bound, port))); }
+            try { return (server, CsWebUiLoopbackRelay.Start(other, port, new IPEndPoint(bound, port), acceptFailed: acceptFailed,
+                maxConnections: limits.MaxConnections, halfCloseTimeout: limits.LingerTimeout)); }
             catch (SocketException error) when (error.SocketErrorCode == SocketError.AddressAlreadyInUse)
             {
                 throw new PortHeldException(other, port, "the relay could not listen there");
@@ -188,18 +180,23 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         }
         catch
         {
-            listener.Close();
+            server.Dispose();
             throw;
         }
+    }
 
-        static void Start(HttpListener listener)
+    // http.sys listens on every address of localhost, and refuses a port where another socket holds either, or one that a
+    // URL reservation names to another process.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static CsWebUiHttpSysListener ListenHttpSys(string host, int port)
+    {
+        // http.sys refuses another process a URL under the listener's, unless a URL reservation names the port.
+        if (Reservations(port, CsWebUiUrlReservations.Naming) is [_, ..] reservations)
+            throw new PortReservedException(reservations, port);
+        try { return CsWebUiHttpSysListener.Start(string.Create(CultureInfo.InvariantCulture, $"http://{host}:{port}/")); }
+        catch (HttpListenerException error) when (HeldBy(host, port, error) is { } held)
         {
-            try { listener.Start(); }
-            catch
-            {
-                listener.Close();
-                throw;
-            }
+            throw new PortHeldException(held, port, $"the listener could not listen there (error {error.ErrorCode})");
         }
     }
 
@@ -215,8 +212,8 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         }
     }
 
-    // The address HttpListener binds for localhost: the first that .NET resolves it to (HttpEndPointManager), which must
-    // be one of the loopback addresses that browsers try.
+    // The address the loopback server binds for localhost: the first that .NET resolves it to, as the managed
+    // HttpListener did (HttpEndPointManager), which must be one of the loopback addresses that browsers try.
     private static IPAddress ResolveLocalhost()
     {
         IPAddress[] addresses;
@@ -231,8 +228,7 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
     // What held host:port when the listener could not start there: the loopback addresses of host that a bind probe finds
     // held, or else host itself when the error says the port is in use, as for a socket on a wildcard address that a
     // probe of one address may not meet or another http.sys registration of the prefix; null when nothing says so.
-    // http.sys reports a port in use as ERROR_SHARING_VIOLATION (32) or, for a registration, ERROR_ALREADY_EXISTS (183);
-    // the managed HttpListener passes on the socket's error.
+    // http.sys reports a port in use as ERROR_SHARING_VIOLATION (32) or, for a registration, ERROR_ALREADY_EXISTS (183).
     private static string[]? HeldBy(string host, int port, HttpListenerException error)
     {
         IPAddress[] addresses = host == "localhost" ? [IPAddress.Loopback, IPAddress.IPv6Loopback] : [IPAddress.Parse(host)];
@@ -331,127 +327,98 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         internal void Received(IPEndPoint client) => _seen.TrySetResult(client);
     }
 
-    private async Task AcceptAsync()
+    // Every request ends with its response sent, or with its connection reset when it failed midway (the listener's).
+    private async Task HandleAsync(ICsWebUiBlobRequest request)
     {
-        while (!_stop.IsCancellationRequested)
+        // The relay's connections carry its client, which it checked; the listener sees the relay as their peer.
+        var remote = request.RemoteEndPoint;
+        var peer = _relay?.ClientOf(remote) ?? remote;
+        // http.sys routes by Host only, so a client of another machine that names localhost would reach the listener on
+        // Windows: only loopback peers are served.
+        if (!CsWebUiLoopbackRelay.IsLoopbackPeer(peer))
         {
-            HttpListenerContext context;
-            try { context = await _listener.GetContextAsync().ConfigureAwait(false); }
-            catch (Exception error) when (error is HttpListenerException or ObjectDisposedException or InvalidOperationException)
-            {
-                return;
-            }
-            _ = Task.Run(() => HandleAsync(context));
+            Deny(request, "request from another machine");
         }
+        else if (_check is { } check && request.Path == check.Path)
+        {
+            check.Received(peer!);
+            request.StatusCode = 204;
+        }
+        else await RespondAsync(request).ConfigureAwait(false);
     }
 
-    // Every request ends with its response closed, or aborted when it failed midway. Its token cancels when the window
-    // closes and when a read or write of the request fails, as one does when the client disconnects.
-    private async Task HandleAsync(HttpListenerContext context)
+    private async Task RespondAsync(ICsWebUiBlobRequest request)
     {
-        var response = context.Response;
-        using var aborted = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
-        try
-        {
-            // The relay's connections carry its client, which it checked; the listener sees the relay as their peer.
-            var remote = context.Request.RemoteEndPoint;
-            var peer = _relay?.ClientOf(remote) ?? remote;
-            // http.sys routes by Host only, so a client of another machine that names localhost would reach the
-            // listener on Windows: only loopback peers are served.
-            if (!CsWebUiLoopbackRelay.IsLoopbackPeer(peer))
-            {
-                Deny(response, "request from another machine");
-            }
-            else if (_check is { } check && context.Request.Url?.AbsolutePath == check.Path)
-            {
-                check.Received(peer!);
-                response.StatusCode = 204;
-            }
-            else await RespondAsync(context, aborted).ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is HttpListenerException or IOException or ObjectDisposedException or InvalidOperationException)
-        {
-            try { response.Abort(); } catch (ObjectDisposedException) { }
-            return;
-        }
-        try { response.Close(); }
-        catch (Exception error) when (error is HttpListenerException or ObjectDisposedException or InvalidOperationException) { }
-    }
-
-    private async Task RespondAsync(HttpListenerContext context, CancellationTokenSource aborted)
-    {
-        var response = context.Response;
-        var request = context.Request;
-        var path = request.Url?.AbsolutePath ?? "/";
+        var path = request.Path;
         var upload = path == "/" + BridgeBlobEndpoint.UploadPath;
         var blob = path.StartsWith("/" + BridgeBlobEndpoint.BlobsPath, StringComparison.Ordinal);
         var token = blob ? path[(BridgeBlobEndpoint.BlobsPath.Length + 1)..] : null;
         if (!upload && (!blob || token!.Length == 0 || token.Contains('/')))
         {
-            response.StatusCode = 404;
+            request.StatusCode = 404;
             return;
         }
-        var origin = request.Headers["Origin"] ?? string.Empty;
+        var origin = request.GetRequestHeader("Origin");
         var pageOrigin = PageOrigin();
         var fromPage = origin.Length > 0 && pageOrigin is not null && IsPageOrigin(origin, pageOrigin);
         // Every response grants the page's origin, also one to a request without Origin such as an <img>: the
         // browser caches a blob as immutable and may answer a later fetch of the page from that cached response.
         if (pageOrigin is not null)
         {
-            response.Headers["Access-Control-Allow-Origin"] = fromPage ? origin : pageOrigin;
-            response.Headers["Access-Control-Allow-Credentials"] = "true";
-            response.Headers["Vary"] = "Origin";
+            request.SetResponseHeader("Access-Control-Allow-Origin", fromPage ? origin : pageOrigin);
+            request.SetResponseHeader("Access-Control-Allow-Credentials", "true");
+            request.SetResponseHeader("Vary", "Origin");
         }
-        var method = request.HttpMethod;
+        var method = request.Method;
         if (string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             if (!fromPage)
             {
-                Deny(response, "preflight from another origin");
+                Deny(request, "preflight from another origin");
                 return;
             }
-            response.Headers["Access-Control-Allow-Methods"] = upload ? "POST" : "GET, HEAD";
-            response.Headers["Access-Control-Allow-Headers"] =
-                $"Content-Type, {BridgeBlobs.UploadTokenHeader}, {BridgeBlobs.UploadNameHeader}, Range";
-            response.Headers["Access-Control-Max-Age"] = "600";
-            response.StatusCode = 204;
+            request.SetResponseHeader("Access-Control-Allow-Methods", upload ? "POST" : "GET, HEAD");
+            request.SetResponseHeader("Access-Control-Allow-Headers",
+                $"Content-Type, {BridgeBlobs.UploadTokenHeader}, {BridgeBlobs.UploadNameHeader}, Range");
+            request.SetResponseHeader("Access-Control-Max-Age", "600");
+            request.StatusCode = 204;
             return;
         }
         if (upload)
         {
             if (!string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase))
             {
-                response.StatusCode = 405;
+                request.StatusCode = 405;
                 return;
             }
             if (!fromPage)
             {
-                Deny(response, "upload from another origin");
+                Deny(request, "upload from another origin");
                 return;
             }
-            await _blobs.ReceiveUploadAsync(new Exchange(context, aborted)).ConfigureAwait(false);
+            await _blobs.ReceiveUploadAsync(request).ConfigureAwait(false);
             return;
         }
         if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase) && !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase))
         {
-            response.StatusCode = 405;
+            request.StatusCode = 405;
             return;
         }
         // The page is another port of the same host, so its own loads are same-site.
-        if (string.Equals(request.Headers["Sec-Fetch-Site"], "cross-site", StringComparison.OrdinalIgnoreCase) ||
+        if (string.Equals(request.GetRequestHeader("Sec-Fetch-Site"), "cross-site", StringComparison.OrdinalIgnoreCase) ||
             origin.Length > 0 && !fromPage)
         {
-            Deny(response, "blob request from another site");
+            Deny(request, "blob request from another site");
             return;
         }
-        response.Headers["Access-Control-Expose-Headers"] = "Content-Disposition, Content-Length, Content-Range";
-        await _blobs.ServeBlobAsync(token!, new Exchange(context, aborted)).ConfigureAwait(false);
+        request.SetResponseHeader("Access-Control-Expose-Headers", "Content-Disposition, Content-Length, Content-Range");
+        await _blobs.ServeBlobAsync(token!, request).ConfigureAwait(false);
     }
 
-    private void Deny(HttpListenerResponse response, string reason)
+    private void Deny(ICsWebUiBlobRequest request, string reason)
     {
         BlobsLog.RequestDenied(_blobs.Logger, "CS-WebUI blob", reason);
-        response.StatusCode = 403;
+        request.StatusCode = 403;
     }
 
     // The origin WebUI serves the window's page from, or null before it is shown. WebUI reports its URL with the
@@ -483,98 +450,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
     // Stops listening, without detaching from the window's blobs: also for an endpoint that never attached.
     private void Close()
     {
-        if (_stop.IsCancellationRequested) return;
-        _stop.Cancel();
+        if (_closed) return;
+        _closed = true;
         _relay?.Dispose();
-        try { _listener.Close(); }
-        catch (ObjectDisposedException) { }
-        _stop.Dispose();
-    }
-
-    // An HttpListener request as a Bridge blob exchange. A response without a length is sent chunked. HttpListener has
-    // no token of the client's disconnect; a failed read or write of the request stands for it and cancels
-    // RequestAborted.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA1001",
-        Justification = "The wrapped streams belong to the HttpListener request and response, which HandleAsync closes.")]
-    private sealed class Exchange(HttpListenerContext context, CancellationTokenSource aborted) : IBridgeBlobExchange
-    {
-        private bool _lengthSet;
-        private Stream? _requestBody;
-        private Stream? _responseBody;
-
-        public string Method => context.Request.HttpMethod;
-        public string GetRequestHeader(string name) => context.Request.Headers[name] ?? string.Empty;
-        public Stream RequestBody => _requestBody ??= new AbortingStream(context.Request.InputStream, aborted);
-
-        public int StatusCode
-        {
-            get => context.Response.StatusCode;
-            set => context.Response.StatusCode = value;
-        }
-
-        public string? ContentType { set => context.Response.ContentType = value; }
-
-        public long? ContentLength
-        {
-            set
-            {
-                if (value is not { } length) return;
-                context.Response.ContentLength64 = length;
-                _lengthSet = true;
-            }
-        }
-
-        public void SetResponseHeader(string name, string value) => context.Response.Headers[name] = value;
-        public void AppendResponseHeader(string name, string value) => context.Response.Headers.Add(name, value);
-
-        public Stream ResponseBody
-        {
-            get
-            {
-                if (_responseBody is not null) return _responseBody;
-                if (!_lengthSet) context.Response.SendChunked = true;
-                return _responseBody = new AbortingStream(context.Response.OutputStream, aborted);
-            }
-        }
-
-        public CancellationToken RequestAborted => aborted.Token;
-    }
-
-    // A request or response stream whose failure cancels the request's token.
-    private sealed class AbortingStream(Stream inner, CancellationTokenSource aborted) : Stream
-    {
-        public override bool CanRead => inner.CanRead;
-        public override bool CanSeek => false;
-        public override bool CanWrite => inner.CanWrite;
-        public override long Length => throw new NotSupportedException();
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            try { return await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false); }
-            catch (Exception error) when (error is not OperationCanceledException) { Abort(); throw; }
-        }
-
-        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            try { await inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false); }
-            catch (Exception error) when (error is not OperationCanceledException) { Abort(); throw; }
-        }
-
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
-        public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
-        public override void Flush() => inner.Flush();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-
-        private void Abort()
-        {
-            try { aborted.Cancel(); }
-            catch (ObjectDisposedException) { }
-        }
+        _listener.Dispose();
     }
 }

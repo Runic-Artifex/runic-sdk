@@ -3,8 +3,9 @@
 In Development, a CS-WebUI window in an installed Chrome, Edge or other
 Chromium browser can open that browser's Chrome DevTools Protocol endpoint on
 127.0.0.1, so an IDE's JavaScript debugger attaches to the page: Visual Studio
-with Attach to Process ("Chrome devtools protocol websocket (no
-authentication)"), VS Code with js-debug's `attach`. Runic.Desktop adds
+with Runic DevKit's Debug the Window or Attach to the Page, or with Attach to
+Process ("JavaScript and TypeScript (Chrome DevTools/V8 Inspector)"), and
+VS Code with js-debug's `attach`. Runic.Desktop adds
 `--remote-debugging-port` when `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for it,
 `0` for a free port or a fixed one, beside its Chromium defaults. It adds none
 outside Development, when the window's `WebContent` policy sets

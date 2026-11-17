@@ -33,6 +33,12 @@ internal static partial class CsWebUiLog
         Message = "URL reservations of http.sys ({Reservations}) name {Count} of the {Tried} ports the window's blob endpoint tried for {Host}, so it gave up {Host}.")]
     internal static partial void BlobEndpointPortsReserved(ILogger logger, string reservations, int count, int tried, string host);
 
+    // Outside Windows, the blob endpoint's loopback server or relay could not accept a connection, as when the process
+    // runs out of file descriptors. It accepts again after a pause (100 ms, growing to 1 s); once per run of failures.
+    [LoggerMessage(EventId = 2105, EventName = "CsWebUiBlobEndpointAcceptFailed", Level = LogLevel.Warning,
+        Message = "The window's blob endpoint could not accept a connection ({Error}); it tries again.")]
+    internal static partial void BlobEndpointAcceptFailed(ILogger logger, Exception exception, string error);
+
     internal const string NativeLibraryEnvironmentVariable = "CSWEBUI_NATIVE_LIBRARY";
 
     private static int s_nativeLibraryChecked;

@@ -225,13 +225,13 @@ internal sealed partial class LinuxWebKitGtkHost
             _eventFree = Export(gtk, "gdk_event_free");
             _atomIntern = Export(gtk, "gdk_atom_intern");
             _signalHandlerDisconnect = Export(gObject, "g_signal_handler_disconnect");
-            IsAvailable = new[]
-            {
+            IsAvailable = !((ReadOnlySpan<nint>)
+            [
                 _targetListNew, _targetListUnref, _targetListAddUriTargets, _targetListAddTextTargets, _dragBegin, _selectionDataSetUris,
                 _selectionDataSetText, _selectionDataGetTarget, _dragContextGetSelectedAction, _widgetGetWindow, _widgetGetDisplay,
                 _displayGetDefaultSeat, _seatGetPointer, _windowGetDevicePosition, _eventGetEventType, _eventGetButton, _eventCopy,
                 _eventFree, _atomIntern, _signalHandlerDisconnect,
-            }.All(static address => address != 0);
+            ]).Contains(0);
         }
 
         internal bool IsAvailable { get; }

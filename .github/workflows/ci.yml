@@ -330,8 +330,9 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: bun tests/scaling/report.mjs --require-all ${BASE:+--base "$BASE"}
-      # The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size", D064.5: linux-x64 gates): three linux-x64
-      # NativeAOT publishes of a fixture with 0, 1 and 9 bridged ViewModels, about 20 s each with warm packages. The
+      # The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size", D064.5: linux-x64 gates): five linux-x64
+      # NativeAOT publishes, the CS-WebUI fixture with 0, 1 and 9 bridged ViewModels and the Desktop and Translations
+      # fixtures with none, about 20 s each with warm packages. The
       # application group has already restored the ILCompiler packages for its own NativeAOT fixture. The job summary
       # gets the budgets and the cost per ViewModel.
       - name: Measure the NativeAOT size budgets

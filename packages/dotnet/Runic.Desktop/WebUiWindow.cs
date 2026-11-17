@@ -1942,8 +1942,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ? _disposeCompletion.Task.WaitAsync(cancellationToken)
             : CloseCoreAsync(cancellationToken);
 
-    internal string[] GetBindingNames() =>
-        ["__webui_core_api__", .. _bindings.OrderBy(static pair => pair.Value.Order).Select(static pair => pair.Key)];
+    internal string[] GetBindingNames()
+    {
+        // Registration order; each registration has its own Order.
+        var registrations = _bindings.ToArray();
+        Array.Sort(registrations, static (left, right) => left.Value.Order.CompareTo(right.Value.Order));
+        var names = new string[registrations.Length + 1];
+        names[0] = "__webui_core_api__";
+        for (var index = 0; index < registrations.Length; index++) names[index + 1] = registrations[index].Key;
+        return names;
+    }
 
     internal async ValueTask<WebUiResult> InvokeCallbackAsync(
         WebUiSession session,
