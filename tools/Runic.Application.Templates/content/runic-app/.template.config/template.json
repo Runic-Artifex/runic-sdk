@@ -92,6 +92,7 @@
         { "condition": "(angularVite)", "exclude": [ "angular.json", "proxy.conf.mjs", "src/index.html", "src/main.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml", "pnpm-workspace.yaml" ] },
+        { "condition": "(!angularVite)", "exclude": [ "pnpm-workspace.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
       ]
     },

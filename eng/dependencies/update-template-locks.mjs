@@ -80,7 +80,7 @@ try {
       await writeFile(join(directory, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
       await writeFile(join(directory, ".npmrc"), `@runic-artifex:registry=${address}\n`);
       // pnpm reads overrides only from pnpm-workspace.yaml.
-      if (manager === "pnpm") await copyFile(join(root, "tools/Runic.Application.Templates/content", pnpmWorkspace), join(directory, "pnpm-workspace.yaml")).catch(error => { if (error.code !== "ENOENT") throw error; });
+      if (manager === "pnpm" && pnpmWorkspace) await copyFile(join(root, "tools/Runic.Application.Templates/content", pnpmWorkspace), join(directory, "pnpm-workspace.yaml")).catch(error => { if (error.code !== "ENOENT") throw error; });
       run(manager, args, directory, nodeCompatibility().env);
       let lock = await readFile(join(directory, filename), "utf8");
       for (const entry of servedArchives) {

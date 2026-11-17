@@ -47,9 +47,11 @@ export const templateLockDirectories = Object.freeze([
 ].map(entry => Object.freeze({ ...entry, pnpmWorkspace: templatePnpmWorkspace(entry) })));
 
 // The pnpm-workspace.yaml whose overrides a pnpm lock resolves with, if it exists: pnpm reads none from package.json.
-// Both Angular builds install @angular/build, so they share the Angular frontend's.
+// The Angular frontend's file reaches only --angular-build vite projects (template.json), which keep its vite override;
+// the Angular CLI starter has none since @angular/build depends on a fixed Vite (D072.3).
 function templatePnpmWorkspace({ framework, directory }) {
-  return framework.startsWith('angular') ? 'runic-app/frontends/angular/pnpm-workspace.yaml' : `${directory}/pnpm-workspace.yaml`;
+  if (framework === 'angular') return null;
+  return framework === 'angular-vite' ? 'runic-app/frontends/angular/pnpm-workspace.yaml' : `${directory}/pnpm-workspace.yaml`;
 }
 
 export function readNpmCandidates(archives) {
