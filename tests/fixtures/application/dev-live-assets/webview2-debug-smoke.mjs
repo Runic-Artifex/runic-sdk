@@ -1,9 +1,10 @@
-// D066.25 3: the runic-app template's WebView2 script-debugging launch profile, against a real Runic Desktop Window in
-// WebView2. On every OS it first checks that the template's profile and VS Code configurations agree
-// (webview2-debugging.mjs); off Windows it then skips. On Windows:
-//   1. `dotnet run --launch-profile` with the template's profile (its WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS), while the
+// D066.25 3: the runic-app template's WebView2 script debugging, against a real Runic Desktop Window in WebView2. On
+// every OS it first checks that the template's VS Code configurations agree and that the template has no WebView2
+// launch profile (D070.18; webview2-debugging.mjs); off Windows it then skips. On Windows:
+//   1. `dotnet run --launch-profile` with a profile of the VS Code configuration's variables (its
+//      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS), as a .NET debugger's launch applies them, while the
 //      application gives the Window browser arguments of its own (DesktopWindowOptions.BrowserArguments,
-//      --js-flags=--expose-gc): /json/version and /json/list answer on the profile's port, the page target that
+//      --js-flags=--expose-gc): /json/version and /json/list answer on the configuration's port, the page target that
 //      js-debug's attach selects is the Window's page, Runtime.evaluate and Debugger.enable work in it over a flattened
 //      Target.attachToTarget session as js-debug's are, and the application's own argument is still in effect.
 //   2. `dotnet runic dev -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=…`: the session file lists the endpoint under
@@ -25,11 +26,10 @@ import { attachSelects, cdpEndpoint, parseTemplateJson, variable, webView2Debugg
 const fixture = fileURLToPath(new URL(".", import.meta.url));
 const root = join(fixture, "../../../..");
 const template = join(root, "tools/Runic.Application.Templates/content/runic-app");
-const launchSettings = await readFile(join(template, "Properties/launchSettings.json"), "utf8");
-const debugging = webView2Debugging(parseTemplateJson(launchSettings),
-  parseTemplateJson(await readFile(join(template, ".vscode/launch.json"), "utf8")));
+const debugging = webView2Debugging(parseTemplateJson(await readFile(join(template, ".vscode/launch.json"), "utf8")),
+  parseTemplateJson(await readFile(join(template, "Properties/launchSettings.json"), "utf8"), { host: "desktop" }));
 const { endpoint, port, attach } = debugging;
-console.log(`WEBVIEW2_DEBUG_TEMPLATE_OK|${debugging.profileName}|${debugging.windowConfiguration}|${attach.name}|${endpoint}`);
+console.log(`WEBVIEW2_DEBUG_TEMPLATE_OK|${debugging.windowConfiguration}|${attach.name}|${endpoint}`);
 if (process.platform !== "win32") {
   console.log("WEBVIEW2_DEBUG_SKIPPED|WebView2 runs on Windows only");
   process.exit(0);
@@ -38,13 +38,13 @@ if (process.platform !== "win32") {
 const project = join(fixture, "DevLiveAssets.csproj");
 const tool = process.env.RUNIC_DEV_TOOL_DLL ?? join(root, "tools/dotnet-runic/bin/Release/net10.0/dotnet-runic.dll");
 if (!existsSync(tool)) throw new Error(`Build tools/dotnet-runic in Release first; ${tool} does not exist.`);
-// The template's profiles, named for this project; dotnet run reads them from Properties/launchSettings.json.
+// A profile with the VS Code configuration's variables; dotnet run reads it from Properties/launchSettings.json.
 const properties = join(fixture, "Properties");
-const profileName = debugging.profileName.replace("RunicWindowApp", "DevLiveAssets");
+const profileName = "DevLiveAssets (WebView2 debugging check)";
 // The application's own browser argument (Program.cs): V8's gc() exists in the page only while WebView2 applies it.
 const ownArguments = "--js-flags=--expose-gc";
 const environment = { ...process.env, DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: ownArguments };
-// Only the profile, or dev's -e, sets WebView2's variable.
+// Only the check's profile, or dev's -e, sets WebView2's variable.
 for (const name of Object.keys(environment)) if (name.toUpperCase() === variable) delete environment[name];
 // The fixture writes what it received and its Desktop diagnostics to standard error (Program.cs).
 environment.DEV_LIVE_ASSETS_TRACE = "1";
@@ -279,16 +279,17 @@ async function proveEndpoint(base, started) {
 }
 
 const profileFile = join(properties, "launchSettings.json");
-if (existsSync(profileFile)) throw new Error(`${profileFile} exists; the check writes the template's profiles there.`);
+if (existsSync(profileFile)) throw new Error(`${profileFile} exists; the check writes its profile there.`);
 let launched, dev, createdProperties = false;
 try {
   if (await answers(endpoint)) throw new Error(`${endpoint} already answers; the check needs the profile's port ${port} free.`);
   await run("dotnet", ["build", project, "-c", "Release"]);
 
-  // 1. The launch profile, as dotnet run, Visual Studio and Rider apply it.
+  // 1. The configuration's variables in a launch profile, as dotnet run and Rider apply it.
   if (!existsSync(properties)) { await mkdir(properties); createdProperties = true; }
-  await writeFile(profileFile,
-    JSON.stringify(parseTemplateJson(launchSettings.replaceAll("RunicWindowApp", "DevLiveAssets")), null, 2));
+  await writeFile(profileFile, JSON.stringify({ profiles: {
+    [profileName]: { commandName: "Project", environmentVariables: debugging.environment },
+  } }, null, 2));
   launched = start("dotnet run --launch-profile", ["run", "--project", project, "-c", "Release", "--no-build", "--launch-profile", profileName]);
   const page = await proveEndpoint(endpoint, launched).catch(async error => {
     console.log(`${await describeTree("DevLiveAssets.exe")}\ndotnet run output:\n${tail(launched.output, 4000)}`);
@@ -300,7 +301,7 @@ try {
     label: `${endpoint} to close after the Window stopped`, timeout: 30_000, detail: () => describeTree("DevLiveAssets.exe"),
   });
 
-  // 2. dotnet runic dev with the profile's variable: the session file names the endpoint.
+  // 2. dotnet runic dev with the configuration's variable: the session file names the endpoint.
   dev = start("dotnet runic dev", [tool, "dev", "--project", project, "-c", "Release", "--no-build", "--no-restore", "--no-dotnet-watch",
     "-e", `${variable}=${debugging.environment[variable]}`]);
   const sessionFile = join(fixture, "obj/runic/dev-session.json");

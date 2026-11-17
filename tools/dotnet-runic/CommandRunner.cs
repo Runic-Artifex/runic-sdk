@@ -106,11 +106,36 @@ internal static class CommandRunner
     internal static ProcessStartInfo CreateStartInfo(
         string executable,
         string workingDirectory,
-        IReadOnlyList<string> arguments)
+        IReadOnlyList<string> arguments) =>
+        CreateStartInfo(executable, workingDirectory, arguments, ExecutableSearch.System);
+
+    /// <summary>
+    /// Starts <paramref name="executable"/> without a shell. On Windows a bare name is found on PATH with PATHEXT, as
+    /// the shell finds it, and a batch file such as <c>npm.cmd</c> starts through <c>cmd.exe</c> with its arguments
+    /// quoted so that cmd.exe does not interpret them (<see cref="ExecutableSearch.Prepare"/>).
+    /// </summary>
+    internal static ProcessStartInfo CreateStartInfo(
+        string executable,
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        ExecutableSearch search)
     {
+        ProgramStart program;
+        try
+        {
+            program = search.Prepare(executable, arguments);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new DevDevelopmentException(
+                "RAPPDEV1004",
+                $"Could not start '{DescribeProgram(executable, arguments)}': {exception.Message}",
+                $"Executable: {executable}\nWorking directory: {workingDirectory}\n", category: CommandExitCategory.Unavailable);
+        }
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = executable,
+            FileName = program.FileName,
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -121,11 +146,38 @@ internal static class CommandRunner
             StandardOutputEncoding = new UTF8Encoding(false, false),
             StandardErrorEncoding = new UTF8Encoding(false, false),
         };
-        foreach (string argument in arguments)
+        if (program.CommandLine is null)
         {
-            startInfo.ArgumentList.Add(argument);
+            foreach (string argument in program.Arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+        }
+        else
+        {
+            startInfo.Arguments = program.CommandLine;
+            startInfo.Environment[ExecutableSearch.BatchCommandLineVariable] = program.BatchCommandLine;
         }
 
+        return startInfo;
+    }
+
+    /// <summary>
+    /// <see cref="CreateStartInfo(string, string, IReadOnlyList{string})"/> with this console's standard streams instead
+    /// of pipes, for a program that talks to the user directly.
+    /// </summary>
+    internal static ProcessStartInfo CreateInteractiveStartInfo(
+        string executable,
+        string workingDirectory,
+        IReadOnlyList<string> arguments)
+    {
+        ProcessStartInfo startInfo = CreateStartInfo(executable, workingDirectory, arguments);
+        startInfo.RedirectStandardOutput = false;
+        startInfo.RedirectStandardError = false;
+        startInfo.RedirectStandardInput = false;
+        startInfo.StandardOutputEncoding = null;
+        startInfo.StandardErrorEncoding = null;
+        startInfo.CreateNoWindow = false;
         return startInfo;
     }
 

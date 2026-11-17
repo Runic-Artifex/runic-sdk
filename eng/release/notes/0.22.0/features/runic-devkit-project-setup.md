@@ -6,11 +6,11 @@ and its ViewModel libraries and tests. Visual Studio loads Runic DevKit only
 for a solution with such a project (`SolutionHasProjectCapability:RunicApplication`).
 
 New `runic-app` projects have a `.vsconfig` that names the Visual Studio
-components their launch profiles need: the .NET desktop development workload
+components that debugging them needs: the .NET desktop development workload
 (`Microsoft.VisualStudio.Workload.ManagedDesktop`) and JavaScript diagnostics
 (`Microsoft.VisualStudio.Component.JavaScript.Diagnostics`), an optional
 component of that workload that Visual Studio's JavaScript debugger needs for
-WebView2 script debugging and for the page in Chrome or Edge. Visual Studio
+the page in WebView2 (Runic DevKit's Debug the Window) and in Chrome or Edge. Visual Studio
 offers to install a missing one when it opens the project. To add it to an
 existing project, copy the file from a new one into the directory of its solution.
 

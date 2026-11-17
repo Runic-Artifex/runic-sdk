@@ -1444,13 +1444,14 @@ jobs:
           New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
           icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
           icacls $env:GITHUB_WORKSPACE
-      # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
-      # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
-      # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
-      # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
+      # D066.25 3: the template's WebView2 script debugging (its VS Code configurations; no launch profile since D070.18) in
+      # a real Runic Desktop Window, through dotnet run --launch-profile with the configuration's variables and dotnet
+      # runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug attaches to, Runtime.evaluate
+      # and Debugger.enable in the Window's page, the application's own browser arguments next to the variable's, and the
+      # session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
       # WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated process, so the Window runs as the standard
       # user above, as a developer's IDE starts it.
-      - name: Check the template's WebView2 script-debugging profile
+      - name: Check the template's WebView2 script debugging
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         timeout-minutes: 20
@@ -1460,6 +1461,19 @@ jobs:
         run: |
           dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
           node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
+      # #1081: Node.js installs npm as npm.cmd on Windows. dotnet runic finds it through PATH and PATHEXT and starts it
+      # through cmd.exe; the batch file must receive its arguments unchanged, and stopping it must stop what it started.
+      # Then dotnet runic dev runs the dev-live-assets frontend as an npm project: npm ci, npm run dev and the served page.
+      - name: Test dotnet runic's program starts on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Application.Tool.Tests -c Release --
+          --treenode-filter "/*/*/*/*[Category=WindowsCommands]" --timeout 5m --output detailed
+      - name: Exercise dotnet runic dev with npm on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 15
+        run: node tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs
       - name: Show hosted application windows on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5
