@@ -76,6 +76,9 @@ internal sealed partial class CdpPageSession
     private TaskCompletionSource<string>? _instrumentationAnswer;
     // An answer whose reply the debugger has not been sent yet (Replied).
     private (TaskCompletionSource<string> Answer, string Command)? _repliedAnswer;
+    // The debugger's commands that went to WebKit and whose reply has not gone to the debugger yet, of the commands
+    // whose reply Chromium sends before the events they cause (HoldsEvent); under _stateGate. See WaitForRepliesAsync.
+    private readonly List<UnsentReply> _unsentReplies = [];
     private volatile bool _debuggerPauseRequested;
     private bool _ignoreResumed;
     private List<JsonObject>? _replay;
@@ -118,6 +121,7 @@ internal sealed partial class CdpPageSession
         {
             await foreach ((string method, JsonObject parameters) in _events.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
+                await WaitForRepliesAsync(method).ConfigureAwait(false);
                 await TranslateEventAsync(method, parameters).ConfigureAwait(false);
             }
         }
@@ -131,14 +135,16 @@ internal sealed partial class CdpPageSession
     {
         _events.Writer.TryComplete();
         CancelInstrumentationAnswer();
+        ReleaseUnsentReplies();
     }
 
     /// <summary>
     /// The reply to a command of this page has gone to the debugger. An emulated instrumentation pause continues only
     /// then: Chromium answers <c>Debugger.resume</c> before it reports the next pause, and js-debug, which waits for that
-    /// answer, would take a pause that came before it for the one it resumed from.
+    /// answer, would take a pause that came before it for the one it resumed from. The events that such a command's
+    /// reply comes before are translated from then on too (WaitForRepliesAsync).
     /// </summary>
-    internal void Replied()
+    internal void Replied(string method)
     {
         (TaskCompletionSource<string> Answer, string Command)? answered;
         lock (_stateGate)
@@ -146,7 +152,79 @@ internal sealed partial class CdpPageSession
             answered = _repliedAnswer;
             _repliedAnswer = null;
         }
-        answered?.Answer.TrySetResult(answered.Value.Command);
+        // An answer to an emulated instrumentation pause did not go to WebKit, and holds no events.
+        if (answered is { } instrumentation) instrumentation.Answer.TrySetResult(instrumentation.Command);
+        else ReplyDropped(method);
+    }
+
+    /// <summary>A command of this page gets no reply: the debugger went away. The events it held go on.</summary>
+    internal void ReplyDropped(string method)
+    {
+        UnsentReply? reply;
+        lock (_stateGate)
+        {
+            reply = _unsentReplies.FirstOrDefault(unsent => unsent.Method == method);
+            if (reply is not null) _unsentReplies.Remove(reply);
+        }
+        reply?.Sent.TrySetResult();
+    }
+
+    // A command whose reply Chromium sends before the events it causes: run control before the next Debugger.resumed and
+    // Debugger.paused, a navigation before the new document's events. WebKit answers in that order too, but the reply
+    // reaches the debugger from the command's own task, and the events from the event loop, which can pass it.
+    private sealed class UnsentReply(string method)
+    {
+        internal string Method { get; } = method;
+        internal TaskCompletionSource Sent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal bool Holds(string eventMethod) =>
+            Method is "Page.reload" or "Page.navigate" || eventMethod is "Debugger.paused" or "Debugger.resumed";
+    }
+
+    // How long an event waits for such a reply at most: a reply that never goes out (a bug, a stalled debugger socket)
+    // costs the order, not the session.
+    private static readonly TimeSpan ReplyWait = TimeSpan.FromSeconds(10);
+
+    private UnsentReply HoldEvents(string method)
+    {
+        var reply = new UnsentReply(method);
+        lock (_stateGate) _unsentReplies.Add(reply);
+        return reply;
+    }
+
+    /// <summary>
+    /// Before an event: waits until the debugger has the replies to its commands that come before it. With Chromium,
+    /// js-debug gets the reply to <c>Debugger.resume</c> or a step before the next <c>Debugger.resumed</c> and
+    /// <c>Debugger.paused</c>; a pause that arrives while its resume is still unanswered is lost to it, and the page
+    /// stays stopped where js-debug meant to continue (#1108).
+    /// </summary>
+    private async Task WaitForRepliesAsync(string method)
+    {
+        Task[] waits;
+        lock (_stateGate)
+        {
+            if (_unsentReplies.Count == 0) return;
+            waits = [.. _unsentReplies.Where(reply => reply.Holds(method)).Select(static reply => reply.Sent.Task)];
+        }
+        if (waits.Length == 0) return;
+        try
+        {
+            await Task.WhenAll(waits).WaitAsync(ReplyWait).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+        }
+    }
+
+    private void ReleaseUnsentReplies()
+    {
+        List<UnsentReply> released;
+        lock (_stateGate)
+        {
+            released = [.. _unsentReplies];
+            _unsentReplies.Clear();
+        }
+        foreach (UnsentReply reply in released) reply.Sent.TrySetResult();
     }
 
     private void CancelInstrumentationAnswer()
@@ -167,6 +245,8 @@ internal sealed partial class CdpPageSession
     {
         _suspended = true;
         CancelInstrumentationAnswer();
+        // The old page's events are over: a reply that the old page owes does not hold the new page's events.
+        ReleaseUnsentReplies();
         _wip = static (method, _, _) => Task.FromException<JsonObject>(new CdpException(CdpException.ServerError, "The Window is restarting."));
     }
 
@@ -314,11 +394,16 @@ internal sealed partial class CdpPageSession
                 return new() { ["frameTree"] = WithoutResources((JsonObject)(result["frameTree"]?.DeepClone() ?? new JsonObject())) };
             }
             case "Page.reload":
+                HoldEvents(method);
                 await Wip("Page.reload", new() { ["ignoreCache"] = Bool(p, "ignoreCache") }, cancellationToken).ConfigureAwait(false);
                 return [];
             case "Page.navigate":
-                await Wip("Page.navigate", new() { ["url"] = Required<string>(p, "url") }, cancellationToken).ConfigureAwait(false);
+            {
+                string url = Required<string>(p, "url");
+                HoldEvents(method);
+                await Wip("Page.navigate", new() { ["url"] = url }, cancellationToken).ConfigureAwait(false);
                 return new() { ["frameId"] = _mainFrameId ?? "" };
+            }
             case "Runtime.enable":
                 await EnableAsync("Runtime.enable").ConfigureAwait(false);
                 await EnableAsync("Console.enable").ConfigureAwait(false);
@@ -438,12 +523,15 @@ internal sealed partial class CdpPageSession
                     lock (_stateGate) _repliedAnswer = (answer, method);
                     return [];
                 }
-                // stepInto's breakOnAsyncCall has no WebKit counterpart.
+                // stepInto's breakOnAsyncCall has no WebKit counterpart. WebKit's next Debugger.resumed and Debugger.paused
+                // reach the debugger after this command's reply (WaitForRepliesAsync).
+                HoldEvents(method);
                 await Wip(method, null, cancellationToken).ConfigureAwait(false);
                 return [];
             case "Debugger.pause":
                 if (Volatile.Read(ref _instrumentationAnswer) is not null) return [];
                 _debuggerPauseRequested = true;
+                HoldEvents(method);
                 await Wip(method, null, cancellationToken).ConfigureAwait(false);
                 return [];
             case "Debugger.getScriptSource":
