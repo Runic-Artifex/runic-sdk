@@ -20,6 +20,11 @@ public sealed class WebUiRemoteDebuggingTests : IDisposable
         _ => null,
     };
 
+    // Untrimmed builds, such as dotnet runic dev's and these tests, keep the endpoint; trimmed and NativeAOT publishes turn
+    // the switch off (desktop-targets.test.mjs).
+    [Test]
+    public void TheEndpointIsSupportedInUntrimmedBuilds() => Assert.True(WebUiRemoteDebugging.IsSupported);
+
     [Test]
     public void DevelopmentAsksForTheVariablesPort()
     {

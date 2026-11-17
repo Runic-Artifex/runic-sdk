@@ -161,7 +161,7 @@ internal static class WebUiBrowserHost
 
             // D070.7: Development's CDP endpoint (WebUiRemoteDebugging), beside the defaults or the application's own
             // arguments; an application that names the switch keeps its own value, and there is never a second one.
-            if (options.RemoteDebuggingPort is int debuggingPort
+            if (WebUiRemoteDebugging.IsSupported && options.RemoteDebuggingPort is int debuggingPort
                 && !string.IsNullOrWhiteSpace(options.ProfilePath)
                 && !WebUiRemoteDebugging.NamesPort(options.BrowserArguments))
             {

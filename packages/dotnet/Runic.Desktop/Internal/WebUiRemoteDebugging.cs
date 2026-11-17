@@ -20,8 +20,18 @@ namespace Runic.Desktop.Internal;
 // Origin, so web pages cannot attach; local processes can (DEV-SEC-50).
 // Chromium writes DevToolsActivePort only for port 0, so a fixed port is confirmed through /json/version on 127.0.0.1,
 // and on Linux by the listener's owner, before the Window reports it (DEV-SEC-54, DEV-SEC-51).
+//
+// The helper exists only in untrimmed builds: a trimmed or NativeAOT publish turns the Runic.Desktop.WebUiRemoteDebugging
+// feature switch off (buildTransitive/Runic.Desktop.targets), so the trimmer removes it, with the HTTP client of its
+// /json/version probe (D072.2, S2). dotnet runic dev runs an untrimmed build, where it is on.
 internal static class WebUiRemoteDebugging
 {
+    internal const string FeatureSwitch = "Runic.Desktop.WebUiRemoteDebugging";
+
+    // Whether the endpoint can open in this build; every caller tests it first so the trimmer can remove the helper.
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(FeatureSwitch)]
+    internal static bool IsSupported => !AppContext.TryGetSwitch(FeatureSwitch, out var enabled) || enabled;
+
     internal const string PortVariable = "RUNIC_WEBUI_REMOTE_DEBUGGING_PORT";
     internal const string PortSwitch = "--remote-debugging-port";
     internal const string ActivePortFile = "DevToolsActivePort";

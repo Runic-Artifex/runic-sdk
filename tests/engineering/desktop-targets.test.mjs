@@ -58,6 +58,22 @@ test("RunicDesktopMinimalHost writes the trimmable runtime switch, false by defa
   assert.deepEqual(switchOf("disabled", "<RunicDesktopMinimalHost>false</RunicDesktopMinimalHost>"), [{ value: "false", trim: "true" }]);
 });
 
+// The CS-WebUI Window's Development DevTools Protocol endpoint (WebUiRemoteDebugging, D072.2 S2): a trimmed or NativeAOT
+// publish turns its feature switch off, so the trimmer removes it and its HTTP client; other builds leave it on.
+function remoteDebuggingSwitch(name, properties) {
+  const result = spawnSync("dotnet", ["msbuild", project(name, properties, []), "-getItem:RuntimeHostConfigurationOption",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const items = JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
+  return items.filter(item => item.Identity === "Runic.Desktop.WebUiRemoteDebugging").map(item => ({ value: item.Value, trim: item.Trim }));
+}
+
+test("a trimmed or NativeAOT publish turns the WebUI remote-debugging switch off", () => {
+  assert.deepEqual(remoteDebuggingSwitch("debugging-default", ""), []);
+  assert.deepEqual(remoteDebuggingSwitch("debugging-aot", "<PublishAot>true</PublishAot>"), [{ value: "false", trim: "true" }]);
+  assert.deepEqual(remoteDebuggingSwitch("debugging-trimmed", "<PublishTrimmed>true</PublishTrimmed>"), [{ value: "false", trim: "true" }]);
+});
+
 function validate(name, value) {
   return spawnSync("dotnet", ["msbuild", project(name, `<RunicDesktopMinimalHost>${value}</RunicDesktopMinimalHost>`),
     "-t:RunicDesktopValidateHostProfile", "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-tl:off"], { encoding: "utf8" });
