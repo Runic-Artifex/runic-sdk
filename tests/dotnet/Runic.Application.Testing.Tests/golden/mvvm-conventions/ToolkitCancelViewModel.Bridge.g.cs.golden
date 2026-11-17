@@ -8,52 +8,137 @@ using ExportInputValueCodec = global::Runic.Application.Views.Generated.Bridges.
 using ExportCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
 internal sealed class ToolkitCancelBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> CancelledCountGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).CancelledCount;
-    private static readonly global::System.Func<object, object?> ExportInputGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportInput;
     internal ToolkitCancelBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitCancelViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.ToolkitCancelViewModel), routePrefix ?? "toolkitCancel",
-        State,
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("CancelledCount", "cancelledCount", CancelledCountGetter, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("ExportInput", "exportInput", ExportInputGetter, null) { TextMember = true },
-        ],
-        [
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Save", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCommand, token, null, null), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCommand, changed), WireName = "save" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("SaveCancel", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCancelCommand) { WireName = "saveCancel" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Export", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportCommand, token, argument, static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String>)command).ExecuteAsync((global::System.String)value!)), ReadInput = input => ExportCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ExportCommandInputCodec.Write(writer, (global::System.String)argument!)), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportCommand, changed), WireName = "export" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("ExportCancel", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportCancelCommand) { WireName = "exportCancel" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Background", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCommand, token, null, null), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCommand, changed), WireName = "background" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("BackgroundCancel", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCancelCommand) { WireName = "backgroundCancel" },
-        ], "<fingerprint>", content,
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("cancelledCount", CancelledCountGetter, propertyName: "CancelledCount"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("exportInput", ExportInputGetter, propertyName: "ExportInput"),
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
-    [
-        new global::Runic.Application.Views.Generated.BridgeStateMember("cancelledCount", static (writer, vm) => CancelledCountValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).CancelledCount)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("exportInput", static (writer, vm) => ExportInputValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportInput)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canSave", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isSaveExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canSaveCancel", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).SaveCancelCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isExportExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canExportCancel", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportCancelCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canBackground", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isBackgroundExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canBackgroundCancel", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).BackgroundCancelCommand).CanExecute(null))),
-    ]
-    ;
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P CancelledCount cancelledCount 0 -
+        P ExportInput exportInput 1 T
+        K Save save 0 EU - -
+        K SaveCancel saveCancel 1 - - -
+        K Export export 2 AEIU - -
+        K ExportCancel exportCancel 3 - - -
+        K Background background 4 EU - -
+        K BackgroundCancel backgroundCancel 5 - - -
+        D 0 - cancelledCount CancelledCount - 0
+        D 1 - exportInput ExportInput - 1
+        S cancelledCount 0
+        S exportInput 1
+        S canSave 2
+        S isSaveExecuting 3
+        S canSaveCancel 4
+        S isExportExecuting 5
+        S canExportCancel 6
+        S canBackground 7
+        S isBackgroundExecuting 8
+        S canBackgroundCancel 9
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.CancelledCount;
+                case 1: return vm.ExportInput;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)model;
+            switch (id)
+            {
+                case 0: CancelledCountValueCodec.Write(writer, vm.CancelledCount); return;
+                case 1: ExportInputValueCodec.Write(writer, vm.ExportInput); return;
+                case 2: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.SaveCommand).CanExecute(null)); return;
+                case 3: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.SaveCommand).IsRunning); return;
+                case 4: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.SaveCancelCommand).CanExecute(null)); return;
+                case 5: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.ExportCommand).IsRunning); return;
+                case 6: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.ExportCancelCommand).CanExecute(null)); return;
+                case 7: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.BackgroundCommand).CanExecute(null)); return;
+                case 8: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.BackgroundCommand).IsRunning); return;
+                case 9: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.BackgroundCancelCommand).CanExecute(null)); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object Command(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.SaveCommand;
+                case 1: return vm.SaveCancelCommand;
+                case 2: return vm.ExportCommand;
+                case 3: return vm.ExportCancelCommand;
+                case 4: return vm.BackgroundCommand;
+                case 5: return vm.BackgroundCancelCommand;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task Execute(object model, int id, global::System.Threading.CancellationToken token, object? argument)
+        {
+            switch (id)
+            {
+                case 0: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 2: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 4: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task Start(int id, object command, object? argument)
+        {
+            switch (id)
+            {
+                case 0: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command).ExecuteAsync(null);
+                case 2: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String>)command).ExecuteAsync((global::System.String)argument!);
+                case 4: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command).ExecuteAsync(null);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadInput(int id, global::System.Text.Json.JsonElement input)
+        {
+            switch (id)
+            {
+                case 2: return ExportCommandInputCodec.Read(input);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override string EncodeArgument(int id, object? argument)
+        {
+            switch (id)
+            {
+                case 2: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ExportCommandInputCodec.Write(writer, (global::System.String)argument!));
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable Subscribe(object model, int id, global::System.Action changed)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)model;
+            switch (id)
+            {
+                case 0: return new RunicToolkitCommands.Running(vm.SaveCommand, changed);
+                case 2: return new RunicToolkitCommands.Running(vm.ExportCommand, changed);
+                case 4: return new RunicToolkitCommands.Running(vm.BackgroundCommand, changed);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }

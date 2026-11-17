@@ -6,95 +6,111 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.Generated
 {
     private readonly global::Runic.Application.Views.WindowContentSession _content;
     private readonly global::Runic.Application.Testing.Tests.NavShellViewModel _owner;
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> MainGetter = static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main;
     internal NavShellBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.NavShellViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.NavShellViewModel), routePrefix ?? "navShell",
-        CreateState(content),
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Main", "main", static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main?.Current, null, MainGetter),
-        ],
-        [
-        ],
-        [
-        ], "<fingerprint>", content,
+        Table.CreateState(content ?? throw new global::System.ArgumentNullException(nameof(content))),
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
         _content = content!; _owner = vm;
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-        ]
-    ;
-    private static global::Runic.Application.Views.Generated.BridgeStateMember[] CreateState(global::Runic.Application.Views.WindowContentSession? content)
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P Main main 0 O
+        S main 0
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
     {
-        global::System.ArgumentNullException.ThrowIfNull(content);
-        return
-        [
-            new global::Runic.Application.Views.Generated.BridgeStateMember("main", (writer, model) =>
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.NavShellViewModel)model;
+            switch (id)
             {
-                var vm = (global::Runic.Application.Testing.Tests.NavShellViewModel)model;
-                if (vm.Main?.Current is null) { content.Clear(vm, "Main"); writer.WriteNullValue(); }
-                else
+                case 0: return vm.Main?.Current;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? Observe(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.NavShellViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.Main;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.NavShellViewModel)model;
+            switch (id)
+            {
+                case 0:
                 {
-                    switch (vm.Main?.Current)
+                    var content = session!;
+                    if (vm.Main?.Current is null) { content.Clear(vm, "Main"); writer.WriteNullValue(); }
+                    else
                     {
-                        case global::Runic.Application.Testing.Tests.ReactiveNavEditorViewModel page:
+                        switch (vm.Main?.Current)
                         {
-                            var reference = content.Present(vm, "Main", "reactiveNavEditor", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.ReactiveNavEditorView, global::Runic.Application.Testing.Tests.ReactiveNavEditorViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.ReactiveNavEditorBridge(presentationTransport, presentationModel, presentationRoute, content)));
-                            writer.WriteStartObject();
-                            writer.WriteString("kind", reference.Kind);
-                            writer.WriteString("id", reference.Id);
-                            writer.WriteEndObject();
-                            break;
+                            case global::Runic.Application.Testing.Tests.ReactiveNavEditorViewModel page:
+                            {
+                                var reference = content.Present(vm, "Main", "reactiveNavEditor", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.ReactiveNavEditorView, global::Runic.Application.Testing.Tests.ReactiveNavEditorViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.ReactiveNavEditorBridge(presentationTransport, presentationModel, presentationRoute, content)));
+                                writer.WriteStartObject();
+                                writer.WriteString("kind", reference.Kind);
+                                writer.WriteString("id", reference.Id);
+                                writer.WriteEndObject();
+                                break;
+                            }
+                            case global::Runic.Application.Testing.Tests.NavEditorViewModel page:
+                            {
+                                var reference = content.Present(vm, "Main", "navEditor", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavEditorView, global::Runic.Application.Testing.Tests.NavEditorViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavEditorBridge(presentationTransport, presentationModel, presentationRoute, content)));
+                                writer.WriteStartObject();
+                                writer.WriteString("kind", reference.Kind);
+                                writer.WriteString("id", reference.Id);
+                                writer.WriteEndObject();
+                                break;
+                            }
+                            case global::Runic.Application.Testing.Tests.NavHomeViewModel page:
+                            {
+                                var reference = content.Present(vm, "Main", "navHome", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavHomeView, global::Runic.Application.Testing.Tests.NavHomeViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavHomeBridge(presentationTransport, presentationModel, presentationRoute, content)));
+                                writer.WriteStartObject();
+                                writer.WriteString("kind", reference.Kind);
+                                writer.WriteString("id", reference.Id);
+                                writer.WriteEndObject();
+                                break;
+                            }
+                            case global::Runic.Application.Testing.Tests.NavLogPageViewModel page:
+                            {
+                                var reference = content.Present(vm, "Main", "navLogPage", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavLogPageView, global::Runic.Application.Testing.Tests.NavLogPageViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavLogPageBridge(presentationTransport, presentationModel, presentationRoute, content)));
+                                writer.WriteStartObject();
+                                writer.WriteString("kind", reference.Kind);
+                                writer.WriteString("id", reference.Id);
+                                writer.WriteEndObject();
+                                break;
+                            }
+                            case global::Runic.Application.Testing.Tests.NavTabbedPageViewModel page:
+                            {
+                                var reference = content.Present(vm, "Main", "navTabbedPage", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavTabbedPageView, global::Runic.Application.Testing.Tests.NavTabbedPageViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavTabbedPageBridge(presentationTransport, presentationModel, presentationRoute, content)));
+                                writer.WriteStartObject();
+                                writer.WriteString("kind", reference.Kind);
+                                writer.WriteString("id", reference.Id);
+                                writer.WriteEndObject();
+                                break;
+                            }
+                            default: { var unregistered = vm.Main?.Current!; throw new global::System.NotSupportedException($"The navigation region NavShellViewModel.Main cannot present {unregistered.GetType().FullName}: the Bridge generator found no Runic View for it. Declare one in the project that generates this Bridge, for example 'public sealed partial class {(unregistered.GetType().Name.EndsWith("ViewModel", global::System.StringComparison.Ordinal) ? unregistered.GetType().Name[..^9] : unregistered.GetType().Name)}View : RunicView<{unregistered.GetType().Name}>;', and rebuild."); }
                         }
-                        case global::Runic.Application.Testing.Tests.NavEditorViewModel page:
-                        {
-                            var reference = content.Present(vm, "Main", "navEditor", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavEditorView, global::Runic.Application.Testing.Tests.NavEditorViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavEditorBridge(presentationTransport, presentationModel, presentationRoute, content)));
-                            writer.WriteStartObject();
-                            writer.WriteString("kind", reference.Kind);
-                            writer.WriteString("id", reference.Id);
-                            writer.WriteEndObject();
-                            break;
-                        }
-                        case global::Runic.Application.Testing.Tests.NavHomeViewModel page:
-                        {
-                            var reference = content.Present(vm, "Main", "navHome", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavHomeView, global::Runic.Application.Testing.Tests.NavHomeViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavHomeBridge(presentationTransport, presentationModel, presentationRoute, content)));
-                            writer.WriteStartObject();
-                            writer.WriteString("kind", reference.Kind);
-                            writer.WriteString("id", reference.Id);
-                            writer.WriteEndObject();
-                            break;
-                        }
-                        case global::Runic.Application.Testing.Tests.NavLogPageViewModel page:
-                        {
-                            var reference = content.Present(vm, "Main", "navLogPage", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavLogPageView, global::Runic.Application.Testing.Tests.NavLogPageViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavLogPageBridge(presentationTransport, presentationModel, presentationRoute, content)));
-                            writer.WriteStartObject();
-                            writer.WriteString("kind", reference.Kind);
-                            writer.WriteString("id", reference.Id);
-                            writer.WriteEndObject();
-                            break;
-                        }
-                        case global::Runic.Application.Testing.Tests.NavTabbedPageViewModel page:
-                        {
-                            var reference = content.Present(vm, "Main", "navTabbedPage", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavTabbedPageView, global::Runic.Application.Testing.Tests.NavTabbedPageViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavTabbedPageBridge(presentationTransport, presentationModel, presentationRoute, content)));
-                            writer.WriteStartObject();
-                            writer.WriteString("kind", reference.Kind);
-                            writer.WriteString("id", reference.Id);
-                            writer.WriteEndObject();
-                            break;
-                        }
-                        default: { var unregistered = vm.Main?.Current!; throw new global::System.NotSupportedException($"The navigation region NavShellViewModel.Main cannot present {unregistered.GetType().FullName}: the Bridge generator found no Runic View for it. Declare one in the project that generates this Bridge, for example 'public sealed partial class {(unregistered.GetType().Name.EndsWith("ViewModel", global::System.StringComparison.Ordinal) ? unregistered.GetType().Name[..^9] : unregistered.GetType().Name)}View : RunicView<{unregistered.GetType().Name}>;', and rebuild."); }
                     }
+                    return;
                 }
-            }),
-        ]
-        ;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
     }
     public override void Dispose()
     {

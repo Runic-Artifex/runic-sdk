@@ -9,50 +9,152 @@ using SummaryValueCodec = global::Runic.Application.Views.Generated.Bridges.Runi
 using SaveCountValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
 internal sealed class GeneratedReactiveBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> NameGetter = static vm => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Name;
-    private static readonly global::System.Func<object, object?> IsDirtyGetter = static vm => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).IsDirty;
-    private static readonly global::System.Func<object, object?> SummaryGetter = static vm => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Summary;
-    private static readonly global::System.Func<object, object?> SaveCountGetter = static vm => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCount;
     internal GeneratedReactiveBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel), routePrefix ?? "generatedReactive",
-        State,
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Name", "name", NameGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Name = NameValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Name = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("IsDirty", "isDirty", IsDirtyGetter, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Summary", "summary", SummaryGetter, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("SaveCount", "saveCount", SaveCountGetter, null),
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Name", "name", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, NameGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Name = (global::System.String)value!, readValue: static element => NameValueCodec.Read(element), writeValue: static (writer, value) => NameValueCodec.Write(writer, (global::System.String)value!)),
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Save", static vm => (object)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand) { ExecuteResultAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicBridgeCommands.Completion(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token)), CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand, changed), WireName = "save", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand, logger, "GeneratedReactiveViewModel.SaveCommand") },
-        ], "<fingerprint>", content,
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("name", NameGetter, propertyName: "Name"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("isDirty", IsDirtyGetter, propertyName: "IsDirty"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("summary", SummaryGetter, propertyName: "Summary"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("saveCount", SaveCountGetter, propertyName: "SaveCount"),
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
-    [
-        new global::Runic.Application.Views.Generated.BridgeStateMember("name", static (writer, vm) => NameValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Name)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isDirty", static (writer, vm) => IsDirtyValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).IsDirty)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("summary", static (writer, vm) => SummaryValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).Summary)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("saveCount", static (writer, vm) => SaveCountValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCount)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canSave", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isSaveExecuting", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)vm).SaveCommand))),
-    ]
-    ;
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P Name name 0 STX
+        P IsDirty isDirty 1 -
+        P Summary summary 2 T
+        P SaveCount saveCount 3 -
+        C Name name 0 -
+        K Save save 0 CORU - -
+        D 0 - name Name - 0
+        D 1 - isDirty IsDirty - 1
+        D 2 - summary Summary - 2
+        D 3 - saveCount SaveCount - 3
+        S name 0
+        S isDirty 1
+        S summary 2
+        S saveCount 3
+        S canSave 4
+        S isSaveExecuting 5
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.Name;
+                case 1: return vm.IsDirty;
+                case 2: return vm.Summary;
+                case 3: return vm.SaveCount;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void Set(object model, int id, global::System.Text.Json.JsonElement value)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: vm.Name = NameValueCodec.Read(value); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void SetValue(object model, int id, object? value)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: vm.Name = (global::System.String)value!; return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadValue(int id, global::System.Text.Json.JsonElement element)
+        {
+            switch (id)
+            {
+                case 0: return NameValueCodec.Read(element);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteValue(int id, global::System.Text.Json.Utf8JsonWriter writer, object? value)
+        {
+            switch (id)
+            {
+                case 0: NameValueCodec.Write(writer, (global::System.String)value!); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: NameValueCodec.Write(writer, vm.Name); return;
+                case 1: IsDirtyValueCodec.Write(writer, vm.IsDirty); return;
+                case 2: SummaryValueCodec.Write(writer, vm.Summary); return;
+                case 3: SaveCountValueCodec.Write(writer, vm.SaveCount); return;
+                case 4: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default)); return;
+                case 5: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.SaveCommand)); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object Command(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.SaveCommand;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> ExecuteResult(object model, int id, global::System.Threading.CancellationToken token, object? argument)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return RunicBridgeCommands.Completion(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token));
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override bool CanExecute(object model, int id, object? argument)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable Subscribe(object model, int id, global::System.Action changed)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.SaveCommand, changed);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable ObserveFailures(object model, int id, global::Microsoft.Extensions.Logging.ILogger logger)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.SaveCommand, logger, "GeneratedReactiveViewModel.SaveCommand");
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }

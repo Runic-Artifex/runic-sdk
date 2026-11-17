@@ -86,7 +86,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         : "global::ReactiveUI.Primitives.RxVoid.Default";
 
     // The class of BridgeSupportFiles.Commands.
-    private const string BridgeCommands = "global::Runic.Application.Views.Generated.Bridges.RunicBridgeCommands";
+    private const string BridgeCommands = "RunicBridgeCommands";
 
     // Awaits a command's execution for its Bridge (runic-sdk#1109). It names no MVVM library, so it is shared by
     // every command whose adapter returns a task.
@@ -96,16 +96,15 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         namespace Runic.Application.Views.Generated.Bridges;
 
         // Awaits this assembly's command executions for their Bridges: one state machine for every command instead of an
-        // async lambda per command. A command's descriptor passes the task of its adapter's execution, and `encode`,
-        // which encodes the value of the completed Task<T>.
+        // async method per command. A Bridge's Members passes the task of its adapter's execution and, for a result, its
+        // id, whose EncodeResult encodes the value of the completed Task<T>.
         internal static class RunicBridgeCommands
         {
             internal static async global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> Result(
-                global::System.Threading.Tasks.Task execution,
-                global::System.Func<global::System.Threading.Tasks.Task, global::Runic.Application.Views.Generated.BridgeOperationResult> encode)
+                global::System.Threading.Tasks.Task execution, RunicBridgeMembers members, int id)
             {
                 await execution.ConfigureAwait(false);
-                return encode(execution);
+                return members.EncodeResult(id, execution);
             }
 
             internal static async global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> Completion(
@@ -141,43 +140,46 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         private string CommandType(GeneratedCommandPlan plan) =>
             $"global::ReactiveUI.IReactiveCommand<{plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
 
-        internal override string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan)
+        internal override void Describe(BridgeCommandTable command, PropertyInfo property, GeneratedCommandPlan plan)
         {
             // The command's parameter; a RunicCommandKey command's codec encodes its key instead.
             var inputType = plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input);
             var keyType = plan.InputGraph?.RootCSharpType() ?? inputType;
-            var model = GeneratedModel.Access(modelType);
-            var typed = $"({CommandType(plan)}){model}.{property.Name}";
+            var typed = $"({CommandType(plan)})vm.{property.Name}";
             var helper = Helper(contract.Flavor);
             var input = contract.HasInput ? $"({inputType})argument!" : Void(contract.Input);
-            var read = contract.HasInput
-                ? $", ReadInput: input => {property.Name}InputCodec.Read(input)"
-                : "";
-            var canonical = contract.HasInput
-                ? $", EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))"
-                : "";
-            var canExecute = $", CanExecute: static (vm, argument) => {helper}.CanExecute({typed}, {input})";
-            var subscribe = $", Subscribe: static (vm, changed) => {helper}.Observe({typed}, changed)";
+            if (contract.HasInput)
+            {
+                command.Return("ReadInput", $"{property.Name}InputCodec.Read(input)");
+                command.Return("EncodeArgument", $"global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))");
+            }
+            command.Return("CanExecute", $"{helper}.CanExecute({typed}, {input})");
+            command.Return("Subscribe", $"{helper}.Observe({typed}, changed)");
+            // While a Bridge presents the ViewModel, it logs the command's ThrownExceptions that no Bridge call
+            // reported (W250-042), so the ViewModel needs no subscription of its own.
+            command.Return("ObserveFailures", $"{helper}.ObserveFailures({typed}, logger, \"{property.ReflectedType?.Name}.{property.Name}\")");
             if (Streams)
             {
-                var streamExecute = $"static async (vm, execution, token, argument) => await {helper}.ExecuteStream({typed}, {input}, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)), token).ConfigureAwait(false)";
-                return $"new global::Runic.Application.Views.Generated.CommandDescriptor(\"{contract.Name}\", static vm => (object){model}.{property.Name}, CreateStream: () => new global::Runic.Application.Views.Generated.BridgeOperationStream(), ExecuteStreamAsync: {streamExecute}{read}{canonical}{canExecute}{subscribe})";
+                // An arm of the async ExecuteStream: the runtime does not await this delegate's call, so its exceptions
+                // stay the returned task's, as with the async lambda before.
+                command.Return("ExecuteStream", $"{helper}.ExecuteStream({typed}, {input}, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)), token)");
+                return;
             }
-            // A non-async lambda: the assembly's generated RunicBridgeCommands awaits the adapter's task and encodes its
-            // value, one state machine for every command instead of one per command (runic-sdk#1109). The runtime awaits
-            // the returned task, so an exception thrown before it is observed as the task's failure was.
-            var executionMethod = contract.Cardinality is RunicCommandResultCardinality.Last ? "ExecuteLast" : "Execute";
-            var resultType = plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result);
-            var execute = contract.HasResult
-                ? $"static (vm, token, argument) => {BridgeCommands}.Result({helper}.{executionMethod}({typed}, {input}, token), static execution => {{ var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result; return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result))); }})"
-                : $"static (vm, token, argument) => {BridgeCommands}.Completion({helper}.ExecuteCompletion({typed}, {input}, token))";
-            return $"new global::Runic.Application.Views.Generated.CommandDescriptor(\"{contract.Name}\", static vm => (object){model}.{property.Name}, ExecuteResultAsync: {execute}{read}{canonical}{canExecute}{subscribe})";
+            // The assembly's generated RunicBridgeCommands awaits the adapter's task and encodes its value
+            // (EncodeResult). The runtime awaits ExecuteResultAsync, so an exception thrown before the task exists is
+            // observed as the task's failure was.
+            if (contract.HasResult)
+            {
+                var executionMethod = contract.Cardinality is RunicCommandResultCardinality.Last ? "ExecuteLast" : "Execute";
+                var resultType = plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result);
+                command.Return("ExecuteResult", $"{BridgeCommands}.Result({helper}.{executionMethod}({typed}, {input}, token), this, id)");
+                command.Arm("EncodeResult", $"""
+                    var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result;
+                    return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)));
+                    """);
+            }
+            else command.Return("ExecuteResult", $"{BridgeCommands}.Completion({helper}.ExecuteCompletion({typed}, {input}, token))");
         }
-
-        // While a Bridge presents the ViewModel, it logs the command's ThrownExceptions that no Bridge call
-        // reported (W250-042), so the ViewModel needs no subscription of its own.
-        internal override string? DescriptorInitializer(PropertyInfo property, string modelType, GeneratedCommandPlan plan) =>
-            $"ObserveFailures = static (vm, logger) => {Helper(contract.Flavor)}.ObserveFailures(({CommandType(plan)}){GeneratedModel.Access(modelType)}.{property.Name}, logger, \"{property.ReflectedType?.Name}.{property.Name}\")";
 
         // Availability and execution state come from the command's observables.
         internal override IEnumerable<(string Member, string Value)> StateMembers(PropertyInfo command, string name, GeneratedCommandPlan plan)

@@ -3,16 +3,15 @@
 namespace Runic.Application.Views.Generated.Bridges;
 
 // Awaits this assembly's command executions for their Bridges: one state machine for every command instead of an
-// async lambda per command. A command's descriptor passes the task of its adapter's execution, and `encode`,
-// which encodes the value of the completed Task<T>.
+// async method per command. A Bridge's Members passes the task of its adapter's execution and, for a result, its
+// id, whose EncodeResult encodes the value of the completed Task<T>.
 internal static class RunicBridgeCommands
 {
     internal static async global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> Result(
-        global::System.Threading.Tasks.Task execution,
-        global::System.Func<global::System.Threading.Tasks.Task, global::Runic.Application.Views.Generated.BridgeOperationResult> encode)
+        global::System.Threading.Tasks.Task execution, RunicBridgeMembers members, int id)
     {
         await execution.ConfigureAwait(false);
-        return encode(execution);
+        return members.EncodeResult(id, execution);
     }
 
     internal static async global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> Completion(

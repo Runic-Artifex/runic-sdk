@@ -7,35 +7,81 @@ using PickedValueCodec = global::Runic.Application.Views.Generated.Bridges.Runic
 using PickCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
 internal sealed class KeyedPlainBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> PickedGetter = static vm => ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked;
     internal KeyedPlainBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedPlainViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.KeyedPlainViewModel), routePrefix ?? "keyedPlain",
-        State,
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Picked", "picked", PickedGetter, null),
-        ],
-        [
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Pick", static vm => (object)((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).PickCommand) { ReadInput = input => PickCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PickCommandInputCodec.Write(writer, (global::System.Int32)argument!)), WireName = "pick", ResolveArgument = static (vm, key) => global::Runic.Application.Testing.Tests.KeyedPlainViewModel.FindSlot((global::System.Int32)key!) },
-        ], "<fingerprint>", content,
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("picked", PickedGetter, propertyName: "Picked"),
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
-    [
-        new global::Runic.Application.Views.Generated.BridgeStateMember("picked", static (writer, vm) => PickedValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked)),
-    ]
-    ;
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P Picked picked 0 -
+        K Pick pick 0 AIK - -
+        D 0 - picked Picked - 0
+        S picked 0
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.KeyedPlainViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.Picked;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.KeyedPlainViewModel)model;
+            switch (id)
+            {
+                case 0: PickedValueCodec.Write(writer, vm.Picked); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object Command(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.KeyedPlainViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.PickCommand;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadInput(int id, global::System.Text.Json.JsonElement input)
+        {
+            switch (id)
+            {
+                case 0: return PickCommandInputCodec.Read(input);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override string EncodeArgument(int id, object? argument)
+        {
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PickCommandInputCodec.Write(writer, (global::System.Int32)argument!));
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? Resolve(object model, int id, object? key)
+        {
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Testing.Tests.KeyedPlainViewModel.FindSlot((global::System.Int32)key!);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }
