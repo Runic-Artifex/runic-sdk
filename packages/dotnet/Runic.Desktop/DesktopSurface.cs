@@ -723,6 +723,19 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
             (Volatile.Read(ref _window) is not { } window || await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false))
             && await confirm(cancellationToken).ConfigureAwait(false);
 
+    // A chain is a handful of entries: a pairwise check, without a set of the enum type.
+    private static bool HasRepeat(IReadOnlyList<BrowserKind> chain)
+    {
+        for (var index = 1; index < chain.Count; index++)
+        {
+            for (var earlier = 0; earlier < index; earlier++)
+            {
+                if (chain[earlier] == chain[index]) return true;
+            }
+        }
+        return false;
+    }
+
     // The presentations a window tries in order: the preferred one, then its fallbacks.
     internal static IReadOnlyList<BrowserKind> PresentationChain(DesktopWindowOptions options)
     {
@@ -908,9 +921,9 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
         {
             throw new ArgumentNullException(nameof(options), "Fallbacks must not be null.");
         }
-        if (options.Fallbacks.Any(static browser => !Enum.IsDefined(browser)))
+        foreach (var browser in options.Fallbacks)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), "Fallbacks contains an unsupported value.");
+            if (!Enum.IsDefined(browser)) throw new ArgumentOutOfRangeException(nameof(options), "Fallbacks contains an unsupported value.");
         }
         if (options.Fallbacks.Count > 0 && options.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser &&
             options.Browser != BrowserKind.Embedded)
@@ -920,7 +933,7 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
                 nameof(options));
         }
         var chain = PresentationChain(options);
-        if (chain.Distinct().Count() != chain.Count)
+        if (HasRepeat(chain))
         {
             throw new ArgumentException("Fallbacks must not repeat the first presentation or another entry.", nameof(options));
         }
@@ -993,11 +1006,20 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
         for (var index = 0; index < subtags.Length; index++)
         {
             var subtag = subtags[index];
-            if (subtag.Length is 0 or > 8 || !subtag.All(char.IsAsciiLetterOrDigit)) return false;
-            if (index == 0 && (!subtag.All(char.IsAsciiLetter) || subtag.Length is 4 || subtag.Length == 1 && subtag is not ("i" or "x" or "I" or "X")))
+            if (subtag.Length is 0 or > 8 || !All(subtag, char.IsAsciiLetterOrDigit)) return false;
+            if (index == 0 && (!All(subtag, char.IsAsciiLetter) || subtag.Length is 4 || subtag.Length == 1 && subtag is not ("i" or "x" or "I" or "X")))
                 return false;
         }
         return true;
+
+        static bool All(string subtag, Func<char, bool> test)
+        {
+            foreach (var character in subtag)
+            {
+                if (!test(character)) return false;
+            }
+            return true;
+        }
     }
 
     private static WebUiBrowser ToCompatibilityBrowser(BrowserKind browser) => browser switch

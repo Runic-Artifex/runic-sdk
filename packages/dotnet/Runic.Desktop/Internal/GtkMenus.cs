@@ -37,7 +37,12 @@ internal static class GtkMenus
             if (entry is { Kind: PlannedMenuKind.Radio, Item: { RadioGroup: { } group } item })
                 checkedCount[group] = checkedCount.GetValueOrDefault(group) + (item.IsChecked == true ? 1 : 0);
         }
-        return checkedCount.Where(static pair => pair.Value == 1).Select(static pair => pair.Key).ToHashSet(StringComparer.Ordinal);
+        var groups = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (group, count) in checkedCount)
+        {
+            if (count == 1) groups.Add(group);
+        }
+        return groups;
     }
 
     // A point of the page's viewport in CSS pixels as widget coordinates of the web view at its zoom level, inside the
@@ -80,7 +85,9 @@ internal sealed class GtkMenuShortcuts
     internal static GtkMenuShortcuts Create(ImmutableArray<PlannedMenuEntry> plan)
     {
         var entries = new Dictionary<(uint, uint), PlannedMenuEntry>();
-        foreach (var menu in plan.OrderBy(static menu => DeclarationIndex(menu.Key)))
+        var menus = plan.ToArray();
+        Array.Sort(menus, static (left, right) => DeclarationIndex(left.Key).CompareTo(DeclarationIndex(right.Key)));
+        foreach (var menu in menus)
         {
             Add(menu, entries);
         }

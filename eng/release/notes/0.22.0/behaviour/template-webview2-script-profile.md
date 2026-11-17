@@ -11,4 +11,4 @@
   (0.22), which starts the Window under the .NET debugger and attaches the JavaScript
   debugger to the page. The VS Code configurations (`Window + WebView2 (Windows)`) and
   `.vsconfig` are unchanged. See
-  [Visual Studio and Rider](https://github.com/Runic-Artifex/runic-sdk/blob/v0.22.0/docs/debugging.md#visual-studio-and-rider).
+  [Visual Studio](https://github.com/Runic-Artifex/runic-sdk/blob/v0.22.0/docs/debugging.md#visual-studio).

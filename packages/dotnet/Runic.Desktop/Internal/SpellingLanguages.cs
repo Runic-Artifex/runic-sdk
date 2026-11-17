@@ -124,9 +124,11 @@ internal static class SpellingLanguages
         }
         if (LikelyRegion(language) is { } likely && Find(available, Name(parsed with { Region = likely })) is { } common) return [common];
         // Any region of the language, the same one each time.
-        foreach (var (name, actual) in available.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+        string[] names = [.. available.Keys];
+        Array.Sort(names, StringComparer.Ordinal);
+        foreach (var name in names)
         {
-            if (Parse(name) is { } candidate && candidate.Language == language && candidate.Script == parsed.Script) return [actual];
+            if (Parse(name) is { } candidate && candidate.Language == language && candidate.Script == parsed.Script) return [available[name]];
         }
         return [];
     }
@@ -179,7 +181,7 @@ internal static class SpellingLanguages
             index++;
         }
         if (index < subtags.Length && ((subtags[index].Length == 2 && IsLetters(subtags[index])) ||
-            (subtags[index].Length == 3 && subtags[index].All(char.IsAsciiDigit))))
+            (subtags[index].Length == 3 && !subtags[index].AsSpan().ContainsAnyExceptInRange('0', '9'))))
         {
             region = subtags[index].ToUpperInvariant();
         }

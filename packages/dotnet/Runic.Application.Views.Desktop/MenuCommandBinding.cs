@@ -160,8 +160,15 @@ internal sealed partial class MenuCommandBinding : IDisposable
         }
     }
 
-    private static bool SameAnswers(Dictionary<MenuCommandKey, bool> before, Dictionary<MenuCommandKey, bool> after) =>
-        before.Count == after.Count && before.All(pair => after.TryGetValue(pair.Key, out var value) && value == pair.Value);
+    private static bool SameAnswers(Dictionary<MenuCommandKey, bool> before, Dictionary<MenuCommandKey, bool> after)
+    {
+        if (before.Count != after.Count) return false;
+        foreach (var (key, answer) in before)
+        {
+            if (!after.TryGetValue(key, out var value) || value != answer) return false;
+        }
+        return true;
+    }
 
     // The ViewModel's check marks, in its model turn. A failing answer keeps the declaration and is logged.
     private Dictionary<MenuCommandKey, bool> ReadChecked(HashSet<MenuCommandKey> toggles)
