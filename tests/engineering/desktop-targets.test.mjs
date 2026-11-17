@@ -212,6 +212,26 @@ test("an executable without a server package fails with RUNICDESK004", () => {
   }
 });
 
+// RunicDesktopServer=None keeps neither server (runic-sdk#1109), so a referenced server package is unused: RUNICDESK007
+// warns, and NoWarn suppresses it. Without a server package, None is quiet.
+test("RunicDesktopServer=None with a server package warns with RUNICDESK007", () => {
+  const none = "<OutputType>Exe</OutputType><RunicDesktopServer>None</RunicDesktopServer>";
+  for (const servers of [["kestrel"], ["native"], ["kestrel", "native"]]) {
+    const result = validateServer(`none-with-${servers.join("-")}`, none, servers);
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /warning RUNICDESK007: RunicDesktopServer is None, but the project references a presentation server package/);
+  }
+  const quiet = validateServer("none-without-server", none, []);
+  assert.equal(quiet.status, 0, quiet.stdout);
+  assert.doesNotMatch(quiet.stdout, /RUNICDESK007/);
+  // The fixture is not an SDK project: it maps NoWarn to MSBuildWarningsAsMessages as Microsoft.Common.CurrentVersion.targets does.
+  const suppressed = validateServer("none-suppressed",
+    `${none}<NoWarn>$(NoWarn);RUNICDESK007</NoWarn><MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);$(NoWarn)</MSBuildWarningsAsMessages>`,
+    ["kestrel"]);
+  assert.equal(suppressed.status, 0, suppressed.stdout);
+  assert.doesNotMatch(suppressed.stdout, /warning RUNICDESK007/);
+});
+
 test("a server whose package is missing fails with RUNICDESK004, an unknown one with RUNICDESK003", () => {
   const kestrel = validateServer("missing-kestrel", "<OutputType>Exe</OutputType><RunicDesktopServer>Kestrel</RunicDesktopServer>", ["native"]);
   assert.match(kestrel.stdout, /error RUNICDESK004: RunicDesktopServer is Kestrel, but the project does not reference Runic\.Desktop\.Kestrel\./);

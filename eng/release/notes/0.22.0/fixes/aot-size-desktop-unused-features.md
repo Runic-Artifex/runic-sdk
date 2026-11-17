@@ -4,9 +4,13 @@
     `RunicGuestOptions`; an application that is never a guest no longer carries it (−0.51 MB).
   - The page script of `/webui.js` is compiled in minified, as UTF-8, and the macOS window
     chrome and WebKitGTK keyboard scripts only in builds whose window code uses them.
-  - `RunicDesktopServer=None` now turns the presentation server off, as documented for an
-    executable that opens no window: a trimmed or NativeAOT build keeps neither server, also
-    when it references `Runic.Desktop.Kestrel` (−4.6 MB in that case). A window in such an
-    application fails with `presentation-server-unavailable`.
+  - Behaviour change: `RunicDesktopServer=None` now turns the presentation server off, as
+    documented for an executable that opens no window. A trimmed or NativeAOT build keeps
+    neither server, also when it references `Runic.Desktop.Kestrel` (−4.6 MB in that case),
+    and a window fails with `presentation-server-unavailable` instead of being served by a
+    referenced Kestrel. The new build warning
+    [`RUNICDESK007`](https://github.com/Runic-Artifex/runic-sdk/blob/v0.22.0/docs/diagnostics.md#runicdesk007)
+    reports `None` together with a referenced server package; remove `RunicDesktopServer`
+    to use that server, or suppress the warning with `NoWarn`.
   - The new MSBuild property `RunicDesktopRegionHost` (default `true`) lets an application
     whose pages declare no hosted regions leave the region host out (`false`).

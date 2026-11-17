@@ -43,6 +43,10 @@
     <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
            Condition="'$(RunicDesktopServer)' == 'Native' and '$(_RunicDesktopNativeServerReferenced)' != 'true'"
            Text="RunicDesktopServer is Native, but the project does not reference Runic.Desktop.NativeServer." />
+    <!-- None keeps neither server (Runic.Desktop.PresentationServer=false), so a referenced server package is unused. -->
+    <Warning Code="RUNICDESK007" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk007"
+             Condition="'$(RunicDesktopServer)' == 'None' and ('$(_RunicDesktopKestrelReferenced)' == 'true' or '$(_RunicDesktopNativeServerReferenced)' == 'true')"
+             Text="RunicDesktopServer is None, but the project references a presentation server package (Runic.Desktop.Kestrel or Runic.Desktop.NativeServer). None uses no server: the package is unused, and a Runic Desktop window would fail with presentation-server-unavailable. Remove RunicDesktopServer to use the referenced server, or remove the package." />
   </Target>
   <Target Name="RunicDesktopLinkWebView2Loader" AfterTargets="ResolvePackageAssets"
           Condition="'$(PublishAot)' == 'true' and ('$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64')">
