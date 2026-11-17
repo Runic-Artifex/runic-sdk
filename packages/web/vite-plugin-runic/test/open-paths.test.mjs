@@ -1,12 +1,13 @@
 // The paths of /__runic/open's frontend locations on Windows and POSIX, judged on any platform with `path.win32` and
 // `path.posix` (WIN-02, WIN-03): Vite and Runic Inspect name Windows files with `/` (`C:/p/src/App.vue`), Vite's
 // `isFileLoadingAllowed` compares that form, and only absolute drive or POSIX paths without `.`/`..` segments, UNC,
-// device or stream paths reach it.
+// device or stream paths reach it. The component entry's module ID is Vite's form too.
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import { canonicalFrontendFile, frontendLocation } from "../dist/sources.js";
 import { fsPath, resolveFrame, sourceFile } from "../dist/inspect-frameworks.js";
+import { componentEntryId, componentHooks } from "../dist/component.js";
 
 // Vite's check on Windows, roughly: below an allowed directory in Vite's form, without regard to case.
 const below = (directory) => (file) => file.toLowerCase().startsWith(`${directory.toLowerCase()}/`);
@@ -81,4 +82,18 @@ test("/@fs/ URL paths with a drive are Windows files, as Vite's fsPathFromId rea
   // And /__runic/open opens it on Windows.
   assert.deepEqual(frontendLocation({ file: frame.file, line: frame.line, column: frame.column }, below("C:/repo"), path.win32),
     { file: "C:\\repo\\lib\\B.tsx", line: 4, column: 2 });
+});
+
+test("the component entry's module ID is the file as Vite names it, with `/` on Windows", () => {
+  // Vite's root is `C:/p/Frontend`; a configuration may name the entry with either separator, or absolutely.
+  for (const [entry, root] of [["src/component.ts", "C:/p/Frontend"], ["src\\component.ts", "C:\\p\\Frontend"],
+    ["./src/../src/component.ts", "C:/p/Frontend"], ["C:\\p\\Frontend\\src\\component.ts", "C:/elsewhere"],
+    ["C:/p/Frontend/src/component.ts", "C:/elsewhere"]]) {
+    assert.equal(componentEntryId(entry, root, path.win32), "C:/p/Frontend/src/component.ts", `${entry} in ${root}`);
+  }
+  assert.equal(componentEntryId("src/component.ts", "/p/Frontend", path.posix), "/p/Frontend/src/component.ts");
+  assert.equal(componentEntryId("/p/Frontend/src/component.ts", "/elsewhere", path.posix), "/p/Frontend/src/component.ts");
+  // The generated entry module imports it by that ID.
+  const hooks = componentHooks({ entry: "src/component.ts" }, () => "/p/Frontend");
+  assert.match(hooks.load(hooks.resolveId("virtual:runic/component-entry")), /^import mount from "\/p\/Frontend\/src\/component\.ts";$/mu);
 });
