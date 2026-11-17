@@ -20,17 +20,17 @@ Their IDs are retired and never name another family.
   `RunicWindowTestHostOptions.CloseDrain` and `RunicTestWindow.IsDraining`;
   `DesktopWindowOptions.CloseDrainAsync`, `DesktopCloseDrainContext`,
   `DesktopCloseReason`, `DesktopHostOptions.ShutdownDrainTimeout` and
-  `DesktopHost.ShutdownStarting`. On npm, `onBridgeDraining` moves from
-  `@runic-artifex/views/experimental` to the root entry, and generated Bridges
-  no longer suppress `RUNICDESK105`.
+  `DesktopHost.ShutdownStarting`. On npm, `onBridgeDraining` is a root export
+  of `@runic-artifex/views`; `./experimental` keeps a deprecated re-export
+  until 0.23. Generated Bridges no longer suppress `RUNICDESK105`.
 
 What to remove:
 
 - `RUNICDESK104` and `RUNICDESK105` from `<NoWarn>` in project files and
   `Directory.Build.props`, and their `#pragma warning disable`/`restore` lines.
   A leftover suppression is harmless.
-- Import `onBridgeDraining` from `@runic-artifex/views`: the
-  `@runic-artifex/views/experimental` entry no longer exports it, as an
-  experimental npm API graduates before 1.0 without a deprecated alias.
+- Import `onBridgeDraining` from `@runic-artifex/views`. The
+  `@runic-artifex/views/experimental` import still works in 0.22, marked
+  `@deprecated`, and 0.23 removes it (one-minor transition, D069.3).
 
 See [graduated and retired IDs](https://github.com/Runic-Artifex/runic-sdk/blob/v0.22.0/docs/experimental.md#retired).

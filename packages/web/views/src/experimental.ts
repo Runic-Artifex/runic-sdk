@@ -13,6 +13,16 @@ export {
   type RunicHostedRegionElement,
 } from "./hosted-region.js";
 
+// The close drain (0.19) graduated in 0.22 (RUNICDESK105): `onBridgeDraining` is a root export. This entry keeps it for
+// one minor (D069.3), the same function, and 0.23 removes it.
+import { onBridgeDraining as rootOnBridgeDraining } from "./connection-state.js";
+
+/**
+ * @deprecated Since 0.22, import `onBridgeDraining` from `@runic-artifex/views` instead of
+ * `@runic-artifex/views/experimental`. It is the same function; 0.23 removes it from this entry.
+ */
+export const onBridgeDraining: typeof rootOnBridgeDraining = rootOnBridgeDraining;
+
 // Trusted component mode (0.18; in `./experimental` since 0.21): a guest's Views as a custom element in a host page's
 // own document, the runtime that the `component` build target of `@runic-artifex/vite-plugin-runic` bundles; the .NET
 // side is the experimental family RUNICDESK103.

@@ -100,3 +100,17 @@ test("generated clients connect with member decoders and structured calls", asyn
   const routed: Spec = { kind: "editor", route: "editor", fields: {}, defaults: {}, commands: { save: { route: "Save" } } };
   void [partial, options, legacy, calls, spec, routed];
 });
+
+// The close drain's flag graduated to the root entry in 0.22 (RUNICDESK105). ./experimental keeps a deprecated export
+// of the same function until 0.23 (D069.3), and its declaration carries @deprecated, so editors strike it through.
+test("onBridgeDraining is a root export and a deprecated ./experimental export of the same type", async () => {
+  const { readFileSync } = await import("node:fs");
+  const root = await import("../dist/index.js");
+  const experimental = await import("../dist/experimental.js");
+  const same: typeof root.onBridgeDraining = experimental.onBridgeDraining;
+  const back: typeof experimental.onBridgeDraining = root.onBridgeDraining;
+  void [same, back];
+  const declaration = readFileSync(new URL("../dist/experimental.d.ts", import.meta.url), "utf8");
+  if (!/@deprecated Since 0\.22, import `onBridgeDraining` from `@runic-artifex\/views`[\s\S]*?export declare const onBridgeDraining/.test(declaration))
+    throw new Error("dist/experimental.d.ts does not mark onBridgeDraining @deprecated with the new import path.");
+});
