@@ -32,10 +32,12 @@ internal static class CsWebUiDevelopmentServer
     {
         var requestPath = path.StartsWith('/') ? path : "/" + path;
         // Whatever the folder has, and every path that is not plain, stays WebUI's.
-        if (InFolder(root, requestPath) ||
-            !DevelopmentServerForwarding.Admits("GET", peer: null, host: null, fetchSite: null, requestPath) ||
-            forwarding.DocumentTarget(requestPath, query: null) is not { } target ||
-            !local())
+        // civetweb hands over the path decoded, with "//" and dot segments removed; the dock's root endpoints go to the
+        // server's root, everything else below its base, both through the same checked target rule.
+        var target = DevelopmentServerForwarding.IsDockPath(requestPath)
+            ? forwarding.RootTarget(requestPath, query: null, rawPath: requestPath)
+            : forwarding.DocumentTarget(requestPath, query: null, rawPath: requestPath);
+        if (InFolder(root, requestPath) || target is null || !local())
             return WebUiFileHandlerResult.NotHandled;
         return WebUiFileHandlerResult.FromResponse(Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
             $"HTTP/1.1 307 Temporary Redirect\r\nLocation: {target.AbsoluteUri}\r\nCache-Control: no-store\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")));

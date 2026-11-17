@@ -16,7 +16,7 @@ internal static class DevelopmentServerContent
             if (resources is not null &&
                 await resources(request, cancellationToken).ConfigureAwait(false) is { } response)
                 return response;
-            return await ForwardAsync(forwarding, request, forwarding.DocumentTarget(request.Path, request.QueryString),
+            return await ForwardAsync(forwarding, request, forwarding.DocumentTarget(request.Path, request.QueryString, request.RawPath),
                 cancellationToken).ConfigureAwait(false);
         };
 
@@ -29,9 +29,9 @@ internal static class DevelopmentServerContent
     internal static ContentHandler ForListener(DevelopmentServerForwarding forwarding) =>
         (request, _) =>
         {
-            if (forwarding.RootTarget(request.Path, request.QueryString) is not { } target ||
-                !DevelopmentServerForwarding.Admits(request.Method, request.RemoteIpAddress, Header(request, "Host"),
-                    Header(request, "Sec-Fetch-Site"), request.Path))
+            if (!DevelopmentServerForwarding.Admits(request.Method, request.RemoteIpAddress, Header(request, "Host"),
+                    Header(request, "Sec-Fetch-Site")) ||
+                forwarding.RootTarget(request.Path, request.QueryString, request.RawPath) is not { } target)
                 return ValueTask.FromResult<ContentResponse?>(null);
             return ValueTask.FromResult<ContentResponse?>(new ContentResponse(ReadOnlyMemory<byte>.Empty,
                 "text/plain; charset=utf-8", 307, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -46,7 +46,7 @@ internal static class DevelopmentServerContent
     {
         if (target is null ||
             !DevelopmentServerForwarding.Admits(request.Method, request.RemoteIpAddress, Header(request, "Host"),
-                Header(request, "Sec-Fetch-Site"), request.Path))
+                Header(request, "Sec-Fetch-Site")))
             return null;
         var head = string.Equals(request.Method, "HEAD", StringComparison.OrdinalIgnoreCase);
         var forwarded = await forwarding.SendAsync(target, head, Header(request, "Accept"), cancellationToken)

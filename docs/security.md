@@ -297,6 +297,49 @@ open a listed file in your editor and write translation sources. On a shared
 machine, run the dev server only for projects that the other accounts may see
 ([vite-plugin-runic, "Security"](../packages/web/vite-plugin-runic/README.md#runic-inspect-from-another-machine)).
 
+Since 0.22, a Window under `dev` with a Vite or Angular development server falls
+back to the server for what its own origin cannot serve. Its origin serves only
+`www/`, so a file that the page builds a URL to at run time, such as
+`<img src="brand/logo.svg">`, would otherwise 404 (#1085).
+
+- **Forwarding.** A Runic Desktop Window forwards a `GET` or `HEAD` that
+  neither `www/` nor the application's `Resources` answer to the server, and
+  serves the answer from its own origin.
+- **Redirects.** A path on the Window's listener outside every Window's own
+  path, such as the Vite DevTools dock's `/__devtools/`, gets a redirect to
+  the same path on the server instead. A CS-WebUI Window redirects whatever
+  its folder lacks.
+- **When.** Only in the `Development` environment, only with the address that
+  `dev` passes (`http://127.0.0.1:<port>/`, never `localhost`), and only when
+  the Window serves its build folder, not the embedded frontend archive. The
+  gate is the process environment, not the host's `IHostEnvironment`: an app
+  started with `--environment Production` but with `DOTNET_ENVIRONMENT=Development`
+  in its environment still forwards.
+- **What is admitted.** Requests from a loopback peer that names a loopback
+  `Host`, and only same-origin or user-initiated fetches
+  (`Sec-Fetch-Site`): another site's page, another machine and a
+  DNS-rebinding page get 404. On CS-WebUI, WebUI's single-client cookie and a
+  window that listens on loopback only stand for these checks.
+- **Which targets.** A target is built from the server's address and a plain
+  path: no empty, `.` or `..` segment, and no encoded or literal slash or
+  backslash. It then has to keep the server's host, port and base path, so
+  nothing is fetched from, or redirected to, another host.
+- **Which endpoints.** A path whose first segment starts with `__` or `@` names
+  one of the server's endpoints, such as Vite's `/__open-in-editor`,
+  `/@fs/`, or vite-plugin-runic's `/__runic/sources` and `/__runic/state`.
+  Those judge the browser's `Origin` and `Sec-Fetch-Site`, which a forwarded
+  request does not carry, so none of them is forwarded. Only the dock's
+  `__devtools` and `__devtools-assets` are redirected, at the root, where the
+  browser itself asks the server.
+- **What is not sent or passed on.** No cookies, credentials or `Origin` go to
+  the server. Its redirects are not followed, and only successful answers
+  return, with their type, cache headers and `nosniff`, up to 256 MiB and two
+  minutes. WebSockets are not forwarded; Vite's client and the dock connect to
+  the server themselves.
+
+Another local process that learns a Window's random path reads through it what
+it could read from the server directly, as described above.
+
 On Linux, `dev` also opens two debugging endpoints for the Window's WebKitGTK
 pages, as the
 [`dotnet runic dev` documentation](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview)

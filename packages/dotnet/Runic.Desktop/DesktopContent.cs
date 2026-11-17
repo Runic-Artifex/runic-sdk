@@ -42,9 +42,12 @@ public sealed class ContentRequest
     /// <summary>Gets the request-scoped service provider.</summary>
     public IServiceProvider Services { get; }
 
-    // The raw query, such as "?v=1", or empty; and the TCP peer. Internal: Runic's development server forwarding
-    // (Runic.Application.Views.Desktop) needs them, and the public contract stays the path.
+    // The raw query, such as "?v=1", or empty; the path as received, before Path's decoding; and the TCP peer.
+    // Internal: Runic's development server forwarding (Runic.Application.Views.Desktop) needs them, and the public
+    // contract stays the path.
     internal string QueryString { get; init; } = string.Empty;
+
+    internal string? RawPath { get; init; }
 
     internal System.Net.IPAddress? RemoteIpAddress { get; init; }
 

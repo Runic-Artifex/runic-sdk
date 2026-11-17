@@ -697,6 +697,7 @@ public sealed class DesktopHost : IAsyncDisposable
             context.Cancellation)
         {
             QueryString = context.QueryString,
+            RawPath = context.Path,
             RemoteIpAddress = context.RemoteIpAddress,
         };
     }

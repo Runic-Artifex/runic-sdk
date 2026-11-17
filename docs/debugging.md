@@ -350,6 +350,11 @@ Its **Runic** panel shows:
   ([failure detail in development](../packages/dotnet/Runic.Application.Views/README.md#failure-detail-in-development)).
 - **Connection**, each View's **state** as a tree, and **superseded commands**.
 
+Under `dev` the dock loads from the development server's origin, not the Window's: the development document points the
+dock's loader at the server, and the Window redirects the dock's `/__devtools/` and `/__devtools-assets/` requests to
+it, so the dock's connection and icons come from the server
+([security guide, "Development server"](security.md#development-server)).
+
 The first time a page opens the dock, it asks for the **one-time code** that Vite DevTools prints in the
 `dotnet runic dev` output. Keep that check on: it keeps other pages of this machine out of the dock. See
 [Bridge call timeline in the dock](../packages/web/vite-plugin-runic/README.md#bridge-call-timeline-in-the-dock).

@@ -28,51 +28,79 @@ internal sealed class DevelopmentServerForwardingChecks
         };
         Check(DevelopmentServerForwarding.Resolve(Environment("Development", "http://127.0.0.1:5173/"))?.Origin.AbsoluteUri ==
             "http://127.0.0.1:5173/", "A Vite server on loopback was not used.");
-        Check(DevelopmentServerForwarding.Resolve(Environment("Development", null, "http://localhost:4200"))?.Origin.AbsoluteUri ==
-            "http://localhost:4200/", "An Angular server on localhost was not used.");
-        Check(DevelopmentServerForwarding.Resolve(Environment("Development", "http://[::1]:5173/app"))?.Origin.AbsoluteUri ==
-            "http://[::1]:5173/app/", "A base path was not kept as a folder.");
+        Check(DevelopmentServerForwarding.Resolve(Environment("Development", null, "http://127.0.0.1:4200"))?.Origin.AbsoluteUri ==
+            "http://127.0.0.1:4200/", "An Angular server was not used.");
+        Check(DevelopmentServerForwarding.Resolve(Environment("Development", "http://127.0.0.1:5173/app"))?.Origin.AbsoluteUri ==
+            "http://127.0.0.1:5173/app/", "A base path was not kept as a folder.");
         Check(DevelopmentServerForwarding.Resolve(Environment("Production", "http://127.0.0.1:5173/")) is null,
             "A server was used outside Development.");
         Check(DevelopmentServerForwarding.Resolve(Environment(null, "http://127.0.0.1:5173/")) is null,
             "A server was used without an environment.");
-        foreach (var refused in new[] { "http://192.168.1.2:5173/", "http://example.com:5173/", "https://127.0.0.1:5173/",
+        // DEV-SEC-61: only the address dev binds; localhost may resolve to ::1, where another user could listen.
+        foreach (var refused in new[] { "http://localhost:5173/", "http://[::1]:5173/", "http://127.0.0.2:5173/", "http://192.168.1.2:5173/", "http://example.com:5173/", "https://127.0.0.1:5173/",
             "http://user@127.0.0.1:5173/", "http://127.0.0.1:5173/?x=1", "file:///tmp/x", "5173", "" })
             Check(DevelopmentServerForwarding.Resolve(Environment("Development", refused)) is null,
                 $"'{refused}' was used as the development server.");
     }
 
     [Test]
-    public void OnlyPlainSameOriginReadsFromLoopbackAreAdmitted()
+    public void OnlySameOriginReadsFromLoopbackAreAdmitted()
     {
         var loopback = IPAddress.Loopback;
-        Check(DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "same-origin", "/brand/logo.svg"),
-            "A same-origin image was refused.");
-        Check(DevelopmentServerForwarding.Admits("HEAD", IPAddress.IPv6Loopback, "[::1]:4000", null, "/a.svg"),
+        Check(DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "same-origin"), "A same-origin image was refused.");
+        Check(DevelopmentServerForwarding.Admits("HEAD", IPAddress.IPv6Loopback, "[::1]:4000", null),
             "A HEAD request without fetch metadata was refused.");
-        Check(DevelopmentServerForwarding.Admits("GET", IPAddress.Parse("::ffff:127.0.0.1"), "localhost:4000", "none", "/a.svg"),
+        Check(DevelopmentServerForwarding.Admits("GET", IPAddress.Parse("::ffff:127.0.0.1"), "localhost:4000", "none"),
             "An IPv4-mapped loopback peer was refused.");
-        Check(!DevelopmentServerForwarding.Admits("POST", loopback, "127.0.0.1:4000", "same-origin", "/a"), "A POST was admitted.");
-        Check(!DevelopmentServerForwarding.Admits("GET", IPAddress.Parse("192.168.1.2"), "127.0.0.1:4000", "same-origin", "/a"),
+        Check(!DevelopmentServerForwarding.Admits("POST", loopback, "127.0.0.1:4000", "same-origin"), "A POST was admitted.");
+        Check(!DevelopmentServerForwarding.Admits("GET", IPAddress.Parse("192.168.1.2"), "127.0.0.1:4000", "same-origin"),
             "Another machine was admitted.");
-        Check(!DevelopmentServerForwarding.Admits("GET", loopback, "rebind.example:4000", "same-origin", "/a"),
+        Check(!DevelopmentServerForwarding.Admits("GET", loopback, "rebind.example:4000", "same-origin"),
             "A DNS-rebinding host was admitted.");
-        Check(!DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "cross-site", "/a"),
-            "Another site was admitted.");
-        Check(!DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "same-site", "/a"),
+        Check(!DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "cross-site"), "Another site was admitted.");
+        Check(!DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "same-site"),
             "A same-site page of another origin was admitted.");
-        foreach (var path in new[] { "/", "", "a", "/../secret", "/a/./b", "/a\\b", "/__open-in-editor", "/__open-in-editor?file=x" })
-            Check(!DevelopmentServerForwarding.Admits("GET", loopback, "127.0.0.1:4000", "same-origin", path),
-                $"The path '{path}' was admitted.");
+    }
 
+    // DEV-SEC-57, 58, 59, 60: a target keeps the server's authority and base path, and names no server endpoint but the
+    // dock's, whatever the path held.
+    [Test]
+    public void TargetsStayOnTheServerAndNameNoEndpoint()
+    {
         var forwarding = new DevelopmentServerForwarding(new Uri("http://127.0.0.1:5173/app/"));
         Check(forwarding.DocumentTarget("/brand/my logo.svg", "?v=1")?.AbsoluteUri == "http://127.0.0.1:5173/app/brand/my%20logo.svg?v=1",
             "A document-relative path did not map below the server's base.");
+        Check(forwarding.DocumentTarget("/brand/", null)?.AbsoluteUri == "http://127.0.0.1:5173/app/brand/",
+            "A trailing slash was refused.");
         Check(forwarding.RootTarget("/__devtools-assets/vite-plus.svg", null)?.AbsoluteUri ==
-            "http://127.0.0.1:5173/__devtools-assets/vite-plus.svg", "A root-relative path did not map to the server's root.");
-        Check(forwarding.DocumentTarget("/a", "?x#y") is null, "A query with a fragment was kept.");
+            "http://127.0.0.1:5173/__devtools-assets/vite-plus.svg", "The dock's icon did not map to the server's root.");
+        Check(forwarding.RootTarget("/__devtools/__connection.json", null)?.AbsoluteUri ==
+            "http://127.0.0.1:5173/__devtools/__connection.json", "The dock's connection file did not map to the server's root.");
+        Check(forwarding.RootTarget("/brand/logo.svg", "?v=2")?.AbsoluteUri == "http://127.0.0.1:5173/brand/logo.svg?v=2",
+            "A root-relative file did not map to the server's root.");
         Check(forwarding.DocumentTarget("/a%2F..%2Fb", null)?.AbsoluteUri == "http://127.0.0.1:5173/app/a%252F..%252Fb",
-            "An encoded separator was decoded into a path segment.");
+            "A literal percent sign was decoded.");
+        Check(forwarding.DocumentTarget("/a", "?x#y") is null, "A query with a fragment was kept.");
+        // (decoded path, path as received)
+        var refused = new (string Path, string? Raw)[]
+        {
+            ("//h/x", "//h/x"), ("///h/x", "///h/x"), ("//h:8080/x", "//h:8080/x"), ("//169.254.169.254/latest/meta-data/", null),
+            ("/%2Fh/x".Replace("%2F", "/"), "/%2Fh/x"), ("//h/x", "/%2F%2Fh/x"), ("/%2Fh/x", "/%2Fh/x"), ("//h/x", "/%2F%2Fh/x"),
+            ("/a//b", "/a//b"), ("/a\\b", "/a\\b"), ("/a\\b", "/a%5Cb"), ("/../x", "/../x"), ("/a/./b", null), ("/", "/"), ("", ""),
+            ("/__open-in-editor", "/__open-in-editor"), ("//__open-in-editor", "//__open-in-editor"),
+            ("//__open-in-editor", "/%2F__open-in-editor"), ("/__runic/sources", "/__runic/sources"),
+            ("/__runic/state", "/__runic/state"), ("/__runic-translations/message", null), ("/@fs/etc/passwd", "/@fs/etc/passwd"),
+            ("/@vite/client", null), ("/__DEVTOOLS/x", null),
+        };
+        foreach (var (path, raw) in refused)
+        {
+            Check(forwarding.DocumentTarget(path, "?file=x", raw) is null, $"'{raw ?? path}' gave a document target.");
+            Check(forwarding.RootTarget(path, "?file=x", raw) is null, $"'{raw ?? path}' gave a root target.");
+        }
+        // The dock's endpoints exist at the server's root only.
+        Check(forwarding.DocumentTarget("/__devtools/embedded.js", null) is null, "The dock's script mapped below the base.");
+        Check(DevelopmentServerForwarding.IsDockPath("/__devtools/embedded.js") &&
+            !DevelopmentServerForwarding.IsDockPath("/__runic/state"), "The dock's paths were not told apart.");
     }
 
     [Test, NotInParallel(Order = 35)]
@@ -166,6 +194,38 @@ internal sealed class DevelopmentServerForwardingChecks
                 using var answer = await http.SendAsync(rebinding, cancellation.Token);
                 Check(answer.StatusCode != HttpStatusCode.TemporaryRedirect, "A DNS-rebinding host was redirected.");
             }
+
+            // DEV-SEC-57/58/59/60, exactly as a page or WebView sends them: nothing leaves for another host, no redirect
+            // names one, and no server endpoint is reached.
+            server.Requests.Clear();
+            string surfacePath = surface.Url.AbsolutePath.TrimEnd('/');
+            foreach (var target in new[]
+            {
+                $"{surfacePath}//127.0.0.1/x", $"{surfacePath}/%2F%2F127.0.0.1/x", $"{surfacePath}/%252F%252F127.0.0.1/x",
+                $"{surfacePath}//127.0.0.1:8080/x", $"{surfacePath}/%2F__open-in-editor?file=src/main.ts",
+                $"{surfacePath}//__open-in-editor?file=y", $"{surfacePath}/__open-in-editor?file=y",
+                $"{surfacePath}/__runic/sources", $"{surfacePath}/__runic/state", $"{surfacePath}/@fs/etc/passwd",
+                $"{surfacePath}/a%5Cb",
+            })
+            {
+                var (status, _) = await RawGetAsync(listener, target, cancellation.Token);
+                Check(status is 404 or 400, $"'{target}' was answered {status}.");
+            }
+            foreach (var target in new[] { "//evil.example/x", "/%2Fevil.example/x", "/%2F%2Fevil.example/x", "//__open-in-editor?file=y",
+                "/__open-in-editor?file=y", "/__runic/sources", "/@fs/etc/passwd" })
+            {
+                var (status, location) = await RawGetAsync(listener, target, cancellation.Token);
+                Check(status != 307 || location?.StartsWith(server.Origin.AbsoluteUri + "__devtools", StringComparison.Ordinal) == true,
+                    $"'{target}' was redirected to '{location}'.");
+                Check(status is 404 or 400 or 421, $"'{target}' was answered {status}.");
+            }
+            Check(server.Requests.IsEmpty, $"The server was asked: {string.Join(", ", server.Requests)}.");
+            var (iconStatus, iconLocation) = await RawGetAsync(listener, "/__devtools-assets/vite-plus.svg", cancellation.Token);
+            Check(iconStatus == 307 && iconLocation == new Uri(server.Origin, "/__devtools-assets/vite-plus.svg").AbsoluteUri,
+                $"The dock's icon was answered {iconStatus} {iconLocation}.");
+            using (var nosniff = await http.SendAsync(Get(new Uri(surface.Url, "brand/logo.svg"), "same-origin"), cancellation.Token))
+                Check(nosniff.Headers.TryGetValues("X-Content-Type-Options", out var values) && values.Contains("nosniff"),
+                    "A forwarded answer had no nosniff.");
         }
         finally
         {
@@ -234,6 +294,13 @@ internal sealed class DevelopmentServerForwardingChecks
                 "A window reachable from other machines redirected.");
             Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/__open-in-editor", () => true).IsHandled,
                 "The editor launcher was redirected.");
+            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/__runic/sources", () => true).IsHandled,
+                "A Runic endpoint was redirected.");
+            Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "//evil.example/x", () => true).IsHandled,
+                "An empty segment was redirected.");
+            var logo = Encoding.ASCII.GetString(CsWebUiDevelopmentServer.Respond(root, forwarding, "/brand/logo.svg", () => true).Response.Span);
+            Check(logo.Contains("\r\nLocation: http://127.0.0.1:5173/brand/logo.svg\r\n", StringComparison.Ordinal),
+                $"A page-relative file was answered '{logo}'.");
             Check(!CsWebUiDevelopmentServer.Respond(root, forwarding, "/../outside.txt", () => true).IsHandled,
                 "A path outside the folder was redirected.");
         }
@@ -241,6 +308,26 @@ internal sealed class DevelopmentServerForwardingChecks
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    // A GET written byte for byte, so no client normalizes "//" or "%2F"; returns the status and the Location.
+    private static async Task<(int Status, string? Location)> RawGetAsync(Uri listener, string target, CancellationToken cancellationToken)
+    {
+        using var client = new TcpClient();
+        await client.ConnectAsync(listener.Host, listener.Port, cancellationToken);
+        await using var stream = client.GetStream();
+        var request = $"GET {target} HTTP/1.1\r\nHost: {listener.Authority}\r\nSec-Fetch-Site: same-origin\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(request), cancellationToken);
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+        var statusLine = await reader.ReadLineAsync(cancellationToken) ?? "";
+        var parts = statusLine.Split(' ');
+        int status = parts.Length > 1 && int.TryParse(parts[1], out var code) ? code : 0;
+        string? location = null;
+        for (var line = await reader.ReadLineAsync(cancellationToken); !string.IsNullOrEmpty(line); line = await reader.ReadLineAsync(cancellationToken))
+        {
+            if (line.StartsWith("Location:", StringComparison.OrdinalIgnoreCase)) location = line["Location:".Length..].Trim();
+        }
+        return (status, location);
     }
 
     private static HttpRequestMessage Get(Uri url, string? fetchSite)
