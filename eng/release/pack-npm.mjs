@@ -11,7 +11,9 @@ const root = resolve(import.meta.dirname, '../..');
 
 // Bun resolves workspace: ranges from the checkout, so pack in place, then stamp
 // gitHead into the archive and point the README and homepage links at the
-// release tag. The source files are never written.
+// release tag. The source files are never written. `source` is the commit that
+// last changed the package's inputs (npm-inputs.mjs npmSourceCommit), so the
+// bytes depend only on the package's content.
 export function packNpm(directory, destination, source) {
   assert.match(source, /^[a-f0-9]{40}$/);
   const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
@@ -76,5 +78,14 @@ function stampArchive(archive, rewrites) {
   assert.equal(stamped.get('package/package.json'), 1, `${archive} must contain exactly one package/package.json`);
   for (const [path, count] of stamped) assert.equal(count, 1, `${archive} must contain ${path} once`);
   output.push(Buffer.alloc(1024));
-  writeFileSync(archive, gzipSync(Buffer.concat(output), { level: 9 }));
+  writeFileSync(archive, normalizedGzip(Buffer.concat(output)));
+}
+
+// zlib writes the packing host's operating system into the gzip header (3 on Linux, 10 on Windows); the header's
+// mtime is already 0. "Unknown" (255), as Bun writes it, makes the bytes the same on every host.
+export function normalizedGzip(bytes) {
+  const gzip = gzipSync(bytes, { level: 9 });
+  assert.equal(gzip.readUInt32LE(4), 0, 'gzip header mtime must be 0');
+  gzip[9] = 0xff;
+  return gzip;
 }

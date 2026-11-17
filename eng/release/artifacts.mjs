@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { assertReleaseLinks } from './readme-links.mjs';
 import { packageVersion } from '../version.mjs';
+import { assertNpmSource } from './npm-inputs.mjs';
 const workspaceAuthority = JSON.parse(readFileSync(new URL('../workspace.json', import.meta.url), 'utf8'));
 // The release-train version. A package may ship on its own version (eng/version.mjs packageVersion).
 export const VERSION = workspaceAuthority.version;
@@ -35,8 +36,10 @@ export function dependencyOrder(packages) {
   }
   packages.forEach(visit); return result;
 }
-// `inventory` lists {registry, name, version}; a package without a version ships on VERSION.
-export function scan(directory, inventory, source) {
+// `inventory` lists {registry, name, version}; a package without a version ships on VERSION. A NuGet package names
+// `source` itself; an npm archive names the commit that last changed its inputs, which `npmSource` checks against
+// `source` (npm-inputs.mjs assertNpmSource: an ancestor with the same inputs).
+export function scan(directory, inventory, source, { npmSource = assertNpmSource } = {}) {
   const packages = [];
   const expected = name => inventory.find(p => p.name === name)?.version ?? VERSION;
   assert.deepEqual(readdirSync(directory).sort(), ['npm', 'nuget'], 'Artifact directory must contain only npm/ and nuget/');
@@ -51,7 +54,8 @@ export function scan(directory, inventory, source) {
       assert.equal(metadata.version, expected(metadata.name), `Mixed version ${metadata.name}`);
       const repository = metadata.repository.replace(/^git\+/, '').replace(/\.git$/, '').replace(/\/$/, '');
       assert.equal(repository, `https://github.com/${REPOSITORY}`, `Obsolete repository ${metadata.name}`);
-      assert.equal(metadata.source, source, `Missing/stale source revision ${metadata.name}`);
+      if (registry === 'npm') npmSource(metadata.name, metadata.source, source);
+      else assert.equal(metadata.source, source, `Missing/stale source revision ${metadata.name}`);
       for (const [name, range] of Object.entries(metadata.dependencies)) {
         assert(!/workspace:|file:|link:/.test(range), `Unpublishable dependency ${name}`);
         if (inventory.some(p => p.name === name)) {

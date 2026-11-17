@@ -138,8 +138,8 @@ export function verifyPackagedTemplateLocks(nupkg, archives) {
 // URL and resolve the scope's registry from .npmrc. Hashes, versions and dependency declarations stay; the only other
 // change is for the independently released Runic packages (the Translations Vite plugin): the registry passes them
 // through from npm, but while one is a train candidate (an archive here) it serves that archive instead, so every
-// lock format takes the candidate's integrity, because each upstream CI run packs the same version with a different
-// gitHead.
+// lock format takes the candidate's integrity, because an upstream commit that changes the plugin's inputs packs the
+// same version with different bytes (its gitHead is the commit that last changed them).
 export function bindTemplateLock(text, filename, candidates, registry) {
   const train = [...candidates].filter(([name]) => isIndependentRunicPackage(name));
   function candidateIntegrity(name, version) {
