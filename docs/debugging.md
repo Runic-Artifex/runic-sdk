@@ -76,18 +76,19 @@ tool. Without `dev`, F5 builds the production frontend and the Window shows that
 The tasks put `dev`'s failures (`RAPPDEV` codes) and build errors in the Problems panel. VS Code builds from other
 vendors, such as VSCodium, cannot run Microsoft's .NET debugger; use netcoredbg there.
 
-**The Runic extension for VS Code** (`runic-artifex.runic`, from
+**Runic DevKit for VS Code** (`runic-artifex.runic-devkit`, from
 [runic-editors](https://github.com/Runic-Artifex/runic-editors/blob/main/vscode/README.md)) adds a Dev Session view
 that follows `dotnet runic dev`, F5 of the Window without a `launch.json`, doctor results, and a ViewModels tree that
-opens the C# members. It is merged but **not published for 0.20**: there is no release or marketplace entry yet.
-To try it, download the `vscode-vsix` artifact of a successful CI run of runic-editors' `main` and install it:
+opens the C# members. It is not on the VS Code Marketplace or Open VSX yet. To try it, download the `vscode-vsix`
+artifact of a successful CI run of runic-editors' `main` and install it:
 
 ```sh
 gh run download --repo Runic-Artifex/runic-editors --name vscode-vsix
 code --install-extension runic.vsix
 ```
 
-It replaces the Runic MF2 Translations extension; uninstall that one first.
+It replaces the Runic MF2 Translations extension and the extension of the 0.20 and 0.21 VSIX files, whose ID was
+`runic-artifex.runic`; uninstall those first (`code --uninstall-extension runic-artifex.runic`).
 
 ### The IDE contract
 

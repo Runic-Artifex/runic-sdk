@@ -2,6 +2,13 @@
   <!-- This file is imported from source during development and from
        buildTransitive when consumed as a package. -->
 
+  <!-- D070, SDK-1: every project of a Runic application (the window project, which references a Views host, and the
+       libraries and tests that reference Runic Views) declares the RunicApplication project capability. Visual Studio
+       reads it as SolutionHasProjectCapability:RunicApplication to load Runic DevKit only in solutions with one. -->
+  <ItemGroup>
+    <ProjectCapability Include="RunicApplication" />
+  </ItemGroup>
+
   <!-- D066.35: the RUNICBRIDGE warnings fail a build that treats warnings as errors, as the compiler's do. The
        analyzer's warnings are compiler warnings; the generator's own (logged by RunicViewsReportCommandResult) and
        these targets' are MSBuild warnings, which TreatWarningsAsErrors does not reach. With it, MSBuild turns them into

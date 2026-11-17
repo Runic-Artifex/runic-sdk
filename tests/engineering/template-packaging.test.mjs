@@ -499,6 +499,11 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.ok(port > 0, webView2Arguments);
     assert.match(webView2Arguments, sessionPort, "dotnet runic dev would not list the port in debugEndpoints");
 
+    // D070.8: .vsconfig, in the directory where Visual Studio keeps the project's solution, makes it offer the .NET
+    // desktop workload and JavaScript diagnostics (its JavaScript debugger, for WebView2 and Chrome or Edge).
+    const vsconfig = { version: "1.0", components: ["Microsoft.VisualStudio.Workload.ManagedDesktop", "Microsoft.VisualStudio.Component.JavaScript.Diagnostics"] };
+    assert.deepEqual(JSON.parse(plain[".vsconfig"]), vsconfig);
+
     const vscode = create("vscode", "--editor", "vscode");
     assert.deepEqual(Object.keys(vscode).filter(path => path.startsWith(".vscode/")).sort(),
       [".vscode/extensions.json", ".vscode/launch.json", ".vscode/tasks.json"]);
@@ -603,6 +608,8 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     // CS-WebUI has no WebView2 of its own: no script-debugging profile or configurations.
     const cswebui = create("cswebui", "--editor", "vscode", "--host", "cswebui");
     assert.deepEqual(Object.keys(JSON.parse(cswebui["Properties/launchSettings.json"]).profiles), ["Ide.App"]);
+    // Its page in Chrome or Edge (dotnet runic dev --browser) uses Visual Studio's JavaScript debugger too.
+    assert.equal(cswebui[".vsconfig"], plain[".vsconfig"]);
     const cswebuiLaunch = parseJsonc(cswebui[".vscode/launch.json"]);
     // Serve-only is the same contract on CS-WebUI, so it gets the browser configuration too.
     assert.deepEqual(cswebuiLaunch.configurations.map(entry => entry.name), ["Window", "Attach to the Window (dotnet runic dev)", "Window in Chrome"]);

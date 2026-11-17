@@ -378,6 +378,28 @@ test("an old property name no longer applies and fails with RUNICBRIDGE017", () 
   assert.ok(!reported.some(line => /RunicApplicationName/.test(line)), output);
 });
 
+// SDK-1 (D070): Visual Studio loads Runic DevKit for a solution whose projects declare RunicApplication.
+test("the targets declare the RunicApplication project capability, for applications and libraries", () => {
+  for (const outputType of ["Exe", "Library"]) {
+    const project = join(directory, `capability-${outputType}`);
+    mkdirSync(project, { recursive: true });
+    writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <OutputType>${outputType}</OutputType>
+    <Configuration>Debug</Configuration>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+    const evaluate = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+      "-getItem:ProjectCapability"], { cwd: project, encoding: "utf8" });
+    assert.equal(evaluate.status, 0, evaluate.stdout + evaluate.stderr);
+    const capabilities = JSON.parse(evaluate.stdout).Items.ProjectCapability.map(item => item.Identity);
+    assert.deepEqual(capabilities.filter(name => name === "RunicApplication"), ["RunicApplication"], `${outputType}: ${capabilities}`);
+  }
+});
+
 // Q7 (D031.2): RUNICBRIDGE023 checks the resolved references, so a mix of ReactiveUI flavors fails however it
 // arrives (directly, transitively, or as a navigation adapter of the other flavor), and one flavor builds.
 test("RUNICBRIDGE023 rejects Runic ReactiveUI adapters of both flavors in the resolved references", () => {
