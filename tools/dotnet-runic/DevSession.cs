@@ -57,6 +57,8 @@ internal sealed partial class DevSession
     private int? _windowProcessId;
     private int _windowStarts;
     private bool _frontendPublished;
+    private bool _writePending;
+    private bool _markerPending;
     private string? _browserUrl;
     private IReadOnlyList<BrowserEntry.ServedWindow> _browserWindows = [];
     private readonly List<DebugEndpoint> _windowEndpoints = [];
@@ -110,11 +112,76 @@ internal sealed partial class DevSession
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination)!);
             File.Copy(source, destination, overwrite: true);
         }
-        Directory.CreateDirectory(_configuration.SessionDirectory);
-        string temporary = FrontendMarkerPath + "." + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + ".tmp";
-        File.WriteAllText(temporary, webRoot + "\n");
-        File.Move(temporary, FrontendMarkerPath, overwrite: true);
-        lock (_gate) _frontendPublished = true;
+        lock (_gate)
+        {
+            // Before the replace: a marker that stays unwritten is written again by the heartbeat, and removed at the stop.
+            _frontendPublished = true;
+            _markerPending = true;
+        }
+        WriteFrontendMarker();
+    }
+
+    private void WriteFrontendMarker()
+    {
+        lock (_gate)
+        {
+            Directory.CreateDirectory(_configuration.SessionDirectory);
+            string temporary = FrontendMarkerPath + "." + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + ".tmp";
+            File.WriteAllText(temporary, _configuration.RuntimeWebRoot + "\n");
+            Replace(temporary, FrontendMarkerPath);
+            _markerPending = false;
+        }
+    }
+
+    /// <summary>
+    /// Replaces <paramref name="path"/> with <paramref name="temporary"/> (<see cref="FileReplace"/>). A replace that still
+    /// fails leaves no temporary file and is reported as a <see cref="DevSessionFileException"/> naming the path.
+    /// </summary>
+    private static void Replace(string temporary, string path)
+    {
+        try
+        {
+            FileReplace.Move(temporary, path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            {
+            }
+            throw new DevSessionFileException(path, error);
+        }
+    }
+
+    /// <summary>
+    /// Writes what an earlier write could not (#1102): the session file, so it does not keep saying <c>starting</c> for a
+    /// session that is ready, and the frontend marker. A failure here was reported already and waits for the next try.
+    /// </summary>
+    internal void RetryPendingWrites()
+    {
+        bool session, marker;
+        lock (_gate)
+        {
+            session = _writePending;
+            marker = _markerPending && _state != Stopped;
+        }
+        try
+        {
+            if (marker) WriteFrontendMarker();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
+        try
+        {
+            if (session) Write();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>Renews the frontend marker until <paramref name="cancellationToken"/> is cancelled.</summary>
@@ -125,6 +192,7 @@ internal sealed partial class DevSession
             while (true)
             {
                 await Task.Delay(FrontendHeartbeat, timeProvider, cancellationToken).ConfigureAwait(false);
+                RetryPendingWrites();
                 try
                 {
                     if (File.Exists(FrontendMarkerPath)) File.SetLastWriteTimeUtc(FrontendMarkerPath, timeProvider.GetUtcNow().UtcDateTime);
@@ -289,6 +357,7 @@ internal sealed partial class DevSession
         lock (_gate)
         {
             _state = Stopped;
+            _markerPending = false;
             _windowProcessId = null;
             _browserWindows = [];
             _windowEndpoints.Clear();
@@ -325,16 +394,29 @@ internal sealed partial class DevSession
         }
     }
 
+    /// <summary>
+    /// Writes the session file from the current state. A write that fails keeps the state and marks the file pending, so
+    /// the next write, or the heartbeat's <see cref="RetryPendingWrites"/>, writes it.
+    /// </summary>
     private void Write()
     {
-        byte[] content;
-        lock (_gate) content = Render();
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
         string temporary = Path + "." + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + ".tmp";
         lock (_gate)
         {
-            File.WriteAllBytes(temporary, content);
-            File.Move(temporary, Path, overwrite: true);
+            _writePending = true;
+            File.WriteAllBytes(temporary, Render());
+            Replace(temporary, Path);
+            _writePending = false;
+        }
+    }
+
+    /// <summary>Whether the session file or the frontend marker waits for a write that failed.</summary>
+    internal bool HasPendingWrites
+    {
+        get
+        {
+            lock (_gate) return _writePending || _markerPending;
         }
     }
 
