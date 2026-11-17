@@ -94,16 +94,18 @@ the first one:
 | --- | --- |
 | `RunicWindowApp` | The Window with `DOTNET_ENVIRONMENT=Development`: the browser's developer tools on the page (F12 or Inspect) and detailed Bridge errors. |
 <!--#if (host == "cswebui") -->
-| `RunicWindowApp (CS-WebUI script debugging)` | The same, with the DevTools Protocol of the Window's Chrome or Edge on `http://127.0.0.1:9225/` (`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, honoured in Development only). In Visual Studio, start it, then Debug > Attach to Process, connection type "Chrome devtools protocol websocket (no authentication)", target `http://127.0.0.1:9225/`, and pick the page. Firefox and the platform WebView fallback open no port. Any local process can attach to the port while the Window runs. |
+| `RunicWindowApp (CS-WebUI script debugging)` | The same, with the DevTools Protocol of the Window's Chrome or Edge on `http://127.0.0.1:9225/` (`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, honoured in Development only). In Visual Studio, start it, then use Runic DevKit's Attach to the Page (JavaScript), or Debug > Attach to Process with the connection type "JavaScript and TypeScript (Chrome DevTools/V8 Inspector)", target `http://127.0.0.1:9225/`, and pick the page. Firefox and the platform WebView fallback open no port. Any local process can attach to the port while the Window runs. |
 <!--#endif -->
 
-<!--#if (desktopHost) -->
 To stop at breakpoints in `Frontend/src` in Visual Studio, use **Debug the
-Window** of [Runic DevKit for Visual Studio](https://github.com/Runic-Artifex/runic-editors/blob/main/visualstudio/README.md):
-it starts the Window under the .NET debugger with WebView2's DevTools Protocol
-endpoint and attaches Visual Studio's JavaScript debugger to the page, so C#
-and page breakpoints stop in one session.
-<!--#endif -->
+Window** of [Runic DevKit for Visual Studio](https://github.com/Runic-Artifex/runic-editors/blob/main/visualstudio/README.md)
+(Tools > Runic). It starts `dotnet runic dev --no-window`, starts the Window
+under the .NET debugger with a DevTools Protocol port, and attaches Visual
+Studio's JavaScript debugger to the page, so C# and page breakpoints stop in
+one session. With Runic DevKit, F5 also asks whether to start
+`dotnet runic dev --no-window` when it does not run (step 1 below). Install it
+from the Visual Studio Marketplace (Extensions > Manage Extensions, "Runic
+DevKit") or from the [runic-editors releases](https://github.com/Runic-Artifex/runic-editors/releases).
 
 `.vsconfig` names the Visual Studio components that debugging needs: the .NET
 desktop development workload and JavaScript diagnostics, the optional component
