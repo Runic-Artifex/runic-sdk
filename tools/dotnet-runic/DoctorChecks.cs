@@ -59,25 +59,8 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
 
     public string? GetEnvironmentVariable(string name) => Environment.GetEnvironmentVariable(name);
 
-    public string? FindExecutable(string name)
-    {
-        if (Path.IsPathFullyQualified(name)) return File.Exists(name) ? Path.GetFullPath(name) : null;
-        string? path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(path)) return null;
-        string[] extensions = OperatingSystem.IsWindows()
-            ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            : [string.Empty];
-        // A relative PATH entry would resolve against the project directory, so a
-        // checked-out file could run as pkg-config, ldconfig or a compiler.
-        foreach (string directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(Path.IsPathFullyQualified))
-        foreach (string extension in extensions)
-        {
-            string candidate = Path.Combine(directory, name + extension);
-            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
-        }
-        return null;
-    }
+    // PATH with PATHEXT, skipping relative entries, as dev starts the program (ExecutableSearch).
+    public string? FindExecutable(string name) => ExecutableSearch.System.Find(name);
 
     public Task<CommandResult> RunAsync(string executable, string workingDirectory,
         IReadOnlyList<string> arguments, CancellationToken cancellationToken) =>
