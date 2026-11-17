@@ -63,7 +63,8 @@ internal sealed class RunningProcess : IAsyncDisposable
             arguments);
         // holdInput: a pipe that stays open and empty instead of dev's terminal, for a serve-only Window, which stops
         // serving at a line on its standard input (an Enter in the terminal) but not at its end.
-        startInfo.RedirectStandardInput = holdInput;
+        // With the stop request on dev's standard input (StandardInputStop), every process gets one, so only dev reads it.
+        startInfo.RedirectStandardInput = holdInput || StandardInputStop.HoldsChildInput;
         if (environment is not null)
         {
             foreach ((string key, string? value) in environment)

@@ -243,6 +243,24 @@ internal static class DevApplication
             Console.Error.WriteLine("[dev] The dotnet command that started dev exited; stopping the application.");
             stop.Cancel();
         }, stop.Token);
+        // An IDE that cannot signal dev (Visual Studio on Windows) asks it to stop on its standard input.
+        if (StandardInputStop.IsRequested(Environment.GetEnvironmentVariable))
+        {
+            StandardInputStop.HoldsChildInput = true;
+            StandardInputStop.Start(Console.In, message =>
+            {
+                if (stop.IsCancellationRequested) return;
+                Console.Error.WriteLine(message);
+                try
+                {
+                    stop.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // dev has ended already.
+                }
+            });
+        }
         try
         {
             if (!options.Restore && configuration.NodeEnabled)

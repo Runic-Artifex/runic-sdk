@@ -905,6 +905,25 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
 | `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
+**Stopping `dev`.** Stop `dev` as a terminal does, with Ctrl+C or SIGINT/SIGTERM.
+`dev` then stops the frontend and the Window, marks the session file
+`"stopped"`, deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
+exits with 130. A process killed by force does none of this: a build within 30
+seconds still keeps the development pages, and the session file keeps its state.
+An IDE that can't send Ctrl+C, such as Visual Studio on Windows (a process
+without a console has none), sets `RUNIC_DEV_STOP_ON_INPUT=1` in `dev`'s
+environment and redirects its standard input (since 0.22). `dev` then reads its
+input and stops in the same way at a line `stop` (case and surrounding space
+ignored) or at the end of the input. To stop it, the IDE writes `stop` or closes
+the pipe, waits for `dev` to exit, and ends the process tree only after a
+timeout. A few seconds are usually enough; allow more while the Window closes.
+`dev` prints `[dev] Standard input asked dev to stop; stopping the application.`
+or `[dev] Standard input ended; …` on standard error. Other lines are ignored.
+The processes that `dev` starts get an empty input of their own, so none of them
+reads the request. Without the variable, `dev` doesn't read its input, and an
+interactive terminal works as before. An older `dev` ignores the variable, so
+keep the forced stop as the fallback.
+
 The two prefix lines are where a background task's `beginsPattern` starts a new
 build cycle, as the template's `.vscode/tasks.json` below does; the text after
 the prefix is not part of the contract.
