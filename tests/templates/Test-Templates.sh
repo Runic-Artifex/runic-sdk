@@ -639,7 +639,12 @@ verify_template() {
     cat "$output/doctor.txt" >&2
     exit 1
   fi
-  grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
+  # A lane on Node 26 keeps the npm 11 that Node ships, which doctor supports with a warning beside the certified npm (#1088).
+  if [[ "$manager" == npm && "$expected_manager_version" != "$(bun "$repository_root/eng/toolchain.mjs" npm)" ]]; then
+    grep -Fq "WARN package-manager: npm $expected_manager_version is supported; certified baseline is" "$output/doctor.txt"
+  else
+    grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
+  fi
   grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
   # D059.17: a lane that installs a certified newer-major SDK checks that the project, which has no global.json
   # pinning an SDK, builds with it, and that doctor certifies it and finds the .NET 10 runtime the application needs.

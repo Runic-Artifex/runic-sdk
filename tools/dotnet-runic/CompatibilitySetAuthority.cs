@@ -24,6 +24,23 @@ internal sealed record CompatibilityToolchain(
     internal IReadOnlyList<string> AdditionalDotNetSdks { get; init; } = [];
 }
 
+/// <summary>
+/// One of the release train's other repositories (D060), as the compatibility set records it: the version of this
+/// train, and the packages it owns, as the train gate maps them (eng/train/nuget.mjs): an exact package id, or
+/// <c>Prefix.*</c> for the ids below <c>Prefix.</c>. The patterns name the repository's product, never a bare
+/// <c>Runic</c> or <c>RunicArtifex</c> prefix, so other packages under those prefixes, such as the
+/// <c>RunicArtifex.DynamicData</c> and <c>RunicArtifex.ReactiveUI.Validation</c> forks, are not train packages (#1087).
+/// </summary>
+internal sealed record TrainRepository(
+    string Name, string Repository, string Version, IReadOnlyList<string> NuGetPatterns, IReadOnlyList<string> NpmPackages)
+{
+    internal bool OwnsNuGetPackage(string identity) => NuGetPatterns.Any(pattern => pattern.EndsWith(".*", StringComparison.Ordinal)
+        ? identity.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase)
+        : StringComparer.OrdinalIgnoreCase.Equals(pattern, identity));
+
+    internal bool OwnsNpmPackage(string name) => NpmPackages.Contains(name, StringComparer.Ordinal);
+}
+
 /// <summary>How well Runic supports a Window host on a runtime identifier (eng/support.json).</summary>
 internal enum SupportStatus
 {
@@ -110,8 +127,10 @@ internal sealed class CompatibilitySetAuthority
         CompatibilityToolchain toolchain,
         FrozenDictionary<string, CompatibilityPackage> nugetPackages,
         FrozenDictionary<string, CompatibilityPackage> npmPackages,
+        IReadOnlyList<TrainRepository> train,
         SupportMatrix support)
     {
+        Train = train;
         Id = id;
         ReleaseTrainVersion = releaseTrainVersion;
         Toolchain = toolchain;
@@ -132,7 +151,21 @@ internal sealed class CompatibilitySetAuthority
 
     internal IReadOnlyDictionary<string, CompatibilityPackage> NpmPackages { get; }
 
+    /// <summary>The train's other repositories, whose packages the set covers beside <see cref="NuGetPackages"/>.</summary>
+    internal IReadOnlyList<TrainRepository> Train { get; }
+
     internal SupportMatrix Support { get; }
+
+    /// <summary>
+    /// The train repository that owns a NuGet package other than runic-sdk's own, or null for a package outside the
+    /// train. runic-sdk's packages are <see cref="NuGetPackages"/> exactly, so a package id they list never belongs to
+    /// another repository (<c>Runic.Application.Views.Translations</c> is runic-sdk's).
+    /// </summary>
+    internal TrainRepository? TrainRepositoryOfNuGetPackage(string identity) =>
+        NuGetPackages.ContainsKey(identity) ? null : Train.FirstOrDefault(repository => repository.OwnsNuGetPackage(identity));
+
+    internal TrainRepository? TrainRepositoryOfNpmPackage(string name) =>
+        NpmPackages.ContainsKey(name) ? null : Train.FirstOrDefault(repository => repository.OwnsNpmPackage(name));
 
     private static CompatibilitySetAuthority Load()
     {
@@ -168,6 +201,19 @@ internal sealed class CompatibilitySetAuthority
             },
             nuget.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
             npm.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
+            ParseTrain(root),
             SupportMatrix.Parse(root.GetProperty("support")));
+    }
+
+    internal static IReadOnlyList<TrainRepository> ParseTrain(JsonElement root)
+    {
+        static IReadOnlyList<string> Strings(JsonElement element) =>
+            [.. element.EnumerateArray().Select(static item => item.GetString() ?? string.Empty)];
+        return [.. root.GetProperty("train").EnumerateArray().Select(repository => new TrainRepository(
+            repository.GetProperty("name").GetString() ?? string.Empty,
+            repository.GetProperty("repository").GetString() ?? string.Empty,
+            repository.GetProperty("version").GetString() ?? string.Empty,
+            Strings(repository.GetProperty("nuget")),
+            Strings(repository.GetProperty("npm"))))];
     }
 }

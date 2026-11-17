@@ -178,8 +178,8 @@ Since 0.21, on Windows (see [The Runic DevTools extension](#the-runic-devtools-e
 
 `doctor` checks the Views Window opt-in, the .NET SDK, the declared JavaScript
 runtime and package manager, the matching lock file, the configured
-development-server inputs, and, once the project is restored, that every Runic
-package belongs to one release train. An unrestored project gets a warning that
+development-server inputs, and, once the project is restored, that the
+project's release-train packages belong to one release train. An unrestored project gets a warning that
 tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
@@ -200,6 +200,11 @@ The JavaScript runtime passes at the certified version and warns for a newer
 release of the same major version. Node 26 is supported as well, with a
 warning, since the starters and the Runic npm packages that run in Node declare
 `engines.node` `^24.18.0 || ^26.0.0` (0.11).
+npm passes at the certified npm 12.2.0, and warns for a later npm 12 and,
+since 0.22, for npm 11.12.1 or a later npm 11: no Node release ships npm 12
+yet, and Node 24 and 26 ship npm 11 (Node 26.0.0 npm 11.12.1, Node 24.18.0
+npm 11.16.0). The starters declare the certified npm in `packageManager`; to
+use it, run `npm install --global npm@12.2.0`.
 
 Doctor checks every Views host adapter the project references, not only one.
 It reads the project's direct package and project references, with the
@@ -414,7 +419,9 @@ certified version, and warns for a newer release, Node 26 included.
 
 The package manager that the frontend's `packageManager` field or lock file
 selects (npm, pnpm or Bun): fails when it is unavailable or outside the
-supported range, and warns for another supported version.
+supported range, and warns for another supported version. The supported range
+is the certified version or a later release of its major version; for npm also
+npm 11.12.1 or a later npm 11, the npm that Node 24 and 26 ship (0.22).
 
 #### `lock-file`
 
@@ -423,8 +430,16 @@ reproducible installs need.
 
 #### `compatibility-set`
 
-Once the project is restored, fails unless every Runic package belongs to one
-release train (the compatibility set). Warns before the first restore.
+Once the project is restored, checks the packages of the release train that
+the compatibility set records: runic-sdk's own NuGet and npm packages, which
+must have the exact versions of the set, and the packages of the train's
+Runic Command Line and Runic Translations releases (`Runic.CommandLine`,
+`Runic.CommandLine.*`, `Runic.Translations`, `Runic.Translations.*`,
+`dotnet-runic-translations` and Translations' npm packages). Those release on
+their own between trains, so a version older than the train's or of another
+line (minor version before 1.0) only warns. Every other package is not
+checked, whatever its name, such as `RunicArtifex.DynamicData` and
+`RunicArtifex.ReactiveUI.Validation` (0.22). Warns before the first restore.
 
 #### `views-package-versions`
 

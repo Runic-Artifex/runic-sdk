@@ -331,12 +331,15 @@ test('template lanes cover every framework once and run the creator check in one
   // D059.17: one lane builds the generated projects with the certified .NET 11 SDK, without a global.json.
   const setup = steps.find(item => item.uses === './.github/actions/setup-sdk');
   assert.equal(setup.with['additional-dotnet'], "${{ matrix.additional-dotnet || 'false' }}");
-  // The starters admit Node 24 and 26 (D031.3): one lane builds them on Node 26, with the pinned package managers.
+  // The starters admit Node 24 and 26 (D031.3): one lane builds them on Node 26, with the pinned pnpm and the npm 11
+  // that Node 26 ships, which doctor supports beside the certified npm 12 (#1088).
   const node = steps.findIndex(item => item.uses?.startsWith('actions/setup-node@'));
   assert.equal(steps[node].if, 'matrix.node');
   assert.equal(steps[node].with['node-version'], '${{ matrix.node }}');
   assert.equal(steps[node + 1].if, 'matrix.node');
-  assert.match(steps[node + 1].run, /npm install --global npm@\S+ pnpm@\S+/);
+  assert.match(steps[node + 1].run, /npm install --global "pnpm@\$\(bun eng\/toolchain\.mjs pnpm\)"/);
+  assert.doesNotMatch(steps[node + 1].run, /[\s"]npm@/);
+  assert.match(steps[node + 1].run, /npm --version \| grep "\^11\\\."/);
   const [step, second] = steps.filter(item => item.run === 'bun run verify:templates');
   assert.equal(step?.name, 'Verify generated ${{ matrix.first }} template applications');
   assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.first }}');

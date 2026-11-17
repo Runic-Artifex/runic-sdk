@@ -519,13 +519,24 @@ internal static class DoctorChecks
             CommandResult result = await runtime.RunAsync(executable, project.FrontendPackageDirectory, ["--version"], cancellationToken).ConfigureAwait(false);
             string version = result.StandardOutput.Trim().TrimStart('v');
             string? declared = JavaScriptPackageManager.ReadDeclaredVersion(Path.Combine(project.FrontendPackageDirectory, "package.json"));
-            if (result.ExitCode != 0 || !IsCompatibleToolVersion(version, baseline))
+            bool npm = packageManager.Name == "npm";
+            bool compatible = IsCompatibleToolVersion(version, baseline) ||
+                (npm && IsCompatibleToolVersion(version, AdditionalNpmBaseline));
+            if (result.ExitCode != 0 || !compatible)
             {
-                checks.Add(Fail("package-manager", $"{packageManager.Name} {version} is outside the supported range beginning at {baseline}.", $"Activate {packageManager.Name} {baseline}."));
+                checks.Add(npm
+                    ? Fail("package-manager",
+                        $"npm {version} is outside the supported range: npm {AdditionalNpmBaseline} or a later npm {Major(AdditionalNpmBaseline)}, " +
+                        $"as Node 24 and 26 ship it, or npm {baseline} or a later npm {Major(baseline)}.",
+                        $"Use the npm that a supported Node release ships (Node {Major(Authority.Toolchain.Node)} or {Major(AdditionalNodeBaseline)}), or run 'npm install --global npm@{baseline}'.")
+                    : Fail("package-manager", $"{packageManager.Name} {version} is outside the supported range beginning at {baseline}.", $"Activate {packageManager.Name} {baseline}."));
             }
             else if (!StringComparer.Ordinal.Equals(version, baseline) || (declared is not null && !StringComparer.Ordinal.Equals(version, declared)))
             {
-                checks.Add(Warn("package-manager", $"{packageManager.Name} {version} is supported; certified baseline is {baseline}.", declared is null ? "No change is required." : $"Activate packageManager-declared {packageManager.Name} {declared} for reproducible results."));
+                checks.Add(Warn("package-manager", $"{packageManager.Name} {version} is supported; certified baseline is {baseline}.", declared is null
+                    ? "No change is required."
+                    : $"Activate packageManager-declared {packageManager.Name} {declared} for reproducible results" +
+                        (npm ? $", for example with 'npm install --global npm@{declared}'." : ".")));
             }
             else
             {
@@ -548,7 +559,10 @@ internal static class DoctorChecks
                 "Run 'dotnet runic dev' or 'dotnet restore', then rerun doctor to check package versions."));
             return;
         }
+        // The set defines the train's packages: runic-sdk's exactly, and those of the train's Command Line and
+        // Translations repositories by its patterns. Any other package, Runic-named or not, is not checked (#1087).
         var mismatches = new List<string>();
+        var drift = new List<string>();
         int selected = 0;
         try
         {
@@ -572,8 +586,11 @@ internal static class DoctorChecks
                     selected++;
                     if (type == "package" && !StringComparer.Ordinal.Equals(version, expected.Version)) mismatches.Add($"{identity} {version} (expected {expected.Version})");
                 }
-                else if (type == "package" && IsRunicIdentity(identity) && !IsIndependentlyReleasedNuGetIdentity(identity))
-                    mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
+                else if (type == "package" && Authority.TrainRepositoryOfNuGetPackage(identity) is { } repository)
+                {
+                    selected++;
+                    if (!IsOnTrainLine(version, repository.Version)) drift.Add(DescribeDrift(identity, version, repository));
+                }
             }
             if (!hasViewsHost) mismatches.Add("a Runic Views host package (Runic.Application.Views.CsWebUi or Runic.Application.Views.Desktop) is missing");
         }
@@ -592,15 +609,17 @@ internal static class DoctorChecks
                 if (!manifest.RootElement.TryGetProperty(sectionName, out JsonElement dependencies) || dependencies.ValueKind != JsonValueKind.Object) continue;
                 foreach (JsonProperty dependency in dependencies.EnumerateObject())
                 {
-                    if (!dependency.Name.StartsWith("@runic-artifex/", StringComparison.Ordinal)) continue;
-                    string version = dependency.Value.GetString() ?? string.Empty;
+                    string version = dependency.Value.ValueKind == JsonValueKind.String ? dependency.Value.GetString() ?? string.Empty : string.Empty;
                     if (Authority.NpmPackages.TryGetValue(dependency.Name, out CompatibilityPackage? expected))
                     {
                         selected++;
                         if (!StringComparer.Ordinal.Equals(version, expected.Version)) mismatches.Add($"{dependency.Name} {version} (expected {expected.Version})");
                     }
-                    else if (!IsIndependentlyReleasedNpmIdentity(dependency.Name))
-                        mismatches.Add($"{dependency.Name} (not selected by {Authority.Id})");
+                    else if (Authority.TrainRepositoryOfNpmPackage(dependency.Name) is { } repository)
+                    {
+                        selected++;
+                        if (!IsOnTrainLine(version.TrimStart('^', '~', '='), repository.Version)) drift.Add(DescribeDrift(dependency.Name, version, repository));
+                    }
                 }
             }
         }
@@ -612,6 +631,14 @@ internal static class DoctorChecks
         if (mismatches.Count != 0)
         {
             checks.Add(Fail("compatibility-set", $"Compatibility set {Authority.Id} does not match: {string.Join("; ", mismatches)}.", $"Select the exact package versions recorded by {Authority.Id}, restore, and rerun doctor."));
+            return;
+        }
+        // Command Line and Translations release on their own between trains, and an application may use them without
+        // a runic-sdk package that depends on them, so a version of another line only warns.
+        if (drift.Count != 0)
+        {
+            checks.Add(Warn("compatibility-set", $"{Authority.Id} was tested with {DescribeTrain()}, and the project uses {string.Join("; ", drift)}.",
+                "Use the train's version of each, or a later release of the same line, unless the application needs another one."));
             return;
         }
         checks.Add(selected > 0
@@ -922,18 +949,36 @@ internal static class DoctorChecks
         return candidates.Select(runtime.FindExecutable).FirstOrDefault(static path => path is not null);
     }
 
-    private static bool IsRunicIdentity(string identity) =>
-        identity.StartsWith("Runic", StringComparison.OrdinalIgnoreCase) ||
-        identity.StartsWith("dotnet-runic", StringComparison.OrdinalIgnoreCase);
+    private static string DescribeTrain() =>
+        string.Join(" and ", Authority.Train.Select(static repository => $"{repository.Name} {repository.Version}"));
 
-    private static bool IsIndependentlyReleasedNuGetIdentity(string identity) =>
-        identity.StartsWith("Runic.CommandLine", StringComparison.OrdinalIgnoreCase) ||
-        identity.StartsWith("Runic.Translations", StringComparison.OrdinalIgnoreCase) ||
-        StringComparer.OrdinalIgnoreCase.Equals(identity, "dotnet-runic-translations");
+    private static string DescribeDrift(string identity, string version, TrainRepository repository) =>
+        $"{identity} {version} (expected {repository.Name} {repository.Version} or a later {LineOf(repository.Version)} release)";
 
-    private static bool IsIndependentlyReleasedNpmIdentity(string identity) =>
-        StringComparer.Ordinal.Equals(identity, "@runic-artifex/vite-plugin-runic-translations") ||
-        identity.StartsWith("@runic-artifex/translations", StringComparison.Ordinal);
+    // The compatibility line of a version (D061.13): its minor before 1.0, its major from 1.0.
+    private static string LineOf(string version) =>
+        Version.TryParse(NormalizeVersion(version), out Version? parsed)
+            ? parsed.Major == 0 ? $"0.{parsed.Minor}" : $"{parsed.Major}.x"
+            : version;
+
+    /// <summary>
+    /// Whether a Command Line or Translations version is the train's or a later release of its line: the same minor
+    /// before 1.0, the same major from 1.0 (D061.13). A prerelease of the train's version is older than it.
+    /// </summary>
+    internal static bool IsOnTrainLine(string actual, string train)
+    {
+        if (!Version.TryParse(NormalizeVersion(actual), out Version? actualVersion) ||
+            !Version.TryParse(NormalizeVersion(train), out Version? trainVersion)) return false;
+        if (actualVersion.Major != trainVersion.Major || (trainVersion.Major == 0 && actualVersion.Minor != trainVersion.Minor)) return false;
+        if (actualVersion != trainVersion) return actualVersion > trainVersion;
+        return !IsPrerelease(actual) || IsPrerelease(train);
+    }
+
+    private static bool IsPrerelease(string version)
+    {
+        int build = version.IndexOf('+');
+        return (build < 0 ? version : version[..build]).Contains('-');
+    }
 
     private static int? ParseTargetFrameworkMajor(string targetFramework)
     {
@@ -953,6 +998,14 @@ internal static class DoctorChecks
     // The Runic npm packages that run in Node and the runic-app starters declare engines.node ^24.18.0 || ^26.0.0
     // (D031.3). The compatibility set certifies Node 24; Node 26 is supported too, with a warning that names it.
     internal const string AdditionalNodeBaseline = "26.0.0";
+
+    // The compatibility set certifies npm 12 (eng/toolchain.mjs), which no Node release ships yet. The supported Node
+    // releases ship npm 11: Node 24.18.0 npm 11.16.0, Node 26.0.0 npm 11.12.1, the oldest (#1088). Nothing in the
+    // starters needs npm 12 (lockfileVersion 3, npm ci --ignore-scripts), so npm 11 from that version is supported too,
+    // with a warning that names the certified npm; the Node 26 Templates lane of ci.yml runs with Node 26's own npm.
+    internal const string AdditionalNpmBaseline = "11.12.1";
+
+    private static string Major(string version) => version.Split('.')[0];
 
     private static bool IsCompatibleToolVersion(string actual, string baseline) =>
         Version.TryParse(NormalizeVersion(actual), out Version? actualVersion) &&

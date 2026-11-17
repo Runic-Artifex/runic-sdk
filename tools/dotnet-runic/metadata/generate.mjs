@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { readToolchain } from "../../../eng/toolchain.mjs";
 import { readSupport, renderReadme } from "../../../eng/support.mjs";
 import { packageVersion } from "../../../eng/version.mjs";
+import { repos } from "../../../eng/train/nuget.mjs";
+import { trainVersions, UPSTREAMS } from "../../../eng/ci/train-feed.mjs";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const target = fileURLToPath(new URL("runic.compatibility-set.json", import.meta.url));
@@ -13,7 +15,11 @@ const readmePath = resolve(root, "README.md");
 const workspace = JSON.parse(readFileSync(resolve(root, "eng/workspace.json"), "utf8"));
 const { $comment, schemaVersion, ...support } = readSupport(root);
 // The installed CLI needs an offline snapshot, not repository import provenance.
-// Schema 2 adds `support` from eng/support.json.
+// Schema 2 adds `support` from eng/support.json. `train` names the release train's other repositories (D060): their
+// version in this train (Directory.Packages.props) and their packages, by the train gate's package id patterns
+// (eng/train/nuget.mjs) and npm names. `packages` lists runic-sdk's own packages exactly. Together they define which
+// packages `dotnet runic doctor`'s compatibility-set check covers; it ignores every other package (#1087).
+const versions = trainVersions(readFileSync(resolve(root, "Directory.Packages.props"), "utf8"));
 const metadata = {
   schemaVersion: 2,
   id: `runic-sdk-${workspace.version}`,
@@ -22,6 +28,10 @@ const metadata = {
   packages: ["nuget", "npm"].flatMap(ecosystem => workspace[ecosystem].map(packageEntry => ({
     ecosystem, identity: packageEntry.name, version: packageVersion(workspace, packageEntry.name),
   }))),
+  train: UPSTREAMS.map(key => ({
+    name: repos[key].title, repository: repos[key].repository, version: versions[key],
+    nuget: repos[key].patterns, npm: repos[key].npm,
+  })),
   support,
 };
 const output = JSON.stringify(metadata, null, 2) + "\n";

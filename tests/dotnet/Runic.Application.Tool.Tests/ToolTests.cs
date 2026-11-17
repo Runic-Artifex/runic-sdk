@@ -821,7 +821,7 @@ internal sealed partial class ToolTests
             dependencies = new Dictionary<string, string>
             {
                 [npm.Identity] = npm.Version,
-                ["@runic-artifex/vite-plugin-runic-translations"] = "0.6.0-preview.1",
+                ["@runic-artifex/vite-plugin-runic-translations"] = Train(authority, "Translations").Version,
             },
         }));
         Write(Path.Combine(frontendDirectory, "package-lock.json"), "{}");
@@ -835,9 +835,12 @@ internal sealed partial class ToolTests
                 [$"{nuget.Identity}/{nuget.Version}"] = new { type = "package" },
                 ["CsWebUi/2.5.0-beta.4.4"] = new { type = "package" },
                 ["CsWebUi.Native/2.5.0-beta.4.4"] = new { type = "package" },
-                ["Runic.CommandLine/0.6.0-preview.1"] = new { type = "package" },
-                ["Runic.Translations/0.6.0-preview.1"] = new { type = "package" },
-                ["dotnet-runic-translations/0.6.0-preview.1"] = new { type = "package" },
+                [$"Runic.CommandLine/{Train(authority, "Command Line").Version}"] = new { type = "package" },
+                [$"Runic.Translations/{Train(authority, "Translations").Version}"] = new { type = "package" },
+                [$"dotnet-runic-translations/{Train(authority, "Translations").Version}"] = new { type = "package" },
+                // #1087: the RunicArtifex forks are not train packages, whatever their version.
+                ["RunicArtifex.DynamicData/10.0.0"] = new { type = "package" },
+                ["RunicArtifex.ReactiveUI.Validation/9.0.0"] = new { type = "package" },
             },
         }));
 
@@ -871,6 +874,146 @@ internal sealed partial class ToolTests
         Equal(DoctorStatus.Failure, Runtime("25.2.0").Status);
         Equal(DoctorStatus.Failure, Runtime("24.0.0").Status);
         Contains(Runtime("27.0.0").Remediation ?? string.Empty, "Node 26");
+    }
+
+    private static TrainRepository Train(CompatibilitySetAuthority authority, string name) =>
+        authority.Train.Single(repository => repository.Name == name);
+
+    // #1088: no Node release ships npm 12 yet; Node 24 and 26 ship npm 11, so doctor accepts npm 11 from the npm of
+    // Node 26.0.0 with a warning, and still rejects older npm releases and npm 12 below the certified version.
+    [Test, DisplayName("doctor accepts the npm 11 of Node 24 and 26 beside the certified npm 12")]
+    public void DoctorAcceptsNpm11()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, null, out CompatibilitySetAuthority authority);
+        DoctorCheck PackageManager(string npm) => Check(DoctorChecks.InspectAsync(project, "dotnet",
+            new FakeDoctorRuntime(authority.Toolchain) { NpmVersion = npm }, CancellationToken.None).GetAwaiter().GetResult(),
+            "package-manager");
+        string certified = authority.Toolchain.Npm;
+        Equal("12", certified.Split('.')[0]);
+        Equal(DoctorStatus.Pass, PackageManager(certified).Status);
+        foreach (string bundled in new[] { "11.20.0", "11.16.0", DoctorChecks.AdditionalNpmBaseline })
+        {
+            DoctorCheck check = PackageManager(bundled);
+            Equal(DoctorStatus.Warning, check.Status);
+            Contains(check.Message, $"npm {bundled} is supported; certified baseline is {certified}");
+            // The starter declares the certified npm in packageManager; the warning says how to get it.
+            Contains(check.Remediation ?? string.Empty, $"npm install --global npm@{certified}");
+        }
+        foreach (string unsupported in new[] { "11.12.0", "10.9.2", "12.1.0", "13.0.0" })
+        {
+            DoctorCheck check = PackageManager(unsupported);
+            Equal(DoctorStatus.Failure, check.Status);
+            Contains(check.Message, $"npm {DoctorChecks.AdditionalNpmBaseline} or a later npm 11");
+            Contains(check.Message, $"npm {certified} or a later npm 12");
+            Contains(check.Remediation ?? string.Empty, $"npm install --global npm@{certified}");
+        }
+    }
+
+    // #1087: the compatibility set defines the train's packages: runic-sdk's exactly, and the Command Line and
+    // Translations packages by the train gate's patterns. Other packages, RunicArtifex forks included, are not checked.
+    [Test, DisplayName("doctor checks exactly the release train's packages")]
+    public void DoctorChecksTrainPackagesOnly()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out CompatibilitySetAuthority authority);
+        CompatibilityPackage host = authority.NuGetPackages["Runic.Application.Views.Desktop"];
+        CompatibilityPackage views = authority.NpmPackages["@runic-artifex/svelte"];
+        string commandLine = Train(authority, "Command Line").Version;
+        string translations = Train(authority, "Translations").Version;
+        Version translationsVersion = Version.Parse(translations);
+        string nextTranslationsLine = translationsVersion.Major == 0 ? $"0.{translationsVersion.Minor + 1}.0" : $"{translationsVersion.Major + 1}.0.0";
+        string translationsPatch = $"{translationsVersion.Major}.{translationsVersion.Minor}.{translationsVersion.Build + 1}";
+        DoctorCheck Inspect(Dictionary<string, string> nuget, Dictionary<string, string>? npm = null)
+        {
+            var libraries = new Dictionary<string, object> { [$"{host.Identity}/{host.Version}"] = new { type = "package" } };
+            foreach ((string id, string version) in nuget) libraries[$"{id}/{version}"] = new { type = "package" };
+            Write(project.ProjectAssetsFile, JsonSerializer.Serialize(new { libraries }));
+            var dependencies = new Dictionary<string, string> { [views.Identity] = views.Version };
+            foreach ((string name, string version) in npm ?? []) dependencies[name] = version;
+            Write(Path.Combine(project.FrontendPackageDirectory, "package.json"), JsonSerializer.Serialize(new
+            {
+                packageManager = $"npm@{authority.Toolchain.Npm}",
+                dependencies,
+            }));
+            return Check(DoctorChecks.InspectAsync(project, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
+                .GetAwaiter().GetResult(), "compatibility-set");
+        }
+
+        // The issue's project: the train's packages and the RunicArtifex forks, which the set records no version for.
+        DoctorCheck forks = Inspect(new()
+        {
+            ["Runic.Application.Views.ReactiveUI"] = authority.NuGetPackages["Runic.Application.Views.ReactiveUI"].Version,
+            ["RunicArtifex.DynamicData"] = "10.0.0",
+            ["RunicArtifex.ReactiveUI.Validation"] = "9.0.0",
+            ["RunicArtifex.ReactiveUI.Validation.Reactive"] = "9.0.0",
+            // Another author's package under the Runic prefix, and an @runic-artifex package of no train repository.
+            ["Runic.Unrelated"] = "1.0.0",
+            ["Runic.CommandLine"] = commandLine,
+            ["Runic.CommandLine.Spectre"] = commandLine,
+            ["Runic.Translations"] = translations,
+            ["Runic.Translations.Hosting"] = translationsPatch,
+            ["dotnet-runic-translations"] = translations,
+        }, new() { ["@runic-artifex/vite-plugin-runic-translations"] = translations, ["@runic-artifex/other"] = "1.0.0" });
+        Equal(DoctorStatus.Pass, forks.Status);
+        Contains(forks.Message, $"match {authority.Id}");
+
+        // runic-sdk's packages need the exact version, Runic.Application.Views.Translations included.
+        DoctorCheck sdk = Inspect(new() { ["Runic.Application.Views.Translations"] = "0.1.0", ["RunicArtifex.DynamicData"] = "10.0.0" });
+        Equal(DoctorStatus.Failure, sdk.Status);
+        Contains(sdk.Message, "Runic.Application.Views.Translations 0.1.0 (expected");
+        DoesNotContain(sdk.Message, "RunicArtifex");
+
+        // Command Line and Translations of another line, or a prerelease of the train's version, only warn.
+        DoctorCheck drift = Inspect(
+            new() { ["Runic.Translations"] = nextTranslationsLine, ["Runic.CommandLine.Spectre"] = "0.1.0", ["Runic.Translations.Build"] = translations + "-preview.1" },
+            new() { ["@runic-artifex/vite-plugin-runic-translations"] = "^0.1.0" });
+        Equal(DoctorStatus.Warning, drift.Status);
+        Contains(drift.Message, $"tested with Command Line {commandLine} and Translations {translations}");
+        Contains(drift.Message, $"Runic.Translations {nextTranslationsLine} (expected Translations {translations} or a later");
+        Contains(drift.Message, $"Runic.CommandLine.Spectre 0.1.0 (expected Command Line {commandLine}");
+        Contains(drift.Message, $"Runic.Translations.Build {translations}-preview.1");
+        Contains(drift.Message, "@runic-artifex/vite-plugin-runic-translations ^0.1.0");
+    }
+
+    // #1087 and D056: membership never rests on a Runic or RunicArtifex prefix, so it holds once the train's packages
+    // are renamed to RunicArtifex.*, next to the RunicArtifex.DynamicData and RunicArtifex.ReactiveUI.Validation forks.
+    [Test, DisplayName("train membership does not depend on a package id prefix")]
+    public void TrainMembershipIsExplicit()
+    {
+        CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
+        SequenceEqual(["Command Line", "Translations"], [.. authority.Train.Select(repository => repository.Name)]);
+        Equal(Train(authority, "Translations"), authority.TrainRepositoryOfNuGetPackage("runic.translations.hosting"));
+        Equal(Train(authority, "Translations"), authority.TrainRepositoryOfNuGetPackage("dotnet-runic-translations"));
+        Equal(Train(authority, "Translations"), authority.TrainRepositoryOfNpmPackage("@runic-artifex/vite-plugin-runic-translations"));
+        Equal(Train(authority, "Command Line"), authority.TrainRepositoryOfNuGetPackage("Runic.CommandLine"));
+        // runic-sdk's own package, although its id contains Translations.
+        Equal<TrainRepository?>(null, authority.TrainRepositoryOfNuGetPackage("Runic.Application.Views.Translations"));
+        foreach (string other in new[] { "RunicArtifex.DynamicData", "RunicArtifex.ReactiveUI.Validation", "Runic.TranslationsExtra", "Runic.Unrelated", "Runic" })
+            Equal<TrainRepository?>(null, authority.TrainRepositoryOfNuGetPackage(other));
+        Equal<TrainRepository?>(null, authority.TrainRepositoryOfNpmPackage("@runic-artifex/views"));
+
+        // The renamed train (rename-0.18 PLAN.md): the gate's patterns name each product under RunicArtifex.
+        var renamed = new TrainRepository("Translations", "Runic-Artifex/runic-translations-sdk", "1.0.0",
+            ["RunicArtifex.Translations", "RunicArtifex.Translations.*"], []);
+        True(renamed.OwnsNuGetPackage("RunicArtifex.Translations.Tool"), "RunicArtifex.Translations.Tool");
+        True(renamed.OwnsNuGetPackage("RunicArtifex.Translations"), "RunicArtifex.Translations");
+        False(renamed.OwnsNuGetPackage("RunicArtifex.DynamicData"), "RunicArtifex.DynamicData");
+        False(renamed.OwnsNuGetPackage("RunicArtifex.ReactiveUI.Validation"), "RunicArtifex.ReactiveUI.Validation");
+        False(renamed.OwnsNuGetPackage("RunicArtifex.Application.Views.Translations"), "RunicArtifex.Application.Views.Translations");
+    }
+
+    [Test, DisplayName("a Command Line or Translations version is on the train's line from the train's version")]
+    public void TrainLineVersions()
+    {
+        True(DoctorChecks.IsOnTrainLine("0.13.0", "0.13.0"), "0.13.0 against 0.13.0");
+        True(DoctorChecks.IsOnTrainLine("0.13.4", "0.13.0"), "0.13.4 against 0.13.0");
+        False(DoctorChecks.IsOnTrainLine("0.13.0-preview.1", "0.13.0"), "0.13.0-preview.1 against 0.13.0");
+        False(DoctorChecks.IsOnTrainLine("0.12.9", "0.13.0"), "0.12.9 against 0.13.0");
+        False(DoctorChecks.IsOnTrainLine("0.14.0", "0.13.0"), "0.14.0 against 0.13.0");
+        True(DoctorChecks.IsOnTrainLine("1.4.0", "1.0.0"), "1.4.0 against 1.0.0");
+        False(DoctorChecks.IsOnTrainLine("2.0.0", "1.0.0"), "2.0.0 against 1.0.0");
+        False(DoctorChecks.IsOnTrainLine("workspace:*", "0.13.0"), "workspace:* against 0.13.0");
     }
 
     // D059.17: an SDK older than the baseline fails; the baseline and a certified newer-major SDK pass; a newer patch
@@ -2137,6 +2280,7 @@ internal sealed partial class ToolTests
         public string? WebView2Version { get; init; }
         public string? Gtk4Version { get; init; }
         public string? NodeVersion { get; init; }
+        public string? NpmVersion { get; init; }
         public string? DotNetSdkVersion { get; init; }
         /// <summary>The output of dotnet --list-runtimes; null makes the command fail.</summary>
         public string? DotNetRuntimes { get; init; }
@@ -2187,7 +2331,7 @@ internal sealed partial class ToolTests
             {
                 "dotnet" => DotNetSdkVersion ?? toolchain.DotNetSdk,
                 "node" => NodeVersion ?? toolchain.Node,
-                "npm" => toolchain.Npm,
+                "npm" => NpmVersion ?? toolchain.Npm,
                 _ => throw new InvalidOperationException($"Unexpected executable {executable}"),
             };
             return Task.FromResult(new CommandResult(0, version, string.Empty));
