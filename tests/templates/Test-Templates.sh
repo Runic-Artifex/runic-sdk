@@ -150,6 +150,7 @@ dotnet tool install dotnet-runic \
   "${tool_source_options[@]}" \
   "${tool_restore_options[@]}"
 
+npm_version="$(bun "$repository_root/eng/toolchain.mjs" npm)"
 pnpm_version="$(bun "$repository_root/eng/toolchain.mjs" pnpm)"
 bun_version="$(bun "$repository_root/eng/toolchain.mjs" bun)"
 package_manager_directory="$template_tmp/package-managers"
@@ -364,13 +365,17 @@ verify_template() {
   local project_name="Acceptance${framework_name}${manager^}${host_name}${view_models^}"
   local output="$template_tmp/$framework-$manager-$host_label-$view_models"
   if [[ "$translations" == translations ]]; then project_name+=Translations; output+=-translations; fi
-  local expected_manager_version
+  # The starter declares the pinned version in packageManager; the active npm may differ: a lane on Node 26 keeps the
+  # npm 11 that Node ships, which doctor supports with a warning (#1088).
+  local expected_manager_version declared_manager_version
   local selected_lock
   case "$manager" in
     npm) expected_manager_version="$(npm --version)"; selected_lock=package-lock.json ;;
     pnpm) expected_manager_version="$pnpm_version"; selected_lock=pnpm-lock.yaml ;;
     bun) expected_manager_version="$bun_version"; selected_lock=bun.lock ;;
   esac
+  declared_manager_version="$expected_manager_version"
+  [[ "$manager" != npm ]] || declared_manager_version="$npm_version"
 
   dotnet new runic-app \
     --name "$project_name" \
@@ -408,7 +413,10 @@ verify_template() {
   for other_lock in package-lock.json pnpm-lock.yaml bun.lock; do
     [[ "$other_lock" == "$selected_lock" ]] || test ! -f "$output/Frontend/$other_lock"
   done
-  grep -Fq "\"packageManager\": \"$manager@$expected_manager_version\"" "$output/Frontend/package.json"
+  if ! grep -Fq "\"packageManager\": \"$manager@$declared_manager_version\"" "$output/Frontend/package.json"; then
+    echo "The $framework starter does not declare packageManager $manager@$declared_manager_version." >&2
+    exit 1
+  fi
   # The frontend package is named after the project, not the template.
   local package_name
   package_name="$(sed -E -e 's/([a-z0-9])([A-Z])/\1-\2/g' -e 's/([a-zA-Z])([0-9])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
@@ -639,7 +647,11 @@ verify_template() {
     cat "$output/doctor.txt" >&2
     exit 1
   fi
-  grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
+  if [[ "$expected_manager_version" != "$declared_manager_version" ]]; then
+    grep -Fq "WARN package-manager: npm $expected_manager_version is supported; certified baseline is" "$output/doctor.txt"
+  else
+    grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
+  fi
   grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
   # D059.17: a lane that installs a certified newer-major SDK checks that the project, which has no global.json
   # pinning an SDK, builds with it, and that doctor certifies it and finds the .NET 10 runtime the application needs.

@@ -138,7 +138,9 @@ The toolchain floor is .NET SDK 10.0.403 or later (runtime 10.0.14), or since
 0.18 the .NET 11 SDK with the .NET 10 runtime installed, and, for a
 Bun frontend, Bun 1.4.4 or later, each within its major version (0.12.1); for
 an npm or pnpm frontend, `dotnet runic doctor` also wants Node 24.22.1 or a
-later Node 24, or Node 26. On an older SDK or Bun, such as SDK 10.0.401 or Bun
+later Node 24, or Node 26. Since 0.22 doctor accepts the npm 11 that Node 24
+and 26 ship (11.12.1 or later) beside the certified npm 12.2.0; before, it
+failed `package-manager` below npm 12.2.0. On an older SDK or Bun, such as SDK 10.0.401 or Bun
 1.4.2, `dotnet runic doctor` fails its `dotnet-sdk`, `javascript-runtime` or
 `package-manager` check, and so exits 1 under the default `--fail-on fail`.
 Since 0.14 the build warns too
