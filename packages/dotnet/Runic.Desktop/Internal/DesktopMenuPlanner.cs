@@ -88,8 +88,16 @@ internal static class DesktopMenuPlanner
             };
             planned.Add((order, PlanMenu(menu, index.ToString(CultureInfo.InvariantCulture), enabled: true, platform)));
         }
-        // OrderBy is stable, so menus of one group keep their declaration order.
-        return [.. planned.OrderBy(static menu => menu.Order).Select(static menu => menu.Entry)];
+        // One pass per group, so menus of one group keep their declaration order.
+        var bar = ImmutableArray.CreateBuilder<PlannedMenuEntry>(planned.Count);
+        for (var order = 0; order <= 2; order++)
+        {
+            foreach (var menu in planned)
+            {
+                if (menu.Order == order) bar.Add(menu.Entry);
+            }
+        }
+        return bar.MoveToImmutable();
     }
 
     // The entries of a context menu; Role is ignored and shortcuts are hints only.

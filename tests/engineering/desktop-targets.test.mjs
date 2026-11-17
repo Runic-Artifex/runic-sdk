@@ -74,6 +74,34 @@ test("a trimmed or NativeAOT publish turns the WebUI remote-debugging switch off
   assert.deepEqual(remoteDebuggingSwitch("debugging-trimmed", "<PublishTrimmed>true</PublishTrimmed>"), [{ value: "false", trim: "true" }]);
 });
 
+// dotnet runic dev's live frontend directory (DevelopmentAssets in Runic.Application.Views.Desktop, D072.2 S4): a trimmed
+// or NativeAOT publish turns its feature switch off, so the trimmer removes it and its file watcher.
+const viewsDesktopTargets = resolve(root, "packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets");
+
+function developmentAssetsSwitch(name, properties) {
+  const folder = join(directory, name);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "App.proj"), `<Project>
+  <PropertyGroup>
+${properties}
+  </PropertyGroup>
+  <Import Project="${viewsDesktopTargets}" />
+</Project>
+`);
+  const result = spawnSync("dotnet", ["msbuild", join(folder, "App.proj"), "-getItem:RuntimeHostConfigurationOption",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const items = JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
+  return items.filter(item => item.Identity === "Runic.Application.Views.Desktop.DevelopmentAssets")
+    .map(item => ({ value: item.Value, trim: item.Trim }));
+}
+
+test("a trimmed or NativeAOT publish turns the development assets switch off", () => {
+  assert.deepEqual(developmentAssetsSwitch("assets-default", ""), []);
+  assert.deepEqual(developmentAssetsSwitch("assets-aot", "<PublishAot>true</PublishAot>"), [{ value: "false", trim: "true" }]);
+  assert.deepEqual(developmentAssetsSwitch("assets-trimmed", "<PublishTrimmed>true</PublishTrimmed>"), [{ value: "false", trim: "true" }]);
+});
+
 function validate(name, value) {
   return spawnSync("dotnet", ["msbuild", project(name, `<RunicDesktopMinimalHost>${value}</RunicDesktopMinimalHost>`),
     "-t:RunicDesktopValidateHostProfile", "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-tl:off"], { encoding: "utf8" });
