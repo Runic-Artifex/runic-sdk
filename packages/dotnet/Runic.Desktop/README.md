@@ -448,6 +448,19 @@ browser can take up to about 16 seconds more (close, kill, output and profile cl
 so with the defaults a window that never connects fails after at most about 46 seconds
 instead of 15. A page that was requested, a browser that exited and embedded WebViews
 are not relaunched.
+A browser can restart itself at launch: the process Runic started exits and a new copy
+opens the window. Edge does this when its environment carries a Windows compatibility
+layer (`__COMPAT_LAYER`, which Explorer sets for some starts) and to drop elevation. On
+Windows, Runic removes `__COMPAT_LAYER` from the browser's environment (not from the
+application's) and passes Edge `--edge-skip-compat-layer-relaunch`, also beside the
+application's own `BrowserArguments`. When the started process still exits before the
+page's first request, the window keeps waiting for the copy until `ConnectionTimeout`;
+the launch code stays single-use and is withdrawn at the deadline. A copy that never
+connects fails with `presentation-browser-handed-off`, which, like a connection timeout,
+opens no fallback. Runic does not own the copy's process: `ProcessId` is 0, and the
+window counts as closed once its page has been disconnected for 5 seconds, not when a
+process exits. Closing such a window from the application ends its page's connection
+but cannot close the browser's window.
 The page's Bridge sends its token check as soon as its WebSocket opens. A WebSocket
 that sends none is closed after 10 seconds, or after 2 seconds when a newer WebSocket
 needs the only connection, and the page's Bridge reconnects. Each close logs event

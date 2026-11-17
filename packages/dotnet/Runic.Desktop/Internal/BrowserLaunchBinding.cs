@@ -75,6 +75,22 @@ internal sealed class BrowserLaunchBinding
         }
     }
 
+    // Withdraws a code that no client used yet, when the browser presentation it was given to ends: at its connection
+    // deadline, when it closes or before a relaunch. A client already bound keeps its binding.
+    internal void Withdraw()
+    {
+        lock (_gate)
+        {
+            _pending = null;
+        }
+    }
+
+    // Whether the code was given to a browser and no client used it yet.
+    internal bool IsPending
+    {
+        get { lock (_gate) return _pending is not null; }
+    }
+
     internal Outcome Consume(string code, nuint client, out Uri? target)
     {
         ArgumentNullException.ThrowIfNull(code);

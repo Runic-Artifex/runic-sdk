@@ -52,6 +52,7 @@ internal static class WebUiBrowserHost
         {
             startInfo.ArgumentList.Add(argument);
         }
+        PrepareEnvironment(startInfo.Environment, OperatingSystem.IsWindows());
 
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"The {installation.Browser} browser process could not be started.");
@@ -59,6 +60,30 @@ internal static class WebUiBrowserHost
         // the parent exits first; discard output instead of retaining it forever.
         outputClosed = Task.WhenAll(DrainAsync(process.StandardOutput), DrainAsync(process.StandardError));
         return process;
+    }
+
+    // Windows sets __COMPAT_LAYER for some starts from Explorer, and a user can set it (`set __COMPAT_LAYER=Installer`).
+    // Edge that inherits it starts a new copy of itself and exits (#1097). Only the browser's environment loses it;
+    // the application's own process environment is not changed.
+    internal const string CompatLayerVariable = "__COMPAT_LAYER";
+
+    // The switch that the copy Edge starts after a compatibility-layer relaunch carries; given at once, Edge does not
+    // relaunch. Other browsers ignore it, but it is passed to Edge alone.
+    internal const string EdgeSkipCompatLayerRelaunch = "--edge-skip-compat-layer-relaunch";
+
+    internal static void PrepareEnvironment(IDictionary<string, string?> environment, bool windows)
+    {
+        if (!windows)
+        {
+            return;
+        }
+        // Windows environment names are case-insensitive.
+        foreach (var name in environment.Keys
+            .Where(static name => string.Equals(name, CompatLayerVariable, StringComparison.OrdinalIgnoreCase))
+            .ToArray())
+        {
+            environment.Remove(name);
+        }
     }
 
     private static async Task DrainAsync(StreamReader reader)
@@ -70,7 +95,14 @@ internal static class WebUiBrowserHost
     internal static IReadOnlyList<string> BuildArguments(
         WebUiBrowserInstallation installation,
         Uri url,
-        WebUiBrowserLaunchOptions options)
+        WebUiBrowserLaunchOptions options) =>
+        BuildArguments(installation, url, options, OperatingSystem.IsWindows());
+
+    internal static IReadOnlyList<string> BuildArguments(
+        WebUiBrowserInstallation installation,
+        Uri url,
+        WebUiBrowserLaunchOptions options,
+        bool windows)
     {
         var arguments = new List<string>();
         if (installation.IsChromiumBased)
@@ -78,6 +110,14 @@ internal static class WebUiBrowserHost
             if (!string.IsNullOrWhiteSpace(options.ProfilePath))
             {
                 arguments.Add($"--user-data-dir={options.ProfilePath}");
+            }
+
+            // Not one of the defaults that the application's own BrowserArguments replace: without it, a compatibility
+            // layer in an inherited environment makes Edge hand off to a new copy of itself (#1097).
+            if (windows && installation.Browser == WebUiBrowser.Edge
+                && !options.BrowserArguments.Contains(EdgeSkipCompatLayerRelaunch, StringComparer.OrdinalIgnoreCase))
+            {
+                arguments.Add(EdgeSkipCompatLayerRelaunch);
             }
 
             if (options.BrowserArguments.Count == 0)
