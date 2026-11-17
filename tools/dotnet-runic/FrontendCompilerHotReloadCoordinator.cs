@@ -101,7 +101,8 @@ internal sealed class FrontendCompilerHotReloadCoordinator
         try
         {
             File.WriteAllBytes(temporary, content);
-            File.Move(temporary, _readyPath, overwrite: true);
+            // The frontend compiler reads it; on Windows its open handle can refuse the rename briefly (#1102).
+            FileReplace.Move(temporary, _readyPath);
         }
         finally
         {

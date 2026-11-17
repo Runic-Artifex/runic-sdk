@@ -554,6 +554,11 @@ internal static class DevApplication
         {
             write();
         }
+        catch (DevSessionFileException error)
+        {
+            // #1102: say which file, and that dev has not given up on it.
+            Console.Error.WriteLine($"[dev] Warning: {error.Message} dev keeps the session's state and writes the file again on its next change.");
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             Console.Error.WriteLine($"[dev] Could not write the dev session file: {error.Message}");
