@@ -7,4 +7,6 @@
   ambiguous (`Content-Length` with `Transfer-Encoding`, repeated or malformed lengths), to bare CR or LF line ends, to a
   dot segment in the path and to repeated `Host`, `Origin` or upload headers; `501` to a transfer coding other than
   `chunked`; and `414`, `431` or `408` to a request line over 8 KiB, a head over 32 KiB or 100 fields, or a head that
-  takes longer than 10 seconds. An idle connection closes after 30 seconds.
+  takes longer than 10 seconds. A new connection must send its first byte within 5 seconds, and an idle one closes
+  after 30 seconds. At its limit of 128 connections, the oldest one without a request in progress is closed to make
+  room, and a failed accept is retried (event 2105). `docs/security.md` lists the limits.

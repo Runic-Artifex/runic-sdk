@@ -15,8 +15,11 @@ internal sealed record LoopbackHttpLimits
     internal int MaxHeaderCount { get; init; } = 100;
     // A chunk-size line of a chunked body, with its extensions.
     internal int MaxChunkLineBytes { get; init; } = 1024;
-    // From the end of the previous response (or the connection's accept) to the first byte of the next request: an idle
-    // keep-alive connection closes quietly after it.
+    // From the accept to the first byte of the first request: a new connection that sends nothing closes quietly after
+    // it, so that idle sockets cannot hold the connection slots for long (DEV-SEC-68a).
+    internal TimeSpan FirstByteTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    // From the end of a response to the first byte of the next request: an idle keep-alive connection closes quietly
+    // after it.
     internal TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(30);
     // From the first byte of a head to its end: a head sent a byte at a time (slowloris) is answered 408 after it. Also
     // bounds the discarding of an unread body.
@@ -109,36 +112,11 @@ internal static class LoopbackHttpParser
 
     // The length of the head at the start of buffer, through its empty line; 0 while it is incomplete; -1 when a bare CR
     // or LF shows that it is malformed. Empty lines before the request line, which RFC 9112 lets a server skip, are part
-    // of the head.
+    // of the head. The server scans incrementally (LoopbackHttpHeadScanner); this is the same scan from the start.
     internal static int HeadLength(ReadOnlySpan<byte> buffer)
     {
-        var lineStart = 0;
-        var leading = true;
-        for (var index = 0; index < buffer.Length; index++)
-        {
-            var current = buffer[index];
-            if (current == (byte)'\r')
-            {
-                if (index + 1 == buffer.Length) return 0;
-                if (buffer[index + 1] != (byte)'\n') return -1;
-                index++;
-                var empty = index - 1 == lineStart;
-                lineStart = index + 1;
-                if (!empty) leading = false;
-                else if (!leading) return index + 1;
-            }
-            else if (current == (byte)'\n') return -1;
-        }
-        return 0;
-    }
-
-    // The length of the first line in buffer, without its CRLF, while it is still incomplete: what the reader waits on.
-    internal static int OpenLineLength(ReadOnlySpan<byte> buffer)
-    {
-        var start = 0;
-        while (buffer.Length >= start + 2 && buffer[start] == (byte)'\r' && buffer[start + 1] == (byte)'\n') start += 2;
-        var end = buffer[start..].IndexOf((byte)'\r');
-        return end < 0 ? buffer.Length - start : end;
+        var scanner = new LoopbackHttpHeadScanner();
+        return scanner.Advance(buffer);
     }
 
     // Parses a complete head (HeadLength's bytes) of a request to authority, the listener's "host:port". Null when it is
@@ -431,5 +409,56 @@ internal static class LoopbackHttpParser
                 if (character is not ((byte)'\t' or >= 0x20 and < 0x7F)) return null;
         }
         return long.Parse(Encoding.ASCII.GetString(line[..digits]), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+    }
+}
+
+// Finds the end of a request head as its bytes arrive, looking at each byte once (DEV-SEC-68b: rescanning the whole
+// buffer after every read made a head sent in small pieces cost quadratic time). The buffer it is given must start at
+// the head and only grow between calls.
+internal struct LoopbackHttpHeadScanner
+{
+    private int _scanned;
+    private int _lineStart;
+    private bool _started;
+    private int _requestLine;
+
+    // The bytes looked at so far, in all calls; for tests.
+    internal long Examined { get; private set; }
+
+    // The length of the request line: complete, or as far as it has arrived.
+    internal readonly int RequestLineLength => _started ? _requestLine : _scanned - _lineStart;
+
+    // The head's length once buffer holds all of it, through its empty line; 0 while it is incomplete; -1 at a bare CR or
+    // LF.
+    internal int Advance(ReadOnlySpan<byte> buffer)
+    {
+        var index = _scanned;
+        while (index < buffer.Length)
+        {
+            var found = buffer[index..].IndexOfAny((byte)'\r', (byte)'\n');
+            if (found < 0)
+            {
+                Examined += buffer.Length - index;
+                index = buffer.Length;
+                break;
+            }
+            Examined += found + 1;
+            index += found;
+            if (buffer[index] == (byte)'\n') return -1;
+            // A CR at the end: its LF is still to come.
+            if (index + 1 == buffer.Length) break;
+            Examined++;
+            if (buffer[index + 1] != (byte)'\n') return -1;
+            if (index > _lineStart)
+            {
+                if (!_started) _requestLine = index - _lineStart;
+                _started = true;
+            }
+            else if (_started) return index + 2;
+            index += 2;
+            _lineStart = index;
+        }
+        _scanned = index;
+        return 0;
     }
 }

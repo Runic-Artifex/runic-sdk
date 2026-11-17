@@ -11,6 +11,7 @@ using BlobEndpoint = cswebui::Runic.Application.Views.CsWebUi.CsWebUiBlobEndpoin
 using BlobRequest = cswebui::Runic.Application.Views.CsWebUi.ICsWebUiBlobRequest;
 using LoopbackLimits = cswebui::Runic.Application.Views.CsWebUi.LoopbackHttpLimits;
 using LoopbackParser = cswebui::Runic.Application.Views.CsWebUi.LoopbackHttpParser;
+using LoopbackRelay = cswebui::Runic.Application.Views.CsWebUi.CsWebUiLoopbackRelay;
 using LoopbackServer = cswebui::Runic.Application.Views.CsWebUi.LoopbackHttpServer;
 
 // The blob endpoint's own loopback HTTP/1.1 server outside Windows (LoopbackHttpServer), which replaced the managed
@@ -254,7 +255,10 @@ internal sealed partial class CsWebUiBlobEndpointChecks
     public async Task TheLoopbackServerTimesOutSlowHeadsAndIdleConnections()
     {
         if (OperatingSystem.IsWindows()) return;
-        using var server = TestServer(new LoopbackLimits { HeadTimeout = TimeSpan.FromMilliseconds(600), IdleTimeout = TimeSpan.FromMilliseconds(900) }, out _);
+        using var server = TestServer(new LoopbackLimits
+        {
+            HeadTimeout = TimeSpan.FromMilliseconds(600), FirstByteTimeout = TimeSpan.FromMilliseconds(900), IdleTimeout = TimeSpan.FromMilliseconds(1200),
+        }, out _);
         using var idle = await RawClient.ConnectAsync(server.LocalEndPoint);
         using var slow = await RawClient.ConnectAsync(server.LocalEndPoint);
         var started = Stopwatch.StartNew();
@@ -280,6 +284,14 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         Require(slowEnd is "closed" or "reset" && slow.Received.StartsWith("HTTP/1.1 408 ", StringComparison.Ordinal),
             $"A slow head ended {slowEnd} after {slow.Received.ReplaceLineEndings("|")}.");
         Require(started.Elapsed < TimeSpan.FromSeconds(8), $"The slow connections took {started.Elapsed} to end.");
+        // A kept-alive connection waits IdleTimeout after a response, then closes quietly.
+        using var kept = await RawClient.ConnectAsync(server.LocalEndPoint);
+        await kept.SendAsync($"GET /echo HTTP/1.1\r\nHost: localhost:{server.LocalEndPoint.Port}\r\n\r\n");
+        var answered = await kept.ReadResponseAsync();
+        var idleSince = Stopwatch.StartNew();
+        var keptEnd = await kept.EndAsync(TimeSpan.FromSeconds(10));
+        Require(answered.Status == 200 && keptEnd == "closed" && idleSince.Elapsed > TimeSpan.FromMilliseconds(1000),
+            $"A kept-alive connection was answered {answered} and ended {keptEnd} after {idleSince.Elapsed}.");
     }
 
     [Test]
@@ -320,33 +332,198 @@ internal sealed partial class CsWebUiBlobEndpointChecks
             Require(first.Header("Connection") == "" && second.Header("Connection") == "close" && end == "closed" && client.Received.Length == 0,
                 $"The connection's limit of 2 requests: {first}, {second}, then {end} {client.Received}.");
         }
-        // Connections: the fourth is reset while three are open (a server of its own: the connections above linger).
-        using var small = TestServer(new LoopbackLimits { MaxConnections = 3 }, out _);
-        var open = new List<RawClient>();
+        // Connections: at the limit, a request in its handler keeps its connection, and a new connection takes the slot
+        // of the oldest waiting one (a server of its own: the connections above linger).
+        using var small = TestServer(new LoopbackLimits { MaxConnections = 3 }, out var smallEvents);
+        var smallHost = $"localhost:{small.LocalEndPoint.Port}";
+        using var busy = await RawClient.ConnectAsync(small.LocalEndPoint);
+        await busy.SendAsync($"GET /wait HTTP/1.1\r\nHost: {smallHost}\r\n\r\n");
+        Require(await TestTimeouts.UntilAsync(() => smallEvents.Contains("/wait started"), TimeSpan.FromSeconds(5)), "The waiting request did not start.");
+        using var oldest = await RawClient.ConnectAsync(small.LocalEndPoint);
+        Require(await TestTimeouts.UntilAsync(() => small.OpenConnections == 2, TimeSpan.FromSeconds(5)), $"{small.OpenConnections} connections are open.");
+        using var newer = await RawClient.ConnectAsync(small.LocalEndPoint);
+        Require(await TestTimeouts.UntilAsync(() => small.OpenConnections == 3, TimeSpan.FromSeconds(5)), $"{small.OpenConnections} connections are open.");
+        using (var extra = await RawClient.ConnectAsync(small.LocalEndPoint))
+        {
+            await extra.SendAsync($"GET /echo HTTP/1.1\r\nHost: {smallHost}\r\n\r\n");
+            var answer = await extra.ReadResponseAsync();
+            Require(answer is { Status: 200, Body: "GET /echo 0" }, $"A connection over the limit was answered with {answer}.");
+        }
+        var oldestEnd = await oldest.EndAsync(TimeSpan.FromSeconds(5));
+        Require(oldestEnd is "closed" or "reset" && small.OpenConnections <= 3, $"The oldest waiting connection ended {oldestEnd}; {small.OpenConnections} are open.");
+        Require(!smallEvents.Contains("/wait aborted"), "The request in its handler lost its connection.");
+        await newer.SendAsync($"GET /echo HTTP/1.1\r\nHost: {smallHost}\r\n\r\n");
+        Require((await newer.ReadResponseAsync()).Status == 200, "The newer waiting connection was evicted before the oldest.");
+    }
+
+    // DEV-SEC-68a: another local user holds every connection slot with idle sockets, and opens new ones as soon as the
+    // server drops any. The window's requests still get through: each new connection takes the slot of the oldest
+    // connection without a request in its handler, and a browser sends its whole head at once.
+    [Test]
+    public async Task TheLoopbackServerServesRequestsWhileAnotherUserHoldsEverySlot()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var limits = new LoopbackLimits();
+        using var server = TestServer(limits, out _);
+        var host = $"localhost:{server.LocalEndPoint.Port}";
+        var held = new ConcurrentQueue<Socket>();
+        using var stop = new CancellationTokenSource();
         try
         {
-            for (var index = 0; index < 3; index++) open.Add(await RawClient.ConnectAsync(small.LocalEndPoint));
-            Require(await TestTimeouts.UntilAsync(() => small.OpenConnections == 3, TimeSpan.FromSeconds(5)), $"{small.OpenConnections} connections are open.");
-            // The reset may already have arrived when the connect returns or the request is sent.
+            for (var index = 0; index < limits.MaxConnections; index++)
+            {
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                await socket.ConnectAsync(server.LocalEndPoint);
+                held.Enqueue(socket);
+            }
+            Require(await TestTimeouts.UntilAsync(() => server.OpenConnections == limits.MaxConnections, TimeSpan.FromSeconds(10)),
+                $"{server.OpenConnections} of the attacker's connections are open.");
+            Require(await RequestAsync() == 200, "A request while every slot was held idle failed.");
+            // The attacker reconnects: it keeps opening connections, more than the limit, and replaces each one the server ends.
+            var attacker = Task.Run(async () =>
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    foreach (var socket in held.ToArray())
+                    {
+                        if (socket.SafeHandle.IsClosed) continue;
+                        try
+                        {
+                            if (!socket.Poll(0, SelectMode.SelectRead) || socket.Available > 0) continue;
+                        }
+                        catch (SocketException) { }
+                        socket.Dispose();
+                    }
+                    var live = held.Count(socket => socket.SafeHandle is { IsClosed: false });
+                    for (var index = live; index < limits.MaxConnections + 12; index++)
+                    {
+                        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                        try { await socket.ConnectAsync(server.LocalEndPoint, stop.Token); held.Enqueue(socket); }
+                        catch (Exception error) when (error is SocketException or OperationCanceledException) { socket.Dispose(); }
+                    }
+                    try { await Task.Delay(20, stop.Token); } catch (OperationCanceledException) { }
+                }
+            });
+            var outcomes = new List<int>();
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                outcomes.Add(await RequestAsync());
+                await Task.Delay(50);
+            }
+            stop.Cancel();
+            await attacker;
+            Require(outcomes.All(status => status == 200), $"Under a reconnecting attacker, the requests were answered with {string.Join(", ", outcomes)} (0: no answer).");
+        }
+        finally
+        {
+            stop.Cancel();
+            foreach (var socket in held) socket.Dispose();
+        }
+
+        async Task<int> RequestAsync()
+        {
+            try
+            {
+                using var client = await RawClient.ConnectAsync(server.LocalEndPoint);
+                await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+                return (await client.ReadResponseAsync()).Status;
+            }
+            catch (Exception error) when (error is SocketException or IOException or TimeoutException) { return 0; }
+        }
+    }
+
+    // DEV-SEC-70: an accept that fails, as when the process is out of file descriptors, does not end the server or the
+    // relay. Each accepts again after a pause and reports the first failure of the run once.
+    [Test]
+    public async Task TheLoopbackServerAndRelayKeepAcceptingAfterAFailedAccept()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var reported = new ConcurrentQueue<SocketError>();
+        var server = LoopbackServer.Listen(new IPEndPoint(IPAddress.Loopback, 0), "localhost", new LoopbackLimits(), error => reported.Enqueue(error.SocketErrorCode));
+        using (server)
+        {
+            var serverFailures = 3;
+            server.AcceptClient = (socket, token) => Interlocked.Decrement(ref serverFailures) >= 0
+                ? ValueTask.FromException<Socket>(new SocketException((int)SocketError.TooManyOpenSockets))
+                : socket.AcceptAsync(token);
+            var events = new ConcurrentBag<string>();
+            server.Serve(request => HandleAsync(request, events));
+            var host = $"localhost:{server.LocalEndPoint.Port}";
+            using (var client = await RawClient.ConnectAsync(server.LocalEndPoint))
+            {
+                await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: {host}\r\n\r\n");
+                var answer = await client.ReadResponseAsync();
+                Require(answer.Status == 200, $"After failed accepts, the server answered {answer}.");
+            }
+            // The relay in front of it, with failing accepts of its own.
+            var relayFailures = 2;
+            using var relay = LoopbackRelay.Start(IPAddress.Loopback, 0, server.LocalEndPoint, acceptFailed: error => reported.Enqueue(error.SocketErrorCode),
+                accept: (socket, token) => Interlocked.Decrement(ref relayFailures) >= 0
+                    ? ValueTask.FromException<Socket>(new SocketException((int)SocketError.NoBufferSpaceAvailable))
+                    : socket.AcceptAsync(token)) ?? throw new InvalidOperationException("The relay did not start.");
+            using (var client = await RawClient.ConnectAsync(relay.LocalEndPoint))
+            {
+                await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: {host}\r\n\r\n");
+                var answer = await client.ReadResponseAsync();
+                Require(answer.Status == 200, $"After failed accepts, the relay passed on {answer}.");
+            }
+            Require(reported.ToArray() is [SocketError.TooManyOpenSockets, SocketError.NoBufferSpaceAvailable],
+                $"The failed accepts were reported as {string.Join(", ", reported)}.");
+            Require(LoopbackServer.AcceptBackoff(1) == TimeSpan.FromMilliseconds(100) && LoopbackServer.AcceptBackoff(3) == TimeSpan.FromMilliseconds(400)
+                && LoopbackServer.AcceptBackoff(50) == TimeSpan.FromSeconds(1), "The accept backoff is not 100 ms doubling to 1 s.");
+        }
+    }
+
+    // DEV-SEC-66: a client whose address is not loopback (route_localnet) is reset at accept, before it takes a slot or
+    // reaches the parser.
+    [Test]
+    public async Task TheLoopbackServerResetsAClientOfAnotherMachineAtAccept()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var server = LoopbackServer.Listen(new IPEndPoint(IPAddress.Loopback, 0), "localhost");
+        using (server)
+        {
+            server.PeerOf = static _ => new IPEndPoint(IPAddress.Parse("10.9.0.2"), 40_000);
+            var events = new ConcurrentBag<string>();
+            server.Serve(request => HandleAsync(request, events));
             string end;
             var received = "";
             try
             {
-                using var extra = await RawClient.ConnectAsync(small.LocalEndPoint);
-                await extra.SendAsync($"GET /echo HTTP/1.1\r\nHost: localhost:{small.LocalEndPoint.Port}\r\n\r\n");
-                end = await extra.EndAsync(TimeSpan.FromSeconds(5));
-                received = extra.Received;
+                using var client = await RawClient.ConnectAsync(server.LocalEndPoint);
+                await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: localhost:{server.LocalEndPoint.Port}\r\n\r\n");
+                end = await client.EndAsync(TimeSpan.FromSeconds(5));
+                received = client.Received;
             }
-            catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionAborted or SocketError.Shutdown)
+            catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionAborted)
             {
                 end = "reset";
             }
-            Require(end is "closed" or "reset" && received.Length == 0, $"A connection over the limit ended {end} after {received}.");
+            Require(end is "reset" or "closed" && received.Length == 0 && events.IsEmpty && server.OpenConnections == 0,
+                $"A client of another machine ended {end} after {received}; the handler saw {string.Join(", ", events)}.");
         }
-        finally
-        {
-            foreach (var client in open) client.Dispose();
-        }
+    }
+
+    // DEV-SEC-68b: the head is scanned once as it arrives, however small its pieces (a rescan per read made a 32 KiB head
+    // in 8-byte pieces cost about 100 times the CPU of one write). The scanner's count of bytes looked at stays linear.
+    [Test]
+    public async Task TheLoopbackServerScansAHeadInSmallPiecesInLinearTime()
+    {
+        var head = Encoding.ASCII.GetBytes("\r\nGET /echo HTTP/1.1\r\nHost: localhost:8080\r\nX: " + new string('a', 32 * 1024 - 100) + "\r\n\r\n");
+        var scanner = new cswebui::Runic.Application.Views.CsWebUi.LoopbackHttpHeadScanner();
+        var length = 0;
+        for (var arrived = 1; arrived <= head.Length && length == 0; arrived++) length = scanner.Advance(head.AsSpan(0, arrived));
+        Require(length == head.Length && scanner.Examined <= 2L * head.Length,
+            $"A head of {head.Length} bytes, one byte at a time, was found at {length} after looking at {scanner.Examined} bytes.");
+        // The same through a server, in 8-byte pieces: answered as a head in one write is.
+        if (OperatingSystem.IsWindows()) return;
+        using var server = TestServer(new LoopbackLimits(), out _);
+        using var client = await RawClient.ConnectAsync(server.LocalEndPoint);
+        var text = Encoding.ASCII.GetBytes($"POST /echo HTTP/1.1\r\nHost: localhost:{server.LocalEndPoint.Port}\r\nX: {new string('b', 16 * 1024)}\r\n" +
+            "Transfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\nX-Trailer: " + new string('c', 8 * 1024) + "\r\n\r\n");
+        for (var offset = 0; offset < text.Length; offset += 8) await client.SendAsync(text.AsMemory(offset, Math.Min(8, text.Length - offset)));
+        var answer = await client.ReadResponseAsync();
+        Require(answer is { Status: 200, Body: "POST /echo 3:abc" }, $"A head and trailer sent in 8-byte pieces were answered with {answer}.");
     }
 
     // A response field cannot carry a line break (no response splitting), and the server sets the framing fields itself.

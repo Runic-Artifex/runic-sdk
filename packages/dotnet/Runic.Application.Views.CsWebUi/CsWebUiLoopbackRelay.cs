@@ -22,15 +22,20 @@ internal sealed class CsWebUiLoopbackRelay : IDisposable
     private readonly Socket _socket;
     private readonly IPEndPoint _target;
     private readonly Func<Socket, EndPoint?> _peerOf;
+    private readonly Func<Socket, CancellationToken, ValueTask<Socket>> _accept;
+    private readonly Action<SocketException>? _acceptFailed;
     private readonly CancellationTokenSource _stop = new();
     private readonly ConcurrentDictionary<Socket, byte> _open = new(ReferenceEqualityComparer.Instance);
     private readonly ConcurrentDictionary<IPEndPoint, IPEndPoint> _clients = new();
 
-    private CsWebUiLoopbackRelay(Socket socket, IPEndPoint target, Func<Socket, EndPoint?> peerOf)
+    private CsWebUiLoopbackRelay(Socket socket, IPEndPoint target, Func<Socket, EndPoint?> peerOf,
+        Func<Socket, CancellationToken, ValueTask<Socket>> accept, Action<SocketException>? acceptFailed)
     {
         _socket = socket;
         _target = target;
         _peerOf = peerOf;
+        _accept = accept;
+        _acceptFailed = acceptFailed;
         _ = Task.Run(AcceptAsync);
     }
 
@@ -38,8 +43,10 @@ internal sealed class CsWebUiLoopbackRelay : IDisposable
 
     // Listens on address:port and relays to target; null when this machine has no such address (IPv6 disabled), where no
     // other process can listen either. Throws SocketException (AddressAlreadyInUse) when another socket holds it.
-    // peerOf reads a client's address, its RemoteEndPoint unless a test fakes another one.
-    internal static CsWebUiLoopbackRelay? Start(IPAddress address, int port, IPEndPoint target, Func<Socket, EndPoint?>? peerOf = null)
+    // peerOf reads a client's address, its RemoteEndPoint unless a test fakes another one; accept is the socket's own
+    // unless a test fails it. acceptFailed hears the first failed accept of each run of failures.
+    internal static CsWebUiLoopbackRelay? Start(IPAddress address, int port, IPEndPoint target, Func<Socket, EndPoint?>? peerOf = null,
+        Action<SocketException>? acceptFailed = null, Func<Socket, CancellationToken, ValueTask<Socket>>? accept = null)
     {
         Socket socket;
         try { socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp); }
@@ -63,7 +70,8 @@ internal sealed class CsWebUiLoopbackRelay : IDisposable
             socket.Dispose();
             throw;
         }
-        return new CsWebUiLoopbackRelay(socket, target, peerOf ?? (static client => client.RemoteEndPoint));
+        return new CsWebUiLoopbackRelay(socket, target, peerOf ?? (static client => client.RemoteEndPoint),
+            accept ?? (static (listener, token) => listener.AcceptAsync(token)), acceptFailed);
     }
 
     // Whether a client may be relayed: its address is loopback (127.0.0.0/8, ::1, or 127.0.0.0/8 mapped to IPv6).
@@ -79,20 +87,33 @@ internal sealed class CsWebUiLoopbackRelay : IDisposable
     internal static bool IsMissing(SocketException error) => error.SocketErrorCode is SocketError.AddressNotAvailable
         or SocketError.AddressFamilyNotSupported or SocketError.ProtocolNotSupported or SocketError.ProtocolFamilyNotSupported;
 
+    // A failed accept (EMFILE and the like) does not end the relay: it accepts again after LoopbackHttpServer's backoff
+    // (DEV-SEC-70). Only Dispose ends it.
     private async Task AcceptAsync()
     {
+        var failures = 0;
         while (!_stop.IsCancellationRequested)
         {
             Socket client;
-            try { client = await _socket.AcceptAsync(_stop.Token).ConfigureAwait(false); }
-            catch (SocketException error) when (!_stop.IsCancellationRequested
-                && error.SocketErrorCode is SocketError.ConnectionAborted or SocketError.ConnectionReset)
+            try
+            {
+                client = await _accept(_socket, _stop.Token).ConfigureAwait(false);
+                failures = 0;
+            }
+            catch (Exception error) when (_stop.IsCancellationRequested || error is ObjectDisposedException or OperationCanceledException)
+            {
+                return;
+            }
+            catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionAborted or SocketError.ConnectionReset)
             {
                 continue;
             }
-            catch (Exception error) when (error is SocketException or ObjectDisposedException or OperationCanceledException)
+            catch (SocketException error)
             {
-                return;
+                if (failures++ == 0) _acceptFailed?.Invoke(error);
+                try { await Task.Delay(LoopbackHttpServer.AcceptBackoff(failures), _stop.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+                continue;
             }
             _ = Task.Run(() => RelayAsync(client));
         }

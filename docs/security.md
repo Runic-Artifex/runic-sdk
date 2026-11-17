@@ -147,6 +147,37 @@ uploads"):
   (`netsh http add urlacl`) names the port. The endpoint reads the reservations
   when it starts and does not use a port that one names (event 2104); a
   reservation that an administrator adds after that is not covered.
+- On Windows, CS-WebUI's endpoint is an http.sys listener. Outside Windows, it
+  is Runic's own minimal HTTP/1.1 server (since 0.22), on the loopback address
+  that .NET resolves `localhost` to, with the relay on the other one. It resets
+  a client whose address is not loopback before reading anything from it. Its
+  parser refuses what another parser could read differently: `400` for bare CR
+  or LF, folded fields, a target with a dot segment (also percent-encoded), a
+  `Host` other than the endpoint's own name and port, `Content-Length` together
+  with `Transfer-Encoding`, a repeated or malformed `Content-Length`, and a
+  repeated `Host`, `Origin`, `Referer`, `Sec-Fetch-*`, `Content-Type`, `Range`,
+  `If-Range`, `Expect`, `Upgrade` or upload field; `501` for a transfer coding
+  other than `chunked`; `417` for an `Expect` other than `100-continue`. A
+  malformed chunked body resets the connection. A request body is never read
+  as a request: an unread body up to 4 MiB is discarded by its framing, and a
+  longer one closes the connection. http.sys has its own parser, which
+  normalises paths and joins repeated fields, so the two platforms answer such
+  malformed requests differently. The Unix server's limits are:
+  - 8 KiB for the request line, 32 KiB for the head and 100 fields (`414`,
+    `431`);
+  - 10 seconds for a head after its first byte (`408`);
+  - 5 seconds for a new connection's first byte, and 30 seconds idle between
+    requests;
+  - 60 seconds for each read of a body, and 30 seconds for each write;
+  - a body no larger than the window's upload limit;
+  - 100 requests per connection and 128 connections.
+
+  At the connection limit, the oldest connection without a request in the
+  endpoint's handler is closed to make room. Another local user who opens
+  connections can therefore slow the window's blob loads, but cannot hold the
+  slots against them: keeping a request in the handler takes a blob URL or an
+  upload token. A failed accept, as when the process runs out of file
+  descriptors, is retried after a pause (event 2105).
 - An upload needs the page's origin and a token that only the connection's
   `hello` received; it is limited per upload and per window, dropped after 30
   seconds without data, and decodes only for that connection, once. An upload

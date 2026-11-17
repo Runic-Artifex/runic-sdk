@@ -160,7 +160,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         LoopbackHttpServer server;
         // The body limit is the window's upload limit, which the upload's own check answers first (LoopbackHttpLimits).
         var limits = new LoopbackHttpLimits { MaxBodyBytes = () => blobs.MaximumUploadBytes };
-        try { server = LoopbackHttpServer.Listen(new IPEndPoint(bound, port), host, limits); }
+        // A failed accept is retried; it is logged once per run of failures (event 2105).
+        Action<SocketException> acceptFailed = error => CsWebUiLog.BlobEndpointAcceptFailed(blobs.Logger, error, error.SocketErrorCode.ToString());
+        try { server = LoopbackHttpServer.Listen(new IPEndPoint(bound, port), host, limits, acceptFailed); }
         catch (SocketException error) when (error.SocketErrorCode == SocketError.AddressAlreadyInUse)
         {
             throw new PortHeldException(bound, port, "the listener could not listen there");
@@ -169,7 +171,7 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         try
         {
             var other = bound.AddressFamily == AddressFamily.InterNetwork ? IPAddress.IPv6Loopback : IPAddress.Loopback;
-            try { return (server, CsWebUiLoopbackRelay.Start(other, port, new IPEndPoint(bound, port))); }
+            try { return (server, CsWebUiLoopbackRelay.Start(other, port, new IPEndPoint(bound, port), acceptFailed: acceptFailed)); }
             catch (SocketException error) when (error.SocketErrorCode == SocketError.AddressAlreadyInUse)
             {
                 throw new PortHeldException(other, port, "the relay could not listen there");

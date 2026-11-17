@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -21,37 +22,54 @@ namespace Runic.Application.Views.CsWebUi;
 //   head); otherwise 414, 431 or 408 and the connection closes. A connection idle for 30 s between requests closes;
 // - a request body: each read within 60 s (the endpoint's uploads drop after 30 s idle), at most MaxBodyBytes;
 // - each write of a response within 30 s;
-// - 100 requests per connection and 128 connections; an unread request body up to 4 MiB is discarded after the
-//   response, a longer one closes the connection, after a short lingering read so that the client receives the
-//   response before any reset;
+// - 100 requests per connection; an unread request body up to 4 MiB is discarded after the response, a longer one
+//   closes the connection, after a short lingering read so that the client receives the response before any reset;
+// - 128 connections. A new connection must send its first byte within 5 s. At the limit, the oldest connection that
+//   has no request in its handler (idle, reading a head, draining or lingering) is reset to make room, so another
+//   local user who holds every slot with idle or slow sockets cannot starve the window's requests (DEV-SEC-68a): a
+//   browser sends a whole head at once, and a request stays in its handler only as long as the endpoint serves it,
+//   which takes a blob URL or an upload token;
+// - a client whose address is not loopback is reset at accept, before it takes a slot (DEV-SEC-66);
 // - a protocol error in a body, a failed read or write, and a handler that fails reset the connection.
 //
-// Dispose stops accepting, resets every open connection and cancels each request's RequestAborted.
+// An accept that fails (EMFILE, ENFILE, ENOBUFS and the like) does not end the server: it accepts again after 100 ms,
+// growing to 1 s while the failures last, and reports the first failure of each run (DEV-SEC-70). Dispose stops
+// accepting, resets every open connection and cancels each request's RequestAborted.
 internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
 {
     private readonly Socket _socket;
     private readonly string _authority;
     private readonly LoopbackHttpLimits _limits;
+    private readonly Action<SocketException>? _acceptFailed;
     private readonly CancellationTokenSource _stop = new();
-    private readonly ConcurrentDictionary<Socket, byte> _open = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<Socket, Connection> _open = new(ReferenceEqualityComparer.Instance);
+    // The connections that count against MaxConnections: open, and not evicted.
+    private int _live;
     private Func<ICsWebUiBlobRequest, Task>? _handle;
 
-    private LoopbackHttpServer(Socket socket, string authority, LoopbackHttpLimits limits)
+    private LoopbackHttpServer(Socket socket, string authority, LoopbackHttpLimits limits, Action<SocketException>? acceptFailed)
     {
         _socket = socket;
         _authority = authority;
         _limits = limits;
+        _acceptFailed = acceptFailed;
     }
 
     internal IPEndPoint LocalEndPoint => (IPEndPoint)_socket.LocalEndPoint!;
 
-    // The connections open now; for tests.
-    internal int OpenConnections => _open.Count;
+    // The connections that count against the limit now; for tests.
+    internal int OpenConnections => Volatile.Read(ref _live);
+
+    // The accept and a client's address; tests replace them before Serve, to fail accepts or fake a remote client.
+    internal Func<Socket, CancellationToken, ValueTask<Socket>> AcceptClient { get; set; } = static (socket, token) => socket.AcceptAsync(token);
+    internal Func<Socket, EndPoint?> PeerOf { get; set; } = static client => client.RemoteEndPoint;
 
     // Listens on a loopback address. Requests must name host and the port listened on as their Host. Throws SocketException
     // (AddressAlreadyInUse) when another socket holds the address, as the relay does: .NET sets SO_REUSEADDR on every TCP
     // bind outside Windows but never SO_REUSEPORT, so no other socket can listen on the exact address afterwards.
-    internal static LoopbackHttpServer Listen(IPEndPoint endPoint, string host, LoopbackHttpLimits? limits = null)
+    // acceptFailed hears the first failed accept of each run of failures.
+    internal static LoopbackHttpServer Listen(IPEndPoint endPoint, string host, LoopbackHttpLimits? limits = null,
+        Action<SocketException>? acceptFailed = null)
     {
         if (!IPAddress.IsLoopback(endPoint.Address))
             throw new ArgumentException($"{endPoint.Address} is not a loopback address.", nameof(endPoint));
@@ -67,7 +85,7 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
             throw;
         }
         var authority = string.Create(CultureInfo.InvariantCulture, $"{host}:{((IPEndPoint)socket.LocalEndPoint!).Port}");
-        return new LoopbackHttpServer(socket, authority, limits ?? new LoopbackHttpLimits());
+        return new LoopbackHttpServer(socket, authority, limits ?? new LoopbackHttpLimits(), acceptFailed);
     }
 
     public void Serve(Func<ICsWebUiBlobRequest, Task> handle)
@@ -79,44 +97,80 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
 
     private async Task AcceptAsync()
     {
+        var failures = 0;
         while (!_stop.IsCancellationRequested)
         {
             Socket client;
-            try { client = await _socket.AcceptAsync(_stop.Token).ConfigureAwait(false); }
-            catch (SocketException error) when (!_stop.IsCancellationRequested
-                && error.SocketErrorCode is SocketError.ConnectionAborted or SocketError.ConnectionReset)
+            try
             {
-                continue;
+                client = await AcceptClient(_socket, _stop.Token).ConfigureAwait(false);
+                failures = 0;
             }
-            catch (Exception error) when (error is SocketException or ObjectDisposedException or OperationCanceledException)
+            catch (Exception error) when (_stop.IsCancellationRequested || error is ObjectDisposedException or OperationCanceledException)
             {
                 return;
             }
-            if (_open.Count >= _limits.MaxConnections)
+            catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionAborted or SocketError.ConnectionReset)
             {
-                Reset(client);
                 continue;
             }
-            _open[client] = 0;
-            // Dispose may have reset the open connections before this one was added.
-            if (_stop.IsCancellationRequested)
+            catch (SocketException error)
             {
-                _open.TryRemove(client, out _);
-                Reset(client);
-                return;
+                // A transient failure, such as a process out of descriptors: the socket stays bound, so clients would
+                // wait in its backlog for good. Accept again after a pause.
+                if (failures++ == 0) _acceptFailed?.Invoke(error);
+                try { await Task.Delay(AcceptBackoff(failures), _stop.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+                continue;
             }
-            _ = Task.Run(() => ServeConnectionAsync(client));
+            Admit(client);
         }
+    }
+
+    // 100 ms after the first failed accept, doubling to 1 s.
+    internal static TimeSpan AcceptBackoff(int failures) =>
+        TimeSpan.FromMilliseconds(Math.Min(1000, 100 << Math.Min(failures - 1, 4)));
+
+    private void Admit(Socket client)
+    {
+        EndPoint? peer;
+        try { peer = PeerOf(client); }
+        catch (Exception error) when (error is SocketException or ObjectDisposedException) { peer = null; }
+        if (!CsWebUiLoopbackRelay.IsLoopbackPeer(peer) || Volatile.Read(ref _live) >= _limits.MaxConnections && !EvictOldest())
+        {
+            Reset(client);
+            return;
+        }
+        var connection = new Connection(this, client, (IPEndPoint)peer!);
+        Interlocked.Increment(ref _live);
+        _open[client] = connection;
+        // Dispose may have reset the open connections before this one was added.
+        if (_stop.IsCancellationRequested)
+        {
+            connection.TryEvict();
+            return;
+        }
+        _ = Task.Run(() => ServeConnectionAsync(connection));
+    }
+
+    // Resets the connection that has waited longest without a request in its handler; false when every connection has one.
+    private bool EvictOldest()
+    {
+        Connection? oldest = null;
+        foreach (var connection in _open.Values)
+            if (connection.Evictable && (oldest is null || connection.Since < oldest.Since))
+                oldest = connection;
+        return oldest?.TryEvict() == true;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031",
         Justification = "Whatever fails a connection, including its handler, resets that connection only.")]
-    private async Task ServeConnectionAsync(Socket socket)
+    private async Task ServeConnectionAsync(Connection connection)
     {
+        var socket = connection.Socket;
         try
         {
             socket.NoDelay = true;
-            using var connection = new Connection(this, socket);
             await connection.RunAsync().ConfigureAwait(false);
         }
         catch (Exception)
@@ -125,7 +179,9 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
         }
         finally
         {
+            connection.End();
             _open.TryRemove(socket, out _);
+            connection.Dispose();
             socket.Dispose();
         }
     }
@@ -178,25 +234,57 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
     // One client connection: its requests in turn.
     private sealed class Connection : IDisposable
     {
+        // Waiting: no request in the handler (idle, reading a head, draining, lingering), so it may be evicted.
+        private const int Waiting = 0, Handling = 1, Evicted = 2, Ended = 3;
         private readonly LoopbackHttpServer _server;
         private readonly Socket _socket;
         private readonly NetworkStream _stream;
         private readonly LoopbackHttpReader _reader;
-        private readonly IPEndPoint? _remote;
+        private readonly IPEndPoint _remote;
+        private int _state;
+        private long _since = Stopwatch.GetTimestamp();
 
-        internal Connection(LoopbackHttpServer server, Socket socket)
+        internal Connection(LoopbackHttpServer server, Socket socket, IPEndPoint remote)
         {
             _server = server;
             _socket = socket;
             _stream = new NetworkStream(socket, ownsSocket: false);
             _reader = new LoopbackHttpReader(_stream, _server._limits.MaxHeadBytes + 1);
-            _remote = socket.RemoteEndPoint as IPEndPoint;
+            _remote = remote;
         }
 
         internal LoopbackHttpServer Server => _server;
+        internal Socket Socket => _socket;
         internal LoopbackHttpLimits Limits => _server._limits;
         internal LoopbackHttpReader Reader => _reader;
-        internal IPEndPoint? Remote => _remote;
+        internal IPEndPoint Remote => _remote;
+        internal bool Evictable => Volatile.Read(ref _state) == Waiting;
+        // When it last started waiting.
+        internal long Since => Volatile.Read(ref _since);
+
+        // Resets a waiting connection to make room; false when it has a request in its handler or has ended.
+        internal bool TryEvict()
+        {
+            if (Interlocked.CompareExchange(ref _state, Evicted, Waiting) != Waiting) return false;
+            Interlocked.Decrement(ref _server._live);
+            Reset(_socket);
+            return true;
+        }
+
+        // A request goes to the handler; false when the connection was evicted first.
+        private bool TryBeginHandling() => Interlocked.CompareExchange(ref _state, Handling, Waiting) == Waiting;
+
+        // The handler is done with the request (or only its body is left to discard): the connection may be evicted.
+        internal void EndHandling()
+        {
+            Volatile.Write(ref _since, Stopwatch.GetTimestamp());
+            Interlocked.CompareExchange(ref _state, Waiting, Handling);
+        }
+
+        internal void End()
+        {
+            if (Interlocked.Exchange(ref _state, Ended) != Evicted) Interlocked.Decrement(ref _server._live);
+        }
 
         public void Dispose() => _stream.Dispose();
 
@@ -204,8 +292,8 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
         {
             for (var served = 1; ; served++)
             {
-                var head = await ReadHeadAsync().ConfigureAwait(false);
-                if (head is null) return;
+                var head = await ReadHeadAsync(first: served == 1).ConfigureAwait(false);
+                if (head is null || !TryBeginHandling()) return;
                 var last = !head.KeepAlive || served >= Limits.MaxRequestsPerConnection;
                 var request = new Request(this, head, last);
                 try
@@ -216,6 +304,7 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
                 finally
                 {
                     request.Dispose();
+                    EndHandling();
                 }
                 if (request.Closing)
                 {
@@ -227,11 +316,14 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
 
         // The next request's head; null when the connection ends: the client closed it between requests, the head did
         // not arrive in time, or it was refused (and answered).
-        private async Task<LoopbackHttpRequestHead?> ReadHeadAsync()
+        // A new connection has FirstByteTimeout for its first byte, a kept-alive one IdleTimeout; the head then has
+        // HeadTimeout. The head is scanned once, as it arrives (LoopbackHttpHeadScanner).
+        private async Task<LoopbackHttpRequestHead?> ReadHeadAsync(bool first)
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_server._stop.Token);
             var started = !_reader.Buffered.IsEmpty;
-            deadline.CancelAfter(started ? Limits.HeadTimeout : Limits.IdleTimeout);
+            deadline.CancelAfter(started ? Limits.HeadTimeout : first ? Limits.FirstByteTimeout : Limits.IdleTimeout);
+            var scanner = new LoopbackHttpHeadScanner();
             while (true)
             {
                 var buffered = _reader.Buffered;
@@ -240,7 +332,7 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
                     started = true;
                     deadline.CancelAfter(Limits.HeadTimeout);
                 }
-                var length = LoopbackHttpParser.HeadLength(buffered.Span);
+                var length = scanner.Advance(buffered.Span);
                 if (length < 0) return await RefuseAsync(400).ConfigureAwait(false);
                 if (length > 0)
                 {
@@ -249,7 +341,7 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
                     return head ?? await RefuseAsync(status).ConfigureAwait(false);
                 }
                 if (buffered.Length > Limits.MaxHeadBytes) return await RefuseAsync(431).ConfigureAwait(false);
-                if (LoopbackHttpParser.OpenLineLength(buffered.Span) > Limits.MaxRequestLineBytes) return await RefuseAsync(414).ConfigureAwait(false);
+                if (scanner.RequestLineLength > Limits.MaxRequestLineBytes) return await RefuseAsync(414).ConfigureAwait(false);
                 int read;
                 try { read = await _reader.FillAsync(deadline.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (!_server._stop.IsCancellationRequested)
@@ -632,6 +724,7 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
                     Fail();
                     throw new IOException("The response ended before its Content-Length.");
                 }
+                if (!_bodyDone) _connection.EndHandling();
                 Closing = _last || !await TryDrainAsync().ConfigureAwait(false);
                 await SendHeadAsync(complete: true).ConfigureAwait(false);
                 return;
@@ -642,6 +735,8 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
                 Fail();
                 throw new IOException("The response ended before its Content-Length.");
             }
+            // Discarding the rest of a body is no longer the handler's work: the connection may be evicted meanwhile.
+            _connection.EndHandling();
             if (!Closing && !await TryDrainAsync().ConfigureAwait(false)) Closing = true;
         }
 
@@ -723,31 +818,33 @@ internal sealed class LoopbackHttpReader(Stream stream, int capacity)
     }
 
     // A line that ends in CRLF, without it, of at most max bytes. InvalidDataException for a longer line or a bare CR or
-    // LF; IOException when the stream ends first.
+    // LF; IOException when the stream ends first. Each byte is looked at once, however the line arrives.
     internal async ValueTask<ReadOnlyMemory<byte>> ReadLineAsync(int max, CancellationToken cancellationToken)
     {
+        var searched = 0;
         while (true)
         {
-            var (line, consumed) = FindLine(_buffer.AsSpan(_start, _end - _start), max);
-            if (consumed > 0)
+            var buffered = _buffer.AsSpan(_start, _end - _start);
+            var found = buffered[searched..].IndexOfAny((byte)'\r', (byte)'\n');
+            if (found < 0) searched = buffered.Length;
+            else
             {
-                Consume(consumed);
-                return line;
+                var at = searched + found;
+                if (buffered[at] == (byte)'\n') throw new InvalidDataException("A line ends in a bare LF.");
+                if (at > max) throw new InvalidDataException("A line is too long.");
+                if (at + 1 < buffered.Length)
+                {
+                    if (buffered[at + 1] != (byte)'\n') throw new InvalidDataException("A line holds a bare CR.");
+                    var line = buffered[..at].ToArray();
+                    Consume(at + 2);
+                    return line;
+                }
+                // A CR at the end: its LF is still to come.
+                searched = at;
             }
+            if (searched > max) throw new InvalidDataException("A line is too long.");
             if (await FillAsync(cancellationToken).ConfigureAwait(false) == 0)
                 throw new IOException("The client closed the connection within a line.");
         }
-    }
-
-    // The first complete line of buffered and the bytes it takes with its CRLF; (empty, 0) while it is incomplete.
-    private static (byte[] Line, int Consumed) FindLine(ReadOnlySpan<byte> buffered, int max)
-    {
-        var lf = buffered.IndexOf((byte)'\n');
-        var cr = buffered.IndexOf((byte)'\r');
-        if (lf >= 0 && (cr < 0 || lf < cr)) throw new InvalidDataException("A line ends in a bare LF.");
-        if (cr > max || cr < 0 && buffered.Length > max) throw new InvalidDataException("A line is too long.");
-        if (cr < 0 || cr + 1 == buffered.Length) return ([], 0);
-        if (buffered[cr + 1] != (byte)'\n') throw new InvalidDataException("A line holds a bare CR.");
-        return (buffered[..cr].ToArray(), cr + 2);
     }
 }
