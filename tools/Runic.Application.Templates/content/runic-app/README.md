@@ -96,7 +96,7 @@ the first one:
 <!--#if (desktopHost) -->
 | `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). WebView2 ignores the variable while the Window runs elevated (Runtime 150 and later), for example under an IDE started as administrator; start the IDE without elevation. |
 <!--#else -->
-| `RunicWindowApp (CS-WebUI script debugging)` | The same, with the DevTools Protocol of the Window's Chrome or Edge on `http://127.0.0.1:9225/` (`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, honoured in Development only). In Visual Studio, start it, then Debug > Attach to Process, connection type "Chrome devtools protocol websocket (no authentication)", target `http://127.0.0.1:9225/`, and pick the page. Firefox and the platform WebView fallback open no port. |
+| `RunicWindowApp (CS-WebUI script debugging)` | The same, with the DevTools Protocol of the Window's Chrome or Edge on `http://127.0.0.1:9225/` (`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, honoured in Development only). In Visual Studio, start it, then Debug > Attach to Process, connection type "Chrome devtools protocol websocket (no authentication)", target `http://127.0.0.1:9225/`, and pick the page. Firefox and the platform WebView fallback open no port. Any local process can attach to the port while the Window runs. |
 <!--#endif -->
 
 `.vsconfig` names the Visual Studio components these profiles need: the .NET
@@ -132,11 +132,13 @@ window features such as file dialogs and menus are unavailable there. Open the
 address again after `dotnet watch` restarts the Window.
 <!--#if (host == "cswebui") -->
 
-`dotnet runic dev` also opens the DevTools Protocol of the Window's own Chrome
-or Edge, on a free loopback port that `[dev] Debugging:` and the session file's
-`debugEndpoints` name, so a JavaScript debugger can attach to the Window you
-are using; `--no-window` uses port 9225, as the profile does. Turn it off with
-`dotnet runic dev --no-debug-endpoint`.
+`dotnet runic dev --debug-endpoint`, for an IDE to pass when it starts `dev`, opens the
+DevTools Protocol of the Window's own Chrome or Edge, on a free loopback port
+that `[dev] Debugging:` and the session file's `debugEndpoints` name. A
+JavaScript debugger can then attach to the Window you are using; `--no-window`
+uses port 9225, as the profile does. Any local process can attach to that
+port, so a terminal `dotnet runic dev` opens none, and `--no-debug-endpoint`
+turns it off. In VS Code, attach with `"address": "127.0.0.1"`.
 <!--#endif -->
 
 <!--#if (editor == "vscode") -->

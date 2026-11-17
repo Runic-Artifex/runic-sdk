@@ -940,8 +940,13 @@ none. See the [debugging guide](../../../docs/debugging.md#the-browsers-develope
 Since 0.22, in Development, a window shown in an installed Chromium browser
 (Chrome, Edge and the others; CS-WebUI) opens that browser's Chrome DevTools
 Protocol endpoint on 127.0.0.1 when `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for
-it: `0` for a free port, or a fixed one. `dotnet runic dev` sets it, and an IDE's
-JavaScript debugger attaches to the port (Visual Studio's Attach to Process).
+it: `0` for a free port, or a fixed one. `dotnet runic dev --debug-endpoint` and
+the template's CS-WebUI script-debugging profile set it, and an IDE's JavaScript
+debugger attaches to the port (Visual Studio's Attach to Process). Any local
+process can attach to it too. A fixed port is held until the browser starts,
+and is reported only after `/json/version` answers on 127.0.0.1 and, on Linux,
+no other user listens there. A taken one becomes a free port, with a warning
+(event 3043); one that cannot be confirmed is not reported (event 3042).
 Outside Development, with `DevTools = false` in the window's `WebContent`
 policy, or when the window's `BrowserArguments` name `--remote-debugging-port`
 themselves, Runic adds no port. The Development port goes beside Runic's Chromium

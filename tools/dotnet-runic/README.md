@@ -143,7 +143,7 @@ Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-page
 
 | Option | Effect |
 | --- | --- |
-| `--no-debug-endpoint` | Opens neither WebKit's remote inspector for the Window nor Runic's CDP adapter on port 9222. Since 0.22, on every operating system, it also keeps a CS-WebUI Window's browser from opening its DevTools Protocol endpoint ([CS-WebUI pages](#debug-a-cs-webui-pages-javascript)). |
+| `--no-debug-endpoint` | Opens neither WebKit's remote inspector for the Window nor Runic's CDP adapter on port 9222. Since 0.22, on every operating system, it also keeps a CS-WebUI Window's browser from opening its DevTools Protocol endpoint, and wins over `--debug-endpoint` ([CS-WebUI pages](#debug-a-cs-webui-pages-javascript)). |
 | `--webkit-inspector` | Opens WebKit's own Web Inspector over HTTP for a browser instead of the CDP adapter, on WebKitGTK 2.54.3 or later; on an older WebKitGTK, `dev` opens the `inspector://` server and the adapter as usual and says why. |
 
 Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the-page-in-chrome---browser)):
@@ -151,6 +151,12 @@ Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the
 | Option | Effect |
 | --- | --- |
 | `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://127.0.0.1:9224/`, so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
+
+Since 0.22, for CS-WebUI (see [Debug a CS-WebUI page's JavaScript](#debug-a-cs-webui-pages-javascript)):
+
+| Option | Effect |
+| --- | --- |
+| `--debug-endpoint` | Opens the DevTools Protocol endpoint of the Window's Chrome or Edge on a free loopback port, lists it in `debugEndpoints` and names it in `[dev] Debugging:`. Off by default, for an IDE to pass when it starts `dev`. `--no-debug-endpoint` wins. |
 
 Since 0.21, on Windows (see [The Runic DevTools extension](#the-runic-devtools-extension)):
 
@@ -793,28 +799,48 @@ debug configuration, such as Rider's "JavaScript Debug" with that URL.
 
 ## Debug a CS-WebUI page's JavaScript
 
-Since 0.22, for a project with the CS-WebUI host, `dev` sets
-`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=0` for the Window. In Development,
-Runic.Desktop then starts the Window's installed Chrome or Edge with
-`--remote-debugging-port`, on a free loopback port. The Window prints
-`RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp <url>` when the browser listens and
-`RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=<url>` when it exits; `dev` reads those
-lines instead of printing them, prints `[dev] Debugging: ... <url>`, and lists
-the endpoint in the session file's `debugEndpoints` while that browser runs,
-until the Window process exits. A JavaScript debugger attaches to it
-(Visual Studio's Attach to Process, or js-debug's `attach`).
+Since 0.22, a CS-WebUI Window's installed Chrome or Edge can open its Chrome
+DevTools Protocol endpoint for a JavaScript debugger: Visual Studio's Attach to
+Process, or js-debug's `attach`. Any local process can attach to it, so `dev`
+asks for it only when an IDE does (D070.17). A terminal `dotnet runic dev`
+opens none, and says so in a `[dev] Debugging:` line.
 
-- **`--no-window`**: the IDE starts the Window, so `dev` cannot read its lines.
-  The session file's `window.environment` names port 9225 instead, and
-  `debugEndpoints` lists `http://127.0.0.1:9225/` for the whole session, as for
-  WebView2's port.
-- **Your own port**: `-e RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=<port>`; with
-  `--no-window`, a fixed port is listed.
-- **Not opened** with `--no-debug-endpoint` or `--browser`, for a Runic Desktop
-  project, or when the Window uses Firefox or the platform WebView.
+- **`--debug-endpoint`**, for an IDE to pass when it starts `dev`: `dev`
+  sets `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=0` for the Window. In Development,
+  Runic.Desktop then starts the Window's browser with `--remote-debugging-port`
+  on a free loopback port.
+  - The Window prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp <url>`
+    when the browser listens, and `RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=<url>`
+    when it exits.
+  - `dev` reads those lines instead of printing them, and prints
+    `[dev] Debugging: ... <url>`.
+  - It lists the endpoint in the session file's `debugEndpoints` while that
+    browser runs, until the Window process exits.
+- **`--no-window`**: the IDE starts the Window with the session file's
+  `window.environment`, which names port 9225. Only an IDE applies that
+  environment, so this is the IDE asking too. `dev` cannot read that Window's
+  lines, so `debugEndpoints` lists `http://127.0.0.1:9225/` for the session,
+  as WebView2's port.
+  - If something holds 9225 on 127.0.0.1 or `[::1]` when `dev` starts, `dev`
+    prints a warning and lists the endpoint under `unavailableDebugEndpoints`
+    (`"reason": "port-taken"`, or on Linux `"foreign-listener"` for another
+    user). On Linux it does the same if another user starts listening on 9225
+    later.
+  - A Window that finds the port taken uses a free one and warns on its
+    standard error.
+- **Your own port**: `-e RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=<port>`.
+  - With a Window that `dev` starts, `dev` lists the port the Window confirms. For
+    a fixed port, that is after `/json/version` answers on 127.0.0.1 and, on
+    Linux, no other user listens there.
+  - With `--no-window`, `dev` lists a fixed port.
+  - The `-e` variable is passed on even with `--no-debug-endpoint`.
+- **Not opened** in these cases:
+  - with `--no-debug-endpoint`, which wins over `--debug-endpoint`, or with
+    `--browser`;
+  - for a Runic Desktop project;
+  - when the Window uses Firefox or the platform WebView.
 
-Any local process can attach to the port; on a shared machine, use
-`--no-debug-endpoint`. See
+On a shared machine, use `--no-debug-endpoint`. See
 [CS-WebUI pages in a JavaScript debugger](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#cs-webui-pages-in-a-javascript-debugger)
 and the [security guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/security.md#development-server).
 
@@ -1003,7 +1029,7 @@ same project write the same file; the later one wins. `--dry-run` writes none.
       "DOTNET_ENVIRONMENT": "Development"
       // and RUNIC_APPLICATION_DEVELOPMENT_ASSETS without a development server, for Runic Desktop; on Windows since 0.21,
       // RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS with the Runic DevTools extension unless --no-devtools-extension; since 0.22,
-      // for CS-WebUI, RUNIC_WEBUI_REMOTE_DEBUGGING_PORT ("9225" with --no-window) unless --no-debug-endpoint
+      // for CS-WebUI with --no-window, RUNIC_WEBUI_REMOTE_DEBUGGING_PORT="9225" unless --no-debug-endpoint
     }
   },
   // With --browser (since 0.21): dev's address for a browser, and the Windows the running Window process serves,
@@ -1022,13 +1048,15 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     // ("protocol": "webkit-inspector" for WebKit's HTTP inspector with --webkit-inspector):
     // { "engine": "webkitgtk", "protocol": "cdp", "url": "http://127.0.0.1:9222/" },
     // { "engine": "webkitgtk", "protocol": "webkit-remote-inspector", "url": "inspector://127.0.0.1:41653" }
-    // Since 0.22, a CS-WebUI Window's Chrome or Edge, while it runs (with --no-window, port 9225 for the session):
+    // Since 0.22, with --debug-endpoint, a CS-WebUI Window's Chrome or Edge while it runs (with --no-window, port 9225
+    // for the session):
     // { "engine": "chromium", "protocol": "cdp", "url": "http://127.0.0.1:41625/" }
   ],
   "unavailableDebugEndpoints": [
     // Endpoints the environment asks for but the engine does not open, with the reason. Since 0.20, an elevated dev
     // (run as administrator, so its Window runs elevated too) lists WebView2's here with "reason": "elevated" instead of
-    // in debugEndpoints, and prints a [dev] Debugging: hint.
+    // in debugEndpoints, and prints a [dev] Debugging: hint. Since 0.22, a --no-window CS-WebUI port that something
+    // else holds: "reason": "port-taken", or on Linux "foreign-listener" for another user's listener.
   ],
   // The unpacked Runic DevTools extension beside this tool, for Load unpacked or a browser's --load-extension;
   // null when the tool has none. Since 0.21.

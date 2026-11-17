@@ -156,10 +156,25 @@ internal static class DevApplication
         var webKitEndpoints = new List<DevSession.DebugEndpoint>(debugging.Endpoints);
         var debuggingHints = new List<string>(debugging.Hints);
         // A CS-WebUI Window that the IDE starts (--no-window) opens the fixed port; one that dev starts reports its own.
+        // A fixed port that something holds already is listed as unavailable, with a warning (DEV-SEC-51).
         foreach (DevSession.DebugEndpoint endpoint in CsWebUiDebugging.NoWindowEndpoints(configuration, options))
         {
-            webKitEndpoints.Add(endpoint);
-            debuggingHints.Add(CsWebUiDebugging.NoWindowHint(endpoint));
+            int port = new Uri(endpoint.Url).Port;
+            if (CsWebUiDebugging.NoWindowPortCheck(port, sockets, CsWebUiDebugging.CanBind) is { } holder)
+            {
+                webKitEndpoints.Add(endpoint with { UnavailableReason = holder.Reason });
+                debuggingHints.Add(CsWebUiDebugging.PortTakenWarning(endpoint, holder.Owner));
+            }
+            else
+            {
+                webKitEndpoints.Add(endpoint);
+                debuggingHints.Add(CsWebUiDebugging.NoWindowHint(endpoint));
+            }
+        }
+        if (options.StartWindow && CsWebUiDebugging.Applies(configuration, options) && !CsWebUiDebugging.Asked(options) &&
+            !options.Environment.Any(static variable => variable.Key.Equals(CsWebUiDebugging.PortVariable, StringComparison.OrdinalIgnoreCase)))
+        {
+            debuggingHints.Add(CsWebUiDebugging.OffHint);
         }
         if (adapter is not null)
         {
@@ -191,7 +206,8 @@ internal static class DevApplication
         }
         // The session file says where the running session is, for IDEs; it is marked stopped when dev ends.
         var session = DevSession.Create(configuration, options, webKitEndpoints);
-        foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints) Console.WriteLine(UnavailableEndpointHint(endpoint));
+        foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints.Where(static endpoint => endpoint.UnavailableReason == DevSession.ElevatedReason))
+            Console.WriteLine(UnavailableEndpointHint(endpoint));
         foreach (string hint in debuggingHints) Console.WriteLine(hint);
         if (configuration.HasDevelopmentServer && options.WatchFrontend && session.DevToolsExtension is { } extension)
         {
@@ -501,6 +517,12 @@ internal static class DevApplication
 
         using var renewalStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task renewal = session.RenewFrontendAsync(TimeProvider.System, renewalStop.Token);
+        // Linux: another user who starts listening on the listed CS-WebUI port later (DEV-SEC-51).
+        Task portWatch = LoopbackSockets.Current is { } sockets &&
+            session.ListedDebugEndpoints.FirstOrDefault(static endpoint => endpoint.Engine == CsWebUiDebugging.Engine) is { } listed
+            ? CsWebUiDebugging.WatchNoWindowPortAsync(session, listed, new Uri(listed.Url).Port, sockets, Console.WriteLine,
+                WriteSession, TimeProvider.System, renewalStop.Token)
+            : Task.CompletedTask;
         Task cancellation = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         Task<int> served = developmentServer?.Completion ?? frontend!.Completion;
         try
@@ -521,6 +543,7 @@ internal static class DevApplication
         {
             renewalStop.Cancel();
             await renewal.ConfigureAwait(false);
+            await portWatch.ConfigureAwait(false);
         }
     }
 

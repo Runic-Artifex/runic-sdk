@@ -77,6 +77,52 @@ internal static partial class LoopbackPeerOwner
         return owner;
     }
 
+    // The owners of the listening sockets that a connection to address:port reaches: bound to that address or to the
+    // wildcard of its family (D070.7, DEV-SEC-51). Empty off Linux or when the tables cannot be read.
+    internal static IReadOnlyList<uint> ListenerOwners(IPAddress address, int port)
+    {
+        var owners = new List<uint>();
+        if (!OperatingSystem.IsLinux())
+        {
+            return owners;
+        }
+        foreach (var table in (ReadOnlySpan<string>)["/proc/net/tcp", "/proc/net/tcp6"])
+        {
+            try
+            {
+                using var reader = new StreamReader(table);
+                owners.AddRange(ListenerOwners(reader, address, port));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+        return owners;
+    }
+
+    internal static IEnumerable<uint> ListenerOwners(TextReader table, IPAddress address, int port)
+    {
+        address = Normalize(address);
+        var wildcard = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any;
+        _ = table.ReadLine(); // The header.
+        while (table.ReadLine() is { } line)
+        {
+            var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // TCP_LISTEN is 0A in the st column.
+            if (fields.Length < 8 || fields[3] != "0A" ||
+                !TryParseEndpoint(fields[1], out var localAddress, out var localPort) ||
+                !uint.TryParse(fields[7], NumberStyles.None, CultureInfo.InvariantCulture, out var uid))
+            {
+                continue;
+            }
+            // A dual-stack [::] listener takes IPv4 connections too.
+            if (localPort == port && (localAddress.Equals(address) || localAddress.Equals(wildcard) || localAddress.Equals(IPAddress.IPv6Any)))
+            {
+                yield return uid;
+            }
+        }
+    }
+
     // The kernel prints each 32-bit word of the address in host byte order and the port in hexadecimal.
     private static bool TryParseEndpoint(string text, out IPAddress address, out int port)
     {

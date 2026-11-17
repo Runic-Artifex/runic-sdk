@@ -41,7 +41,7 @@ internal sealed partial class DevSession
     private readonly object _gate = new();
     private DevProjectConfiguration _configuration;
     private readonly DevOptions _options;
-    private readonly IReadOnlyList<DebugEndpoint> _debugEndpoints;
+    private readonly List<DebugEndpoint> _debugEndpoints;
     private readonly DateTimeOffset _startedAt;
     private readonly DateTimeOffset _processStartedAt;
     private string _state = Starting;
@@ -64,7 +64,7 @@ internal sealed partial class DevSession
     {
         _configuration = configuration;
         _options = options;
-        _debugEndpoints = debugEndpoints;
+        _debugEndpoints = [.. debugEndpoints];
         _startedAt = startedAt;
         _processStartedAt = processStartedAt.ToUniversalTime();
         DevToolsExtension = devToolsExtension;
@@ -151,7 +151,39 @@ internal sealed partial class DevSession
     }
 
     /// <summary>The debugging endpoints that the Window's environment asks for but cannot open, with the reason.</summary>
-    internal IEnumerable<DebugEndpoint> UnavailableDebugEndpoints => _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is not null);
+    internal IEnumerable<DebugEndpoint> UnavailableDebugEndpoints
+    {
+        get
+        {
+            lock (_gate) return [.. _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is not null)];
+        }
+    }
+
+    /// <summary>The endpoints that the session file lists in <c>debugEndpoints</c> now.</summary>
+    internal IReadOnlyList<DebugEndpoint> ListedDebugEndpoints
+    {
+        get
+        {
+            lock (_gate) return [.. _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is null).Concat(_windowEndpoints)];
+        }
+    }
+
+    /// <summary>
+    /// Moves a listed endpoint to <c>unavailableDebugEndpoints</c> with <paramref name="reason"/>, such as a fixed port that
+    /// another user took while dev runs (<see cref="CsWebUiDebugging.WatchNoWindowPortAsync"/>).
+    /// </summary>
+    internal void MarkUnavailable(string url, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(reason);
+        lock (_gate)
+        {
+            int index = _debugEndpoints.FindIndex(endpoint => endpoint.Url == url && endpoint.UnavailableReason is null);
+            if (index < 0) return;
+            _debugEndpoints[index] = _debugEndpoints[index] with { UnavailableReason = reason };
+        }
+        Write();
+    }
 
     internal void Start() => Write();
 
