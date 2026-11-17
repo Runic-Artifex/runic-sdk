@@ -171,7 +171,8 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         try
         {
             var other = bound.AddressFamily == AddressFamily.InterNetwork ? IPAddress.IPv6Loopback : IPAddress.Loopback;
-            try { return (server, CsWebUiLoopbackRelay.Start(other, port, new IPEndPoint(bound, port), acceptFailed: acceptFailed)); }
+            try { return (server, CsWebUiLoopbackRelay.Start(other, port, new IPEndPoint(bound, port), acceptFailed: acceptFailed,
+                maxConnections: limits.MaxConnections, halfCloseTimeout: limits.LingerTimeout)); }
             catch (SocketException error) when (error.SocketErrorCode == SocketError.AddressAlreadyInUse)
             {
                 throw new PortHeldException(other, port, "the relay could not listen there");

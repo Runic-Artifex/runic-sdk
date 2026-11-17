@@ -474,6 +474,98 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         }
     }
 
+    // DEV-SEC-76: a report of a failed accept that throws, as a logging provider can while the process is out of
+    // descriptors, does not end the accept loop of the server or of the relay.
+    [Test]
+    public async Task AThrowingAcceptReportDoesNotEndTheAcceptLoops()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var reports = 0;
+        void Throw(SocketException error)
+        {
+            Interlocked.Increment(ref reports);
+            throw new AggregateException(new IOException("The logging provider could not open its file."));
+        }
+        using var server = LoopbackServer.Listen(new IPEndPoint(IPAddress.Loopback, 0), "localhost", new LoopbackLimits(), Throw);
+        var serverFailures = 2;
+        server.AcceptClient = (socket, token) => Interlocked.Decrement(ref serverFailures) >= 0
+            ? ValueTask.FromException<Socket>(new SocketException((int)SocketError.TooManyOpenSockets))
+            : socket.AcceptAsync(token);
+        var events = new ConcurrentBag<string>();
+        server.Serve(request => HandleAsync(request, events));
+        var relayFailures = 2;
+        using var relay = LoopbackRelay.Start(IPAddress.Loopback, 0, server.LocalEndPoint, acceptFailed: Throw,
+            accept: (socket, token) => Interlocked.Decrement(ref relayFailures) >= 0
+                ? ValueTask.FromException<Socket>(new SocketException((int)SocketError.TooManyOpenSockets))
+                : socket.AcceptAsync(token)) ?? throw new InvalidOperationException("The relay did not start.");
+        foreach (var target in new[] { server.LocalEndPoint, relay.LocalEndPoint })
+        {
+            using var client = await RawClient.ConnectAsync(target);
+            await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: localhost:{server.LocalEndPoint.Port}\r\n\r\n");
+            var answer = await client.ReadResponseAsync();
+            Require(answer.Status == 200, $"Through {target}, after a report that threw, the answer was {answer}.");
+        }
+        Require(Volatile.Read(ref reports) == 2, $"The failed accepts were reported {reports} times.");
+    }
+
+    // DEV-SEC-79: a relayed client that never closes its socket after the listener closed the connection keeps the
+    // relay's two sockets for HalfCloseTimeout only; and at its limit, the relay resets the pair idle longest to make room.
+    [Test]
+    public async Task TheRelayReleasesHalfClosedPairsAndBoundsItsConnections()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        using var server = TestServer(new LoopbackLimits(), out _);
+        var host = $"localhost:{server.LocalEndPoint.Port}";
+        using var relay = LoopbackRelay.Start(IPAddress.Loopback, 0, server.LocalEndPoint, halfCloseTimeout: TimeSpan.FromMilliseconds(500))
+            ?? throw new InvalidOperationException("The relay did not start.");
+        var descriptors = Directory.Exists("/proc/self/fd") ? (Func<int>)(() => Directory.GetFiles("/proc/self/fd").Length) : null;
+        var baseline = descriptors?.Invoke() ?? 0;
+        const int Held = 50;
+        var clients = new List<RawClient>();
+        try
+        {
+            for (var index = 0; index < Held; index++)
+            {
+                var client = await RawClient.ConnectAsync(relay.LocalEndPoint);
+                clients.Add(client);
+                await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+                Require((await client.ReadResponseAsync()).Status == 200, "A relayed request failed.");
+            }
+            // The listener closed each connection; the clients keep theirs open and never close them.
+            var released = await TestTimeouts.UntilAsync(() => relay.OpenConnections == 0, TimeSpan.FromSeconds(10));
+            Require(released, $"{relay.OpenConnections} half-closed pairs are still open.");
+            if (descriptors is not null)
+            {
+                // The clients' own sockets stay; the relay's two per client are gone.
+                var freed = await TestTimeouts.UntilAsync(() => descriptors() <= baseline + Held + 10, TimeSpan.FromSeconds(10));
+                Require(freed, $"The process holds {descriptors()} descriptors, {baseline} before {Held} half-closed clients.");
+            }
+        }
+        finally
+        {
+            foreach (var client in clients) client.Dispose();
+        }
+
+        using var small = LoopbackRelay.Start(IPAddress.Loopback, 0, server.LocalEndPoint, maxConnections: 4)
+            ?? throw new InvalidOperationException("The relay did not start.");
+        var idle = new List<RawClient>();
+        try
+        {
+            for (var index = 0; index < 4; index++) idle.Add(await RawClient.ConnectAsync(small.LocalEndPoint));
+            Require(await TestTimeouts.UntilAsync(() => small.OpenConnections == 4, TimeSpan.FromSeconds(5)), $"{small.OpenConnections} pairs are open.");
+            using var extra = await RawClient.ConnectAsync(small.LocalEndPoint);
+            await extra.SendAsync($"GET /echo HTTP/1.1\r\nHost: {host}\r\n\r\n");
+            var answer = await extra.ReadResponseAsync();
+            var oldestEnd = await idle[0].EndAsync(TimeSpan.FromSeconds(5));
+            Require(answer.Status == 200 && oldestEnd is "closed" or "reset" && small.OpenConnections <= 4,
+                $"Over the relay's limit, the new client got {answer}, the idlest ended {oldestEnd}, and {small.OpenConnections} pairs are open.");
+        }
+        finally
+        {
+            foreach (var client in idle) client.Dispose();
+        }
+    }
+
     // DEV-SEC-66: a client whose address is not loopback (route_localnet) is reset at accept, before it takes a slot or
     // reaches the parser.
     [Test]

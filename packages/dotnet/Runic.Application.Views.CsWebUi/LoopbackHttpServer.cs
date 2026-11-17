@@ -118,13 +118,23 @@ internal sealed class LoopbackHttpServer : ICsWebUiBlobListener
             {
                 // A transient failure, such as a process out of descriptors: the socket stays bound, so clients would
                 // wait in its backlog for good. Accept again after a pause.
-                if (failures++ == 0) _acceptFailed?.Invoke(error);
+                if (failures++ == 0) ReportAcceptFailure(_acceptFailed, error);
                 try { await Task.Delay(AcceptBackoff(failures), _stop.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { return; }
                 continue;
             }
             Admit(client);
         }
+    }
+
+    // Reports a failed accept. Whatever the report throws, as a logging provider that needs a descriptor the process does
+    // not have, is dropped: it must not end the accept loop it reports on (DEV-SEC-76).
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031",
+        Justification = "A failing report must not end the accept loop.")]
+    internal static void ReportAcceptFailure(Action<SocketException>? report, SocketException error)
+    {
+        try { report?.Invoke(error); }
+        catch (Exception) { }
     }
 
     // 100 ms after the first failed accept, doubling to 1 s.

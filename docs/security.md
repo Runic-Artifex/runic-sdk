@@ -176,8 +176,18 @@ uploads"):
   endpoint's handler is closed to make room. Another local user who opens
   connections can therefore slow the window's blob loads, but cannot hold the
   slots against them: keeping a request in the handler takes a blob URL or an
-  upload token. A failed accept, as when the process runs out of file
-  descriptors, is retried after a pause (event 2105).
+  upload token. Two residuals are accepted. Under such a flood, the browser's
+  idle kept-alive connections are the first to be closed, so its next request
+  on one fails and is retried on a new connection, which costs latency, not the
+  load. And a request with a body that the endpoint refuses without a response
+  body (another origin's upload, `405`) can lose its answer to eviction while
+  the rest of its body is discarded; a page never receives those. The relay on
+  the other loopback address has the same bounds: 128 connections, the one idle
+  longest closed at the limit, and 2 seconds for a client to close its side
+  after the endpoint closed the connection, so a client that never closes its
+  socket cannot hold the process's file descriptors. A failed accept, as when
+  the process runs out of file descriptors, is retried after a pause (event
+  2105), also when logging that event fails.
 - An upload needs the page's origin and a token that only the connection's
   `hello` received; it is limited per upload and per window, dropped after 30
   seconds without data, and decodes only for that connection, once. An upload

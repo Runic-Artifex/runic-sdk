@@ -9,4 +9,7 @@
   `chunked`; and `414`, `431` or `408` to a request line over 8 KiB, a head over 32 KiB or 100 fields, or a head that
   takes longer than 10 seconds. A new connection must send its first byte within 5 seconds, and an idle one closes
   after 30 seconds. At its limit of 128 connections, the oldest one without a request in progress is closed to make
-  room, and a failed accept is retried (event 2105). `docs/security.md` lists the limits.
+  room, and a failed accept is retried (event 2105). The relay that holds the other loopback address now has the same
+  bounds: 128 connections, and 2 seconds for a client to close its side after the endpoint closed the connection
+  (before, a client that never closed its socket kept two of the process's file descriptors for good).
+  `docs/security.md` lists the limits.
