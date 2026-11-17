@@ -105,6 +105,11 @@ export const platformRules = [
   { platforms: ["win-x64"], paths: ["tools/Runic.Application.Templates/content/runic-app/Properties/launchSettings.json",
     "tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json", "tests/fixtures/application/dev-live-assets",
     "tools/dotnet-runic/DevSession.cs", "tools/dotnet-runic/DevApplication.cs"] },
+  // How dotnet runic starts programs on Windows (#1081): npm and pnpm are batch files there (npm.cmd). The native job's
+  // Windows x64 leg tests the resolution, quoting and stop (ToolTests.WindowsCommands.cs) and runs dev with npm
+  // (dev-npm-smoke.mjs). Every command of the tool starts its programs through CommandRunner, so the whole tool and its
+  // tests plan that leg.
+  { platforms: ["win-x64"], paths: ["tools/dotnet-runic", "tests/dotnet/Runic.Application.Tool.Tests"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },

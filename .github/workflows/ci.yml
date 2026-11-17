@@ -1460,6 +1460,19 @@ jobs:
         run: |
           dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
           node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
+      # #1081: Node.js installs npm as npm.cmd on Windows. dotnet runic finds it through PATH and PATHEXT and starts it
+      # through cmd.exe; the batch file must receive its arguments unchanged, and stopping it must stop what it started.
+      # Then dotnet runic dev runs the dev-live-assets frontend as an npm project: npm ci, npm run dev and the served page.
+      - name: Test dotnet runic's program starts on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Application.Tool.Tests -c Release --
+          --treenode-filter "/*/*/*/*[Category=WindowsCommands]" --timeout 5m --output detailed
+      - name: Exercise dotnet runic dev with npm on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 15
+        run: node tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs
       - name: Show hosted application windows on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5

@@ -120,9 +120,10 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
     const result = plan([file]);
     assert.ok(runs(result, 'packaging'), file);
   }
-  // dotnet runic package builds every package on its own OS; the tool's other commands need no Windows or macOS leg.
+  // dotnet runic package builds every package on its own OS; the tool's other commands need the Windows x64 leg only
+  // (#1081).
   assert.deepEqual(plan(['tools/dotnet-runic/Packaging/MacOSPackager.cs']).packaging.include.map(leg => leg.target), packagingLegs.map(leg => leg.target));
-  assert.deepEqual(plan(['tools/dotnet-runic/DoctorChecks.cs']).platforms, []);
+  assert.deepEqual(plan(['tools/dotnet-runic/DoctorChecks.cs']).platforms, ['win-x64']);
   const packagingOnly = plan(['tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml']);
   assert.ok(runs(packagingOnly, 'templates'), 'the recipes ship in the template package');
   for (const file of ['tests/templates/Test-Templates.sh', 'tools/Runic.Application.Templates/content/runic-app/Program.cs',
@@ -439,6 +440,17 @@ test('the template WebView2 debugging files plan the native Windows x64 leg', ()
   }
   // The template's other files still need no Windows or macOS leg.
   assert.deepEqual(plan(['tools/Runic.Application.Templates/content/runic-app/.vscode/tasks.json']).platforms, []);
+});
+
+// #1081: dotnet runic starts npm, which is npm.cmd on Windows, so the tool and its tests plan the native Windows x64
+// leg, which tests those starts and runs dev with npm (tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs).
+test('dotnet runic and its tests plan the native Windows x64 leg', () => {
+  for (const file of ['tools/dotnet-runic/CommandRunner.cs', 'tools/dotnet-runic/ExecutableSearch.cs',
+    'tests/dotnet/Runic.Application.Tool.Tests/ToolTests.WindowsCommands.cs',
+    'tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs']) {
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  }
+  assert.deepEqual(plan(['tools/dotnet-runic/README.md']).platforms, []);
 });
 
 test('each platform rule plans its Windows and macOS legs, first match wins', () => {
