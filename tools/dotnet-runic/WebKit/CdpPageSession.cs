@@ -79,6 +79,10 @@ internal sealed partial class CdpPageSession
     // The debugger's commands that went to WebKit and whose reply has not gone to the debugger yet, of the commands
     // whose reply Chromium sends before the events they cause (HoldsEvent); under _stateGate. See WaitForRepliesAsync.
     private readonly List<UnsentReply> _unsentReplies = [];
+    // Set while ResumeAsync sets the debugger's domains and breakpoints again on a restarted Window's page: the debugger's
+    // commands wait for it, as no command reaches a Chromium page before the breakpoints that the debugger set on it.
+    private TaskCompletionSource? _restoring;
+    private static readonly TimeSpan RestoreWait = TimeSpan.FromSeconds(30);
     private volatile bool _debuggerPauseRequested;
     private bool _ignoreResumed;
     private List<JsonObject>? _replay;
@@ -136,6 +140,7 @@ internal sealed partial class CdpPageSession
         _events.Writer.TryComplete();
         CancelInstrumentationAnswer();
         ReleaseUnsentReplies();
+        Volatile.Read(ref _restoring)?.TrySetResult();
     }
 
     /// <summary>
@@ -252,6 +257,7 @@ internal sealed partial class CdpPageSession
         CancelInstrumentationAnswer();
         // The old page's events are over: a reply that the old page owes does not hold the new page's events.
         ReleaseUnsentReplies();
+        Volatile.Read(ref _restoring)?.TrySetResult();
         _wip = static (method, _, _) => Task.FromException<JsonObject>(new CdpException(CdpException.ServerError, "The Window is restarting."));
     }
 
@@ -260,6 +266,20 @@ internal sealed partial class CdpPageSession
     /// and gets the new ones while the domains, breakpoints and pause settings it set are set again.
     /// </summary>
     internal async Task ResumeAsync(WipSender wip, WebKitProtocol protocol)
+    {
+        var restoring = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Volatile.Write(ref _restoring, restoring);
+        try
+        {
+            await RestoreAsync(wip, protocol).ConfigureAwait(false);
+        }
+        finally
+        {
+            restoring.TrySetResult();
+        }
+    }
+
+    private async Task RestoreAsync(WipSender wip, WebKitProtocol protocol)
     {
         _wip = wip;
         _protocol = protocol;
@@ -280,11 +300,11 @@ internal sealed partial class CdpPageSession
         }
         if (page)
         {
-            await HandleAsync("Page.enable", []).ConfigureAwait(false);
-            await HandleAsync("Page.getResourceTree", []).ConfigureAwait(false);
+            await HandleCoreAsync("Page.enable", []).ConfigureAwait(false);
+            await HandleCoreAsync("Page.getResourceTree", []).ConfigureAwait(false);
         }
-        if (runtime) await HandleAsync("Runtime.enable", []).ConfigureAwait(false);
-        if (debugger) await HandleAsync("Debugger.enable", []).ConfigureAwait(false);
+        if (runtime) await HandleCoreAsync("Runtime.enable", []).ConfigureAwait(false);
+        if (debugger) await HandleCoreAsync("Debugger.enable", []).ConfigureAwait(false);
         if (_instrumentation) await SetInstrumentationBreakpointAsync(CancellationToken.None).ConfigureAwait(false);
         foreach (JsonObject parameters in breakpoints)
         {
@@ -297,9 +317,9 @@ internal sealed partial class CdpPageSession
             {
             }
         }
-        if (exceptions is not null) await HandleAsync("Debugger.setPauseOnExceptions", new() { ["state"] = exceptions }).ConfigureAwait(false);
-        if (depth is not null) await HandleAsync("Debugger.setAsyncCallStackDepth", new() { ["maxDepth"] = depth }).ConfigureAwait(false);
-        if (blackbox.Count > 0) await HandleAsync("Debugger.setBlackboxPatterns", new() { ["patterns"] = new JsonArray([.. blackbox.Select(static pattern => (JsonNode)pattern)]) }).ConfigureAwait(false);
+        if (exceptions is not null) await HandleCoreAsync("Debugger.setPauseOnExceptions", new() { ["state"] = exceptions }).ConfigureAwait(false);
+        if (depth is not null) await HandleCoreAsync("Debugger.setAsyncCallStackDepth", new() { ["maxDepth"] = depth }).ConfigureAwait(false);
+        if (blackbox.Count > 0) await HandleCoreAsync("Debugger.setBlackboxPatterns", new() { ["patterns"] = new JsonArray([.. blackbox.Select(static pattern => (JsonNode)pattern)]) }).ConfigureAwait(false);
     }
 
     /// <summary>A WebKit script ID as the debugger sees it.</summary>
@@ -375,8 +395,26 @@ internal sealed partial class CdpPageSession
         }
     }
 
-    /// <summary>Answers one CDP command of this page.</summary>
+    /// <summary>
+    /// Answers one CDP command of this page. On a restarted Window's page, once the debugger's breakpoints and settings are
+    /// set again (#1108): a command before that, such as an evaluation that clicks, would run on the page without them.
+    /// </summary>
     internal async Task<JsonObject> HandleAsync(string method, JsonObject p, CancellationToken cancellationToken = default)
+    {
+        if (Volatile.Read(ref _restoring) is { Task.IsCompleted: false } restoring)
+        {
+            try
+            {
+                await restoring.Task.WaitAsync(RestoreWait, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+            }
+        }
+        return await HandleCoreAsync(method, p, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<JsonObject> HandleCoreAsync(string method, JsonObject p, CancellationToken cancellationToken = default)
     {
         switch (method)
         {

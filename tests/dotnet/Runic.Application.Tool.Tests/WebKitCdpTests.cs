@@ -678,6 +678,47 @@ internal sealed partial class ToolTests
         Equal(CdpException.InvalidParams, (await ThrowsAsync<CdpException>(() => session.HandleAsync("Debugger.getScriptSource", Json("""{"scriptId":"40"}""")))).Code);
     }
 
+    [Test, DisplayName("on a restarted Window's page, the debugger's commands wait until its breakpoints are set again (#1108)")]
+    public async Task CommandsWaitForTheRestartedWindowsBreakpoints()
+    {
+        var webKit = new FakeWebKit
+        {
+            Answer = static (method, parameters) => method == "Debugger.setBreakpointByUrl"
+                ? new JsonObject { ["breakpointId"] = CdpPageSession.UrlBreakpointId(parameters), ["locations"] = new JsonArray() }
+                : [],
+        };
+        CdpPageSession session = webKit.Session();
+        await session.HandleAsync("Debugger.enable", []);
+        await session.HandleAsync("Debugger.setBreakpointByUrl", Json("""{"url":"http://h/App.tsx","lineNumber":68,"columnNumber":13}"""));
+        session.Suspend();
+
+        // The restarted page answers the breakpoint late, as a loaded WebKit does.
+        var sent = new List<string>();
+        var breakpoint = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<JsonObject> Restarted(string method, JsonObject? parameters, CancellationToken cancellationToken)
+        {
+            lock (sent) sent.Add(method);
+            return method == "Debugger.setBreakpointByUrl" ? breakpoint.Task : Task.FromResult(new JsonObject());
+        }
+        Task resumed = session.ResumeAsync(Restarted, WebKitProtocol.Unknown);
+        // The scenario's click: it reaches the page only once the breakpoint is set there.
+        Task<JsonObject> click = session.HandleAsync("Runtime.evaluate", Json("""{"expression":"click()"}"""));
+        await Task.Delay(100);
+        False(click.IsCompleted, "the click was answered before the breakpoint was set");
+        lock (sent) False(sent.Contains("Runtime.evaluate"), "the click reached the page before the breakpoint");
+        breakpoint.SetResult(Json("""{"breakpointId":"http://h/App.tsx:68:13","locations":[]}"""));
+        await resumed;
+        await click;
+        lock (sent) True(sent.IndexOf("Debugger.setBreakpointByUrl") < sent.IndexOf("Runtime.evaluate"), "the breakpoint came first");
+
+        // A Window that goes away again while the session is set up holds no command.
+        session.Suspend();
+        var never = new TaskCompletionSource<JsonObject>();
+        _ = session.ResumeAsync((_, _, _) => never.Task, WebKitProtocol.Unknown);
+        session.Suspend();
+        Equal(CdpException.ServerError, (await ThrowsAsync<CdpException>(() => session.HandleAsync("Runtime.evaluate", Json("""{"expression":"1"}""")))).Code);
+    }
+
     [Test, DisplayName("dev opens WebKit's inspector server and the CDP adapter on Linux, and honours the developer's choice")]
     public void WebKitDebuggingPlans()
     {
