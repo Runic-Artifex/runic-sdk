@@ -322,7 +322,8 @@ back to the server for what its own origin cannot serve. Its origin serves only
   the Window serves its build folder, not the embedded frontend archive. A
   trimmed or NativeAOT publish contains no fallback: the
   `Runic.Application.DevelopmentServerForwarding` feature switch is off there,
-  and the trimmer removes the code. The
+  and the trimmer removes the code. Only the publish turns it off; a build of a
+  project that sets `PublishAot` or `PublishTrimmed` keeps the fallback. The
   gate is the process environment, not the host's `IHostEnvironment`: an app
   started with `--environment Production` but with `DOTNET_ENVIRONMENT=Development`
   in its environment still forwards.

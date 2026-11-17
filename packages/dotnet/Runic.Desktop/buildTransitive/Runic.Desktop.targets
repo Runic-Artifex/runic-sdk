@@ -18,10 +18,14 @@
   </ItemGroup>
   <!-- A CS-WebUI window's Development DevTools Protocol endpoint (WebUiRemoteDebugging, D070.7) is for untrimmed
        development builds such as dotnet runic dev's: a trimmed or NativeAOT publish turns it off, so the trimmer removes
-       it and its HTTP client. -->
-  <ItemGroup Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">
-    <RuntimeHostConfigurationOption Include="Runic.Desktop.WebUiRemoteDebugging" Value="false" Trim="true" />
-  </ItemGroup>
+       it and its HTTP client. Only the publish: PrepareForILLink runs before ILLink and before ILC writes its options,
+       never in a build, so a project that sets PublishAot or PublishTrimmed keeps the endpoint in its builds and in
+       their runtimeconfig.json. -->
+  <Target Name="_RunicDesktopPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
+    <ItemGroup>
+      <RuntimeHostConfigurationOption Include="Runic.Desktop.WebUiRemoteDebugging" Value="false" Trim="true" />
+    </ItemGroup>
+  </Target>
   <Target Name="_RunicDesktopValidateServer" BeforeTargets="PrepareForBuild">
     <Error Code="RUNICDESK003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk003"
            Condition="'$(RunicDesktopServer)' != '' and '$(RunicDesktopServer)' != 'Native' and '$(RunicDesktopServer)' != 'Kestrel' and '$(RunicDesktopServer)' != 'None'"
