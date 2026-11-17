@@ -4,9 +4,12 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 
-// An ILC mstat file (version 2) is an ECMA-335 assembly. The bodies of its methods Types, Methods and Blobs are IL
-// streams: each record is `ldtoken <type|method>` or `ldstr <blob name>`, followed by `ldc.i4` operands, the first of
-// which is the node's size. Version 2 adds a node id, which this reader ignores.
+// An ILC mstat file (version 2) is an ECMA-335 assembly. The bodies of its record methods (Types, Methods, Blobs,
+// FrozenObjects, RvaFields and others) are IL streams: each record is `ldtoken <type|method|field>` or
+// `ldstr <blob name>`, followed by `ldc.i4` operands, the first of which is the node's size. Version 2 adds a node id,
+// which this reader ignores. It prints kind<TAB>size<TAB>owner<TAB>name, where owner is the assembly that defines the
+// record's type, the declaring type of its method or field, or the generic type definition of an instantiation, so a
+// List<Runic type> belongs to System.Private.CoreLib. A blob has no owner.
 //   dotnet run --project tests/scaling/aot-size/MstatReader -- <file.mstat>
 if (args is not [var path])
 {
@@ -23,7 +26,7 @@ foreach (var methodHandle in md.GetTypeDefinition(typeHandle).GetMethods())
 {
     var method = md.GetMethodDefinition(methodHandle);
     var kind = md.GetString(method.Name);
-    if (kind is not ("Types" or "Methods" or "Blobs")) continue;
+    if (method.RelativeVirtualAddress == 0) continue;
     var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILReader();
     var items = new List<(char Op, int Value)>();
     while (il.RemainingBytes > 0)
@@ -43,18 +46,39 @@ foreach (var methodHandle in md.GetTypeDefinition(typeHandle).GetMethods())
     }
     for (var i = 0; i < items.Count; i++)
     {
-        if (items[i].Op == 'I') continue;
-        if (i + 1 >= items.Count || items[i + 1].Op != 'I')
-            throw new InvalidOperationException($"A record of {kind} in {path} has no size.");
-        var size = items[i + 1].Value;
-        var label = items[i].Op == 'S'
-            ? md.GetUserString(MetadataTokens.UserStringHandle(items[i].Value & 0xFFFFFF))
-            : names.Token(items[i].Value);
+        int size;
+        string label, owner;
+        if (kind == "FrozenObjects")
+        {
+            // `ldtoken <object type>`, size, id, then `ldtoken <owning type>` or `ldc.i4.0` (none, as for a string
+            // literal). A preinitialized static's object belongs to the assembly of the type that owns the static.
+            if (i + 3 >= items.Count || items[i].Op != 'T' || items[i + 1].Op != 'I' || items[i + 2].Op != 'I'
+                || items[i + 3] is not ({ Op: 'T' } or { Op: 'I', Value: 0 }))
+                throw new InvalidOperationException($"A record of {kind} in {path} is not type, size, id, owner.");
+            var objectType = items[i].Value;
+            var owningType = items[i + 3] is { Op: 'T', Value: var token } ? token : (int?)null;
+            size = items[i + 1].Value;
+            label = names.Token(objectType) + (owningType is int type ? " in " + names.Token(type) : "");
+            owner = names.Owner(owningType ?? objectType);
+            i += 3;
+        }
+        else
+        {
+            if (items[i].Op == 'I') continue;
+            if (i + 1 >= items.Count || items[i + 1].Op != 'I')
+                throw new InvalidOperationException($"A record of {kind} in {path} has no size.");
+            size = items[i + 1].Value;
+            (label, owner) = items[i].Op == 'S'
+                ? (md.GetUserString(MetadataTokens.UserStringHandle(items[i].Value & 0xFFFFFF)), "")
+                : (names.Token(items[i].Value), names.Owner(items[i].Value));
+        }
         output.Write(kind);
         output.Write('\t');
         output.Write(size);
         output.Write('\t');
-        output.WriteLine(label);
+        output.Write(owner);
+        output.Write('\t');
+        output.WriteLine(label.Replace('\t', ' ').Replace('\n', ' '));
     }
 }
 output.Flush();
@@ -63,6 +87,60 @@ return 0;
 // Names types and methods the way ILC's mstat references them, with generic arguments in angle brackets.
 sealed partial class NameProvider(MetadataReader md) : ISignatureTypeProvider<string, object?>
 {
+    // The assembly that owns a record's token; "?" when the mstat file does not say.
+    public string Owner(int token)
+    {
+        var handle = MetadataTokens.EntityHandle(token);
+        return handle.Kind switch
+        {
+            HandleKind.MemberReference => OwnerOf(md.GetMemberReference((MemberReferenceHandle)handle).Parent),
+            HandleKind.MethodSpecification => md.GetMethodSpecification((MethodSpecificationHandle)handle).Method is { Kind: HandleKind.MemberReference } target
+                ? OwnerOf(md.GetMemberReference((MemberReferenceHandle)target).Parent)
+                : "?",
+            HandleKind.TypeReference or HandleKind.TypeSpecification => OwnerOf(handle),
+            _ => "?",
+        };
+    }
+
+    private string OwnerOf(EntityHandle handle)
+    {
+        switch (handle.Kind)
+        {
+            case HandleKind.TypeReference:
+                var type = md.GetTypeReference((TypeReferenceHandle)handle);
+                return type.ResolutionScope.Kind switch
+                {
+                    HandleKind.AssemblyReference => md.GetString(md.GetAssemblyReference((AssemblyReferenceHandle)type.ResolutionScope).Name),
+                    HandleKind.TypeReference => OwnerOf(type.ResolutionScope),
+                    HandleKind.ModuleReference => md.GetString(md.GetModuleReference((ModuleReferenceHandle)type.ResolutionScope).Name),
+                    _ => "?",
+                };
+            case HandleKind.TypeSpecification:
+                var signature = md.GetBlobReader(md.GetTypeSpecification((TypeSpecificationHandle)handle).Signature);
+                return OwnerOfSignature(ref signature);
+            default:
+                return "?";
+        }
+    }
+
+    // A generic instantiation belongs to its definition, an array, pointer or byref to its element type, and a
+    // primitive to System.Private.CoreLib.
+    private string OwnerOfSignature(ref BlobReader signature)
+    {
+        switch ((SignatureTypeCode)signature.ReadByte())
+        {
+            case SignatureTypeCode.GenericTypeInstance:
+                signature.ReadByte();
+                return OwnerOf(signature.ReadTypeHandle());
+            case SignatureTypeCode.SZArray or SignatureTypeCode.Array or SignatureTypeCode.Pointer or SignatureTypeCode.ByReference:
+                return OwnerOfSignature(ref signature);
+            case (SignatureTypeCode)0x11 or (SignatureTypeCode)0x12: // valuetype, class
+                return OwnerOf(signature.ReadTypeHandle());
+            default:
+                return "System.Private.CoreLib";
+        }
+    }
+
     public string Token(int token)
     {
         var handle = MetadataTokens.EntityHandle(token);

@@ -12,6 +12,12 @@ internal sealed class DevelopmentAssetsChecks
     private const byte SendRaw = 0xF8;
     private const string MarkerFunction = "runicTestMarker";
 
+    // Trimmed and NativeAOT publishes turn the feature switch off (build/Runic.Application.Views.Desktop.targets); this
+    // untrimmed test build, like dotnet runic dev's, keeps it on.
+    [Test]
+    public void TheFeatureIsOnInUntrimmedBuilds() =>
+        Check(DevelopmentAssets.IsSupported, "The development assets feature switch is off in an untrimmed build.");
+
     [Test, NotInParallel(Order = 35)]
     public void TheVariableIsReadOnlyInDevelopmentWithoutApplicationSurfaceOptions()
     {
