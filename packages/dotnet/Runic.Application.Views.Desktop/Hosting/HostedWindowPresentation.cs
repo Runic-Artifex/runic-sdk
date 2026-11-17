@@ -326,13 +326,18 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
                     _ => PlatformUnavailableReason.BackendUnavailable,
                 });
             default:
-                var code = HostProtocol.String(reply, "code") is { } token &&
-                    Enum.GetValues<PlatformFailureCode>().FirstOrDefault(value => HostProtocol.Kebab(value.ToString()) == token) is var known &&
-                    HostProtocol.Kebab(known.ToString()) == token
-                    ? known
-                    : PlatformFailureCode.Unknown;
+                var code = HostProtocol.String(reply, "code") is { } token ? FailureCode(token) : PlatformFailureCode.Unknown;
                 var message = HostProtocol.String(reply, "message");
                 return new PlatformResult<PlatformUnit>.Failed(code, message is null ? null : new PlatformDiagnostic(Source, 0, message));
         }
+    }
+
+    private static PlatformFailureCode FailureCode(string token)
+    {
+        foreach (var value in Enum.GetValues<PlatformFailureCode>())
+        {
+            if (HostProtocol.Kebab(value.ToString()) == token) return value;
+        }
+        return PlatformFailureCode.Unknown;
     }
 }

@@ -23,6 +23,15 @@ internal sealed class DevelopmentAssets
 {
     internal const string EnvironmentVariable = "RUNIC_APPLICATION_DEVELOPMENT_ASSETS";
 
+    // dotnet runic dev runs an untrimmed build. A trimmed or NativeAOT publish turns the feature off
+    // (build/Runic.Application.Views.Desktop.targets), so the trimmer removes the live directory source and its file
+    // watcher (D072.2).
+    internal const string FeatureSwitch = "Runic.Application.Views.Desktop.DevelopmentAssets";
+
+    // The caller tests it before ResolveDirectory, so the trimmer can remove Open and what it reaches.
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(FeatureSwitch)]
+    internal static bool IsSupported => !AppContext.TryGetSwitch(FeatureSwitch, out var enabled) || enabled;
+
     // How long a reload sent through the Bridge waits for the window to load a document of the current version
     // before it navigates the WebView instead.
     private static readonly TimeSpan BridgeReloadGrace = TimeSpan.FromSeconds(1);

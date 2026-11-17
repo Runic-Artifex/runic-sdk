@@ -76,11 +76,20 @@ of yours:
 - Its packages are built for trimming and NativeAOT, so the trimmer removes
   the Runic code an application does not reach, including the platform
   backends of other operating systems.
-- Development-only code sits behind feature switches that are off in a trimmed
-  or NativeAOT publish, such as `Runic.Application.DevelopmentServerForwarding`
-  ([Security](security.md)), so the trimmer removes it. Runic Desktop keeps only the
-  presentation server that `RunicDesktopServer` selects.
-- Runic Translations embeds its CLDR data compressed.
+- Development-only code sits behind feature switches that are turned off in
+  trimmed or NativeAOT publishes, such as `Runic.Application.DevelopmentServerForwarding`
+  ([Security](security.md)) and Runic Desktop's CS-WebUI remote-debugging
+  endpoint (`Runic.Desktop.WebUiRemoteDebugging`), so the trimmer removes it.
+  Runic Desktop keeps only the presentation server that `RunicDesktopServer`
+  selects.
+- On Linux and macOS, the CS-WebUI host serves blobs and uploads from a small
+  loopback HTTP/1.1 server of its own instead of .NET's `HttpListener`, so the
+  executable has no HTTP client, TLS or X.509 code for it (0.22).
+- A hosted Runic Desktop region reads its component manifest without
+  `HttpClient` (0.22).
+- Runic Translations embeds its CLDR data and, from 0.14, each catalog's locale
+  data compressed. Its Hot Reload support is off in a trimmed or NativeAOT
+  publish, so the reflection it uses is removed.
 
 Beyond that, four .NET settings make the executable smaller in exchange for
 something the application gives up. Runic sets none of them and the templates

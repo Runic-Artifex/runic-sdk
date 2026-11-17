@@ -465,6 +465,26 @@ test("build copies RunicApplicationFrontendOutputDirectory to RunicApplicationFr
     [["Runic.Application.FrontendWebRoot", "wwwroot"]]);
 });
 
+// dotnet runic dev's development server fallback (#1085, #1096): only a trimmed or NativeAOT publish turns its feature
+// switch off, in PrepareForILLink (before ILLink and ILC; the fixture's target stands in for the SDK's). A build of a
+// project that sets PublishAot or PublishTrimmed keeps the fallback, and its runtimeconfig.json has no switch.
+test("only a trimmed or NativeAOT publish turns the development server fallback off", () => {
+  const forwarding = (app, publish) => {
+    const result = spawnSync("dotnet", ["msbuild", join(app.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+      ...(publish ? ["-t:PrepareForILLink"] : []), "-getItem:RuntimeHostConfigurationOption"], { cwd: app.project, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return (JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [])
+      .filter(option => option.Identity === "Runic.Application.DevelopmentServerForwarding")
+      .map(option => ({ value: option.Value, trim: option.Trim }));
+  };
+  for (const [index, property] of ["", "<PublishAot>true</PublishAot>", "<PublishTrimmed>true</PublishTrimmed>"].entries()) {
+    const app = fixture(`forwarding-switch-${index}`, { name: "app", private: true },
+      `  <PropertyGroup>${property}</PropertyGroup>\n  <Target Name="PrepareForILLink" />`);
+    assert.deepEqual(forwarding(app, false), [], `A build turned the fallback off (${property || "no property"}).`);
+    assert.deepEqual(forwarding(app, true), [{ value: "false", trim: "true" }], property);
+  }
+});
+
 const builds = result => result.commands.filter(command => command === "build").length;
 const lastHost = ({ project }) => readFileSync(join(project, "host.log"), "utf8").trim().split("\n").at(-1);
 const files = root => existsSync(root)
