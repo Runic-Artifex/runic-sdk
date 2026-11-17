@@ -308,7 +308,8 @@ back to the server for what its own origin cannot serve. Its origin serves only
 - **Redirects.** A path on the Window's listener outside every Window's own
   path, such as the Vite DevTools dock's `/__devtools/`, gets a redirect to
   the same path on the server instead. A CS-WebUI Window redirects whatever
-  its folder lacks.
+  its folder lacks; that redirect drops the query string, because WebUI's
+  native server does (cs-webui#33).
 - **When.** Only in the `Development` environment, only with the address that
   `dev` passes (`http://127.0.0.1:<port>/`, never `localhost`), and only when
   the Window serves its build folder, not the embedded frontend archive. The
@@ -317,8 +318,8 @@ back to the server for what its own origin cannot serve. Its origin serves only
   in its environment still forwards.
 - **What is admitted.** Requests from a loopback peer that names a loopback
   `Host`, and only same-origin or user-initiated fetches
-  (`Sec-Fetch-Site`): another site's page, another machine and a
-  DNS-rebinding page get 404. On CS-WebUI, WebUI's single-client cookie and a
+  (`Sec-Fetch-Site`): another site's page and another machine get 404, and a
+  DNS-rebinding page (a `Host` that is not loopback) gets 421. On CS-WebUI, WebUI's single-client cookie and a
   window that listens on loopback only stand for these checks.
 - **Which targets.** A target is built from the server's address and a plain
   path: no empty, `.` or `..` segment, and no encoded or literal slash or
