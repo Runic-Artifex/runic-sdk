@@ -6,7 +6,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
+import path, { dirname, isAbsolute, join, resolve, type PlatformPath } from "node:path";
 import launchEditor from "launch-editor";
 import { isLoopbackRequest, mayRead, readLimitedBody, sameOrigin } from "./requests.js";
 import type { AccessList } from "./access.js";
@@ -295,15 +295,45 @@ export async function resolveOpenLocation(
   return location !== undefined && isFile(location.file) ? location : undefined;
 }
 
-// `{ file, line, column? }` of a frontend file: an absolute, normalized path that `accepts` admits.
-function frontendLocation(message: unknown, accepts: (file: string) => boolean): RunicSourceLocation | undefined {
+/**
+ * `{ file, line, column? }` of a frontend file: an absolute path in canonical form (`canonicalFrontendFile`) that
+ * `accepts` admits in Vite's form, opened in the platform's form. `paths` is `node:path`, `path.win32` in tests.
+ */
+export function frontendLocation(
+  message: unknown, accepts: (file: string) => boolean, paths: PlatformPath = path,
+): RunicSourceLocation | undefined {
   if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
   const { id, file, line, column = 1 } = message as Record<string, unknown>;
-  if (id !== undefined || typeof file !== "string" || !isAbsolute(file) || normalize(file) !== file || file.includes("\0")
-      || !Number.isSafeInteger(line) || (line as number) < 1 || !Number.isSafeInteger(column) || (column as number) < 1) {
+  if (id !== undefined || typeof file !== "string" || !Number.isSafeInteger(line) || (line as number) < 1
+      || !Number.isSafeInteger(column) || (column as number) < 1) {
     return undefined;
   }
-  return accepts(file) ? { file, line: line as number, column: column as number } : undefined;
+  const canonical = canonicalFrontendFile(file, paths);
+  return canonical !== undefined && accepts(canonical.vite)
+    ? { file: canonical.file, line: line as number, column: column as number } : undefined;
+}
+
+/**
+ * A frontend file as Runic Inspect names it, in the two forms `/__runic/open` needs: `vite`, the form Vite names files
+ * in and `isFileLoadingAllowed` compares (`/` separators; on Windows `C:/p/src/App.vue`, which Vite compares without
+ * regard to case there), and `file`, the platform's form to test and open (`C:\p\src\App.vue`). Either separator is
+ * accepted on Windows. Undefined unless the path is absolute and has nothing that could lead outside what Vite's check
+ * judges: no `.` or `..` segment, no empty segment, no NUL; on Windows only a drive path (`C:\` or `C:/`), so no UNC
+ * path (`\\server\share`, which Windows would reach over the network), no device path (`\\?\`, `\\.\`), no rooted
+ * path without a drive (`\p`, `/C:/p`), no other `:` (alternate data streams) and no segment that Windows trims
+ * (a trailing `.` or space).
+ */
+export function canonicalFrontendFile(raw: string, paths: PlatformPath = path): { file: string; vite: string } | undefined {
+  if (raw.length === 0 || raw.length > maximumOpenRequestBytes || raw.includes("\0")) return undefined;
+  const windows = paths.sep === "\\";
+  const vite = windows ? raw.replaceAll("\\", "/") : raw;
+  if (windows ? !/^[a-z]:\//iu.test(vite) || vite.includes(":", 2) : !vite.startsWith("/")) return undefined;
+  const segments = vite.slice(windows ? 3 : 1).split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === ".."
+      || (windows && /[. ]$/u.test(segment)))) {
+    return undefined;
+  }
+  return { file: windows ? paths.normalize(vite) : vite, vite };
 }
 
 /**

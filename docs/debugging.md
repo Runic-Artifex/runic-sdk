@@ -50,13 +50,19 @@ profiles next to the Start button:
 
 - **`<Project>`** starts the Window with `DOTNET_ENVIRONMENT=Development`: the browser's developer tools on the page
   and detailed Bridge errors. `dotnet run` uses it too.
-- **`<Project> (WebView2 script debugging)`** (Runic Desktop) also opens WebView2's DevTools Protocol endpoint on port
-  9222 on Windows, and in Visual Studio attaches its JavaScript debugger to the page beside the .NET debugger
-  (`jsWebView2Debugging`).
 - **`<Project> (CS-WebUI script debugging)`** (CS-WebUI, since 0.22) also opens the DevTools Protocol endpoint of the
   Window's Chrome or Edge on `http://127.0.0.1:9225/`, for Visual Studio's Attach to Process. Any local process can
   attach to it while the Window runs
   ([CS-WebUI pages in a JavaScript debugger](#cs-webui-pages-in-a-javascript-debugger)).
+
+**Breakpoints in the page in Visual Studio** (Runic Desktop on Windows): use **Debug the Window** of
+[Runic DevKit for Visual Studio](https://github.com/Runic-Artifex/runic-editors/blob/main/visualstudio/README.md) (0.22). It starts the Window under the .NET debugger with WebView2's DevTools
+Protocol endpoint, then attaches Visual Studio's JavaScript debugger to the page over that endpoint, so C# and
+`Frontend/src` breakpoints stop in one session; its **Attach to the Page (JavaScript)** attaches to a Window already
+running with the endpoint. The template's `(WebView2 script debugging)` profile of 0.20 and 0.21 is gone: under F5,
+Visual Studio's JavaScript adapter (`jsWebView2Debugging`) starts the Window without the profile's environment
+variables, so the Window runs outside Development, Runic clears WebView2's debugging variable, and the adapter gives
+up and stops the Window. Delete that profile from an existing project's `launchSettings.json`.
 
 Run `dotnet runic dev --no-window` in a terminal (Visual Studio's Developer PowerShell, or Rider's terminal) and press
 F5. In Rider you can add `dotnet runic dev --no-window` to the run configuration's "Before launch" list as an external
@@ -568,6 +574,10 @@ None of this ships:
   `[dev] Debugging:` hint; the session file lists the endpoint under `unavailableDebugEndpoints`. Run both without
   elevation. Without that hint, check that `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` reaches the Window: set it in the
   launch profile, with `dotnet runic dev -e`, or in the environment `dev` runs in.
+- **Windows Defender Firewall asks about `node.exe` or `bun.exe` on the first `dev`.** Vite 8 checks that the
+  port is free by listening on it briefly on all interfaces (`0.0.0.0` and `::`) before it binds the `127.0.0.1`
+  that `dev` passes. Nothing is served on that short listen. Cancel or deny the prompt: the development server stays
+  on loopback and works as before, and Windows asks once per program.
 - **F12 does nothing.** The Window does not run in Development: start it with `dotnet runic dev` or a launch profile
   that sets `DOTNET_ENVIRONMENT=Development`. On macOS, use Safari's Develop menu instead, and on Linux Inspect
   Element from the page's context menu.

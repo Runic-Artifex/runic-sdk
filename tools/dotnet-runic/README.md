@@ -988,7 +988,9 @@ later process reuses, means the session stopped. Since 0.20; earlier files have
 no `processStartedAt`, and a reader then checks the process's command line or
 image name. Beside it, `dev` keeps
 `dev-frontend` and `dev-pages/` while it serves the frontend, for the build
-([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). When it ends, it
+touches `dev-stopped`, which Visual Studio's fast up-to-date check reads, so the
+next F5 builds and puts the production frontend back in `www/`. Each write
 replaces the whole file, so a reader never sees half of one. Two `dev` sessions of the
 same project write the same file; the later one wins. `--dry-run` writes none.
 
