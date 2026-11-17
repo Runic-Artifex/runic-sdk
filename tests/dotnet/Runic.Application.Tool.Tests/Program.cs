@@ -18,6 +18,7 @@ internal static class Program
     {
         if (args is [ProcessTreeSignal.CtrlCHelperArgument, string processId]) return ProcessTreeSignal.RunCtrlCHelper(processId);
         if (args is [StopTestChild.Argument, string role, string markers]) return StopTestChild.Run(role, markers);
+        if (args is [EchoArguments.Argument, string output, .. var arguments]) return EchoArguments.Run(output, arguments);
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddSelfRegisteredExtensions(args);
         using ITestApplication application = await builder.BuildAsync().ConfigureAwait(false);

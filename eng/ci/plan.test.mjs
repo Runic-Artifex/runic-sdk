@@ -7,8 +7,8 @@ import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
-import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths }
-  from './platforms.mjs';
+import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
+  windowsProgramStartPaths } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -120,7 +120,8 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
     const result = plan([file]);
     assert.ok(runs(result, 'packaging'), file);
   }
-  // dotnet runic package builds every package on its own OS; the tool's other commands need no Windows or macOS leg.
+  // dotnet runic package builds every package on its own OS; the tool's other commands need no Windows or macOS leg,
+  // except the files that start programs (#1081).
   assert.deepEqual(plan(['tools/dotnet-runic/Packaging/MacOSPackager.cs']).packaging.include.map(leg => leg.target), packagingLegs.map(leg => leg.target));
   assert.deepEqual(plan(['tools/dotnet-runic/DoctorChecks.cs']).platforms, []);
   const packagingOnly = plan(['tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml']);
@@ -439,6 +440,32 @@ test('the template WebView2 debugging files plan the native Windows x64 leg', ()
   }
   // The template's other files still need no Windows or macOS leg.
   assert.deepEqual(plan(['tools/Runic.Application.Templates/content/runic-app/.vscode/tasks.json']).platforms, []);
+});
+
+// #1081: dotnet runic starts npm, which is npm.cmd on Windows. The files that start programs or choose how, and the checks
+// of those starts, plan the native Windows x64 leg, which tests them and runs dev with npm
+// (tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs). The tool's other files plan none.
+test('dotnet runic\'s program starts plan the native Windows x64 leg, its other files none', () => {
+  for (const file of windowsProgramStartPaths)
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  for (const file of ['tools/dotnet-runic/DoctorChecks.cs', 'tools/dotnet-runic/DevOptions.cs', 'tools/dotnet-runic/SupportForwarding.cs',
+    'tools/dotnet-runic/README.md', 'tests/dotnet/Runic.Application.Tool.Tests/ToolTests.cs'])
+    assert.deepEqual(plan([file]).platforms, [], file);
+});
+
+// The narrow rule above holds only while every process start of the tool goes through CommandRunner, whose callers pass
+// it the program and arguments. A new start elsewhere must use CommandRunner or join windowsProgramStartPaths here.
+test('dotnet runic starts processes through CommandRunner only', () => {
+  const allowed = new Set(['tools/dotnet-runic/CommandRunner.cs']);
+  const starts = /\bnew\s+(?:System\.Diagnostics\.)?ProcessStartInfo\b|\bProcessStartInfo\s+\w+\s*=\s*new\s*\(|\bProcess\.Start\s*\(|\bStartInfo\s*=\s*new\b|\bUseShellExecute\s*=/;
+  const files = tracked('tools/dotnet-runic/*.cs', 'tools/dotnet-runic/**/*.cs');
+  assert.ok(files.includes('tools/dotnet-runic/CommandRunner.cs'));
+  const offenders = [...new Set(files)].filter(file => !allowed.has(file) && !windowsProgramStartPaths.includes(file))
+    .filter(file => starts.test(readFileSync(resolve(root, file), 'utf8')));
+  assert.deepEqual(offenders, [], 'start these processes through CommandRunner, or add the files to windowsProgramStartPaths');
+  // The check still sees a direct start.
+  assert.ok(starts.test('var start = new ProcessStartInfo(tool) { UseShellExecute = false };'));
+  assert.ok(starts.test('using Process process = Process.Start(start);'));
 });
 
 test('each platform rule plans its Windows and macOS legs, first match wins', () => {
