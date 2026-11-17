@@ -17,7 +17,13 @@ namespace Runic.Application.Tool.WebKit;
 internal sealed class WebKitPage : IAsyncDisposable
 {
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
+    // The pause before a first command that got no answer is sent again, for an inspector that was still settling.
+    private static readonly TimeSpan SettleDelay = TimeSpan.FromSeconds(1);
     private readonly InspectorConnection _connection;
+    private readonly Action<string> _report;
+    private readonly TimeSpan _firstAnswerTimeout;
+    private int _heard;
+    private int _reportedSilence;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonObject>> _pending = new();
     private readonly ConcurrentDictionary<long, TaskCompletionSource> _probes = new();
     private readonly TaskCompletionSource<string> _firstInnerTarget = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -27,10 +33,47 @@ internal sealed class WebKitPage : IAsyncDisposable
     private long _innerId;
     private int _closing;
 
-    internal WebKitPage(InspectorConnection connection, InspectorTarget target)
+    /// <summary>
+    /// <paramref name="report"/> receives dev's line when the page does not answer the debugger's first commands within
+    /// <paramref name="firstAnswerTimeout"/> (#1065).
+    /// </summary>
+    internal WebKitPage(InspectorConnection connection, InspectorTarget target, Action<string>? report = null, TimeSpan? firstAnswerTimeout = null)
     {
         _connection = connection;
         Target = target;
+        _report = report ?? (static _ => { });
+        _firstAnswerTimeout = firstAnswerTimeout ?? DefaultFirstAnswerTimeout;
+    }
+
+    /// <summary>How long the debugger's first commands wait for the page's first message before dev reports it.</summary>
+    internal static readonly TimeSpan DefaultFirstAnswerTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Whether the page sent anything on its channel since it was opened: an answer or an event.</summary>
+    private bool Heard => Volatile.Read(ref _heard) != 0;
+
+    /// <summary>dev's line when the page has not answered a first command in time, and whether it is tried again.</summary>
+    internal static string NoAnswerLine(string method, TimeSpan waited, bool retrying) =>
+        $"[dev] Debugging: the Window's page did not answer the debugger's {method} within " +
+        $"{waited.TotalSeconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} s of attaching. " +
+        (retrying
+            ? "WebKit's inspector may still be settling, for example right after its Web Inspector opened; dev sends it again."
+            : NoAnswerAdvice);
+
+    /// <summary>dev's line when the page did not answer the first command sent again either.</summary>
+    internal static string StillNoAnswerLine(string method) =>
+        $"[dev] Debugging: the Window's page did not answer {method} sent again either, so the debugger's attach fails. " + NoAnswerAdvice;
+
+    private const string NoAnswerAdvice =
+        "Close WebKit's Web Inspector in the Window (Inspect Element) and any inspector:// page in GNOME Web, then attach " +
+        "again. A Window stopped at a .NET breakpoint does not answer either. To report it, start dev with " +
+        CdpTrace.Variable + "=<file> and attach again.";
+
+    // Commands that change nothing when WebKit gets them twice: the enables and reads a debugger sends first.
+    private static bool CanSendAgain(string method)
+    {
+        int dot = method.IndexOf('.', StringComparison.Ordinal);
+        string command = dot < 0 ? method : method[(dot + 1)..];
+        return command is "enable" || command.StartsWith("get", StringComparison.Ordinal);
     }
 
     internal InspectorTarget Target { get; }
@@ -62,7 +105,7 @@ internal sealed class WebKitPage : IAsyncDisposable
     {
         try
         {
-            await SendAsync(method, null, CancellationToken.None).ConfigureAwait(false);
+            await SendAsync(method, null, quiet: true, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception error) when (error is CdpException or IOException or TimeoutException or OperationCanceledException)
         {
@@ -70,10 +113,18 @@ internal sealed class WebKitPage : IAsyncDisposable
     }
 
     /// <summary>Sends a WIP command to the page and returns its result; a WIP error is a <see cref="CdpException"/>.</summary>
-    internal async Task<JsonObject> SendAsync(string method, JsonObject? parameters, CancellationToken cancellationToken)
+    internal Task<JsonObject> SendAsync(string method, JsonObject? parameters, CancellationToken cancellationToken) =>
+        SendAsync(method, parameters, quiet: false, cancellationToken);
+
+    /// <summary>
+    /// Sends a command. Until the page sent its first message, a command that gets no answer within the first-answer
+    /// timeout is reported, sent once more after a pause when sending it twice is harmless, and fails with a clear error if
+    /// that gets no answer either, instead of waiting out <see cref="CommandTimeout"/> in silence (#1065). The adapter's own
+    /// <paramref name="quiet"/> commands only wait.
+    /// </summary>
+    private async Task<JsonObject> SendAsync(string method, JsonObject? parameters, bool quiet, CancellationToken cancellationToken)
     {
         if (!_connection.Protocol.HasCommand(method)) throw new CdpException(CdpException.MethodNotFound, $"WebKit has no '{method}'.");
-        string inner = _innerTarget ?? await _firstInnerTarget.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         long id = Interlocked.Increment(ref _innerId);
         var answer = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = answer;
@@ -86,16 +137,17 @@ internal sealed class WebKitPage : IAsyncDisposable
                 if (value is not null) clean[name] = value.DeepClone();
             }
             string message = new JsonObject { ["id"] = id, ["method"] = method, ["params"] = clean }.ToJsonString();
-            CdpTrace.Write("wip>", message);
-            string outer = new JsonObject
-            {
-                ["id"] = Interlocked.Increment(ref _outerId),
-                ["method"] = "Target.sendMessageToTarget",
-                ["params"] = new JsonObject { ["targetId"] = inner, ["message"] = message },
-            }.ToJsonString();
-            await _connection.SendToBackendAsync(Target, outer, cancellationToken).ConfigureAwait(false);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closed.Token);
-            JsonObject reply = await answer.Task.WaitAsync(CommandTimeout, linked.Token).ConfigureAwait(false);
+            await SendToPageAsync(message, linked.Token).ConfigureAwait(false);
+            JsonObject reply;
+            if (quiet || Heard)
+            {
+                reply = await answer.Task.WaitAsync(CommandTimeout, linked.Token).ConfigureAwait(false);
+            }
+            else
+            {
+                reply = await FirstAnswerAsync(method, message, answer.Task, linked.Token).ConfigureAwait(false);
+            }
             if (reply["error"] is JsonObject error)
             {
                 throw new CdpException(error["code"]?.GetValue<int>() ?? CdpException.ServerError,
@@ -110,6 +162,66 @@ internal sealed class WebKitPage : IAsyncDisposable
         finally
         {
             _pending.TryRemove(id, out _);
+        }
+    }
+
+    private async Task SendToPageAsync(string message, CancellationToken cancellationToken)
+    {
+        string inner = _innerTarget ?? await _firstInnerTarget.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        CdpTrace.Write("wip>", message);
+        string outer = new JsonObject
+        {
+            ["id"] = Interlocked.Increment(ref _outerId),
+            ["method"] = "Target.sendMessageToTarget",
+            ["params"] = new JsonObject { ["targetId"] = inner, ["message"] = message },
+        }.ToJsonString();
+        await _connection.SendToBackendAsync(Target, outer, cancellationToken).ConfigureAwait(false);
+    }
+
+    // A command sent before the page's first message. A page that sends anything in the meantime is alive, and the command
+    // waits the rest of the usual time; one that stays silent is reported, and the command is tried once more.
+    private async Task<JsonObject> FirstAnswerAsync(string method, string message, Task<JsonObject> answer, CancellationToken cancellationToken)
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            return await answer.WaitAsync(_firstAnswerTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException) when (Heard)
+        {
+            return await answer.WaitAsync(waited.Elapsed < CommandTimeout ? CommandTimeout - waited.Elapsed : TimeSpan.Zero, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+        }
+        bool again = CanSendAgain(method);
+        CdpTrace.Write("adapter", $"page {Target.PageId} did not answer {method} within {_firstAnswerTimeout.TotalSeconds} s{(again ? "; sending it again" : "")}");
+        bool first = Interlocked.Exchange(ref _reportedSilence, 1) == 0;
+        if (first) _report(NoAnswerLine(method, _firstAnswerTimeout, again));
+        if (!again)
+        {
+            throw new CdpException(CdpException.ServerError, $"The Window's page did not answer {method}; see dotnet runic dev's output.");
+        }
+        await Task.Delay(SettleDelay, cancellationToken).ConfigureAwait(false);
+        if (!answer.IsCompleted)
+        {
+            // The same ID: whichever answer comes first completes the command.
+            await SendToPageAsync(message, cancellationToken).ConfigureAwait(false);
+        }
+        try
+        {
+            return await answer.WaitAsync(_firstAnswerTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException) when (Heard)
+        {
+            return await answer.WaitAsync(CommandTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            CdpTrace.Write("adapter", $"page {Target.PageId} did not answer {method} sent again");
+            if (Interlocked.Exchange(ref _reportedSilence, 2) != 2) _report(StillNoAnswerLine(method));
+            throw new CdpException(CdpException.ServerError,
+                $"The Window's page did not answer {method}, also when sent again; see dotnet runic dev's output.");
         }
     }
 
@@ -177,6 +289,7 @@ internal sealed class WebKitPage : IAsyncDisposable
                 return;
             case "Target.dispatchMessageFromTarget":
                 if (p?["message"]?.GetValue<string>() is not { } innerText) return;
+                Volatile.Write(ref _heard, 1);
                 CdpTrace.Write("wip<", innerText);
                 JsonObject inner;
                 try

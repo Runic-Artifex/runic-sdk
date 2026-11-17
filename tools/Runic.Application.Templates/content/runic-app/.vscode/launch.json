@@ -70,6 +70,8 @@
       // The page's JavaScript debugger on port 9222, which obj/runic/dev-session.json lists under debugEndpoints.
       // Windows: WebView2's DevTools Protocol endpoint (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS). Linux (preview): dotnet
       // runic dev's CDP adapter for WebKitGTK, for a Window that dev starts, or "Window with JavaScript debugging (Linux)".
+      // When another program holds 9222, dev starts its adapter on another port and warns that this configuration would
+      // reach that program: set "port" to the one dev names while it runs. Under --no-window dev stops instead (RAPPDEV1017).
       "name": "Attach to the page (JavaScript)",
       "type": "msedge",
       "request": "attach",

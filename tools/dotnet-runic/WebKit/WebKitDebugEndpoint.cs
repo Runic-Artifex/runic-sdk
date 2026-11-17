@@ -64,6 +64,12 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     /// <summary>How long a probe waits for the Window's answer before the connection counts as replaced.</summary>
     internal TimeSpan ProbeTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>
+    /// How long the debugger's first commands on a page wait for the page's first message before dev reports it and sends
+    /// the command again (#1065).
+    /// </summary>
+    internal TimeSpan FirstAnswerTimeout { get; init; } = WebKitPage.DefaultFirstAnswerTimeout;
+
     /// <summary>The line dev prints when another client took the Window's WebKit inspector from the adapter.</summary>
     internal static string ReplacedLine(string inspector) =>
         $"[dev] Debugging: another client took over the Window's WebKit inspector at {inspector}, so the JavaScript debugger was " +
@@ -125,7 +131,7 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     {
         InspectorConnection connection = await ConnectAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new IOException("The Window's WebKit inspector is not available.");
-        var page = new WebKitPage(connection, target);
+        var page = new WebKitPage(connection, target, _report, FirstAnswerTimeout);
         await page.OpenAsync(cancellationToken).ConfigureAwait(false);
         return (page, connection.Protocol);
     }

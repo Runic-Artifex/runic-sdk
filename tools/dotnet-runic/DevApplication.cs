@@ -189,15 +189,17 @@ internal static class DevApplication
             if (adapter.Start(WebKitDebugging.DefaultCdpPort) || (options.StartWindow && adapter.Start(0)))
             {
                 webKitEndpoints.Insert(0, WebKitDebugging.CdpEndpoint(adapter.Port!.Value));
-                uint? defaultPortOwner = adapter.Port.Value == WebKitDebugging.DefaultCdpPort
+                // Moved: name what holds 9222, and warn when the project's launch.json attaches to it (#1065).
+                WebKitDebugging.DefaultPortTaken? taken = adapter.Port.Value == WebKitDebugging.DefaultCdpPort
                     ? null
-                    : sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
-                debuggingHints.AddRange(WebKitDebugging.CdpHints(adapter.Port.Value, debugging, defaultPortOwner));
+                    : WebKitDebugging.DefaultPortTaken.Find(sockets, configuration.ProjectDirectory);
+                debuggingHints.AddRange(WebKitDebugging.CdpHints(adapter.Port.Value, debugging, taken));
             }
             else if (!options.StartWindow)
             {
+                uint? owner = sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
                 throw new DevDevelopmentException(WebKitDebugging.NoWindowCdpPortTakenCode, WebKitDebugging.NoWindowCdpPortTakenMessage(
-                    sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort)));
+                    owner, owner is null ? PortHolder.Describe(sockets, IPAddress.Loopback, WebKitDebugging.DefaultCdpPort) : null));
             }
             else
             {

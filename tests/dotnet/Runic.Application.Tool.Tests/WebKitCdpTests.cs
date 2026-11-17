@@ -679,7 +679,7 @@ internal sealed partial class ToolTests
         Contains(WebKitDebugging.CdpHints(9222, defaults).Single(), "http://127.0.0.1:9222/");
         Contains(WebKitDebugging.CdpHints(9333, defaults).Single(), "Port 9222 was taken");
         // Another user holds 9222: an attach configuration that keeps it would reach their process.
-        IReadOnlyList<string> squatted = WebKitDebugging.CdpHints(9333, defaults, 1001);
+        IReadOnlyList<string> squatted = WebKitDebugging.CdpHints(9333, defaults, new(1001, FixedAttach: ["Attach to the page (JavaScript)"]));
         Equal(2, squatted.Count);
         Contains(squatted[1], "[dev] Warning: port 9222 belongs to another user (uid 1001)");
         Contains(WebKitDebugging.ForeignInspectorHint("127.0.0.1", 9223, 1001), "127.0.0.1:9223 belongs to another user (uid 1001)");
@@ -829,6 +829,75 @@ internal sealed partial class ToolTests
         Contains(WebKitDebugging.NoWindowCdpPortTakenMessage(null), "--no-window needs port 9222");
         Contains(WebKitDebugging.NoWindowCdpPortTakenMessage(null), "another dotnet runic dev session");
         Contains(WebKitDebugging.NoWindowCdpPortTakenMessage(1001), "another user (uid 1001) holds it");
+        string named = WebKitDebugging.NoWindowCdpPortTakenMessage(null, "another dotnet runic dev session (process 4242, in /src/Other)");
+        Contains(named, "but another dotnet runic dev session (process 4242, in /src/Other) holds it. Stop another dotnet runic dev session");
+    }
+
+    [Test, DisplayName("a taken port 9222 names its holder and the project's attach configurations that expect it")]
+    public void TakenCdpPortNamesTheHolderAndTheAttachConfiguration()
+    {
+        // The holder: this user's listener on 9222 (inode 777), and the process whose descriptor points to that socket.
+        const string table = """
+              sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+               0: 0100007F:2406 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 777 1 0 100 0 0 10 0
+               1: 0100007F:2407 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 778 1 0 100 0 0 10 0
+            """;
+        var sockets = new LoopbackSockets(path => path.EndsWith("tcp", StringComparison.Ordinal) ? table : null, 1000);
+        SequenceEqual([777UL], sockets.OwnListenerInodes(IPAddress.Loopback, 9222));
+        using var workspace = new TestWorkspace();
+        if (!OperatingSystem.IsWindows())
+        {
+            string proc = Path.Combine(workspace.Root, "proc");
+            foreach ((string pid, string inode, string command, string cwd) in (ValueTuple<string, string, string, string>[])[
+                ("100", "999", "bash\0", "/home/me"),
+                ("4242", "777", "/usr/bin/dotnet\0/home/me/.nuget/packages/dotnet-runic/0.22.0/tools/net10.0/any/dotnet-runic.dll\0dev\0", "/src/Other")])
+            {
+                Directory.CreateDirectory(Path.Combine(proc, pid, "fd"));
+                File.CreateSymbolicLink(Path.Combine(proc, pid, "fd", "3"), $"socket:[{inode}]");
+                File.WriteAllText(Path.Combine(proc, pid, "cmdline"), command);
+                Directory.CreateSymbolicLink(Path.Combine(proc, pid, "cwd"), cwd);
+            }
+            Directory.CreateDirectory(Path.Combine(proc, "self"));
+            Equal("another dotnet runic dev session (process 4242, in /src/Other)", PortHolder.Describe(sockets, IPAddress.Loopback, 9222, proc));
+            Equal(null, PortHolder.Describe(sockets, IPAddress.Loopback, 9333, proc));
+        }
+        Equal("process 7 (chromium --remote-debugging-port=9222)", PortHolder.Name(7, ["/usr/lib/chromium/chromium", "--remote-debugging-port=9222"], "/"));
+        True(PortHolder.IsDevCommandLine(["dotnet-runic", "dev", "--no-window"]), "the apphost");
+        False(PortHolder.IsDevCommandLine(["dotnet-runic", "doctor"]), "another command");
+
+        // The project's launch.json (JSONC): only JavaScript attach configurations on the fixed port count.
+        workspace.Write(".git/HEAD", "ref: refs/heads/main");
+        workspace.Write(".vscode/launch.json", """
+            {
+              "version": "0.2.0",
+              "configurations": [
+                // The page.
+                { "name": "Attach to the page (JavaScript)", "type": "msedge", "request": "attach", "port": 9222, "useWebView": true },
+                { "name": "Chrome attach", "type": "chrome", "request": "attach", "port": "9222" },
+                { "name": "Elsewhere", "type": "msedge", "request": "attach", "port": 9333 },
+                { "name": "Window", "type": "coreclr", "request": "launch", "port": 9222 },
+              ],
+            }
+            """);
+        string project = Path.Combine(workspace.Root, "src", "App");
+        Directory.CreateDirectory(project);
+        (string? launch, IReadOnlyList<string> names) = PortHolder.FixedAttachConfigurations(project, 9222);
+        Equal(Path.Combine(workspace.Root, ".vscode", "launch.json"), launch);
+        SequenceEqual(["Attach to the page (JavaScript)", "Chrome attach"], names);
+        Equal(0, PortHolder.FixedAttachConfigurations(Path.Combine(Path.GetTempPath(), "runic-no-such-" + Guid.NewGuid().ToString("N")), 9222).Names.Count);
+
+        // dev's lines: the move names the holder; the attach configuration that expects 9222 is a warning.
+        WebKitDebugging.Plan plan = WebKitDebugging.Plan.None;
+        var taken = new WebKitDebugging.DefaultPortTaken(null, "another dotnet runic dev session (process 4242, in /src/Other)",
+            ".vscode/launch.json", ["Attach to the page (JavaScript)"]);
+        IReadOnlyList<string> hints = WebKitDebugging.CdpHints(40123, plan, taken);
+        Equal(2, hints.Count);
+        Contains(hints[0], "Port 9222 was taken by another dotnet runic dev session (process 4242, in /src/Other).");
+        Contains(hints[1], "[dev] Warning: \"Attach to the page (JavaScript)\" in .vscode/launch.json attaches to port 9222, which would " +
+            "reach another dotnet runic dev session (process 4242, in /src/Other), not this Window. Set \"port\": 40123 there");
+        IReadOnlyList<string> noConfiguration = WebKitDebugging.CdpHints(40123, plan, taken with { FixedAttach = [] });
+        Contains(noConfiguration.Single(), "Port 9222 was taken by another dotnet runic dev session (process 4242, in /src/Other): set \"port\": 40123");
+        Equal(1, WebKitDebugging.CdpHints(9222, plan, taken).Count);
     }
 
     [Test, DisplayName("the session file lists the CDP adapter and gives an IDE-started Window the inspector address")]
@@ -968,6 +1037,54 @@ internal sealed partial class ToolTests
         lock (lines) Equal(1, lines.Count);
     }
 
+    [Test, DisplayName("a page that does not answer the debugger's first command is reported, tried again, and then fails clearly")]
+    public async Task UnansweredFirstCommandIsReported()
+    {
+        // #1065: right after WebKit's Web Inspector opened, a page did not answer Runtime.enable, and the attach ended
+        // after 13 s without a word.
+        TimeSpan firstAnswer = TestTimeouts.Scale(TimeSpan.FromMilliseconds(400));
+        async Task<(JsonObject Reply, List<string> Lines, List<string> Commands, TimeSpan Elapsed)> AttachAndSend(int unanswered, string method)
+        {
+            using var server = new FakeInspectorServer();
+            var lines = new List<string>();
+            await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port, null, line => { lock (lines) lines.Add(line); })
+            {
+                FirstAnswerTimeout = firstAnswer,
+            };
+            True(endpoint.Start(0), "the endpoint listens");
+            using var ide = await CdpSocket.ConnectAsync(endpoint.Port!.Value);
+            string target = (await ide.CommandAsync("Target.getTargets"))["result"]!["targetInfos"]![0]!["targetId"]!.GetValue<string>();
+            string session = (await ide.CommandAsync("Target.attachToTarget", new() { ["targetId"] = target, ["flatten"] = true }))["result"]!["sessionId"]!.GetValue<string>();
+            Volatile.Write(ref server.UnansweredPageCommands, unanswered);
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            JsonObject reply = await ide.CommandAsync(method, new() { ["expression"] = "6 * 7" }, session);
+            elapsed.Stop();
+            lock (server.Commands) lock (lines) return (reply, [.. lines], [.. server.Commands], elapsed.Elapsed);
+        }
+
+        // A page that never answers: dev says so at once, sends Runtime.enable again, and then the command fails with
+        // an error that names it, instead of the debugger's session closing in silence.
+        (JsonObject silent, List<string> silentLines, List<string> silentCommands, TimeSpan silentTime) = await AttachAndSend(int.MaxValue, "Runtime.enable");
+        Contains(silent["error"]!["message"]!.GetValue<string>(), "did not answer Runtime.enable, also when sent again");
+        SequenceEqual([WebKitPage.NoAnswerLine("Runtime.enable", firstAnswer, retrying: true), WebKitPage.StillNoAnswerLine("Runtime.enable")], silentLines);
+        Contains(silentLines[1], "Close WebKit's Web Inspector in the Window");
+        Equal(2, silentCommands.Count(static command => command == "Runtime.enable"));
+        True(silentTime < TestTimeouts.Scale(TimeSpan.FromSeconds(10)), $"the failure took {silentTime}");
+
+        // An inspector that settles: the second try is answered, and the attach goes on after one line.
+        (JsonObject settled, List<string> settledLines, List<string> settledCommands, _) = await AttachAndSend(1, "Runtime.enable");
+        Equal(0, settled["result"]!.AsObject().Count);
+        Equal(1, settledLines.Count);
+        Contains(settledLines[0], "dev sends it again");
+        Equal(2, settledCommands.Count(static command => command == "Runtime.enable"));
+
+        // A command that may not run twice is not sent again.
+        (JsonObject evaluated, List<string> evaluateLines, List<string> evaluateCommands, _) = await AttachAndSend(int.MaxValue, "Runtime.evaluate");
+        Contains(evaluated["error"]!["message"]!.GetValue<string>(), "did not answer Runtime.evaluate");
+        Equal(1, evaluateCommands.Count(static command => command == "Runtime.evaluate"));
+        Contains(evaluateLines.Single(), "Close WebKit's Web Inspector in the Window");
+    }
+
     [Test, DisplayName("a Setup on a connection that lost WebKit's slot unnoticed claims the slot first")]
     public async Task SetupClaimsTheInspectorSlotFirst()
     {
@@ -1102,7 +1219,8 @@ internal sealed partial class ToolTests
     // sends a Setup's page messages to no client and crashes the Window.
     private sealed class FakeInspectorServer : IDisposable
     {
-        private const string BackendCommands = "InspectorBackend.registerCommand(\"Runtime.evaluate\", null, [], []);";
+        private const string BackendCommands = "InspectorBackend.registerCommand(\"Runtime.evaluate\", null, [], []);\n" +
+            "InspectorBackend.registerCommand(\"Runtime.enable\", null, [], []);";
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource _stop = new();
         private readonly object _gate = new();
@@ -1134,6 +1252,9 @@ internal sealed partial class ToolTests
 
         /// <summary>How many clients connected so far.</summary>
         internal int Connections { get; private set; }
+
+        /// <summary>How many of the next page commands get no answer, as after WebKit's Web Inspector opened (#1065).</summary>
+        internal int UnansweredPageCommands;
 
         /// <summary>How many SetupInspectorClient answers were empty because the client had the protocol already.</summary>
         internal int ShortDescriptions { get; private set; }
@@ -1282,6 +1403,7 @@ internal sealed partial class ToolTests
                             }
                             JsonObject inner = JsonNode.Parse(innerText)!.AsObject();
                             lock (Commands) Commands.Add(inner["method"]!.GetValue<string>());
+                            if (Interlocked.Decrement(ref UnansweredPageCommands) >= 0) break;
                             JsonObject result = inner["method"]!.GetValue<string>() == "Runtime.evaluate"
                                 ? new JsonObject { ["result"] = new JsonObject { ["type"] = "number", ["value"] = 42 } }
                                 : [];

@@ -165,31 +165,69 @@ internal static class WebKitDebugging
     internal static DevSession.DebugEndpoint CdpEndpoint(int port) =>
         new(Engine, CdpProtocol, $"http://127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)}/");
 
+    /// <summary>What held 9222 when the adapter had to move, for <see cref="CdpHints"/> (#1065).</summary>
+    /// <param name="Owner">The holder's user when it is another user's: an attach configuration that keeps 9222 would then
+    /// hand the debugger to that user's process.</param>
+    /// <param name="Holder">This user's process that holds it (<see cref="PortHolder.Describe"/>), when it can be told.</param>
+    /// <param name="LaunchJson">The project's VS Code <c>launch.json</c>, relative to the project when inside it.</param>
+    /// <param name="FixedAttach">Its attach configurations that name 9222.</param>
+    internal sealed record DefaultPortTaken(uint? Owner, string? Holder = null, string? LaunchJson = null, IReadOnlyList<string>? FixedAttach = null)
+    {
+        /// <summary>Looks up what holds 9222 and which of the project's attach configurations expect it.</summary>
+        internal static DefaultPortTaken Find(LoopbackSockets? sockets, string projectDirectory)
+        {
+            uint? owner = sockets?.ForeignListener(IPAddress.Loopback, DefaultCdpPort);
+            string? holder = owner is null ? PortHolder.Describe(sockets, IPAddress.Loopback, DefaultCdpPort) : null;
+            (string? path, IReadOnlyList<string> names) = PortHolder.FixedAttachConfigurations(projectDirectory, DefaultCdpPort);
+            string? shown = path;
+            if (path is not null && System.IO.Path.GetRelativePath(projectDirectory, path) is var relative &&
+                !relative.StartsWith("..", StringComparison.Ordinal)) shown = relative.Replace('\\', '/');
+            return new(owner, holder, shown, names);
+        }
+    }
+
     /// <summary>
-    /// The hints for the CDP endpoint on <paramref name="port"/>. <paramref name="defaultPortOwner"/> is the user whose
-    /// process holds 9222 when the adapter had to move, if another user's: an attach configuration that keeps 9222 would
-    /// then hand the debugger to that process, so dev warns instead of only noting the move.
+    /// The hints for the CDP endpoint on <paramref name="port"/>. <paramref name="taken"/> says what holds 9222 when the
+    /// adapter had to move: another user's process is a warning, since an attach configuration that keeps 9222 would hand
+    /// the debugger to it; so is one of this user's while the project's <c>launch.json</c> attaches to 9222, which would
+    /// then debug that process's page instead of this Window's (#1065).
     /// </summary>
-    internal static IReadOnlyList<string> CdpHints(int port, Plan plan, uint? defaultPortOwner = null)
+    internal static IReadOnlyList<string> CdpHints(int port, Plan plan, DefaultPortTaken? taken = null)
     {
         string text = port.ToString(CultureInfo.InvariantCulture);
+        string defaultText = DefaultCdpPort.ToString(CultureInfo.InvariantCulture);
         string inspector = plan.Endpoints.FirstOrDefault(static endpoint => endpoint.Protocol == RemoteInspectorProtocol)?.Url is { } url
             ? $" GNOME Web opens {url} while no debugger is attached."
             : "";
-        string moved = port == DefaultCdpPort || defaultPortOwner is not null
+        bool moved = port != DefaultCdpPort;
+        bool foreign = moved && taken?.Owner is not null;
+        IReadOnlyList<string> attach = moved && !foreign ? taken?.FixedAttach ?? [] : [];
+        string by = taken?.Holder is { } holder ? $" by {holder}" : "";
+        string movedText = !moved || foreign
             ? ""
-            : $" Port {DefaultCdpPort.ToString(CultureInfo.InvariantCulture)} was taken: set \"port\": {text} in your attach configuration.";
+            : attach.Count > 0
+                ? $" Port {defaultText} was taken{by}."
+                : $" Port {defaultText} was taken{by}: set \"port\": {text} in your attach configuration.";
         var hints = new List<string>
         {
             $"[dev] Debugging: JavaScript debuggers attach to the Window at http://127.0.0.1:{text}/ " +
-            $"(preview: WebKitGTK through Runic's CDP adapter; in VS Code an attach configuration with \"port\": {text}).{moved}{inspector}",
+            $"(preview: WebKitGTK through Runic's CDP adapter; in VS Code an attach configuration with \"port\": {text}).{movedText}{inspector}",
         };
-        if (port != DefaultCdpPort && defaultPortOwner is { } owner)
+        if (foreign)
         {
-            hints.Add($"[dev] Warning: port {DefaultCdpPort.ToString(CultureInfo.InvariantCulture)} belongs to another user " +
-                $"(uid {owner.ToString(CultureInfo.InvariantCulture)}), so Runic's CDP adapter listens on {text}. Set \"port\": {text} in " +
-                $"your attach configuration: one that attaches to {DefaultCdpPort.ToString(CultureInfo.InvariantCulture)} would hand " +
+            hints.Add($"[dev] Warning: port {defaultText} belongs to another user " +
+                $"(uid {taken!.Owner!.Value.ToString(CultureInfo.InvariantCulture)}), so Runic's CDP adapter listens on {text}. Set \"port\": {text} in " +
+                $"your attach configuration: one that attaches to {defaultText} would hand " +
                 "your debugger to that user's process.");
+        }
+        else if (attach.Count > 0)
+        {
+            string names = string.Join(", ", attach.Select(static name => $"\"{name}\""));
+            string which = attach.Count == 1 ? $"{names} in {taken!.LaunchJson} attaches" : $"{names} in {taken!.LaunchJson} attach";
+            string process = taken.Holder ?? "the process that holds it";
+            hints.Add($"[dev] Warning: {which} to port {defaultText}, which would reach {process}, not this Window. " +
+                $"Set \"port\": {text} there while this session runs, or stop {process} and restart dev to get {defaultText} back. " +
+                "obj/runic/dev-session.json lists the port under debugEndpoints.");
         }
         return hints;
     }
@@ -214,16 +252,20 @@ internal static class WebKitDebugging
     /// <summary>
     /// Under <c>--no-window</c> the IDE's attach configuration names the CDP port, 9222 in the template's, so dev does not
     /// move the adapter to another port when 9222 is taken (#1065): the attach would fail with "Cannot connect", or reach
-    /// whatever holds 9222. <paramref name="owner"/> is that process's user when it is another user's.
+    /// whatever holds 9222. <paramref name="owner"/> is that process's user when it is another user's;
+    /// <paramref name="holder"/> names this user's process that holds it, when it can be told.
     /// </summary>
-    internal static string NoWindowCdpPortTakenMessage(uint? owner)
+    internal static string NoWindowCdpPortTakenMessage(uint? owner, string? holder = null)
     {
         string port = DefaultCdpPort.ToString(CultureInfo.InvariantCulture);
-        string holder = owner is { } uid
+        string held = owner is { } uid
             ? $"another user (uid {uid.ToString(CultureInfo.InvariantCulture)}) holds it"
-            : "another process holds it, such as another dotnet runic dev session or a browser with remote debugging";
+            : holder is not null
+                ? $"{holder} holds it"
+                : "another process holds it, such as another dotnet runic dev session or a browser with remote debugging";
+        string stop = owner is null && holder is not null ? $"Stop {holder}" : "Stop that process";
         return $"--no-window needs port {port} for Runic's CDP adapter, which the IDE's attach configuration names, but " +
-            $"{holder}. Stop that process, or run dotnet runic dev without --no-window, which moves the adapter to a " +
+            $"{held}. {stop}, or run dotnet runic dev without --no-window, which moves the adapter to a " +
             "free port and names it, or with --no-debug-endpoint.";
     }
 
