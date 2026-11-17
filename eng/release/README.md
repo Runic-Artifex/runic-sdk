@@ -275,6 +275,45 @@ Publications run one at a time. Every workflow that publishes waits in the one
 `publish-preview` concurrency group, whatever the version, and never cancels a
 publication in progress; `workflow.test.mjs` checks it.
 
+## npm archive source commit
+
+A first-party npm archive's `package.json` `gitHead` is the commit that **last
+changed the package's inputs**, not the commit the build ran on (D069.2). Bun packs
+with fixed mtimes, modes and entry order, and the stamped archive is re-gzipped with
+a zero mtime and no host operating system in its header, so the archive bytes depend
+only on those inputs. A commit outside them (a workflow, a .NET package, a document)
+leaves every npm archive and its integrity unchanged; that keeps committed template
+locks and the Translations train candidates' hashes valid across unrelated commits.
+
+`eng/release/npm-inputs.mjs` defines the inputs of each package:
+
+- its directory, and the directories of the first-party packages it depends on,
+  transitively (their versions and declaration files reach its archive);
+- its extra inputs: for `@runic-artifex/views-translations`, the catalog of
+  `Runic.Application.Views.Translations` and `NuGet.config`;
+- the shared build inputs: the workspace `package.json` and `bun.lock`, the
+  toolchain (`flake.nix`, `flake.lock`, `nix/toolchain`, `.node-version`,
+  `global.json`, `.config/dotnet-tools.json`), `eng/typescript`, `eng/web`,
+  `eng/workspace.json`, `eng/run.mjs`, `eng/version.mjs`,
+  `eng/node-compatibility.mjs`, the packing code (`eng/release/pack-npm.mjs`,
+  `readme-links.mjs`, `artifacts.mjs`, `npm-inputs.mjs`) and `.gitattributes`.
+
+The set is deliberately wide: a missing input would let two different archives
+share a `gitHead`. A package that starts reading a file outside these paths adds it
+to the module; `npm-inputs.test.mjs` checks that tsconfig bases and build-script
+imports outside a package directory are covered. Packing computes the commit with
+`git log -1 -- <inputs>`, so it needs the full history (the packing and release
+jobs check out with `fetch-depth: 0`), and CI refuses to pack a package whose inputs
+have uncommitted changes.
+
+The release check (`artifacts.mjs` `scan`, run by `cli.mjs prepare`, `verify` and
+`publish` and after packing) accepts an npm archive whose `gitHead` is the release
+commit or an ancestor of it with the same inputs (`git diff` between the two is empty
+for them); it refuses any other commit. NuGet packages still name the release commit
+itself. In the SBOM, an npm component's `runic:source-commit` is this `gitHead`; the
+document's own `runic:source-commit` and npm's provenance attestation name the
+release commit.
+
 ## Verifying a release
 
 Every package and release asset has a signed build-provenance attestation from
