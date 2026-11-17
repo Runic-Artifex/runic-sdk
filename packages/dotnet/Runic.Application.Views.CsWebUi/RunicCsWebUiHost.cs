@@ -3,6 +3,7 @@ using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
+using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Menus;
 using Runic.Navigation;
 using Runic.Platform;
@@ -239,6 +240,11 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     }
 
     private const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
+
+    // dotnet runic dev's development server, read once from the environment (DevelopmentServerForwarding).
+    private readonly Lazy<DevelopmentServerForwarding?> _developmentServer =
+        new(() => DevelopmentServerForwarding.Resolve(Environment.GetEnvironmentVariable));
+    private DevelopmentServerForwarding? DevelopmentServer => _developmentServer.Value;
     private const string BrowserNotFoundCode = "browser-not-found";
 
     async ValueTask<IBridgeWindow> IRunicWindowHost.OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening,
@@ -316,6 +322,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             void Show()
             {
                 if (assets is not null) CsWebUiAssets.Serve(native, assets);
+                // dotnet runic dev with a development server: what www/ does not have comes from the server (#1085).
+                else if (DevelopmentServer is { } forwarding)
+                    CsWebUiDevelopmentServer.Serve(native, options.ResolveContentRoot(), forwarding);
                 else native.SetRootFolder(options.ResolveContentRoot());
                 if (options.Width is { } width && options.Height is { } height) native.SetSize((uint)width, (uint)height);
                 ConfigureWindow?.Invoke(native);

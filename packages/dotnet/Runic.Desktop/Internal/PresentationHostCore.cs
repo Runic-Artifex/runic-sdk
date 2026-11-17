@@ -235,6 +235,15 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         _server = server;
     }
 
+    private Func<PresentationExchange, Task<bool>>? _unmatchedRequestHandler;
+
+    // Answers a request outside every surface's path (DesktopHost.ListenerResources); false leaves it 404.
+    internal Func<PresentationExchange, Task<bool>>? UnmatchedRequestHandler
+    {
+        get => Volatile.Read(ref _unmatchedRequestHandler);
+        set => Volatile.Write(ref _unmatchedRequestHandler, value);
+    }
+
     // listener is the base URL of the listener the request arrived on, null while it is starting.
     private async Task DispatchAsync(PresentationExchange exchange, Uri? listener)
     {
@@ -248,6 +257,19 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         var registration = FindSurface(exchange.Path, out var remainingPath);
         if (registration is null)
         {
+            if (Volatile.Read(ref _unmatchedRequestHandler) is { } unmatched)
+            {
+                using var unmatchedCancellation = CancellationTokenSource.CreateLinkedTokenSource(exchange.RequestAborted, _shutdown.Token);
+                exchange.RequestAborted = unmatchedCancellation.Token;
+                try
+                {
+                    if (await unmatched(exchange).ConfigureAwait(false)) return;
+                }
+                catch (OperationCanceledException) when (unmatchedCancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+            }
             exchange.StatusCode = PresentationStatus.NotFound;
             return;
         }

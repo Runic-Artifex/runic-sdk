@@ -678,20 +678,63 @@ public sealed class DesktopHost : IAsyncDisposable
     private static Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>> Adapt(
         ContentHandler handler) => async (context, requestPath, token) =>
         {
-            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var header in context.RequestHeaders)
-            {
-                headers[header.Key] = header.Value;
-            }
-            var request = new ContentRequest(
-                requestPath,
-                context.Method,
-                new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(headers),
-                context.RequestServices!,
-                context.Cancellation);
-            var response = await handler(request, token).ConfigureAwait(false);
+            var response = await handler(CreateRequest(context, requestPath), token).ConfigureAwait(false);
             return response?.ToCompatibilityContent();
         };
+
+    private static ContentRequest CreateRequest(PresentationExchange context, string requestPath)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var header in context.RequestHeaders)
+        {
+            headers[header.Key] = header.Value;
+        }
+        return new ContentRequest(
+            requestPath,
+            context.Method,
+            new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(headers),
+            context.RequestServices ?? EmptyServices.Instance,
+            context.Cancellation)
+        {
+            QueryString = context.QueryString,
+            RemoteIpAddress = context.RemoteIpAddress,
+        };
+    }
+
+    /// <summary>
+    /// A handler for <c>GET</c> and <c>HEAD</c> requests on the host's listener whose path is outside every surface's
+    /// own path, which are otherwise 404 Not Found. Internal: <c>dotnet runic dev</c>'s development server forwarding
+    /// (Runic.Application.Views.Desktop) serves the Vite DevTools dock's root-relative files with it (#1086). The first
+    /// handler set stays; a surface on an isolated listener does not use it.
+    /// </summary>
+    internal ContentHandler? ListenerResources
+    {
+        get => _listenerResources;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (Interlocked.CompareExchange(ref _listenerResources, value, null) is not null) return;
+            _core.UnmatchedRequestHandler = async exchange =>
+            {
+                if (!exchange.IsGet && !exchange.IsHead) return false;
+                var path = WebUiWindow.GetDecodedPath(exchange.Path);
+                var response = await value(CreateRequest(exchange, path), exchange.RequestAborted).ConfigureAwait(false);
+                if (response is null) return false;
+                await WebUiWindow.SendContentAsync(exchange, path, response.ToCompatibilityContent(), exchange.RequestAborted)
+                    .ConfigureAwait(false);
+                return true;
+            };
+        }
+    }
+
+    private ContentHandler? _listenerResources;
+
+    private sealed class EmptyServices : IServiceProvider
+    {
+        internal static readonly EmptyServices Instance = new();
+
+        public object? GetService(Type serviceType) => null;
+    }
 
     /// <inheritdoc />
     public ValueTask DisposeAsync()
