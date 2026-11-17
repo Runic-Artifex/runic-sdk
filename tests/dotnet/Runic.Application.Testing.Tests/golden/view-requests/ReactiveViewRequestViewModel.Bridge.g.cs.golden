@@ -2,17 +2,25 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using TitleValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using ConfirmDiscardInteractionInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.ViewRequestDiscardToPage;
+using ConfirmDiscardInteractionOutputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
+using FocusRequestInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.ViewRequestFocusTargetToPage;
+using NotifyRequestInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
 internal sealed class ReactiveViewRequestBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
     private readonly global::System.IDisposable? _rootInteractionMount;
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> TitleGetter = static vm => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title;
     internal ReactiveViewRequestBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel), routePrefix ?? "reactiveViewRequest",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", static vm => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title, static (vm, value) => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title = value },
         ],
         [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title, static (vm, value) => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
             new global::Runic.Application.Views.Generated.CommandDescriptor("Discard", static vm => (object)((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).DiscardCommand) { ExecuteResultAsync = static async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).DiscardCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).DiscardCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).DiscardCommand, changed), WireName = "discard", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).DiscardCommand, logger, "ReactiveViewRequestViewModel.DiscardCommand") },
@@ -33,131 +41,9 @@ internal sealed class ReactiveViewRequestBridge : global::Runic.Application.View
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", static owner => ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)owner).Title, propertyName: "Title"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", TitleGetter, propertyName: "Title"),
         ]
     ;
-private static class TitleValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ConfirmDiscardInteractionInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ViewRequestDiscard value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ViewRequestDiscard Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ViewRequestDiscard value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("title"); Write1(writer, value.Title);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ViewRequestDiscard Read0(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ViewRequestDiscard is only written to the page.");
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ConfirmDiscardInteractionOutputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
-    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
-private static class FocusRequestInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ViewRequestFocusTarget value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ViewRequestFocusTarget Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ViewRequestFocusTarget value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("field"); Write1(writer, value.Field);
-        writer.WritePropertyName("selectAll"); Write2(writer, value.SelectAll);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ViewRequestFocusTarget Read0(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ViewRequestFocusTarget is only written to the page.");
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read2(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
-private static class NotifyRequestInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("title", static (writer, vm) => TitleValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ReactiveViewRequestViewModel)vm).Title)),

@@ -81,35 +81,50 @@ internal sealed class BridgeTypeGraph
         AppendFingerprint(parts, scope, Root, visited);
     }
 
-    // Emits a self-contained direct codec class. The caller normally embeds it
-    // in the generated bridge file and passes `Write`/`Read` to BridgeValueCodec.
-    internal void AppendCSharpCodec(StringBuilder source, string className, string accessibility = "private",
-        (BridgeTypeNode Container, IReadOnlyList<BridgeFieldLeaf> Leaves)? fieldPaths = null)
+    /// <summary>
+    /// Emits the body of one node's codec class: <c>Write</c>, <c>Read</c> and, for a collection, <c>WriteItem</c>. The
+    /// class holds no state, and its methods call the codec class of each child node, which <paramref name="codec"/>
+    /// names. <see cref="BridgeSharedCodecs"/> keeps one such class per distinct node in the assembly.
+    /// </summary>
+    internal static void AppendCSharpNodeCodec(StringBuilder source, BridgeTypeNode node, Func<BridgeTypeNode, string> codec)
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (string.IsNullOrWhiteSpace(className)) throw new ArgumentException("A codec class name is required.", nameof(className));
-        source.AppendLine($"{accessibility} static class {className}");
-        source.AppendLine("{");
-        source.AppendLine($"    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, {CSharpNodeType(Root)} value) => Write{Root.Id}(writer, value);");
-        source.AppendLine($"    internal static {CSharpNodeType(Root)} Read(global::System.Text.Json.JsonElement element) => Read{Root.Id}(element);");
-        if (Root.Element is { } element)
-            source.AppendLine($"    internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => Write{element.Id}(writer, ({CSharpNodeType(element)})value!);");
-        if (fieldPaths is { } paths) AppendFieldPathSetters(source, paths.Container, paths.Leaves);
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(codec);
+        AppendWriter(source, node, codec);
         source.AppendLine();
-        foreach (var node in Nodes.OrderBy(node => node.Id))
+        AppendReader(source, node, codec);
+        if (node.Element is { } element)
         {
-            AppendWriter(source, node);
             source.AppendLine();
-            AppendReader(source, node);
-            source.AppendLine();
+            source.AppendLine($"    internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => {codec(element)}.Write(writer, ({CSharpNodeType(element)})value!);");
         }
-        source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Emits the body of a member's own codec class when the member has field paths (field-paths/1): <c>Write</c>,
+    /// <c>Read</c> and <c>WriteItem</c> forward to the shared codec of the root, which <paramref name="codec"/> names, and
+    /// <c>SetPath{i}</c> copies the value with one field replaced. The setters belong to the member, so they are not
+    /// shared.
+    /// </summary>
+    internal void AppendCSharpFieldPathCodec(StringBuilder source, BridgeTypeNode container, IReadOnlyList<BridgeFieldLeaf> leaves,
+        Func<BridgeTypeNode, string> codec)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(codec);
+        var root = codec(Root);
+        source.AppendLine($"    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, {CSharpNodeType(Root)} value) => {root}.Write(writer, value);");
+        source.AppendLine($"    internal static {CSharpNodeType(Root)} Read(global::System.Text.Json.JsonElement element) => {root}.Read(element);");
+        if (Root.Element is not null)
+            source.AppendLine($"    internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => {root}.WriteItem(writer, value);");
+        AppendFieldPathSetters(source, container, leaves, codec);
     }
 
     // field-paths/1: SetPath{i} copies the container (an object member's value or a row) with the value at leaf i
     // replaced by the decoded wire value, one object at a time from the leaf up: With{node}_{member} copies one object
     // with one member changed, as BridgeFieldLeaf.CopyOf decided. Members the page does not see are kept.
-    private static void AppendFieldPathSetters(StringBuilder source, BridgeTypeNode container, IReadOnlyList<BridgeFieldLeaf> leaves)
+    private static void AppendFieldPathSetters(StringBuilder source, BridgeTypeNode container, IReadOnlyList<BridgeFieldLeaf> leaves,
+        Func<BridgeTypeNode, string> codec)
     {
         var helpers = new HashSet<(int, int)>();
         var withs = new StringBuilder();
@@ -129,11 +144,11 @@ internal sealed class BridgeTypeGraph
                     ? $"        var c{level} = {access} ?? throw new global::System.InvalidOperationException(\"{chain[level - 1].WireName} is null.\");"
                     : $"        var c{level} = {access};");
             }
-            var expression = $"Read{chain[^1].Type.Id}(value)";
+            var expression = $"{codec(chain[^1].Type)}.Read(value)";
             for (var level = chain.Length - 1; level >= 0; level--)
             {
                 expression = $"With{owners[level].Id}_{chain[level].Index}(c{level}, {expression})";
-                if (helpers.Add((owners[level].Id, chain[level].Index))) AppendWith(withs, owners[level], chain[level]);
+                if (helpers.Add((owners[level].Id, chain[level].Index))) AppendWith(withs, owners[level], chain[level], codec);
             }
             source.AppendLine($"        return {expression};");
             source.AppendLine("    }");
@@ -149,7 +164,7 @@ internal sealed class BridgeTypeGraph
         return node.IsNullable && type.EndsWith('?') ? type[..^1] : type;
     }
 
-    private static void AppendWith(StringBuilder pending, BridgeTypeNode owner, BridgeTypeMember member)
+    private static void AppendWith(StringBuilder pending, BridgeTypeNode owner, BridgeTypeMember member, Func<BridgeTypeNode, string> codec)
     {
         var type = NonNullCSharpType(owner);
         var signature = $"    private static {type} With{owner.Id}_{member.Index}({type} c, {CSharpNodeType(member.Type)} v)";
@@ -160,7 +175,7 @@ internal sealed class BridgeTypeGraph
             BridgeFieldCopy.Constructor => $" {{ var copy = new {type}(c); copy.{property} = v; return copy; }}",
             BridgeFieldCopy.Clone => $" {{ var copy = c.Clone(); copy.{property} = v; return copy; }}",
             // Every settable member of the class is on the wire: its codec copies it.
-            BridgeFieldCopy.Wire => $" {{ using var copy = global::Runic.Application.Views.Generated.BridgeFieldPath.ReplaceMember(writer => Write{owner.Id}(writer, c), {JsonSerializer.Serialize(member.WireName)}, writer => Write{member.Type.Id}(writer, v)); return Read{owner.Id}(copy.RootElement){(owner.IsNullable && !owner.NonNullableType.IsValueType ? "!" : owner.IsNullable ? ".Value" : "")}; }}",
+            BridgeFieldCopy.Wire => $" {{ using var copy = global::Runic.Application.Views.Generated.BridgeFieldPath.ReplaceMember(writer => {codec(owner)}.Write(writer, c), {JsonSerializer.Serialize(member.WireName)}, writer => {codec(member.Type)}.Write(writer, v)); return {codec(owner)}.Read(copy.RootElement){(owner.IsNullable && !owner.NonNullableType.IsValueType ? "!" : owner.IsNullable ? ".Value" : "")}; }}",
             _ => throw new InvalidOperationException($"{type} cannot be copied."),
         };
         pending.AppendLine(signature + body);
@@ -443,9 +458,9 @@ internal sealed class BridgeTypeGraph
         return $"(() => {{ const {unionValue}: {TypeScriptNamedTypes.Reference(node)} = {expression}; bridgeWire.encodeUnion({unionValue}); switch ({unionValue}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
     }
 
-    private static void AppendWriter(StringBuilder source, BridgeTypeNode node)
+    private static void AppendWriter(StringBuilder source, BridgeTypeNode node, Func<BridgeTypeNode, string> codec)
     {
-        source.AppendLine($"    private static void Write{node.Id}(global::System.Text.Json.Utf8JsonWriter writer, {CSharpNodeType(node)} value)");
+        source.AppendLine($"    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, {CSharpNodeType(node)} value)");
         source.AppendLine("    {");
         if (node.IsNullable)
         {
@@ -481,19 +496,19 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Array:
             case BridgeWireKind.List:
                 source.AppendLine("        writer.WriteStartArray();");
-                source.AppendLine("        foreach (var item in " + value + ") Write" + node.Element!.Id + "(writer, item);");
+                source.AppendLine("        foreach (var item in " + value + ") " + codec(node.Element!) + ".Write(writer, item);");
                 source.AppendLine("        writer.WriteEndArray();");
                 break;
             case BridgeWireKind.StringDictionary:
                 source.AppendLine("        writer.WriteStartObject();");
                 source.AppendLine("        foreach (var entry in global::System.Linq.Enumerable.OrderBy(" + value + ", entry => entry.Key, global::System.StringComparer.Ordinal))");
-                source.AppendLine("        { writer.WritePropertyName(entry.Key); Write" + node.Value!.Id + "(writer, entry.Value); }");
+                source.AppendLine("        { writer.WritePropertyName(entry.Key); " + codec(node.Value!) + ".Write(writer, entry.Value); }");
                 source.AppendLine("        writer.WriteEndObject();");
                 break;
             case BridgeWireKind.Dto:
                 source.AppendLine("        writer.WriteStartObject();");
                 foreach (var member in node.Members)
-                    AppendMemberWriter(source, member, $"{value}.{member.Property.Name}", "        ");
+                    AppendMemberWriter(source, member, $"{value}.{member.Property.Name}", "        ", codec);
                 source.AppendLine("        writer.WriteEndObject();");
                 break;
             case BridgeWireKind.Union:
@@ -505,7 +520,7 @@ internal sealed class BridgeTypeGraph
                     source.AppendLine($"            case {CSharpType(@case.Type.Type)} item{@case.Type.Id}:");
                     source.AppendLine($"                writer.WriteString(\"$case\", {Quote(@case.Discriminator)});");
                     foreach (var member in @case.Type.Members)
-                        AppendMemberWriter(source, member, $"item{@case.Type.Id}.{member.Property.Name}", "                ");
+                        AppendMemberWriter(source, member, $"item{@case.Type.Id}.{member.Property.Name}", "                ", codec);
                     source.AppendLine("                break;");
                 }
                 source.AppendLine("            default: throw new global::System.NotSupportedException(\"The value is not a declared bridge-union case.\");");
@@ -543,17 +558,18 @@ internal sealed class BridgeTypeGraph
     }
 
     // A JsonElement member without a value is absent from the object.
-    private static void AppendMemberWriter(StringBuilder source, BridgeTypeMember member, string access, string indent)
+    private static void AppendMemberWriter(StringBuilder source, BridgeTypeMember member, string access, string indent,
+        Func<BridgeTypeNode, string> codec)
     {
-        var write = $"writer.WritePropertyName({Quote(member.WireName)}); Write{member.Type.Id}(writer, {access});";
+        var write = $"writer.WritePropertyName({Quote(member.WireName)}); {codec(member.Type)}.Write(writer, {access});";
         source.AppendLine(member.Absent
             ? $"{indent}if ({access}.ValueKind is not global::System.Text.Json.JsonValueKind.Undefined) {{ {write} }}"
             : $"{indent}{write}");
     }
 
-    private static void AppendReader(StringBuilder source, BridgeTypeNode node)
+    private static void AppendReader(StringBuilder source, BridgeTypeNode node, Func<BridgeTypeNode, string> codec)
     {
-        source.AppendLine($"    private static {CSharpNodeType(node)} Read{node.Id}(global::System.Text.Json.JsonElement element)");
+        source.AppendLine($"    internal static {CSharpNodeType(node)} Read(global::System.Text.Json.JsonElement element)");
         source.AppendLine("    {");
         if (node.IsNullable)
         {
@@ -591,17 +607,17 @@ internal sealed class BridgeTypeGraph
                 break;
             case BridgeWireKind.Array:
             case BridgeWireKind.List:
-                AppendArrayReader(source, node); break;
+                AppendArrayReader(source, node, codec); break;
             case BridgeWireKind.StringDictionary:
-                AppendDictionaryReader(source, node); break;
+                AppendDictionaryReader(source, node, codec); break;
             case BridgeWireKind.Dto:
-                AppendDtoReader(source, node); break;
+                AppendDtoReader(source, node, codec); break;
             case BridgeWireKind.Union:
                 source.AppendLine("        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, \"$case\"));");
                 source.AppendLine("        return discriminator switch");
                 source.AppendLine("        {");
                 foreach (var @case in node.Cases)
-                    source.AppendLine($"            {Quote(@case.Discriminator)} => Read{@case.Type.Id}(element),");
+                    source.AppendLine($"            {Quote(@case.Discriminator)} => {codec(@case.Type)}.Read(element),");
                 source.AppendLine("            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Unknown bridge-union case.\"),");
                 source.AppendLine("        };");
                 break;
@@ -632,13 +648,13 @@ internal sealed class BridgeTypeGraph
 
     // Builds the declared collection type itself, so a codec's signature and
     // its reader agree for every collection that Builder accepts.
-    private static void AppendArrayReader(StringBuilder source, BridgeTypeNode node)
+    private static void AppendArrayReader(StringBuilder source, BridgeTypeNode node, Func<BridgeTypeNode, string> codec)
     {
         var element = node.Element ?? throw new InvalidOperationException("A collection needs an element type.");
         var elementType = CSharpNodeType(element);
         source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Array) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected an array.\");");
         source.AppendLine($"        var items = new global::System.Collections.Generic.List<{elementType}>(element.GetArrayLength());");
-        source.AppendLine($"        foreach (var item in element.EnumerateArray()) items.Add(Read{element.Id}(item));");
+        source.AppendLine($"        foreach (var item in element.EnumerateArray()) items.Add({codec(element)}.Read(item));");
         var generic = node.NonNullableType.GetGenericTypeDefinitionOrNull();
         var result = node.Kind is BridgeWireKind.Array ? "items.ToArray()"
             : generic == typeof(ImmutableArray<>) ? "global::System.Collections.Immutable.ImmutableArray.CreateRange(items)"
@@ -656,16 +672,16 @@ internal sealed class BridgeTypeGraph
         source.AppendLine($"        return {result};");
     }
 
-    private static void AppendDictionaryReader(StringBuilder source, BridgeTypeNode node)
+    private static void AppendDictionaryReader(StringBuilder source, BridgeTypeNode node, Func<BridgeTypeNode, string> codec)
     {
         var value = node.Value ?? throw new InvalidOperationException("A dictionary node needs a value type.");
         source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected an object.\");");
         source.AppendLine($"        var result = new global::System.Collections.Generic.Dictionary<string, {CSharpNodeType(value)}>(global::System.StringComparer.Ordinal);");
-        source.AppendLine($"        foreach (var property in element.EnumerateObject()) result.Add(property.Name, Read{value.Id}(property.Value));");
+        source.AppendLine($"        foreach (var property in element.EnumerateObject()) result.Add(property.Name, {codec(value)}.Read(property.Value));");
         source.AppendLine("        return result;");
     }
 
-    private static void AppendDtoReader(StringBuilder source, BridgeTypeNode node)
+    private static void AppendDtoReader(StringBuilder source, BridgeTypeNode node, Func<BridgeTypeNode, string> codec)
     {
         var type = CSharpType(node.NonNullableType, node.Nullability);
         if (!node.Direction.HasFlag(BridgeValueDirection.FromPage))
@@ -680,8 +696,8 @@ internal sealed class BridgeTypeGraph
                 ? $"        var has_{member.Index} = element.TryGetProperty({Quote(member.WireName)}, out var {Local(member)});"
                 : $"        var {Local(member)} = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, {Quote(member.WireName)});");
         string Read(BridgeTypeMember member, string missing) => member.Optional
-            ? $"has_{member.Index} ? Read{member.Type.Id}({Local(member)}) : {missing}"
-            : $"Read{member.Type.Id}({Local(member)})";
+            ? $"has_{member.Index} ? {codec(member.Type)}.Read({Local(member)}) : {missing}"
+            : $"{codec(member.Type)}.Read({Local(member)})";
         if (node.Constructor is { } constructor)
         {
             var arguments = constructor.GetParameters().Select(parameter =>
@@ -757,7 +773,7 @@ internal sealed class BridgeTypeGraph
 
     // The declared C# type with its nullable annotations, e.g.
     // ImmutableArray<string?>? or Point?. Codecs use it for signatures.
-    private static string CSharpNodeType(BridgeTypeNode node)
+    internal static string CSharpNodeType(BridgeTypeNode node)
     {
         var type = node.Kind switch
         {

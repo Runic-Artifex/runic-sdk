@@ -2,39 +2,69 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using TitleValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using TagValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using CountValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using RatioValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Double;
+using PriceValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Decimal;
+using PasswordValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using ConfirmValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using HandleValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using AliasValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using NoteValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using ExtraConfirmErrorValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
+using DetailsValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.ValidationTextDetailsToPage;
+using ShapeValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableValidationTextShapeToPage;
+using HasErrorsValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
 internal sealed class ValidationTextBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> TitleGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title;
+    private static readonly global::System.Func<object, object?> TagGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag;
+    private static readonly global::System.Func<object, object?> CountGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count;
+    private static readonly global::System.Func<object, object?> RatioGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio;
+    private static readonly global::System.Func<object, object?> PriceGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price;
+    private static readonly global::System.Func<object, object?> PasswordGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password;
+    private static readonly global::System.Func<object, object?> ConfirmGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm;
+    private static readonly global::System.Func<object, object?> HandleGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle;
+    private static readonly global::System.Func<object, object?> AliasGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias;
+    private static readonly global::System.Func<object, object?> NoteGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note;
+    private static readonly global::System.Func<object, object?> ExtraConfirmErrorGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError;
+    private static readonly global::System.Func<object, object?> DetailsGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Details;
+    private static readonly global::System.Func<object, object?> ShapeGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Shape;
+    private static readonly global::System.Func<object, object?> HasErrorsGetter = static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).HasErrors;
     internal ValidationTextBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ValidationTextViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel), routePrefix ?? "validationText",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Tag", "tag", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag = TagValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Count", "count", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count = CountValueCodec.Read(value)),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Ratio", "ratio", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio = RatioValueCodec.Read(value)),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Price", "price", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price = PriceValueCodec.Read(value)),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Password", "password", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password = PasswordValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Confirm", "confirm", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm = ConfirmValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Handle", "handle", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle = HandleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Alias", "alias", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias = AliasValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Note", "note", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note = NoteValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note = value },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("ExtraConfirmError", "extraConfirmError", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError = ExtraConfirmErrorValueCodec.Read(value)),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Details", "details", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Details, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Shape", "shape", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Shape, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("HasErrors", "hasErrors", static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).HasErrors, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Tag", "tag", TagGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag = TagValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Count", "count", CountGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count = CountValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Ratio", "ratio", RatioGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio = RatioValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Price", "price", PriceGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price = PriceValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Password", "password", PasswordGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password = PasswordValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Confirm", "confirm", ConfirmGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm = ConfirmValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Handle", "handle", HandleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle = HandleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Alias", "alias", AliasGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias = AliasValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Note", "note", NoteGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note = NoteValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("ExtraConfirmError", "extraConfirmError", ExtraConfirmErrorGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError = ExtraConfirmErrorValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Details", "details", DetailsGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Shape", "shape", ShapeGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("HasErrors", "hasErrors", HasErrorsGetter, null),
         ],
         [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Tag", "tag", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag = (global::System.String)value!, readValue: static element => TagValueCodec.Read(element), writeValue: static (writer, value) => TagValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Count", "count", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count = (global::System.Int32)value!, readValue: static element => CountValueCodec.Read(element), writeValue: static (writer, value) => CountValueCodec.Write(writer, (global::System.Int32)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Ratio", "ratio", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio = (global::System.Double)value!, readValue: static element => RatioValueCodec.Read(element), writeValue: static (writer, value) => RatioValueCodec.Write(writer, (global::System.Double)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Price", "price", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price = (global::System.Decimal)value!, readValue: static element => PriceValueCodec.Read(element), writeValue: static (writer, value) => PriceValueCodec.Write(writer, (global::System.Decimal)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Password", "password", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password = (global::System.String)value!, readValue: static element => PasswordValueCodec.Read(element), writeValue: static (writer, value) => PasswordValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Confirm", "confirm", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm = (global::System.String)value!, readValue: static element => ConfirmValueCodec.Read(element), writeValue: static (writer, value) => ConfirmValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Handle", "handle", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle = (global::System.String)value!, readValue: static element => HandleValueCodec.Read(element), writeValue: static (writer, value) => HandleValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Alias", "alias", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias = (global::System.String)value!, readValue: static element => AliasValueCodec.Read(element), writeValue: static (writer, value) => AliasValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Note", "note", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note = (global::System.String)value!, readValue: static element => NoteValueCodec.Read(element), writeValue: static (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("ExtraConfirmError", "extraConfirmError", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError = (global::System.Boolean)value!, readValue: static element => ExtraConfirmErrorValueCodec.Read(element), writeValue: static (writer, value) => ExtraConfirmErrorValueCodec.Write(writer, (global::System.Boolean)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Tag", "tag", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TagGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Tag = (global::System.String)value!, readValue: static element => TagValueCodec.Read(element), writeValue: static (writer, value) => TagValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Count", "count", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, CountGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Count = (global::System.Int32)value!, readValue: static element => CountValueCodec.Read(element), writeValue: static (writer, value) => CountValueCodec.Write(writer, (global::System.Int32)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Ratio", "ratio", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, RatioGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Ratio = (global::System.Double)value!, readValue: static element => RatioValueCodec.Read(element), writeValue: static (writer, value) => RatioValueCodec.Write(writer, (global::System.Double)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Price", "price", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, PriceGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Price = (global::System.Decimal)value!, readValue: static element => PriceValueCodec.Read(element), writeValue: static (writer, value) => PriceValueCodec.Write(writer, (global::System.Decimal)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Password", "password", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, PasswordGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Password = (global::System.String)value!, readValue: static element => PasswordValueCodec.Read(element), writeValue: static (writer, value) => PasswordValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Confirm", "confirm", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, ConfirmGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Confirm = (global::System.String)value!, readValue: static element => ConfirmValueCodec.Read(element), writeValue: static (writer, value) => ConfirmValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Handle", "handle", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, HandleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Handle = (global::System.String)value!, readValue: static element => HandleValueCodec.Read(element), writeValue: static (writer, value) => HandleValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Alias", "alias", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, AliasGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Alias = (global::System.String)value!, readValue: static element => AliasValueCodec.Read(element), writeValue: static (writer, value) => AliasValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Note", "note", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, NoteGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Note = (global::System.String)value!, readValue: static element => NoteValueCodec.Read(element), writeValue: static (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("ExtraConfirmError", "extraConfirmError", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, ExtraConfirmErrorGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).ExtraConfirmError = (global::System.Boolean)value!, readValue: static element => ExtraConfirmErrorValueCodec.Read(element), writeValue: static (writer, value) => ExtraConfirmErrorValueCodec.Write(writer, (global::System.Boolean)value!)),
         ],
         [
         ], "<fingerprint>", content,
@@ -48,367 +78,29 @@ internal sealed class ValidationTextBridge : global::Runic.Application.Views.Gen
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Title, propertyName: "Title") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Title", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("tag", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Tag, propertyName: "Tag") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Tag", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("count", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Count, propertyName: "Count") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Count", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("ratio", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Ratio, propertyName: "Ratio") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Ratio", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("price", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Price, propertyName: "Price") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Price", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("password", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Password, propertyName: "Password"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("confirm", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Confirm, propertyName: "Confirm") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Confirm", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("handle", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Handle, propertyName: "Handle") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Handle", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("alias", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Alias, propertyName: "Alias") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Alias", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("note", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Note, propertyName: "Note") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Note", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("extraConfirmError", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).ExtraConfirmError, propertyName: "ExtraConfirmError"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("details", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Details, children: [
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", TitleGetter, propertyName: "Title") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Title", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("tag", TagGetter, propertyName: "Tag") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Tag", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("count", CountGetter, propertyName: "Count") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Count", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("ratio", RatioGetter, propertyName: "Ratio") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Ratio", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("price", PriceGetter, propertyName: "Price") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Price", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("password", PasswordGetter, propertyName: "Password"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("confirm", ConfirmGetter, propertyName: "Confirm") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Confirm", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("handle", HandleGetter, propertyName: "Handle") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Handle", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("alias", AliasGetter, propertyName: "Alias") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Alias", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("note", NoteGetter, propertyName: "Note") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextViewModel).GetProperty("Note", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("extraConfirmError", ExtraConfirmErrorGetter, propertyName: "ExtraConfirmError"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("details", DetailsGetter, children: [
                 new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("code", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextDetails)owner).Code, propertyName: "Code") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextDetails).GetProperty("Code", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
                 new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("hasErrors", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextDetails)owner).HasErrors, propertyName: "HasErrors")
             ], propertyName: "Details"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("shape", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).Shape, children: [
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("shape", ShapeGetter, children: [
                 new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("radius", static owner => owner is global::Runic.Application.Testing.Tests.ValidationTextCircle current ? current.Radius : null, propertyName: "Radius") { ValidationProperty = static () => typeof(global::Runic.Application.Testing.Tests.ValidationTextCircle).GetProperty("Radius", global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly) },
                 new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("hasErrors", static owner => owner is global::Runic.Application.Testing.Tests.ValidationTextCircle current ? current.HasErrors : null, propertyName: "HasErrors"),
                 new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("side", static owner => owner is global::Runic.Application.Testing.Tests.ValidationTextSquare current ? current.Side : null, propertyName: "Side")
             ], propertyName: "Shape"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("hasErrors", static owner => ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)owner).HasErrors, propertyName: "HasErrors"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("hasErrors", HasErrorsGetter, propertyName: "HasErrors"),
         ]
     ;
-private static class TitleValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class TagValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class CountValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class RatioValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Double value) => Write0(writer, value);
-    internal static global::System.Double Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Double value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteFiniteNumber(writer, value);
-    }
-
-    private static global::System.Double Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadDouble(element);
-    }
-
-}
-
-private static class PriceValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Decimal value) => Write0(writer, value);
-    internal static global::System.Decimal Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Decimal value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteDecimal(writer, value);
-    }
-
-    private static global::System.Decimal Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadDecimal(element);
-    }
-
-}
-
-private static class PasswordValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ConfirmValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class HandleValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class AliasValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class NoteValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ExtraConfirmErrorValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
-    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
-private static class DetailsValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextDetails value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ValidationTextDetails Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextDetails value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("code"); Write1(writer, value.Code);
-        writer.WritePropertyName("hasErrors"); Write2(writer, value.HasErrors);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ValidationTextDetails Read0(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ValidationTextDetails is only written to the page.");
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read2(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
-private static class ShapeValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextShape? value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ValidationTextShape? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextShape? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStartObject();
-        switch (value)
-        {
-            case global::Runic.Application.Testing.Tests.ValidationTextCircle item1:
-                writer.WriteString("$case", "circle");
-                writer.WritePropertyName("radius"); Write2(writer, item1.Radius);
-                writer.WritePropertyName("hasErrors"); Write3(writer, item1.HasErrors);
-                break;
-            case global::Runic.Application.Testing.Tests.ValidationTextSquare item4:
-                writer.WriteString("$case", "square");
-                writer.WritePropertyName("side"); Write5(writer, item4.Side);
-                break;
-            default: throw new global::System.NotSupportedException("The value is not a declared bridge-union case.");
-        }
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ValidationTextShape? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
-        return discriminator switch
-        {
-            "circle" => Read1(element),
-            "square" => Read4(element),
-            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
-        };
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextCircle value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("radius"); Write2(writer, value.Radius);
-        writer.WritePropertyName("hasErrors"); Write3(writer, value.HasErrors);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ValidationTextCircle Read1(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ValidationTextCircle is only written to the page.");
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-    private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read3(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-    private static void Write4(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextSquare value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("side"); Write5(writer, value.Side);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ValidationTextSquare Read4(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ValidationTextSquare is only written to the page.");
-    }
-
-    private static void Write5(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read5(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class HasErrorsValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
-    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("title", static (writer, vm) => TitleValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ValidationTextViewModel)vm).Title)),

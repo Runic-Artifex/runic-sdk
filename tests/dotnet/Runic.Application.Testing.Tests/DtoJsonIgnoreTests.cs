@@ -10,6 +10,13 @@ internal sealed partial class CodegenDiagnosticsTests
 {
     private const string JsonIgnoreOptOut = "[assembly: RunicIncludeJsonIgnored]\n";
 
+    // The wire codecs of every Bridge in a generated directory (BridgeSharedCodecs).
+    private const string SharedCodecs = "RunicShared.Codecs.Bridge.g.cs";
+
+    // A Bridge's code together with the shared codecs its aliases name: a DTO's codec is in the shared file.
+    private static string BridgeWithCodecs(string directory, string bridge) =>
+        File.ReadAllText(Path.Combine(directory, bridge)) + File.ReadAllText(Path.Combine(directory, SharedCodecs));
+
     private static async Task RunDtoJsonIgnoreAsync(string generator, string temporaryRoot)
     {
         // System.Text.Json's unconditional ignores apply by default ("on"); [assembly: RunicIncludeJsonIgnored]
@@ -30,11 +37,11 @@ internal sealed partial class CodegenDiagnosticsTests
         foreach (var text in new[] { "RUNICBRIDGE003", "HistoryViewModel.Query", "[RunicIgnore]", "[assembly: RunicIncludeJsonIgnored]", "WhenWritingNull", "WhenWritingDefault", "Never" })
             Require(rejected.Contains(text, StringComparison.Ordinal), $"Computed DTO diagnostic omitted '{text}'.\n{rejected}");
         var computed = await GenerateValidAsync(generator, temporaryRoot, "JsonIgnoreComputedOn", optedInPreamble + Computed).ConfigureAwait(false);
-        Require(!File.ReadAllText(Path.Combine(computed, "Fixture.HistoryViewModel.Bridge.g.cs")).Contains("value.IsFiltered", StringComparison.Ordinal),
+        Require(!BridgeWithCodecs(computed, "Fixture.HistoryViewModel.Bridge.g.cs").Contains("value.IsFiltered", StringComparison.Ordinal),
             "An opted-in computed DTO property was emitted in its codec.");
         var runicSource = preamble + Computed.Replace("[JsonIgnore]", "[RunicIgnore]", StringComparison.Ordinal);
         var runic = await GenerateValidAsync(generator, temporaryRoot, "RunicIgnoreComputed", runicSource).ConfigureAwait(false);
-        Require(File.ReadAllText(Path.Combine(runic, "Fixture.HistoryViewModel.Bridge.g.cs")) == File.ReadAllText(Path.Combine(computed, "Fixture.HistoryViewModel.Bridge.g.cs")),
+        Require(BridgeWithCodecs(runic, "Fixture.HistoryViewModel.Bridge.g.cs") == BridgeWithCodecs(computed, "Fixture.HistoryViewModel.Bridge.g.cs"),
             "RunicIgnore and opted-in unconditional JsonIgnore produced different DTO contracts.");
 
         // Off means exactly the previous generated wire shape, even when JSON
@@ -46,7 +53,7 @@ internal sealed partial class CodegenDiagnosticsTests
         foreach (var attribute in new[] { "[JsonIgnore]", "[JsonIgnore(Condition = JsonIgnoreCondition.Always)]", "[JsonIgnore(Condition = JsonIgnoreCondition.Never)]", "[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]", "[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]" })
             baselineSource = baselineSource.Replace(attribute, "", StringComparison.Ordinal);
         var baseline = await GenerateValidAsync(generator, temporaryRoot, "JsonIgnoreFieldsBaseline", baselineSource).ConfigureAwait(false);
-        foreach (var file in new[] { "Fixture.JsonIgnoreViewModel.Bridge.g.cs", "Fixture.JsonIgnoreWindow.View.g.cs" })
+        foreach (var file in new[] { "Fixture.JsonIgnoreViewModel.Bridge.g.cs", "Fixture.JsonIgnoreWindow.View.g.cs", SharedCodecs })
             Require(File.ReadAllText(Path.Combine(off, file)) == File.ReadAllText(Path.Combine(baseline, file)),
                 $"JsonIgnore changed the default generated {file} contract.");
         var offTypes = File.ReadAllText(Path.Combine(Path.GetDirectoryName(off)!, "ts", "types.ts"));
@@ -141,7 +148,7 @@ internal sealed partial class CodegenDiagnosticsTests
         var (exit, output, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "IndependentJsonIgnoreConsumer", source, references).ConfigureAwait(false);
         Require(exit == 0, $"Independent shared DTOs were not accepted.\n{output}");
         var cs = Path.Combine(directory, "cs");
-        var generated = File.ReadAllText(Path.Combine(cs, "Fixture.IndependentViewModel.Bridge.g.cs"));
+        var generated = BridgeWithCodecs(cs, "Fixture.IndependentViewModel.Bridge.g.cs");
         foreach (var member in new[] { ".IsFiltered", ".HasErrors", ".Hidden", ".Unknown", ".Extra" })
             Require(!generated.Contains(member, StringComparison.Ordinal), $"The shared DTO codec or validation metadata read ignored member {member}.");
         var assembly = CompileGeneratedDtoFixture("IndependentJsonIgnoreConsumer", source, cs, IndependentJsonIgnoreProbe, references);

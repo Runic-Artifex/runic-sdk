@@ -181,26 +181,21 @@ internal static class InteractionCodeEmitter
 
     }
 
-    /// <summary>Appends direct AOT-safe codecs used by the generated descriptor.</summary>
-    internal static void AppendCSharpCodecs(StringBuilder source, IEnumerable<GeneratedInteractionPlan> plans)
+    /// <summary>Names the direct AOT-safe codecs that the generated descriptors use.</summary>
+    internal static void AddCSharpCodecs(BridgeCodecAliases codecs, IEnumerable<GeneratedInteractionPlan> plans)
     {
         foreach (var plan in plans)
         {
-            plan.Input.AppendCSharpCodec(source, plan.Property.Name + "InteractionInputCodec");
-            source.AppendLine();
-            plan.Output.AppendCSharpCodec(source, plan.Property.Name + "InteractionOutputCodec");
-            source.AppendLine();
+            codecs.Add(plan.Property.Name + "InteractionInputCodec", plan.Input);
+            codecs.Add(plan.Property.Name + "InteractionOutputCodec", plan.Output);
         }
     }
 
-    /// <summary>Appends the write-only input codec of each view request.</summary>
-    internal static void AppendCSharpRequestCodecs(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans)
+    /// <summary>Names the write-only input codec of each view request.</summary>
+    internal static void AddCSharpRequestCodecs(BridgeCodecAliases codecs, IEnumerable<GeneratedViewRequestPlan> plans)
     {
         foreach (var plan in plans)
-        {
-            plan.Input.AppendCSharpCodec(source, plan.Property.Name + "RequestInputCodec");
-            source.AppendLine();
-        }
+            codecs.Add(plan.Property.Name + "RequestInputCodec", plan.Input);
     }
 
     /// <summary>

@@ -9,15 +9,16 @@ using System.ComponentModel;
 // follows only these direct accesses, so nested DTO/list changes stay AOT-safe.
 internal static class BridgeDataSubscriptionEmitter
 {
-    internal static void AppendMetadata(StringBuilder source, string modelType,
-        IEnumerable<KeyValuePair<PropertyInfo, BridgeTypeGraph>> properties)
+    /// <param name="getter">Names the Bridge's getter of a ViewModel property, which its descriptors share.</param>
+    internal static void AppendMetadata(StringBuilder source, IEnumerable<KeyValuePair<PropertyInfo, BridgeTypeGraph>> properties,
+        Func<PropertyInfo, string> getter)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(getter);
         source.AppendLine("        [");
         foreach (var (property, graph) in properties)
         {
-            var getter = $"static owner => (({modelType})owner).{property.Name}";
-            AppendMember(source, WireName(property), property.Name, getter, graph.Root, 12, ValidationProperty(property));
+            AppendMember(source, WireName(property), property.Name, getter(property), graph.Root, 12, ValidationProperty(property));
             source.AppendLine(",");
         }
         source.AppendLine("        ]");

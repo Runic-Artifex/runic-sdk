@@ -2,13 +2,18 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using PickedValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using PickCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
 internal sealed class KeyedPlainBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> PickedGetter = static vm => ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked;
     internal KeyedPlainBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedPlainViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.KeyedPlainViewModel), routePrefix ?? "keyedPlain",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Picked", "picked", static vm => ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Picked", "picked", PickedGetter, null),
         ],
         [
         ],
@@ -25,43 +30,9 @@ internal sealed class KeyedPlainBridge : global::Runic.Application.Views.Generat
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("picked", static owner => ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)owner).Picked, propertyName: "Picked"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("picked", PickedGetter, propertyName: "Picked"),
         ]
     ;
-private static class PickedValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class PickCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("picked", static (writer, vm) => PickedValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked)),

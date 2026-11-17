@@ -1,0 +1,76 @@
+    // global::System.Boolean
+    internal static class Boolean
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
+        {
+            writer.WriteBooleanValue(value);
+        }
+
+        internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element)
+        {
+            return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
+        }
+    }
+
+    // global::System.String?
+    internal static class NullableString
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
+        {
+            if (value is null) { writer.WriteNullValue(); return; }
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String? Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }
+
+    // global::System.String
+    internal static class String
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ViewRequestDiscard
+    internal static class ViewRequestDiscardToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ViewRequestDiscard value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("title"); RunicBridgeCodecs.String.Write(writer, value.Title);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ViewRequestDiscard Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ViewRequestDiscard is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ViewRequestFocusTarget
+    internal static class ViewRequestFocusTargetToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ViewRequestFocusTarget value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("field"); RunicBridgeCodecs.String.Write(writer, value.Field);
+            writer.WritePropertyName("selectAll"); RunicBridgeCodecs.Boolean.Write(writer, value.SelectAll);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ViewRequestFocusTarget Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ViewRequestFocusTarget is only written to the page.");
+        }
+    }

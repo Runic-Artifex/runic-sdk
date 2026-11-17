@@ -181,6 +181,7 @@ try
         // different namespaces, must not overwrite each other's file.
         var csharpOutputs = models.Select(entry => (Path: BridgeFileName(entry.Model), Owner: entry.Model.FullName!))
             .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
+            .Append((Path: BridgeSharedCodecs.FileName, Owner: "the shared Bridge codecs"))
             .ToArray();
         var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
@@ -229,6 +230,8 @@ try
                 Diagnostics.Report(error, entry.Model);
             }
         }
+        // The Bridges generated so far, as before, even when another ViewModel failed.
+        BridgeSharedCodecs.WriteAll(positional[2]);
         if (Diagnostics.HasErrors) return;
         SharedClients.Generate(positional[3], sharedClients, viewTypes, PageKind, ContractFor);
         if (Diagnostics.HasErrors) return;
@@ -251,6 +254,7 @@ try
             throw new ArgumentException("Usage: BridgeCodegen <model.dll> <ViewModel type> <output.cs> <output.ts> [public name]");
         var model = Assembly.LoadFrom(Path.GetFullPath(args[0])).GetType(args[1], throwOnError: true)!;
         GenerateOne(model, args[2], args[3], args.Length == 5 ? args[4] : PublicName(model));
+        BridgeSharedCodecs.WriteAll(Path.GetDirectoryName(Path.GetFullPath(args[2]))!);
         TypeScriptModules.WriteAll(Path.GetDirectoryName(Path.GetFullPath(args[3]))!);
     }
 }
@@ -972,6 +976,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var fullType = $"global::{model.FullName}";
     // A generated lambda's ViewModel parameter is an object (#901): M casts it where a body reads it.
     string M(string body) => GeneratedModel.Cast(body, fullType);
+    // The Bridge's getter of a property (a static field), shared by the property's descriptors and its data subscription.
+    static string Getter(PropertyInfo property) => property.Name + "Getter";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     var commandSources = commands.ToDictionary(command => command, command => CommandSourceMethod(model, command));
     foreach (var command in commands)
@@ -1123,6 +1129,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("#nullable enable");
     cs.AppendLine("using Runic.Application.Views;");
     AppendNamespace(cs, BridgeNamespace);
+    // The codec aliases go here once every codec is known (BridgeCodecAliases).
+    var codecs = new BridgeCodecAliases();
+    var codecAliasPosition = cs.Length;
     cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.Generated.ViewModelBridge");
     cs.AppendLine("{");
     if (presented)
@@ -1132,6 +1141,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("    private readonly global::Runic.Application.Views.WindowContentSession _content;");
         cs.AppendLine($"    private readonly {fullType} _owner;");
     }
+    // Before DataMetadata, whose initializer reads them.
+    cs.AppendLine("    // One getter per property, shared by its descriptors and its data subscription.");
+    foreach (var property in properties)
+        cs.AppendLine($"    private static readonly global::System.Func<object, object?> {Getter(property)} = static vm => {M($"vm.{property.Name}")};");
     cs.AppendLine($"    internal {shortName}Bridge(global::Runic.Application.Views.IBridgeTransport transport, {fullType} vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(");
     cs.AppendLine($"        transport, vm, typeof({fullType}), routePrefix ?? \"{prefix}\",");
     cs.AppendLine(hasContent ? "        CreateState(content)," : "        State,");
@@ -1146,26 +1159,26 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (regionSlots.Contains(property))
         {
             // The runtime observes the region and binds the window session.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}?.Current, null, static vm => {M($"vm.{property.Name}")}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}?.Current, null, {Getter(property)}),");
             continue;
         }
         if (regionCollections.ContainsKey(property))
         {
             // The runtime observes the selection, its regions and their Current, and answers region requests.
             var close = BridgeContractShape.RegionCollection(property)!.PageCanClose ? "true" : "false";
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}, null, static vm => {M($"vm.{property.Name}")}) {{ RegionCollection = true, RegionClose = {close} }},");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, {Getter(property)}, null, {Getter(property)}) {{ RegionCollection = true, RegionClose = {close} }},");
             continue;
         }
         if (queryCollections.ContainsKey(property))
         {
             // The runtime observes the collection's query, total and version, and pages read its rows with query-rows.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}, null, static vm => {M($"vm.{property.Name}")}) {{ QueryRowWriter = {property.Name}RowsCodec.WriteItem }},");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, {Getter(property)}, null, {Getter(property)}) {{ QueryRowWriter = {property.Name}RowsCodec.WriteItem }},");
             continue;
         }
         if (selectionSlots.Contains(property))
         {
             // The runtime observes the selection's SelectedIndex.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M(SelectionIndex(property))}, null, static vm => {M($"vm.{property.Name}")}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M(SelectionIndex(property))}, null, {Getter(property)}),");
             continue;
         }
         // A frame is one publication unit, so the text's change and the validation it causes arrive together.
@@ -1174,7 +1187,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 ? $" {{ TextMember = true, TextSetter = static (vm, value) => {M($"vm.{property.Name}")} = value }}"
                 : " { TextMember = true }"
             : "";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}, {setter}){text},");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, {Getter(property)}, {setter}){text},");
     }
     cs.AppendLine("        ],");
     {
@@ -1183,7 +1196,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var type = valueProperties[property].RootCSharpType();
             var paths = nestedPaths.TryGetValue(property, out var nested) ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(nested, property.Name + "ValueCodec")} }}" : "";
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => {M($"vm.{property.Name}")}, static (vm, value) => {M($"vm.{property.Name}")} = ({type})value!, readValue: static element => {property.Name}ValueCodec.Read(element), writeValue: static (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)){paths},");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, {Getter(property)}, static (vm, value) => {M($"vm.{property.Name}")} = ({type})value!, readValue: static element => {property.Name}ValueCodec.Read(element), writeValue: static (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)){paths},");
         }
         cs.AppendLine("        ],");
     }
@@ -1216,7 +1229,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(rowPaths[property], property.Name + "ValueCodec")}, UpdateRow = static (vm, row, edit) => {M($"vm.{editor.Name}")}((({itemType})row!).{key.Name}, ({itemType})row!{(editor.GetParameters().Length == 3 ? ", edit" : "")})"
                 + (editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Conflicts == RunicRowConflicts.Row ? ", RowConflicts = global::Runic.Application.Views.RunicRowConflicts.Row" : "") + " }"
             : "";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor(\"{WireName(property)}\", static vm => {M($"vm.{property.Name}")}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}){editable},");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor(\"{WireName(property)}\", {Getter(property)}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}){editable},");
     }
     cs.AppendLine(validationContextFlavors.Length > 0 ? "        ], validationReader: ValidationReader" : "        ]");
     cs.AppendLine("        )");
@@ -1231,33 +1244,38 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine();
     cs.AppendLine("    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =");
     // A selection is observed through its descriptor; its members are not data.
-    BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties.Where(entry => !selectionSlots.Contains(entry.Key)));
+    BridgeDataSubscriptionEmitter.AppendMetadata(cs, valueProperties.Where(entry => !selectionSlots.Contains(entry.Key)), Getter);
     cs.AppendLine("    ;");
     if (validationContextFlavors.Length > 0)
     {
         cs.AppendLine();
         AppendValidationContextReader(cs, validationContextFlavors);
     }
+    // Codecs: the shared codec of each value's type (BridgeSharedCodecs), named by an alias. A member with field paths
+    // keeps a class of its own for its setters.
     foreach (var (property, graph) in valueProperties)
     {
-        graph.AppendCSharpCodec(cs, property.Name + "ValueCodec",
-            fieldPaths: nestedPaths.TryGetValue(property, out var nestedLeaves) ? (graph.Root, nestedLeaves)
-                : rowPaths.TryGetValue(property, out var rowLeaves) && rowLeaves.Count > 0 ? (graph.Root.Element!, rowLeaves) : null);
+        if (nestedPaths.TryGetValue(property, out var nestedLeaves))
+            BridgeCodecAliases.AppendFieldPathCodec(cs, property.Name + "ValueCodec", graph, graph.Root, nestedLeaves);
+        else if (rowPaths.TryGetValue(property, out var rowLeaves) && rowLeaves.Count > 0)
+            BridgeCodecAliases.AppendFieldPathCodec(cs, property.Name + "ValueCodec", graph, graph.Root.Element!, rowLeaves);
+        else
+        {
+            codecs.Add(property.Name + "ValueCodec", graph);
+            continue;
+        }
         cs.AppendLine();
     }
     foreach (var (property, plan) in queryCollections)
-    {
-        plan.Rows.AppendCSharpCodec(cs, property.Name + "RowsCodec");
-        cs.AppendLine();
-    }
+        codecs.Add(property.Name + "RowsCodec", plan.Rows);
     foreach (var (command, plan) in commandPlans)
     {
-        if (plan.InputGraph is { } input) { input.AppendCSharpCodec(cs, command.Name + "InputCodec"); cs.AppendLine(); }
-        if (plan.ResultGraph is { } result) { result.AppendCSharpCodec(cs, command.Name + "ResultCodec"); cs.AppendLine(); }
-        if (plan.FailureGraph is { } failure) { failure.AppendCSharpCodec(cs, command.Name + "FailureCodec"); cs.AppendLine(); }
+        if (plan.InputGraph is { } input) codecs.Add(command.Name + "InputCodec", input);
+        if (plan.ResultGraph is { } result) codecs.Add(command.Name + "ResultCodec", result);
+        if (plan.FailureGraph is { } failure) codecs.Add(command.Name + "FailureCodec", failure);
     }
-    InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
-    InteractionCodeEmitter.AppendCSharpRequestCodecs(cs, requests);
+    InteractionCodeEmitter.AddCSharpCodecs(codecs, interactions);
+    InteractionCodeEmitter.AddCSharpRequestCodecs(codecs, requests);
     foreach (var convention in MvvmCodegenConventions.All)
         convention.AppendSupportTypes(cs, commandPlans.Values);
     // The state members in order (specs/application, "State and revisions"). Each writes its value; the runtime writes
@@ -2041,7 +2059,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (TypeScriptModuleBindings.References(contractBody).FirstOrDefault(name => !publicTypes.Contains(name) && !runtimeTypes.Contains(name)) is { } unknown)
         throw new InvalidOperationException($"{model.Name}: the generated client contract uses {unknown}, which it does not import.");
 
-    WriteIfChanged(csharpPath, cs.ToString());
+    cs.Insert(codecAliasPosition, codecs.Directives());
+    // Written with the shared codecs, which are named once every Bridge is generated.
+    BridgeSharedCodecs.WriteLater(csharpPath, cs.ToString());
     TypeScriptModules.Add(typescriptPath, ts.ToString(), model);
     TypeScriptModules.Add(ClientDeclarationMap.ContractPath(typescriptPath), contractModule.ToString(), model);
     TypeScriptModules.Add(MockModulePath(typescriptPath), MockTypeScriptEmitter.Emit(new MockTypeScriptPlan(
