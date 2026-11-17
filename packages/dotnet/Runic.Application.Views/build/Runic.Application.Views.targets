@@ -99,6 +99,40 @@
          "origin: error CODE: text" form, as the generator, tsc and vue-tsc do. -->
     <_RunicBridgeCanonicalDiagnostic>(^|:)\s*(error|warning)\s+[A-Za-z]+\d+\s*:</_RunicBridgeCanonicalDiagnostic>
   </PropertyGroup>
+
+  <!-- WIN-01: Visual Studio's fast up-to-date check skips MSBuild when no item it knows changed, so without these items
+       F5 after a frontend-only edit, or after dotnet runic dev left its development pages in www/, ran the old page.
+       Each Set is compared on its own (a frontend edit does not rewrite the assembly):
+       - RunicFrontend: the frontend directory's files (package.json and the lock file among them) without its installed
+         packages, build output and generated client, and RunicApplicationFrontendInput, against the stamp that
+         RunicViewsBuildFrontend writes, as that target's own Inputs and Outputs do; and www/index.html, so a deleted
+         page builds again.
+       - RunicDevSession: obj/runic/dev-stopped, which dev touches when it stops, and the marker of a dev that runs
+         (obj/runic/dev-frontend), against the stamp that RunicViewsWwwRestored writes once a build has copied the
+         frontend to www/ again.
+       The check needs every input to exist, so the build creates dev-stopped, with an old time, when it is missing.
+       Only Visual Studio reads these items, so another build does not walk the frontend directory to evaluate them;
+       the glob's excludes keep evaluation out of node_modules. -->
+  <PropertyGroup>
+    <!-- BaseIntermediateOutputPath is set before the project body (Microsoft.Common.props). -->
+    <_RunicViewsDevSessionMarker>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))', 'runic', 'dev-frontend'))</_RunicViewsDevSessionMarker>
+  </PropertyGroup>
+  <!-- ItemGroup conditions, unlike properties here, see the properties that the SDK sets after this import (OutputType). -->
+  <ItemGroup Condition="'$(BuildingInsideVisualStudio)' == 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendGenerationEnabled)' != 'false' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+    <UpToDateCheckInput Include="$(RunicApplicationFrontendDirectory)/**/*" Set="RunicFrontend"
+        Exclude="$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(_RunicApplicationFrontendOutputPath)**;$(RunicApplicationFrontendDirectory)/build/**;$(RunicApplicationFrontendDirectory)/bin/**;$(RunicApplicationFrontendDirectory)/obj/**;$(RunicApplicationFrontendDirectory)/.*/**;$(RunicApplicationFrontendGeneratedDirectory)/**" />
+    <UpToDateCheckInput Include="@(RunicApplicationFrontendInput->Exists())" Set="RunicFrontend" />
+    <!-- Item values see every property; the intermediate paths are those of _RunicViewsIntermediatePaths. -->
+    <UpToDateCheckBuilt Include="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))', '$(Configuration)', '$(TargetFramework)', 'runic-bridge-frontend.stamp'))" Set="RunicFrontend" />
+    <UpToDateCheckBuilt Include="$(TargetDir)$(_RunicApplicationFrontendWebRoot)/index.html" Set="RunicFrontend"
+        Condition="'$(OutputType)' != 'Library' and '$(IsTestProject)' != 'true' and '$(RunicApplicationFrontendDevSessionEnabled)' != 'false' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(RunicApplicationFrontendDelivery.Trim())' != 'Embedded' and Exists('$(TargetDir)$(_RunicApplicationFrontendWebRoot)/index.html')" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(BuildingInsideVisualStudio)' == 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(OutputType)' != 'Library' and '$(IsTestProject)' != 'true' and '$(RunicApplicationFrontendDevSessionEnabled)' != 'false' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(RunicApplicationFrontendDelivery.Trim())' != 'Embedded'">
+    <UpToDateCheckInput Include="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))', 'runic', 'dev-stopped'))" Set="RunicDevSession" />
+    <UpToDateCheckInput Include="$(_RunicViewsDevSessionMarker)" Set="RunicDevSession"
+        Condition="Exists('$(_RunicViewsDevSessionMarker)')" />
+    <UpToDateCheckBuilt Include="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(IntermediateOutputPath)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))/$(Configuration)/$(TargetFramework)'))', 'runic-www.stamp'))" Set="RunicDevSession" />
+  </ItemGroup>
   <!-- A project that references a host adapter gets <RootNamespace>.RunicViewsComposition by default. The
        namespace is RootNamespace (the project name unless the project sets another) made a valid C# namespace:
        a character other than a letter, digit, underscore or dot becomes an underscore, and a segment that starts
@@ -1373,6 +1407,23 @@
     <MakeDir Directories="$(_RunicBridgeWwwManifestDirectory)" />
     <WriteLinesToFile File="$(_RunicBridgeWwwManifest)" Lines="@(_RunicBridgeCurrentWwwFile->'%(ModifiedTime)|%(FullPath)')"
         Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <!-- The outputs of the RunicDevSession up-to-date set (see UpToDateCheckInput above): a build that copied the frontend
+       to www/, so that no development page of dotnet runic dev is left there, writes runic-www.stamp, which Visual
+       Studio compares with obj/runic/dev-stopped. A build that keeps a live session's pages writes none. A missing
+       dev-stopped is created with an old time, as the check requires every input to exist and an input written during
+       the build would leave the project out of date. Declared after RunicViewsMirrorFrontend, so it runs after it. -->
+  <Target Name="RunicViewsWwwRestored" AfterTargets="Build" DependsOnTargets="_RunicViewsIntermediatePaths"
+          Condition="'$(OutputType)' != 'Library' and '$(IsTestProject)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicViewsDevStoppedStamp>$(_RunicBridgeBaseIntermediateDirectory)runic/dev-stopped</_RunicViewsDevStoppedStamp>
+      <_RunicViewsWwwStamp>$(_RunicBridgeIntermediateDirectory)runic-www.stamp</_RunicViewsWwwStamp>
+    </PropertyGroup>
+    <MakeDir Directories="$(_RunicBridgeBaseIntermediateDirectory)runic" Condition="!Exists('$(_RunicViewsDevStoppedStamp)')" />
+    <Touch Files="$(_RunicViewsDevStoppedStamp)" AlwaysCreate="true" Time="2000-01-01T00:00:00Z" Condition="!Exists('$(_RunicViewsDevStoppedStamp)')" />
+    <MakeDir Directories="$(_RunicBridgeIntermediateDirectory)" />
+    <Touch Files="$(_RunicViewsWwwStamp)" AlwaysCreate="true" />
   </Target>
 
   <Target Name="RunicViewsMirrorFrontendForPublish" AfterTargets="Publish" DependsOnTargets="RunicViewsWwwManifestDirectory;$(_RunicApplicationHostPublishCopyTargets)"

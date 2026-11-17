@@ -30,6 +30,13 @@ internal sealed partial class DevSession
     /// </summary>
     internal const string FrontendMarkerName = "dev-frontend";
     internal const string PagesDirectoryName = "dev-pages";
+
+    /// <summary>
+    /// The stamp that dev touches when it ends (<see cref="Stop"/>). Visual Studio's fast up-to-date check compares it
+    /// with the build's <c>runic-www.stamp</c> (the Views targets' <c>RunicDevSession</c> set), so the next F5 builds
+    /// and copies the frontend over the development pages that dev left in the web root.
+    /// </summary>
+    internal const string StoppedStampName = "dev-stopped";
     internal static readonly TimeSpan FrontendHeartbeat = TimeSpan.FromSeconds(5);
     internal static readonly TimeSpan FrontendMarkerLifetime = TimeSpan.FromSeconds(30);
 
@@ -80,6 +87,8 @@ internal sealed partial class DevSession
     internal string FrontendMarkerPath => System.IO.Path.Combine(_configuration.SessionDirectory, FrontendMarkerName);
 
     internal string PagesDirectory => System.IO.Path.Combine(_configuration.SessionDirectory, PagesDirectoryName);
+
+    internal string StoppedStampPath => System.IO.Path.Combine(_configuration.SessionDirectory, StoppedStampName);
 
     /// <summary>
     /// Marks the frontend as served by this session for the build targets. With <paramref name="pages"/>, the
@@ -292,6 +301,17 @@ internal sealed partial class DevSession
                 File.Delete(FrontendMarkerPath);
                 if (Directory.Exists(PagesDirectory)) Directory.Delete(PagesDirectory, recursive: true);
             }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
+        try
+        {
+            // After the marker: a build that this stamp starts copies the frontend over the development pages.
+            Directory.CreateDirectory(_configuration.SessionDirectory);
+            File.WriteAllBytes(StoppedStampPath, []);
+            // Rewriting an empty file need not change its time.
+            File.SetLastWriteTimeUtc(StoppedStampPath, DateTime.UtcNow);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

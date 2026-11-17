@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
@@ -512,6 +512,92 @@ test("a RunicApplicationFrontendInput outside the frontend directory rebuilds th
   const result = build(app);
   assert.equal(result.status, 0, result.output);
   assert.equal(builds(result), 1, "Editing a shared component outside the frontend directory builds it again.");
+});
+
+// WIN-01: Visual Studio's fast up-to-date check knows the frontend and dev's stop stamp, in sets of their own.
+test("Visual Studio's up-to-date check gets the frontend inputs and dev's stop stamp, without node_modules", () => {
+  const app = fixture("up-to-date", { name: "app", private: true },
+    `  <ItemGroup>
+    <RunicApplicationFrontendInput Include="$(MSBuildProjectDirectory)/shared/format.ts;$(MSBuildProjectDirectory)/shared/missing.ts" />
+  </ItemGroup>`);
+  const output = join(app.project, "bin") + "/";
+  for (const file of ["src/App.tsx", "bun.lock", "index.html", "node_modules/react/index.js", "dist/index.html",
+    "generated/client.ts", ".vite/deps/chunk.js"]) {
+    mkdirSync(join(app.frontend, file, ".."), { recursive: true });
+    writeFileSync(join(app.frontend, file), "");
+  }
+  mkdirSync(join(app.project, "shared"), { recursive: true });
+  writeFileSync(join(app.project, "shared/format.ts"), "");
+  mkdirSync(join(output, "www"), { recursive: true });
+  writeFileSync(join(output, "www/index.html"), "");
+  const evaluate = (...properties) => {
+    const result = spawnSync("dotnet", ["msbuild", join(app.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+      `-p:TargetDir=${output}`, ...properties.map(property => `-p:${property}`),
+      "-getItem:UpToDateCheckInput", "-getItem:UpToDateCheckBuilt"], { cwd: app.project, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const items = JSON.parse(result.stdout).Items;
+    const paths = name => (items[name] ?? []).map(item => [item.Set, item.FullPath.slice(app.project.length + 1).replaceAll("\\", "/")])
+      .sort((a, b) => `${a}`.localeCompare(`${b}`));
+    return { inputs: paths("UpToDateCheckInput"), built: paths("UpToDateCheckBuilt") };
+  };
+
+  // Outside Visual Studio nothing is evaluated.
+  assert.deepEqual(evaluate(), { inputs: [], built: [] });
+
+  let evaluated = evaluate("BuildingInsideVisualStudio=true");
+  assert.deepEqual(evaluated.inputs, [
+    ["RunicDevSession", "obj/runic/dev-stopped"],
+    ["RunicFrontend", "frontend/build.mjs"],
+    ["RunicFrontend", "frontend/bun.lock"],
+    ["RunicFrontend", "frontend/index.html"],
+    ["RunicFrontend", "frontend/install.mjs"],
+    ["RunicFrontend", "frontend/package.json"],
+    ["RunicFrontend", "frontend/src/App.tsx"],
+    ["RunicFrontend", "shared/format.ts"],
+  ]);
+  assert.deepEqual(evaluated.built, [
+    ["RunicDevSession", "obj/Debug/net10.0/runic-www.stamp"],
+    ["RunicFrontend", "bin/www/index.html"],
+    ["RunicFrontend", "obj/Debug/net10.0/runic-bridge-frontend.stamp"],
+  ]);
+
+  // While dev runs, its marker is an input too.
+  mkdirSync(join(app.project, "obj/runic"), { recursive: true });
+  writeFileSync(join(app.project, "obj/runic/dev-frontend"), "");
+  evaluated = evaluate("BuildingInsideVisualStudio=true", "IntermediateOutputPath=obj/x64/");
+  assert.ok(evaluated.inputs.some(([set, path]) => set === "RunicDevSession" && path === "obj/runic/dev-frontend"), `${evaluated.inputs}`);
+  assert.ok(evaluated.built.some(([set, path]) => set === "RunicDevSession" && path === "obj/x64/runic-www.stamp"), `${evaluated.built}`);
+  rmSync(join(app.project, "obj/runic/dev-frontend"));
+
+  // A library has no www/ of its own; a frontend that another tool builds has no stamp.
+  evaluated = evaluate("BuildingInsideVisualStudio=true", "OutputType=Library");
+  assert.ok(evaluated.inputs.every(([set]) => set === "RunicFrontend") && evaluated.built.every(([set]) => set === "RunicFrontend"),
+    `${evaluated.inputs} ${evaluated.built}`);
+  assert.ok(!evaluated.built.some(([, path]) => path.endsWith("index.html")));
+  evaluated = evaluate("BuildingInsideVisualStudio=true", "RunicApplicationFrontendBuildEnabled=false");
+  assert.ok(evaluated.inputs.every(([set]) => set === "RunicDevSession"), `${evaluated.inputs}`);
+
+  // The build writes the stamps that the sets compare: dev-stopped once, with an old time, and runic-www.stamp whenever
+  // it copies the frontend, which a build that keeps a live session's pages does not.
+  const stamp = join(app.project, "obj/Debug/net10.0/runic-www.stamp");
+  const stopped = join(app.project, "obj/runic/dev-stopped");
+  rmSync(join(app.project, "obj"), { recursive: true, force: true });
+  let result = build(app, { targets: "RunicViewsWwwRestored", properties: ["RunicApplicationFrontendCopyEnabled=false"] });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(!existsSync(stamp) && !existsSync(stopped));
+  result = build(app, { targets: "RunicViewsWwwRestored" });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(existsSync(stamp));
+  assert.ok(statSync(stopped).mtimeMs < statSync(stamp).mtimeMs - 3600_000, "dev-stopped is newer than the build.");
+  // dev's stop is newer than the stamp until the next build copies the frontend again.
+  writeFileSync(stopped, "");
+  utimesSync(stamp, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  const stoppedAt = statSync(stopped).mtimeMs;
+  assert.ok(stoppedAt > statSync(stamp).mtimeMs);
+  result = build(app, { targets: "RunicViewsWwwRestored" });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(statSync(stamp).mtimeMs >= stoppedAt, "The build did not record that www/ is restored.");
+  assert.equal(statSync(stopped).mtimeMs, stoppedAt, "The build changed dev's stop stamp.");
 });
 
 // #236 and #237: the host and the build environment change the page without changing a file.
