@@ -735,15 +735,10 @@ Runic.Application.Views.RunicUpload.Id.get -> string!
 Runic.Application.Views.RunicUpload.IsClaimed.get -> bool
 Runic.Application.Views.RunicUpload.Length.get -> long
 Runic.Application.Views.RunicUpload.OpenReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>
-Runic.Application.Views.RunicUpload.SaveAsAsync(string! path, bool overwrite = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.RunicWindowOptions.MaximumUploadBytes.get -> long?
 Runic.Application.Views.RunicWindowOptions.MaximumUploadBytes.init -> void
-Runic.Application.Views.RunicWindowOptions.MaximumWindowUploadBytes.get -> long?
-Runic.Application.Views.RunicWindowOptions.MaximumWindowUploadBytes.init -> void
 Runic.Application.Views.WindowContentSessionOptions.MaximumUploadBytes.get -> long?
 Runic.Application.Views.WindowContentSessionOptions.MaximumUploadBytes.init -> void
-Runic.Application.Views.WindowContentSessionOptions.MaximumWindowUploadBytes.get -> long?
-Runic.Application.Views.WindowContentSessionOptions.MaximumWindowUploadBytes.init -> void
 static Runic.Application.Views.Generated.BridgeWire.ReadUpload(System.Text.Json.JsonElement value) -> Runic.Application.Views.RunicUpload!
 static Runic.Application.Views.Generated.BridgeWire.WriteBlob(System.Text.Json.Utf8JsonWriter! writer, Runic.Application.Views.RunicBlob! value) -> void
 static Runic.Application.Views.Generated.BridgeWire.WriteUpload(System.Text.Json.Utf8JsonWriter! writer, Runic.Application.Views.RunicUpload! value) -> void
@@ -1053,13 +1048,11 @@ Runic.Application.Views.RunicWindowResult<TResult>.RunicWindowResult() -> void
 Runic.Application.Views.RunicWindowResult<TResult>.TryGetValue(out TResult value) -> bool
 Runic.Application.Views.RunicWindowResult<TResult>.Value.get -> TResult
 Runic.Application.Views.RunicWindowsChangedEventArgs
-Runic.Application.Views.RunicWindowsChangedEventArgs.Opened.get -> bool
 Runic.Application.Views.RunicWindowsChangedEventArgs.Window.get -> Runic.Application.Views.IRunicWindow!
 Runic.Application.Views.RunicWindowServiceExtensions
 static Runic.Application.Views.RunicWindowResult<TResult>.operator !=(Runic.Application.Views.RunicWindowResult<TResult> left, Runic.Application.Views.RunicWindowResult<TResult> right) -> bool
 static Runic.Application.Views.RunicWindowResult<TResult>.operator ==(Runic.Application.Views.RunicWindowResult<TResult> left, Runic.Application.Views.RunicWindowResult<TResult> right) -> bool
 static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this Runic.Application.Views.IRunicWindowService! windows) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!>!
-Runic.Application.Views.RunicWindowsChangedEventArgs.RunicWindowsChangedEventArgs(Runic.Application.Views.IRunicWindow! window, bool opened, System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>! windows) -> void
 Runic.Application.Views.RunicWindowsChangedEventArgs.Windows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!
 static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this Runic.Application.Views.IRunicWindowService! windows, Runic.Navigation.IRunicModelContext! context) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!>!
 override Runic.Application.Views.RunicValidationMember.Equals(object? obj) -> bool
@@ -1332,7 +1325,6 @@ Runic.Application.Views.AcceptedWorkScope.WaitForAcceptedAsync(System.Threading.
 [RUNICDESK105]Runic.Application.Views.RunicCloseDrain
 [RUNICDESK105]Runic.Application.Views.RunicCloseDrain.<Clone>$() -> Runic.Application.Views.RunicCloseDrain!
 [RUNICDESK105]Runic.Application.Views.RunicCloseDrain.Equals(Runic.Application.Views.RunicCloseDrain? other) -> bool
-[RUNICDESK105]Runic.Application.Views.RunicCloseDrain.KeepsWindow.get -> bool
 [RUNICDESK105]Runic.Application.Views.RunicCloseDrain.Timeout.get -> System.TimeSpan
 [RUNICDESK105]Runic.Application.Views.RunicOperationClose
 [RUNICDESK105]Runic.Application.Views.RunicOperationCloseAttribute
@@ -1351,3 +1343,14 @@ Runic.Application.Views.AcceptedWorkScope.WaitForAcceptedAsync(System.Threading.
 [RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.operator ==(Runic.Application.Views.RunicCloseDrain? left, Runic.Application.Views.RunicCloseDrain? right) -> bool
 [RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.UntilDrained.get -> Runic.Application.Views.RunicCloseDrain!
 [RUNICDESK105]Runic.Application.Views.RunicWindowOpening<TViewModel>.ReportCloseDrainUnavailable(string! presentation) -> void
+[RUNICDESK105]Runic.Application.Views.RunicCloseDrain.KeepWindow.get -> bool
+Runic.Application.Views.RunicUpload.SaveToFileAsync(string! path, bool overwrite = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicWindowOptions.MaximumPendingUploadBytes.get -> long?
+Runic.Application.Views.RunicWindowOptions.MaximumPendingUploadBytes.init -> void
+Runic.Application.Views.RunicWindowsChange
+Runic.Application.Views.RunicWindowsChange.Closed = 1 -> Runic.Application.Views.RunicWindowsChange
+Runic.Application.Views.RunicWindowsChange.Opened = 0 -> Runic.Application.Views.RunicWindowsChange
+Runic.Application.Views.RunicWindowsChangedEventArgs.Change.get -> Runic.Application.Views.RunicWindowsChange
+Runic.Application.Views.RunicWindowsChangedEventArgs.RunicWindowsChangedEventArgs(Runic.Application.Views.IRunicWindow! window, Runic.Application.Views.RunicWindowsChange change, System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>! windows) -> void
+Runic.Application.Views.WindowContentSessionOptions.MaximumPendingUploadBytes.get -> long?
+Runic.Application.Views.WindowContentSessionOptions.MaximumPendingUploadBytes.init -> void

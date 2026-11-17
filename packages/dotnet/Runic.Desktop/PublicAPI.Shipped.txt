@@ -840,7 +840,6 @@ static Runic.Desktop.DesktopQuitRequest.operator ==(Runic.Desktop.DesktopQuitReq
 static Runic.Desktop.MacOSDesktopOptions.operator !=(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator ==(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
 Runic.Desktop.DesktopHost.ClearRecentDocumentsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopHost.NoteRecentDocumentAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopStandardMenuTitles.ClearMenu.get -> string!
 Runic.Desktop.DesktopStandardMenuTitles.ClearMenu.init -> void
 Runic.Desktop.DesktopStandardMenuTitles.OpenRecent.get -> string!
@@ -989,9 +988,6 @@ Runic.Desktop.DesktopWindowState.IsSnapped.get -> bool
 Runic.Desktop.DesktopWindowState.IsSnapped.init -> void
 Runic.Desktop.DesktopWindowState.VisibleBounds.get -> Runic.Desktop.DesktopWindowBounds?
 Runic.Desktop.DesktopWindowState.VisibleBounds.init -> void
-Runic.Desktop.IDesktopWindowBoundsHost
-Runic.Desktop.IDesktopWindowBoundsHost.SetBoundsAsync(Runic.Desktop.DesktopWindowBounds! bounds, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.IDesktopWindowBoundsHost.SetMinimumSizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 static Runic.Desktop.DesktopWindowBounds.operator !=(Runic.Desktop.DesktopWindowBounds? left, Runic.Desktop.DesktopWindowBounds? right) -> bool
 static Runic.Desktop.DesktopWindowBounds.operator ==(Runic.Desktop.DesktopWindowBounds? left, Runic.Desktop.DesktopWindowBounds? right) -> bool
 [RUNICDESK104]abstract Runic.Desktop.DesktopSidePanelResult.<Clone>$() -> Runic.Desktop.DesktopSidePanelResult!
@@ -1082,11 +1078,6 @@ static Runic.Desktop.DesktopWindowBounds.operator ==(Runic.Desktop.DesktopWindow
 Runic.Desktop.DesktopWindow.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.SetPlacementAsync(Runic.Desktop.DesktopWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopWindowCapabilities.WindowPlacement = 8388608 -> Runic.Desktop.DesktopWindowCapabilities
-Runic.Desktop.IDesktopWindowShowStateHost
-Runic.Desktop.IDesktopWindowShowStateHost.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.IDesktopWindowShowStateHost.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.IDesktopWindowShowStateHost.SetPlacementAsync(Runic.Desktop.DesktopWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 [RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext
 [RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.<Clone>$() -> Runic.Desktop.DesktopCloseDrainContext!
 [RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.Deconstruct(out Runic.Desktop.DesktopCloseReason Reason) -> void
@@ -1109,3 +1100,16 @@ Runic.Desktop.IDesktopWindowShowStateHost.SetPlacementAsync(Runic.Desktop.Deskto
 [RUNICDESK105]override Runic.Desktop.DesktopCloseDrainContext.ToString() -> string!
 [RUNICDESK105]static Runic.Desktop.DesktopCloseDrainContext.operator !=(Runic.Desktop.DesktopCloseDrainContext? left, Runic.Desktop.DesktopCloseDrainContext? right) -> bool
 [RUNICDESK105]static Runic.Desktop.DesktopCloseDrainContext.operator ==(Runic.Desktop.DesktopCloseDrainContext? left, Runic.Desktop.DesktopCloseDrainContext? right) -> bool
+Runic.Desktop.DesktopHost.AddRecentDocumentAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopHostOptions.DevToolsExtensions.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopHostOptions.DevToolsExtensions.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Closed = 9 -> Runic.Desktop.DesktopSidePanelRefusal
+Runic.Desktop.DesktopWindow.OpenDevToolsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Desktop.DesktopWindowCapabilities.Placement = 8388608 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.IDesktopBoundsWindowHost
+Runic.Desktop.IDesktopBoundsWindowHost.SetBoundsAsync(Runic.Desktop.DesktopWindowBounds! bounds, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopBoundsWindowHost.SetMinimumSizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopShowStateWindowHost
+Runic.Desktop.IDesktopShowStateWindowHost.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopShowStateWindowHost.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopShowStateWindowHost.SetPlacementAsync(Runic.Desktop.DesktopWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

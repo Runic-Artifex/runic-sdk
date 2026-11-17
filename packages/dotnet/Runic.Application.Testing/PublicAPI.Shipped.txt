@@ -562,19 +562,7 @@ Runic.Application.Testing.RunicServeOnlyTestPlatform
 Runic.Application.Testing.RunicServeOnlyTestPlatform.Configure(System.Diagnostics.ProcessStartInfo! startInfo) -> System.Diagnostics.ProcessStartInfo!
 Runic.Application.Testing.RunicServeOnlyTestPlatform.Directory.get -> string!
 Runic.Application.Testing.RunicServeOnlyTestPlatform.Dispose() -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueContextMenuChoice(string! commandId, string? commandParameter = null) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueContextMenuDismissed() -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueFileDialogDismissed() -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueFileDialogFailed(Runic.Platform.PlatformFailureCode code) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueFileDialogUnavailable(Runic.Platform.PlatformUnavailableReason reason) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueMessageBoxAnswer(string? buttonId) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueOpenDirectory(params string![]! paths) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueOpenFile(string! name, System.ReadOnlySpan<byte> content) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueOpenFile(string! name, string! text) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueSaveFile(string! name) -> void
 Runic.Application.Testing.RunicServeOnlyTestPlatform.ReadEvents() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestPlatformEvent!>!
-Runic.Application.Testing.RunicServeOnlyTestPlatform.SetClipboard(Runic.Platform.DesktopClipboardContent? content) -> void
-Runic.Application.Testing.RunicServeOnlyTestPlatform.SetClipboardText(string! text) -> void
 Runic.Application.Testing.RunicServeOnlyTestPlatform.WaitForEventAsync(System.Func<Runic.Application.Testing.RunicTestPlatformEvent!, bool>! match, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPlatformEvent!>!
 Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute
 Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute.RunicServeOnlyTestPlatformAttribute() -> void
@@ -882,14 +870,10 @@ override Runic.Application.Testing.RunicRegionSlot.ToString() -> string!
 Runic.Application.Testing.RunicCallReply<TModel>.RegionOutcome.get -> Runic.Navigation.NavigationOutcome?
 Runic.Application.Testing.RunicRegionCollectionState
 Runic.Application.Testing.RunicRegionCollectionState.<Clone>$() -> Runic.Application.Testing.RunicRegionCollectionState!
-Runic.Application.Testing.RunicRegionCollectionState.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>! Regions, out int? Selected) -> void
 Runic.Application.Testing.RunicRegionCollectionState.Equals(Runic.Application.Testing.RunicRegionCollectionState? other) -> bool
 Runic.Application.Testing.RunicRegionCollectionState.Keys.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Runic.Application.Testing.RunicRegionCollectionState.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>!
 Runic.Application.Testing.RunicRegionCollectionState.Regions.init -> void
-Runic.Application.Testing.RunicRegionCollectionState.RunicRegionCollectionState(System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>! Regions, int? Selected) -> void
-Runic.Application.Testing.RunicRegionCollectionState.Selected.get -> int?
-Runic.Application.Testing.RunicRegionCollectionState.Selected.init -> void
 Runic.Application.Testing.RunicRegionCollectionState.SelectedRegion.get -> Runic.Application.Testing.RunicRegionSlot?
 Runic.Application.Testing.RunicRegionSlot
 Runic.Application.Testing.RunicRegionSlot.<Clone>$() -> Runic.Application.Testing.RunicRegionSlot!
@@ -984,13 +968,10 @@ Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.init -> v
 [RUNICDESK103]Runic.Application.Testing.RunicTestHost.Windows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestHostedWindow!>!
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.<Clone>$() -> Runic.Application.Testing.RunicTestPresentationRequest!
-[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Deconstruct(out string! WindowId, out string! Kind, out System.Text.Json.JsonElement Message) -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Equals(Runic.Application.Testing.RunicTestPresentationRequest? other) -> bool
-[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Kind.get -> string!
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Kind.init -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Message.get -> System.Text.Json.JsonElement
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Message.init -> void
-[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.RunicTestPresentationRequest(string! WindowId, string! Kind, System.Text.Json.JsonElement Message) -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.WindowId.get -> string!
 [RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.WindowId.init -> void
 [RUNICDESK103]static Runic.Application.Testing.RunicTestGuest.operator !=(Runic.Application.Testing.RunicTestGuest? left, Runic.Application.Testing.RunicTestGuest? right) -> bool
@@ -1012,13 +993,10 @@ Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.init -> v
 [RUNICDESK103]override Runic.Application.Testing.RunicTestDialogRequest.ToString() -> string!
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.<Clone>$() -> Runic.Application.Testing.RunicTestDialogRequest!
-[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Deconstruct(out string! WindowId, out string! Kind, out System.Text.Json.JsonElement Message) -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Equals(Runic.Application.Testing.RunicTestDialogRequest? other) -> bool
-[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Kind.get -> string!
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Kind.init -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Message.get -> System.Text.Json.JsonElement
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Message.init -> void
-[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.RunicTestDialogRequest(string! WindowId, string! Kind, System.Text.Json.JsonElement Message) -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.WindowId.get -> string!
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.WindowId.init -> void
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.DialogRequests.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestDialogRequest!>!
@@ -1040,12 +1018,9 @@ Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.init -> v
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.MessageBox = 5 -> Runic.Application.Testing.RunicTestDialogKind
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.OpenFile = 0 -> Runic.Application.Testing.RunicTestDialogKind
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.OpenFiles = 1 -> Runic.Application.Testing.RunicTestDialogKind
-[RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.OpenFolder = 3 -> Runic.Application.Testing.RunicTestDialogKind
-[RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.OpenFolders = 4 -> Runic.Application.Testing.RunicTestDialogKind
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.SaveFile = 2 -> Runic.Application.Testing.RunicTestDialogKind
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.ButtonIds.get -> System.Collections.Generic.IReadOnlyList<string!>!
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Detail.get -> string?
-[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.DialogKind.get -> Runic.Application.Testing.RunicTestDialogKind
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.FilterNames.get -> System.Collections.Generic.IReadOnlyList<string!>!
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.InitialDirectory.get -> string?
 [RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.SuggestedName.get -> string?
@@ -1175,3 +1150,55 @@ Runic.Application.Testing.RunicWindowPresentationRequestKind.SetPlacement = 13 -
 [RUNICDESK103]Runic.Application.Testing.RunicTestHost.SetRegionAppearanceAsync(Runic.Application.Testing.RunicTestHostedWindow! window, Runic.Platform.DesktopAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.RegionAppearance.get -> System.Func<Runic.Application.Testing.RunicTestHostedWindow!, Runic.Platform.DesktopAppearance?>?
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.RegionAppearance.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.OpenDirectories = 4 -> Runic.Application.Testing.RunicTestDialogKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogKind.OpenDirectory = 3 -> Runic.Application.Testing.RunicTestDialogKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Deconstruct(out string! WindowId, out Runic.Application.Testing.RunicTestDialogKind Kind, out System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Kind.get -> Runic.Application.Testing.RunicTestDialogKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.RunicTestDialogRequest(string! WindowId, Runic.Application.Testing.RunicTestDialogKind Kind, System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Announce = 14 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Maximize = 7 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Minimize = 1 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Move = 11 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Present = 0 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.RegionFocus = 16 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Resize = 10 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.Restore = 8 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetColorScheme = 5 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetDocumentEdited = 4 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetFullScreen = 3 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetLayoutDirection = 13 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetPlacement = 9 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetRepresentedFile = 12 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetTitle = 15 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.SetVisible = 2 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationKind.ToggleMaximized = 6 -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Deconstruct(out string! WindowId, out Runic.Application.Testing.RunicTestPresentationKind Kind, out System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Kind.get -> Runic.Application.Testing.RunicTestPresentationKind
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.RunicTestPresentationRequest(string! WindowId, Runic.Application.Testing.RunicTestPresentationKind Kind, System.Text.Json.JsonElement Message) -> void
+Runic.Application.Testing.RunicRegionCollectionState.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>! Regions, out int? SelectedIndex) -> void
+Runic.Application.Testing.RunicRegionCollectionState.RunicRegionCollectionState(System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>! Regions, int? SelectedIndex) -> void
+Runic.Application.Testing.RunicRegionCollectionState.SelectedIndex.get -> int?
+Runic.Application.Testing.RunicRegionCollectionState.SelectedIndex.init -> void
+Runic.Application.Testing.RunicServeOnlyClipboard
+Runic.Application.Testing.RunicServeOnlyClipboard.SetContent(Runic.Platform.DesktopClipboardContent? content) -> void
+Runic.Application.Testing.RunicServeOnlyClipboard.SetText(string! text) -> void
+Runic.Application.Testing.RunicServeOnlyContextMenus
+Runic.Application.Testing.RunicServeOnlyContextMenus.EnqueueChoice(string! commandId, string? commandParameter = null) -> void
+Runic.Application.Testing.RunicServeOnlyContextMenus.EnqueueDismissed() -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueDismissed() -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueFailed(Runic.Platform.PlatformFailureCode code) -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueOpen(string! name, string! text) -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueOpen(string! name, System.ReadOnlySpan<byte> content) -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueOpenDirectory(params string![]! paths) -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueSave(string! name) -> void
+Runic.Application.Testing.RunicServeOnlyFileDialogs.EnqueueUnavailable(Runic.Platform.PlatformUnavailableReason reason) -> void
+Runic.Application.Testing.RunicServeOnlyMessageBoxes
+Runic.Application.Testing.RunicServeOnlyMessageBoxes.EnqueueAnswer(string? buttonId) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.Clipboard.get -> Runic.Application.Testing.RunicServeOnlyClipboard!
+Runic.Application.Testing.RunicServeOnlyTestPlatform.ContextMenus.get -> Runic.Application.Testing.RunicServeOnlyContextMenus!
+Runic.Application.Testing.RunicServeOnlyTestPlatform.FileDialogs.get -> Runic.Application.Testing.RunicServeOnlyFileDialogs!
+Runic.Application.Testing.RunicServeOnlyTestPlatform.MessageBoxes.get -> Runic.Application.Testing.RunicServeOnlyMessageBoxes!
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumPendingUploadBytes.get -> long?
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumPendingUploadBytes.init -> void
