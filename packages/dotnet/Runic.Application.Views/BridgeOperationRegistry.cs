@@ -624,11 +624,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
             var running = _operations.Values.Where(entry => entry.Status is BridgeOperationStatusKind.Running).ToArray();
             foreach (var entry in running)
                 if (entry.Close is BridgeOperationClosePolicy.Cancel) (cancelNow ??= []).Add(entry);
-            terminals = running
-                .Select(entry => (Task)entry.Terminal.Task)
-                .Concat(_awaited.Select(execution => execution.Completion))
-                .Concat(durableWork?.Where(work => !work.IsCompleted) ?? [])
-                .ToArray();
+            List<Task> waits = [];
+            foreach (var entry in running) waits.Add(entry.Terminal.Task);
+            foreach (var execution in _awaited) waits.Add(execution.Completion);
+            if (durableWork is not null)
+                foreach (var work in durableWork)
+                    if (!work.IsCompleted) waits.Add(work);
+            terminals = [.. waits];
         }
 
         if (cancelNow is not null)
@@ -657,7 +659,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             // Terminal outcomes are reported to their callers; this only observes the end.
             var settled = all.ContinueWith(static _ => { }, CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return new(Drained: false, RemainingRunningOperations: remaining, settled) { RemainingDurableWork = durable };
+            return new(drained: false, remainingRunningOperations: remaining, settled) { RemainingDurableWork = durable };
         }
     }
 
@@ -837,11 +839,19 @@ internal sealed record BridgeOperationStatus(
     public static BridgeOperationStatus Expired(string requestId) => new(requestId, BridgeOperationStatusKind.Expired, null);
 }
 
-internal sealed record BridgeOperationCloseResult(bool Drained, int RemainingRunningOperations, Task Remaining)
+internal sealed class BridgeOperationCloseResult(bool drained, int remainingRunningOperations, Task remaining)
 {
+    public bool Drained { get; } = drained;
+    public int RemainingRunningOperations { get; } = remainingRunningOperations;
+    public Task Remaining { get; } = remaining;
+
     // Durable operations and drained scopes still running; RemainingRunningOperations does not count them.
     internal int RemainingDurableWork { get; init; }
 
     internal static BridgeOperationCloseResult Completed { get; } = new(true, 0, Task.CompletedTask);
 }
-internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status, BridgeOperationStreamRead? Stream);
+internal sealed class BridgeOperationStreamLookup(BridgeOperationStatus status, BridgeOperationStreamRead? stream)
+{
+    public BridgeOperationStatus Status { get; } = status;
+    public BridgeOperationStreamRead? Stream { get; } = stream;
+}

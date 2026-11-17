@@ -546,7 +546,11 @@ internal enum NavigationRegionChanges
 }
 
 // Immutable history cache entry: the stack a view was built from, and that view.
-internal sealed record HistoryCache(NavigationEntryCore[] Source, object View);
+internal sealed class HistoryCache(NavigationEntryCore[] source, object view)
+{
+    public NavigationEntryCore[] Source { get; } = source;
+    public object View { get; } = view;
+}
 
 // The non-generic region state. Every field is guarded by the navigator's gate;
 // the stack is an immutable array replaced on change.

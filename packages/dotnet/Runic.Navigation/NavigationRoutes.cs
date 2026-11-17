@@ -419,8 +419,11 @@ internal sealed class NavigationRouteRegistration(NavigationRouteTemplate templa
     }
 }
 
-internal sealed record NavigationRouteParameter(string Name, Type Type)
+internal sealed class NavigationRouteParameter(string name, Type type)
 {
+    public string Name { get; } = name;
+    public Type Type { get; } = type;
+
     public string TypeName => Type == typeof(string) ? "string" : NavigationRouteTemplate.ConstraintOf(Type);
 }
 

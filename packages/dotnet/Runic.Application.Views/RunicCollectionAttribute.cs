@@ -17,14 +17,16 @@ public sealed class RunicCollectionAttribute(string keyProperty) : Attribute
     public string KeyProperty { get; } = keyProperty;
 }
 
-internal sealed record BridgeCollectionChange(
-    BridgeCollectionDescriptor Descriptor,
-    string Kind,
-    int Index,
-    int OldIndex,
-    string[] Keys,
-    byte[][] Items)
+internal sealed class BridgeCollectionChange(BridgeCollectionDescriptor descriptor, string kind, int index,
+    int oldIndex, string[] keys, byte[][] items)
 {
+    public BridgeCollectionDescriptor Descriptor { get; } = descriptor;
+    public string Kind { get; } = kind;
+    public int Index { get; } = index;
+    public int OldIndex { get; } = oldIndex;
+    public string[] Keys { get; } = keys;
+    public byte[][] Items { get; } = items;
+
     // The keys of Items (an add's or a replace's new rows), for field-paths/1, which observes only the changed rows.
-    public string[] ItemKeys { get; init; } = Kind == "add" ? Keys : [];
+    public string[] ItemKeys { get; init; } = kind == "add" ? keys : [];
 }

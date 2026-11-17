@@ -370,12 +370,15 @@ public sealed class RunicPathWatcher : IDisposable
         if (change is not null) Deliver(change);
     }
 
-    private sealed record WatchPlan(
-        Dictionary<string, (string Directory, bool Recursive)> Wanted,
-        Dictionary<string, IDirectoryWatchLease> Started,
-        HashSet<string> Remote,
-        Dictionary<string, (RunicPathWatchErrorKind Kind, string Directory, Exception Exception)> Failed,
-        HashSet<string> Replaced);
+    private sealed class WatchPlan(Dictionary<string, (string Directory, bool Recursive)> wanted, Dictionary<string, IDirectoryWatchLease> started,
+        HashSet<string> remote, Dictionary<string, (RunicPathWatchErrorKind Kind, string Directory, Exception Exception)> failed, HashSet<string> replaced)
+    {
+        public Dictionary<string, (string Directory, bool Recursive)> Wanted { get; } = wanted;
+        public Dictionary<string, IDirectoryWatchLease> Started { get; } = started;
+        public HashSet<string> Remote { get; } = remote;
+        public Dictionary<string, (RunicPathWatchErrorKind Kind, string Directory, Exception Exception)> Failed { get; } = failed;
+        public HashSet<string> Replaced { get; } = replaced;
+    }
 
     // Works out and starts the directory watches the targets need, outside the gate: it checks directories, file
     // systems and identities, and starts platform watches.
