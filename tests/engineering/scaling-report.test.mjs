@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { check, measurement, metrics } from "../scaling/aot-size/measure.mjs";
+import { check, fixtures, measurement, metrics } from "../scaling/aot-size/measure.mjs";
 import { viewModelsSource } from "../scaling/aot-size/fixture.mjs";
 import { budgetChanges, report, suiteCases } from "../scaling/report.mjs";
 import { format, updatedBudgets } from "../scaling/run.mjs";
@@ -72,22 +72,37 @@ test("the managed report and the NativeAOT size budgets each take their own entr
   }
   // D064.24: no generated-code support type is closed over a ViewModel.
   expect(budgets["aot/bridge/generated-generic-types"].limit).toBe(0);
+  // D072.2: no HTTP client or TLS code in the CS-WebUI or Desktop fixture on linux-x64.
+  for (const name of Object.keys(metrics).filter(name => /^aot\/(desktop\/)?framework\//.test(name))) {
+    expect(budgets[name].limit, name).toBe(0);
+    expect(budgets[name].margin, name).toBeUndefined();
+  }
+  for (const name of Object.keys(metrics)) expect(Object.keys(fixtures), name).toContain(metrics[name].fixture);
 });
 
 test("the NativeAOT size measurement counts the records that name a fixture ViewModel", () => {
   const records = [
-    "Types\t100\tRunic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Vm0>",
-    "Types\t60\tSystem.Collections.Generic.Dictionary<System.String, Runic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Vm12>>",
-    "Types\t40\tSystem.Func<AotSize.Models.Vm3, System.Object>",
+    "Types\t100\tRunic.Application.Views\tRunic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Vm0>",
+    "Types\t60\tSystem.Private.CoreLib\tSystem.Collections.Generic.Dictionary<System.String, Runic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Vm12>>",
+    "Types\t40\tSystem.Private.CoreLib\tSystem.Func<AotSize.Models.Vm3, System.Object>",
     // Not a fixture ViewModel: the shell, a window type, and a Bridge over the shell.
-    "Types\t500\tAotSize.Models.Vm0Window",
-    "Types\t500\tRunic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Shell>",
-    "Methods\t7\tAotSize.Models.Vm0.get_Step",
-    "Blobs\t9\tDehydratedData",
+    "Types\t500\tAotSize\tAotSize.Models.Vm0Window",
+    "Types\t500\tRunic.Application.Views\tRunic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Shell>",
+    "Methods\t7\tAotSize\tAotSize.Models.Vm0.get_Step",
+    "FrozenObjects\t24\tSystem.Net.Http\tSystem.Byte[] in System.Net.Http.HttpClient",
+    "RvaFields\t3\tRunic.Application.Views\tRunic.Application.Views.Data",
+    // Blobs have no owner; DeduplicatedMethods carry node ids, not sizes.
+    "Blobs\t9\t\tDehydratedData",
+    "DeduplicatedMethods\t123456\tSystem.Net.Http\tSystem.Net.Http.HttpClient.Send",
   ].join("\n");
-  expect(measurement(1000, records)).toEqual({
+  const build = measurement(1000, records);
+  expect(build).toEqual({
     executableBytes: 1000, viewModelTypes: 3, viewModelTypeBytes: 200, generatedGenericTypes: 2, viewModelMethodBytes: 7, types: 5,
+    assemblyBytes: { "Runic.Application.Views": 603, "System.Private.CoreLib": 100, AotSize: 507, "System.Net.Http": 24 },
   });
+  expect(metrics["aot/framework/System.Net.Http"].value(build)).toBe(24);
+  expect(metrics["aot/framework/System.Net.Security"].value(build)).toBe(0);
+  expect(metrics["aot/assembly/Runic.Application.Views"].value(build)).toBe(603);
   const source = viewModelsSource(2);
   expect(source.match(/public sealed partial class \w+ : ObservableObject/g)).toEqual([
     "public sealed partial class Shell : ObservableObject", "public sealed partial class Vm0 : ObservableObject",

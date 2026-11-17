@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Runic.Desktop host fixture of the NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size"): the
+       CS-WebUI fixture's shell and ViewModels (K = 0) on Runic.Application.Views.Desktop. RunicDesktopServer=None and no
+       server package: aot/desktop/* measure the host without a presentation server (a referenced Kestrel would be
+       linked even with None). Only published, never run. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>AotSize</RootNamespace>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <RunicDesktopServer>None</RunicDesktopServer>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendGeneratedDirectory>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicApplicationFrontendGeneratedDirectory>
+    <AotSizeModelsDirectory Condition="'$(AotSizeModelsDirectory)' == ''">$(MSBuildThisFileDirectory)../../../../artifacts/scaling/aot-size/models</AotSizeModelsDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(AotSizeModelsDirectory)/ViewModels.g.cs" />
+    <Compile Include="../Fixture/Shared.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+  <Import Project="../../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.props" />
+  <ItemGroup>
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+  </ItemGroup>
+  <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
+</Project>

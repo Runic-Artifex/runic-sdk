@@ -61,6 +61,8 @@ test("Desktop executables reference a presentation server", () => {
   for (const [file, { text }] of graph) {
     if (!/<RunicImportDesktopTargets>true<\/RunicImportDesktopTargets>/.test(text)) continue;
     if (!/<OutputType>(Win)?Exe<\/OutputType>/.test(text)) continue;
+    // RunicDesktopServer None: an executable that opens no window with a server, such as the NativeAOT size fixture.
+    if (/<RunicDesktopServer>None<\/RunicDesktopServer>/.test(text)) continue;
     executables.push(file);
     assert.ok(reaches(kestrel, file), `${file}: reference ${kestrel}`);
   }
