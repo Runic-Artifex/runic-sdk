@@ -4,7 +4,8 @@
   `runic.assets.archive/2`). Every path keeps its own media type, entry-point flag and cache mode; lengths, SHA-256
   digests, entity tags and Subresource Integrity tokens are unchanged, and an embedded archive inflates shared content
   once. A fixture with two entries that share three fonts and a stylesheet goes from a 618,913-byte archive to 354,901
-  bytes, and its NativeAOT executable on linux-x64 from 3,066,248 to 2,800,008 bytes (−0.25 MiB). An archive without
+  bytes, and its NativeAOT executable on linux-x64 from 3,066,248 to 2,800,008 bytes (−0.25 MiB); reading aliases
+  adds about 1.2 KB of code to every NativeAOT application that embeds an archive. An archive without
   duplicate content is still written as `runic.assets.archive/1`, byte for byte as before, and 0.22 reads archives
   from earlier releases unchanged. Runic.Assets 0.21 and earlier cannot read a schema-2 archive: if you pack an archive
   with 0.22 and embed it through `RunicAssetsEmbeddedArchive` in an application that uses an older Runic.Assets,

@@ -289,10 +289,10 @@
     "aot/assembly/Runic.Assets": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 14430,
-      "measured": [13742, 13742],
+      "limit": 15656,
+      "measured": [14910, 14910],
       "margin": 0.05,
-      "note": "mstat bytes owned by Runic.Assets (the frontend archive reader): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
+      "note": "mstat bytes owned by Runic.Assets (the frontend archive reader): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %. 13,742 B before content aliases in the archive (runic.assets.archive/2) — sdk#1122: ≈ −266 KB for an app whose entries share fonts/CSS, +1,168 B in every app"
     },
     "aot/desktop/executable-bytes": {
       "class": "total",

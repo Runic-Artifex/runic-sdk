@@ -147,7 +147,6 @@ internal sealed class ArchiveSharedContentTests
         [
             [index, a, Asset("b.css", "text/css", css, "missing.css")],
             [index, a, Asset("b.css", "text/css", css, "b.css")],
-            [index, a, Asset("b.css", "text/css", other, "a.css")],
             [index, a, Asset("b.css", "text/css", css[..^1], "a.css")],
             [index, a, Asset("b.css", "text/css", css, "a.css"), Asset("c.css", "text/css", css, "b.css")],
             [index, a, Asset("b.css", "text/css", css, "../a.css")],
@@ -157,6 +156,13 @@ internal sealed class ArchiveSharedContentTests
             Throws<InvalidDataException>(() => AssetArchive.Read(Archive(SharedContentVersion, assets, stored)));
             Throws<InvalidDataException>(() => AssetArchive.ReadInPlace(Archive(SharedContentVersion, assets, stored), null));
         }
+
+        // Another digest is checked with the content, as every digest: Read rejects the archive, and an archive read in
+        // place, whose digests the build checks, fails ValidateAsync.
+        string[] otherDigest = [index, a, Asset("b.css", "text/css", other, "a.css")];
+        Throws<InvalidDataException>(() => AssetArchive.Read(Archive(SharedContentVersion, otherDigest, stored)));
+        AssetArchiveSource inPlace = AssetArchive.ReadInPlace(Archive(SharedContentVersion, otherDigest, stored), null);
+        Throws<InvalidDataException>(() => inPlace.ValidateAsync().AsTask().GetAwaiter().GetResult());
 
         // Schema 1 has no shared content; an asset with contentPath has no entry of its own; unknown schemas fail.
         string[] shared = [index, a, Asset("b.css", "text/css", css, "a.css")];

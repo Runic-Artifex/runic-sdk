@@ -226,36 +226,26 @@ public static class AssetArchive
         CancellationToken cancellationToken)
     {
         using var archive = new ZipArchive(copy, ZipArchiveMode.Read, leaveOpen: true);
-        (AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, int[] holders) = ReadDirectory(archive, options, cancellationToken);
-        var content = new byte[descriptors.Length][];
-        for (int index = 0; index < descriptors.Length; index++)
+        (AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, string?[] contentPaths) = ReadDirectory(archive, options, cancellationToken);
+        // Inflate every asset now, through the slots that ReadEmbedded inflates lazily, so shared content is inflated
+        // once and each path is checked against its own digest.
+        var content = new AssetArchiveContent(descriptors, entries, contentPaths);
+        foreach (AssetDescriptor descriptor in descriptors)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (entries[index] is not ZipArchiveEntry entry)
-            {
-                continue;
-            }
-
-            byte[] bytes = Inflate(entry, descriptors[index]);
-            using var validation = new MemoryStream(bytes, writable: false);
-            AssetHashing.Verify(descriptors[index], validation);
-            content[index] = bytes;
+            content.TryGet(descriptor.RelativePath, out byte[]? bytes);
+            using var validation = new MemoryStream(bytes!, writable: false);
+            AssetHashing.Verify(descriptor, validation);
         }
 
-        // An asset that shares stored content has that content's length and digest, so it shares the verified bytes.
-        for (int index = 0; index < descriptors.Length; index++)
-        {
-            content[index] = content[holders[index]];
-        }
-
-        return new AssetArchiveSource(new AssetManifest(descriptors), new AssetArchiveContent(descriptors, content));
+        return new AssetArchiveSource(new AssetManifest(descriptors), content);
     }
 
     // Reads the manifest and the ZIP directory of an archive without inflating any asset. Every declared asset must
-    // have an entry of its declared length, or (schema 2) name in contentPath another asset with an entry and the same
-    // length and digest, and the archive may hold no other file. Holders[i] is the index of the asset whose entry holds
-    // asset i's bytes (i itself when the asset has its own entry); Entries[i] is null when it has none.
-    private static (AssetDescriptor[] Descriptors, ZipArchiveEntry?[] Entries, int[] Holders) ReadDirectory(
+    // have an entry of its declared length, or (schema 2) a contentPath and no entry, and the archive may hold no other
+    // file. AssetArchiveContent checks that a contentPath names an asset with an entry and the same length; its digest is
+    // checked with the content, as every other digest.
+    private static (AssetDescriptor[] Descriptors, ZipArchiveEntry?[] Entries, string?[] ContentPaths) ReadDirectory(
         ZipArchive archive,
         AssetArchiveReadOptions options,
         CancellationToken cancellationToken)
@@ -299,15 +289,18 @@ public static class AssetArchive
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || !root.TryGetProperty("version", out JsonElement version)
-                || version.ValueKind != JsonValueKind.String
-                || !(version.ValueEquals(CurrentVersion) || version.ValueEquals(SharedContentVersion))
                 || !root.TryGetProperty("assets", out JsonElement assets)
                 || assets.ValueKind != JsonValueKind.Array)
             {
                 throw new InvalidDataException("The asset archive manifest has an unsupported shape or version.");
             }
 
-            bool sharedContent = version.ValueEquals(SharedContentVersion);
+            string? versionName = version.ValueKind == JsonValueKind.String ? version.GetString() : null;
+            bool sharedContent = StringComparer.Ordinal.Equals(versionName, SharedContentVersion);
+            if (!sharedContent && !StringComparer.Ordinal.Equals(versionName, CurrentVersion))
+            {
+                throw new InvalidDataException("The asset archive manifest has an unsupported shape or version.");
+            }
             var parsed = new List<AssetDescriptor>();
             var parsedContentPaths = new List<string?>();
             long totalLength = 0;
@@ -362,12 +355,11 @@ public static class AssetArchive
             contentPaths = parsedContentPaths.ToArray();
         }
 
-        int[] holders = ResolveContentHolders(descriptors, contentPaths);
         var contentEntries = new ZipArchiveEntry?[descriptors.Length];
         for (int index = 0; index < descriptors.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (holders[index] != index)
+            if (contentPaths[index] is not null)
             {
                 continue;
             }
@@ -387,56 +379,13 @@ public static class AssetArchive
             contentEntries[index] = entry;
         }
 
+        // An asset with contentPath has no entry of its own: one would be left here.
         if (entries.Count != 0)
         {
             throw new InvalidDataException("The asset archive contains undeclared files.");
         }
 
-        return (descriptors, contentEntries, holders);
-    }
-
-    // Maps each asset to the index of the asset whose entry holds its bytes. A contentPath names another declared
-    // asset that has its own entry (no chains) and the same length and digest.
-    private static int[] ResolveContentHolders(AssetDescriptor[] descriptors, string?[] contentPaths)
-    {
-        var holders = new int[descriptors.Length];
-        Dictionary<string, int>? indexes = null;
-        for (int index = 0; index < descriptors.Length; index++)
-        {
-            holders[index] = index;
-            if (contentPaths[index] is not string contentPath)
-            {
-                continue;
-            }
-
-            if (indexes is null)
-            {
-                indexes = new Dictionary<string, int>(descriptors.Length, StringComparer.Ordinal);
-                for (int candidate = 0; candidate < descriptors.Length; candidate++)
-                {
-                    if (!indexes.TryAdd(descriptors[candidate].RelativePath, candidate))
-                    {
-                        throw new InvalidDataException(
-                            $"The asset archive declares '{descriptors[candidate].RelativePath}' twice.");
-                    }
-                }
-            }
-
-            AssetDescriptor descriptor = descriptors[index];
-            if (!indexes.TryGetValue(contentPath, out int holder)
-                || holder == index
-                || contentPaths[holder] is not null
-                || descriptors[holder].Length != descriptor.Length
-                || !StringComparer.Ordinal.Equals(descriptors[holder].Sha256, descriptor.Sha256))
-            {
-                throw new InvalidDataException(
-                    $"Asset '{descriptor.RelativePath}' names content path '{contentPath}', which is not another stored asset with the same length and digest.");
-            }
-
-            holders[index] = holder;
-        }
-
-        return holders;
+        return (descriptors, contentEntries, contentPaths);
     }
 
     // The writer's choice of shared content: each asset whose length and digest an earlier asset (in ordinal path
@@ -444,13 +393,17 @@ public static class AssetArchive
     internal static string?[] SharedContentPaths(AssetManifest manifest)
     {
         var contentPaths = new string?[manifest.Assets.Count];
-        var stored = new Dictionary<(string Sha256, long Length), string>();
+        var stored = new Dictionary<string, AssetDescriptor>(StringComparer.Ordinal);
         for (int index = 0; index < contentPaths.Length; index++)
         {
             AssetDescriptor descriptor = manifest.Assets[index];
-            if (!stored.TryAdd((descriptor.Sha256, descriptor.Length), descriptor.RelativePath))
+            if (stored.TryGetValue(descriptor.Sha256, out AssetDescriptor? holder) && holder.Length == descriptor.Length)
             {
-                contentPaths[index] = stored[(descriptor.Sha256, descriptor.Length)];
+                contentPaths[index] = holder.RelativePath;
+            }
+            else
+            {
+                stored.TryAdd(descriptor.Sha256, descriptor);
             }
         }
 
@@ -543,8 +496,8 @@ public static class AssetArchive
             }
 
             archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
-            (AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, int[] holders) = ReadDirectory(archive, options, CancellationToken.None);
-            return new AssetArchiveSource(new AssetManifest(descriptors), new AssetArchiveContent(descriptors, entries, holders));
+            (AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, string?[] contentPaths) = ReadDirectory(archive, options, CancellationToken.None);
+            return new AssetArchiveSource(new AssetManifest(descriptors), new AssetArchiveContent(descriptors, entries, contentPaths));
         }
         catch
         {
@@ -1130,33 +1083,34 @@ internal sealed class AssetArchiveContent
     private readonly Dictionary<string, Slot> _slots;
     private readonly Lock _gate = new();
 
-    // Content already inflated (and verified by the caller).
-    internal AssetArchiveContent(AssetDescriptor[] descriptors, byte[][] content)
+    // Content inflated on first use from the archive's entries. An asset with contentPath shares the slot of the asset
+    // it names, so shared content is inflated and kept once.
+    internal AssetArchiveContent(AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, string?[] contentPaths)
     {
         _slots = new Dictionary<string, Slot>(descriptors.Length, StringComparer.Ordinal);
-        for (int index = 0; index < descriptors.Length; index++)
-        {
-            _slots.Add(descriptors[index].RelativePath, new Slot(descriptors[index], null) { Content = content[index] });
-        }
-    }
-
-    // Content inflated on first use from entries of an archive this instance keeps open. An asset without an entry
-    // shares the slot of the asset that holds its bytes, so shared content is inflated and kept once.
-    internal AssetArchiveContent(AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, int[] holders)
-    {
-        var slots = new Slot[descriptors.Length];
         for (int index = 0; index < descriptors.Length; index++)
         {
             if (entries[index] is ZipArchiveEntry entry)
             {
-                slots[index] = new Slot(descriptors[index], entry);
+                _slots.Add(descriptors[index].RelativePath, new Slot(descriptors[index], entry));
             }
         }
 
-        _slots = new Dictionary<string, Slot>(descriptors.Length, StringComparer.Ordinal);
         for (int index = 0; index < descriptors.Length; index++)
         {
-            _slots.Add(descriptors[index].RelativePath, slots[holders[index]]);
+            // The named asset must have its own entry (so no asset with contentPath, and not itself) and the same length.
+            if (contentPaths[index] is string contentPath)
+            {
+                if (!_slots.TryGetValue(contentPath, out Slot? slot)
+                    || slot.Descriptor.RelativePath != contentPath
+                    || slot.Descriptor.Length != descriptors[index].Length)
+                {
+                    throw new InvalidDataException(
+                        "An asset's contentPath does not name a stored asset of the same length in the asset archive.");
+                }
+
+                _slots.Add(descriptors[index].RelativePath, slot);
+            }
         }
     }
 
@@ -1178,6 +1132,7 @@ internal sealed class AssetArchiveContent
                 {
                     content = AssetArchive.Inflate(slot.Entry!, slot.Descriptor);
                     Volatile.Write(ref slot.Content, content);
+                    slot.Entry = null;
                 }
             }
         }
@@ -1188,7 +1143,8 @@ internal sealed class AssetArchiveContent
     private sealed class Slot(AssetDescriptor descriptor, ZipArchiveEntry? entry)
     {
         internal readonly AssetDescriptor Descriptor = descriptor;
-        internal readonly ZipArchiveEntry? Entry = entry;
+        // Cleared once inflated, so the slot no longer keeps the archive's buffer alive.
+        internal ZipArchiveEntry? Entry = entry;
         internal byte[]? Content;
     }
 }
