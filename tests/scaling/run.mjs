@@ -23,7 +23,8 @@ export function updatedBudgets(budgets, results) {
       continue;
     }
     const [, large] = result.values;
-    const limit = entry.margin ? Math.ceil(large * (1 + entry.margin)) : large;
+    // A fixed limit is a decision (such as D072.15's methods per ViewModel), which --update keeps.
+    const limit = entry.fixedLimit ? entry.limit : entry.margin ? Math.ceil(large * (1 + entry.margin)) : large;
     const { measured: _measured, limit: _limit, ...rest } = entry;
     cases[name] = { class: rest.class, sizes: rest.sizes, limit, measured: result.values, ...rest };
   }

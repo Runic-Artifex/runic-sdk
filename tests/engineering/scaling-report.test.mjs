@@ -44,13 +44,16 @@ test("an update records the values and the limit, with the margin, and keeps the
       count: { class: "O(n)", sizes: [1, 4], limit: 1, measured: [1, 1], note: "kept" },
       bytes: { class: "O(1)", sizes: [1, 4], margin: 0.25 },
       unmeasured: { class: "O(1)", sizes: [1, 4], limit: 5 },
+      decided: { class: "O(n)", sizes: [1, 4], limit: 128, fixedLimit: true },
     },
   };
-  const results = { count: { values: [2, 8] }, bytes: { values: [100, 100] } };
+  const results = { count: { values: [2, 8] }, bytes: { values: [100, 100] }, decided: { values: [19, 76] } };
   expect(updatedBudgets(budgets, results).cases).toEqual({
     count: { class: "O(n)", sizes: [1, 4], limit: 8, measured: [2, 8], note: "kept" },
     bytes: { class: "O(1)", sizes: [1, 4], limit: 125, measured: [100, 100], margin: 0.25 },
     unmeasured: { class: "O(1)", sizes: [1, 4], limit: 5 },
+    // A fixed limit is a decision: the update records the values and keeps it.
+    decided: { class: "O(n)", sizes: [1, 4], limit: 128, measured: [19, 76], fixedLimit: true },
   });
 });
 
@@ -89,6 +92,10 @@ test("the NativeAOT size measurement counts the records that name a fixture View
     "Types\t500\tAotSize\tAotSize.Models.Vm0Window",
     "Types\t500\tRunic.Application.Views\tRunic.Application.Views.Generated.PropertyDescriptor<AotSize.Models.Shell>",
     "Methods\t7\tAotSize\tAotSize.Models.Vm0.get_Step",
+    // D072.15: the methods of a fixture ViewModel's generated Bridge and its nested types, not the shell's.
+    "Methods\t30\tAotSize\tRunic.Application.Views.Generated.Bridges.Vm0Bridge..ctor",
+    "Methods\t40\tAotSize\tRunic.Application.Views.Generated.Bridges.Vm12Bridge+Members.Get(Object,Int32)",
+    "Methods\t50\tAotSize\tRunic.Application.Views.Generated.Bridges.ShellBridge..ctor",
     "FrozenObjects\t24\tSystem.Net.Http\tSystem.Byte[] in System.Net.Http.HttpClient",
     "RvaFields\t3\tRunic.Application.Views\tRunic.Application.Views.Data",
     // Blobs have no owner; DeduplicatedMethods carry node ids, not sizes.
@@ -97,12 +104,13 @@ test("the NativeAOT size measurement counts the records that name a fixture View
   ].join("\n");
   const build = measurement(1000, records);
   expect(build).toEqual({
-    executableBytes: 1000, viewModelTypes: 3, viewModelTypeBytes: 200, generatedGenericTypes: 2, viewModelMethodBytes: 7, types: 5,
-    assemblyBytes: { "Runic.Application.Views": 603, "System.Private.CoreLib": 100, AotSize: 507, "System.Net.Http": 24 },
+    executableBytes: 1000, viewModelTypes: 3, viewModelTypeBytes: 200, generatedGenericTypes: 2, viewModelMethodBytes: 7, viewModelBridgeMethods: 2,
+    types: 5, assemblyBytes: { "Runic.Application.Views": 603, "System.Private.CoreLib": 100, AotSize: 627, "System.Net.Http": 24 },
   });
   expect(metrics["aot/framework/System.Net.Http"].value(build)).toBe(24);
   expect(metrics["aot/framework/System.Net.Security"].value(build)).toBe(0);
   expect(metrics["aot/assembly/Runic.Application.Views"].value(build)).toBe(603);
+  expect(metrics["aot/bridge/view-model-methods"].value(build)).toBe(2);
   const source = viewModelsSource(2);
   expect(source.match(/public sealed partial class \w+ : ObservableObject/g)).toEqual([
     "public sealed partial class Shell : ObservableObject", "public sealed partial class Vm0 : ObservableObject",

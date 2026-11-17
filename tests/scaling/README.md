@@ -73,6 +73,7 @@ ViewModel adds only its generated Bridge and codecs. The `aot/` budgets gate it 
 ```sh
 bun tests/scaling/aot-size/measure.mjs            # publish, measure, compare with budgets.json, print the report
 bun tests/scaling/aot-size/measure.mjs --update   # record the results and rewrite the aot/ entries' measured and limit
+                                                  # (not a limit marked "fixedLimit": a decision, kept as it is)
 bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, mstat files and records.tsv
 ```
 
@@ -88,6 +89,9 @@ bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, m
   not exactly linear: a 4 KiB section boundary can move either measurement by a few KiB, which the factor of 9
   amplifies at K = 1. So it has a `noise` of 8 KiB and a 2 % `margin`; its `limit` is the gate on the size itself.
 - `aot/bridge/view-model-types` (O(n)): the mstat type records that name a fixture ViewModel.
+- `aot/bridge/view-model-methods` (O(n), D072.15): the mstat method records of a fixture ViewModel's generated Bridge
+  (`Generated.Bridges.Vm<N>Bridge` and its nested types). It has no section-alignment noise and catches lambda and
+  state-machine fan-out at once. Its limit, 32 per ViewModel at K = 9, is fixed (`fixedLimit`).
 - `aot/bridge/generated-generic-types` (O(n)): #901's metric, the type records that instantiate a
   `Runic.Application.Views.Generated` type over a fixture ViewModel, also inside another generic.
 - `aot/executable-bytes` (class `total`, no growth check): the whole executable at the larger size, with a 2 % margin,
