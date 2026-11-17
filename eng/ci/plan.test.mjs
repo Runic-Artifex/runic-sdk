@@ -8,7 +8,7 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
-  windowsProgramStartPaths } from './platforms.mjs';
+  windowsProgramStartPaths, windowsFileReplacePaths } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -451,6 +451,18 @@ test('dotnet runic\'s program starts plan the native Windows x64 leg, its other 
   for (const file of ['tools/dotnet-runic/DoctorChecks.cs', 'tools/dotnet-runic/DevOptions.cs', 'tools/dotnet-runic/SupportForwarding.cs',
     'tools/dotnet-runic/README.md', 'tests/dotnet/Runic.Application.Tool.Tests/ToolTests.cs'])
     assert.deepEqual(plan([file]).platforms, [], file);
+});
+
+// #1102: the retry of a rename that Windows refuses, and its check against a held file, plan the native Windows x64
+// leg, which runs that check. The frontend compiler's ready snapshot only calls the retry and plans no leg itself.
+test('dotnet runic\'s Windows file replace plans the native Windows x64 leg', () => {
+  assert.deepEqual(windowsFileReplacePaths,
+    ['tools/dotnet-runic/FileReplace.cs', 'tests/dotnet/Runic.Application.Tool.Tests/DevSessionFileRetryTests.cs']);
+  for (const file of windowsFileReplacePaths) {
+    assert.ok(existsSync(resolve(root, file)), file);
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  }
+  assert.deepEqual(plan(['tools/dotnet-runic/FrontendCompilerHotReloadCoordinator.cs']).platforms, []);
 });
 
 // The narrow rule above holds only while every process start of the tool goes through CommandRunner, whose callers pass
