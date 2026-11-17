@@ -236,7 +236,12 @@ internal sealed partial class LinuxWebKitGtkHost
     // Sets the check and radio items of the bar, or of one of its menus, to IsChecked of the window's command path.
     private void ShowToggleStates(Gtk3MenuWidgets widgets, List<(nint Widget, PlannedMenuEntry Entry)>? menu)
     {
-        HashSet<nint>? only = menu is null ? null : [.. menu.Select(static leaf => leaf.Widget)];
+        HashSet<nint>? only = null;
+        if (menu is not null)
+        {
+            only = [];
+            foreach (var leaf in menu) only.Add(leaf.Widget);
+        }
         _menuSignalsMuted = true;
         try
         {
@@ -473,14 +478,14 @@ internal sealed partial class LinuxWebKitGtkHost
             _widgetGetVisible = Export("gtk_widget_get_visible");
             _eventCopy = Export("gdk_event_copy");
             _eventFree = Export("gdk_event_free");
-            IsAvailable = new[]
-            {
+            IsAvailable = !((ReadOnlySpan<nint>)
+            [
                 _boxNew, _boxPackStart, _boxReorderChild, _menuBarNew, _menuNew, _menuItemNewWithMnemonic, _checkMenuItemNewWithMnemonic,
                 _radioMenuItemNewWithMnemonicFromWidget, _separatorMenuItemNew, _menuItemSetSubmenu, _menuShellAppend,
                 _checkMenuItemSetActive, _checkMenuItemGetActive, _checkMenuItemSetDrawAsRadio, _widgetSetSensitive, _binGetChild,
                 _accelLabelSetAccel, _menuAttachToWidget, _menuPopupAtPointer, _menuPopupAtRect, _widgetGetWindow,
                 _widgetGetHasWindow, _widgetGetAllocation, _widgetGetVisible, _eventCopy, _eventFree,
-            }.All(static address => address != 0);
+            ]).Contains(0);
         }
 
         internal bool IsAvailable { get; }

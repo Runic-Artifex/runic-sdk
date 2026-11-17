@@ -35,10 +35,14 @@ public sealed class DesktopHost : IAsyncDisposable
         _menuBar = [.. options.MenuBar];
         _spellCheckingLanguages = [.. options.SpellCheckingLanguages];
         Monitors = CreateMonitors(options);
-        if (options.StandardMenuTitles is { } titles) Internal.MacOsWkWebViewHost.SetStandardMenuTitles(titles);
-        if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
-        if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
-        if (options.MacOS.OpenRecentMenu) Internal.MacOsWkWebViewHost.RequestOpenRecentMenu();
+        // Only macOS reads these; the check also keeps the macOS backend out of a trimmed or AOT build for another OS.
+        if (OperatingSystem.IsMacOS())
+        {
+            if (options.StandardMenuTitles is { } titles) Internal.MacOsWkWebViewHost.SetStandardMenuTitles(titles);
+            if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
+            if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
+            if (options.MacOS.OpenRecentMenu) Internal.MacOsWkWebViewHost.RequestOpenRecentMenu();
+        }
         lock (LiveGate) Live.Add(this);
         if (OperatingSystem.IsMacOS()) MacOsApplication.HostsChanged();
     }
@@ -182,7 +186,7 @@ public sealed class DesktopHost : IAsyncDisposable
         _ = DesktopMenuBar.Check(menus, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
         IReadOnlyList<DesktopMenu> copy = [.. menus];
         Volatile.Write(ref _menuBar, copy);
-        Internal.MacOsWkWebViewHost.RequestMenuBar(copy);
+        if (OperatingSystem.IsMacOS()) Internal.MacOsWkWebViewHost.RequestMenuBar(copy);
         MenuBarChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -202,7 +206,7 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         titles?.Validate();
-        Internal.MacOsWkWebViewHost.RequestStandardMenuTitles(titles ?? Internal.MacOsMainMenu.English);
+        if (OperatingSystem.IsMacOS()) Internal.MacOsWkWebViewHost.RequestStandardMenuTitles(titles ?? Internal.MacOsMainMenu.English);
     }
 
     /// <summary>
@@ -215,7 +219,7 @@ public sealed class DesktopHost : IAsyncDisposable
         set
         {
             Volatile.Write(ref _menuCommands, value);
-            Internal.MacOsWkWebViewHost.SetApplicationMenuCommands(value);
+            if (OperatingSystem.IsMacOS()) Internal.MacOsWkWebViewHost.SetApplicationMenuCommands(value);
         }
     }
 
@@ -475,8 +479,9 @@ public sealed class DesktopHost : IAsyncDisposable
         }
 
         List<DesktopPresentationAvailability> fallbacks = [];
-        foreach (var fallbackBrowser in chain.Skip(1))
+        for (var index = 1; index < chain.Count; index++)
         {
+            var fallbackBrowser = chain[index];
             var fallback = availability.GetPresentation(fallbackBrowser);
             fallbacks.Add(fallback);
             if (fallbackBrowser == BrowserKind.Embedded)

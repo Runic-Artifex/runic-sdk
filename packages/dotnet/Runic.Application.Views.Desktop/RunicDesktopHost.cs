@@ -508,25 +508,26 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // The Runic Desktop codes for a presentation prerequisite this machine or process lacks: a runtime, a display, an
     // installed browser, the main thread. Everything else, such as an invalid option, an unsupported browser or a
     // missing provider reference, is the application's configuration.
-    private static readonly System.Collections.Frozen.FrozenSet<string> PresentationEnvironmentCodes =
-        System.Collections.Frozen.FrozenSet.ToFrozenSet(
-        [
-            "browser-not-found",
-            "custom-window-host-unavailable",
-            "embedded-platform-unsupported",
-            "event-loop-unavailable",
-            "graphical-session-missing",
-            "gtk4-display-unavailable",
-            "gtk4-runtime-missing",
-            "linux-embedded-backend-conflict",
-            "macos-main-thread-required",
-            "presentation-unavailable",
-            "webkit-runtime-missing",
-            "webkitgtk-runtime-missing",
-            "webkitgtk6-runtime-missing",
-            "webview2-loader-unavailable",
-            "webview2-runtime-missing",
-        ], StringComparer.Ordinal);
+    // A HashSet rather than a FrozenSet: no other code in a Desktop application needs System.Collections.Frozen's set
+    // types, which add about 25 KB to a NativeAOT executable, for a lookup that runs once per validation.
+    private static readonly HashSet<string> PresentationEnvironmentCodes = new(StringComparer.Ordinal)
+    {
+        "browser-not-found",
+        "custom-window-host-unavailable",
+        "embedded-platform-unsupported",
+        "event-loop-unavailable",
+        "graphical-session-missing",
+        "gtk4-display-unavailable",
+        "gtk4-runtime-missing",
+        "linux-embedded-backend-conflict",
+        "macos-main-thread-required",
+        "presentation-unavailable",
+        "webkit-runtime-missing",
+        "webkitgtk-runtime-missing",
+        "webkitgtk6-runtime-missing",
+        "webview2-loader-unavailable",
+        "webview2-runtime-missing",
+    };
 
     async ValueTask<IBridgeWindow> IRunicWindowHost.OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening,
         CancellationToken cancellationToken)
@@ -548,7 +549,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
             var contentRoot = opening.Options.ResolveContentRoot();
             // dotnet runic dev without a development server: the frontend output directory, live (DevelopmentAssets).
-            if (DevelopmentAssets.ResolveDirectory(ReadEnvironment, SurfaceOptions is not null) is { } live)
+            if (DevelopmentAssets.IsSupported && DevelopmentAssets.ResolveDirectory(ReadEnvironment, SurfaceOptions is not null) is { } live)
                 development = _developmentAssets.Open(live, opening.Options.StartPage, contentRoot,
                     (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);

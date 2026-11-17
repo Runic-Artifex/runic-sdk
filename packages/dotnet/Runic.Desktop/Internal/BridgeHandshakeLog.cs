@@ -61,7 +61,11 @@ internal sealed class BridgeHandshakeLog
             }
 
             var text = new StringBuilder("Bridge handshake: ");
-            text.AppendJoin("; ", _events.Select(static item => string.Create(CultureInfo.InvariantCulture, $"+{item.Elapsed:0.000}s {item.Description}")));
+            for (var index = 0; index < _events.Count; index++)
+            {
+                if (index > 0) text.Append("; ");
+                text.Append(CultureInfo.InvariantCulture, $"+{_events[index].Elapsed:0.000}s {_events[index].Description}");
+            }
             if (_omitted > 0)
             {
                 text.Append(CultureInfo.InvariantCulture, $"; {_omitted} later events omitted");
