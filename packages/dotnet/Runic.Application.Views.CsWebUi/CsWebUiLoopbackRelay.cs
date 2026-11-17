@@ -5,14 +5,14 @@ using System.Net.Sockets;
 
 namespace Runic.Application.Views.CsWebUi;
 
-// The other loopback address of a CS-WebUI blob endpoint's port. The endpoint's URLs name localhost, which a browser or
-// Node resolves to ::1 and 127.0.0.1 and tries in turn, while HttpListener binds localhost to one of them only (the
-// first address .NET resolves it to). Without a listener of the window on the other address, another process could
-// listen there and receive the page's blob loads, its uploads and their tokens. The relay listens on that address and
-// forwards each connection, byte for byte, to the endpoint's HttpListener, which checks the Host, the origin and the
-// token as for a direct connection.
+// The other loopback address of a CS-WebUI blob endpoint's port outside Windows. The endpoint's URLs name localhost,
+// which a browser or Node resolves to ::1 and 127.0.0.1 and tries in turn, while the endpoint's loopback server binds
+// one of them only (the first address .NET resolves localhost to, as HttpListener did). Without a listener of the
+// window on the other address, another process could listen there and receive the page's blob loads, its uploads and
+// their tokens. The relay listens on that address and forwards each connection, byte for byte, to the endpoint's
+// listener, which checks the Host, the origin and the token as for a direct connection.
 //
-// HttpListener sees the relay's own loopback socket as the peer of a relayed connection, so its check that a peer is
+// The listener sees the relay's own loopback socket as the peer of a relayed connection, so its check that a peer is
 // local cannot see the client. The relay therefore resets a client whose address is not loopback itself: a loopback
 // address can still receive packets of another machine where the system routes them there (route_localnet on Linux).
 // It also records which client each of its connections to the listener carries (ClientOf), for the endpoint's checks.
@@ -98,7 +98,7 @@ internal sealed class CsWebUiLoopbackRelay : IDisposable
         }
     }
 
-    // One connection: the client's bytes to the HttpListener and back. A side that closes its sending half closes the
+    // One connection: the client's bytes to the listener and back. A side that closes its sending half closes the
     // other's; a side that fails resets both, so a client that goes away midway fails the request as it would directly.
     private async Task RelayAsync(Socket client)
     {
