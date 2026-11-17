@@ -586,13 +586,9 @@ Runic.Navigation.NavigationSelectionOptions.RestoreRegion.get -> System.Func<Run
 Runic.Navigation.NavigationSelectionOptions.RestoreRegion.init -> void
 Runic.Navigation.NavigationSelectionPath
 Runic.Navigation.NavigationSelectionPath.<Clone>$() -> Runic.Navigation.NavigationSelectionPath!
-Runic.Navigation.NavigationSelectionPath.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, out int Selected) -> void
 Runic.Navigation.NavigationSelectionPath.Equals(Runic.Navigation.NavigationSelectionPath? other) -> bool
-Runic.Navigation.NavigationSelectionPath.NavigationSelectionPath(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, int Selected) -> void
 Runic.Navigation.NavigationSelectionPath.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>!
 Runic.Navigation.NavigationSelectionPath.Regions.init -> void
-Runic.Navigation.NavigationSelectionPath.Selected.get -> int
-Runic.Navigation.NavigationSelectionPath.Selected.init -> void
 Runic.Navigation.RunicNavigator.GetPath(Runic.Navigation.INavigationRouteMap? routes = null) -> Runic.Navigation.NavigationPath!
 static Runic.Navigation.NavigationEntryPath.operator !=(Runic.Navigation.NavigationEntryPath? left, Runic.Navigation.NavigationEntryPath? right) -> bool
 static Runic.Navigation.NavigationEntryPath.operator ==(Runic.Navigation.NavigationEntryPath? left, Runic.Navigation.NavigationEntryPath? right) -> bool
@@ -671,3 +667,9 @@ Runic.Navigation.RunicEditSession<T>.RunicEditSession(System.ComponentModel.INot
 Runic.Navigation.RunicDraftFlush
 static Runic.Navigation.RunicDraftFlush.FlushAsync(Runic.Navigation.IRunicModelContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 static Runic.Navigation.RunicDraftFlush.Register(Runic.Navigation.IRunicModelContext! context, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>! flush) -> System.IDisposable!
+Runic.Navigation.NavigationSelectionPath.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, out int SelectedIndex) -> void
+Runic.Navigation.NavigationSelectionPath.NavigationSelectionPath(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, int SelectedIndex) -> void
+Runic.Navigation.NavigationSelectionPath.SelectedIndex.get -> int
+Runic.Navigation.NavigationSelectionPath.SelectedIndex.init -> void
+Runic.Navigation.NavigationSelectionPath.ToJson() -> string!
+static Runic.Navigation.NavigationSelectionPath.FromJson(string! json) -> Runic.Navigation.NavigationSelectionPath!

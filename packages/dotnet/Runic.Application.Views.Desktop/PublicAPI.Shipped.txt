@@ -289,7 +289,6 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.IsModal.get -> bool
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.IsOpen.get -> bool
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.Owner.get -> Runic.Application.Views.Desktop.RunicHostedWindow?
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.Presentation.get -> Runic.Desktop.DesktopWindow!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.Application.get -> Runic.Application.Views.Desktop.RunicHostedApplication!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.RequestCloseAsync(bool force = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
@@ -335,8 +334,6 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.MessageBox = 5 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFile = 0 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFiles = 1 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFolder = 3 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFolders = 4 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.SaveFile = 2 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedDialogRequest!
@@ -464,13 +461,11 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.AsDepartureGuard() -> Runic.Navigation.INavigationDepartureGuard!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Attached -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DetachAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Detached -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DocumentEditedChanged -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.HostWindow.get -> Runic.Application.Views.IRunicWindow?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.IsDocumentEdited.get -> bool
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.IsFocused.get -> bool
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.MoveToAsync(Runic.Application.Views.IRunicWindow! window, string! region, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Name.get -> string!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Options.get -> Runic.Application.Views.Desktop.RunicHostedRegionOptions!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.PreferredHeight.get -> int?
@@ -484,9 +479,7 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.TitleChanged -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Window.get -> Runic.Application.Views.Desktop.RunicHostedWindow!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Reason.get -> string?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Region.get -> Runic.Application.Views.Desktop.RunicHostedRegion!
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.RunicHostedRegionEventArgs(Runic.Application.Views.Desktop.RunicHostedRegion! region, string? reason = null) -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedRegionOptions!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Equals(Runic.Application.Views.Desktop.RunicHostedRegionOptions? other) -> bool
@@ -594,8 +587,23 @@ static Runic.Application.Views.Desktop.DesktopWindowPlacementExtensions.ToRunicP
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.CanSetAppearance.get -> bool
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Appearance.get -> Runic.Application.Views.Desktop.RunicHostedAppearance?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Appearance.init -> void
-[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.SetAppearanceAsync(Runic.Application.Views.Desktop.RunicHostedAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.CanOverrideAppearance.get -> bool
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedAppearance.None.get -> Runic.Application.Views.Desktop.RunicHostedAppearance!
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedAppearance.operator !=(Runic.Application.Views.Desktop.RunicHostedAppearance? left, Runic.Application.Views.Desktop.RunicHostedAppearance? right) -> bool
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedAppearance.operator ==(Runic.Application.Views.Desktop.RunicHostedAppearance? left, Runic.Application.Views.Desktop.RunicHostedAppearance? right) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenDirectories = 4 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenDirectory = 3 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DetachAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.MoveToAsync(Runic.Application.Views.IRunicWindow! window, string! region, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.SetAppearanceAsync(Runic.Application.Views.Desktop.RunicHostedAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Closed = 4 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Crashed = 2 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Host = 3 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Reload = 1 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Removed = 0 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Reason.get -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.RunicHostedRegionEventArgs(Runic.Application.Views.Desktop.RunicHostedRegion! region, Runic.Application.Views.Desktop.RunicHostedRegionDetachReason? reason = null) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.DesktopWindow.get -> Runic.Desktop.DesktopWindow!
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumPendingUploadBytes.get -> long?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumPendingUploadBytes.init -> void
