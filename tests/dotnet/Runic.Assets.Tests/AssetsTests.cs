@@ -425,7 +425,7 @@ internal sealed class AssetsTests
         {
             ZipArchiveEntry manifest = zip.CreateEntry("runic-assets.json", CompressionLevel.SmallestSize);
             await using Stream content = manifest.Open();
-            await content.WriteAsync(Encoding.UTF8.GetBytes("{\"version\":\"runic.assets.archive/2\",\"assets\":[]}"))
+            await content.WriteAsync(Encoding.UTF8.GetBytes("{\"version\":\"runic.assets.archive/3\",\"assets\":[]}"))
                 .ConfigureAwait(false);
         }
 
