@@ -2632,26 +2632,7 @@ static string TsAccess(string target, string name) => IsTypeScriptIdentifier(nam
     ? $"{target}.{name}"
     : $"{target}[{JsonSerializer.Serialize(name)}]";
 
-static void WriteIfChanged(string path, string content)
-{
-    // Generated sources are shared between Windows and Unix checkouts.
-    content = content.ReplaceLineEndings("\n");
-    var fullPath = Path.GetFullPath(path);
-    Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-    if (File.Exists(fullPath) && File.ReadAllText(fullPath) == content) return;
-    // Frontend watchers (Vite, tsc --watch) must never observe a truncated
-    // module, so replace the file in one rename.
-    var temporary = Path.Combine(Path.GetDirectoryName(fullPath)!, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
-    try
-    {
-        File.WriteAllText(temporary, content);
-        File.Move(temporary, fullPath, overwrite: true);
-    }
-    finally
-    {
-        if (File.Exists(temporary)) File.Delete(temporary);
-    }
-}
+static void WriteIfChanged(string path, string content) => GeneratedFile.WriteIfChanged(path, content);
 
 /// <summary>
 /// Diagnostic IDs. Each one has an entry in docs/diagnostics.md, which every
