@@ -209,6 +209,22 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
   open, any web page you visit can drive the Window's page and, through it, the Bridge. `--webkit-inspector` refuses
   them and opens the `inspector://` server instead, which speaks a protocol that no browser page can.
 
+## The development server's source maps
+
+Breakpoints in `Frontend/src` bind through the source maps that the frontend's development server sends with each
+module. Since 0.22, `runic()` (`@runic-artifex/vite-plugin-runic`) makes their `sources` absolute file paths, such as
+`/home/me/App/Frontend/src/App.tsx` or `C:/Users/me/App/Frontend/src/App.tsx`, where Vite 8 writes paths relative to
+each module. A JavaScript debugger then finds your files without a web root. Visual Studio's needs that: it attaches
+to the page over the DevTools Protocol with no web root, and with relative paths breakpoints in `.tsx`, `.vue` and
+`.svelte` files stayed unbound. VS Code's JavaScript debugger (the template's configurations set `webRoot`), the
+developer tools of Chrome, Edge and WebView2, and Runic Inspect read the absolute paths as they read Vite's.
+
+Only `vite dev` changes: `vite build` and `vite preview` keep Vite's relative paths, so no path of the build machine
+reaches a published map. A page that a machine other than yours loads from the development server sees your
+project's directory in the maps, as it already does in Vite's `/@fs/` addresses. The Angular CLI's development server
+(`--frontend angular` without `--angular-build vite`) writes maps of its own, which `runic()` does not reach; use a
+debugger configuration with a web root there, or the Vite build of the Angular frontend.
+
 ## The page in Chrome (`dotnet runic dev --browser`)
 
 Since 0.21, `dotnet runic dev --browser` serves the Window without a native window, and your IDE's JavaScript

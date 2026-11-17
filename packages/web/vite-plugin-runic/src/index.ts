@@ -9,6 +9,7 @@ import type { RunicDevelopmentState } from "./timeline.js";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
+import { serveAbsoluteSourceMapSources } from "./dev-source-paths.js";
 import {
   callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, requestEvent, responseEvent,
   viewEvent, type RunicClientOptions,
@@ -336,6 +337,9 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     async configureServer(viteServer) {
       server = viteServer;
+      // Absolute file paths as the sources of the modules' maps, which Visual Studio's JavaScript debugger needs: it
+      // attaches with no web root (dev-source-paths.ts). Only the development server; a build keeps Vite's maps.
+      serveAbsoluteSourceMapSources(viteServer);
       // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
       const access = resolveAccessList(allowRules);
       // With server.allowedHosts: true Vite answers any Host, so a DNS-rebinding name would reach Runic's endpoints as a
