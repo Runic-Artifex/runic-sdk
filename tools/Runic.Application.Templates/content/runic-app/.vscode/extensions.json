@@ -1,6 +1,6 @@
 {
   // The C# extension's debugger runs the configurations in launch.json; C# Dev Kit is optional.
-  // The Runic extension is not on the Marketplace or Open VSX yet; it will be recommended here once it is.
+  // Runic DevKit (runic-artifex.runic-devkit) is not on the Marketplace or Open VSX yet; it will be recommended here once it is.
   "recommendations": [
     "ms-dotnettools.csharp"
   ]

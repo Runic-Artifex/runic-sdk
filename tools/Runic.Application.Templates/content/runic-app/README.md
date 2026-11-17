@@ -97,6 +97,11 @@ the first one:
 | `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). WebView2 ignores the variable while the Window runs elevated (Runtime 150 and later), for example under an IDE started as administrator; start the IDE without elevation. |
 <!--#endif -->
 
+`.vsconfig` names the Visual Studio components these profiles need: the .NET
+desktop development workload and JavaScript diagnostics, the optional component
+behind Visual Studio's JavaScript debugger for WebView2 and for Chrome or Edge.
+When one is missing, Visual Studio offers to install it as it opens the project.
+
 To debug the C# code while the page comes live from the
 __DEVELOPMENT_SERVER_NAME__ development server:
 
@@ -361,6 +366,7 @@ and the component build target.
 <!--#endif -->
 <!--#endif -->
 | `Properties/launchSettings.json` | Launch profiles for Visual Studio, Rider and `dotnet run`. See [Debug it in your IDE](#debug-it-in-your-ide). |
+| `.vsconfig` | The Visual Studio components the launch profiles need. See [Debug it in your IDE](#debug-it-in-your-ide). |
 <!--#if (editor == "vscode") -->
 | `.vscode/` | VS Code tasks for `dotnet runic dev`, debug configurations and the recommended extensions. See [VS Code](#vs-code). |
 <!--#endif -->
