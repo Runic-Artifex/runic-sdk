@@ -145,17 +145,28 @@ internal sealed class SidePanelScenario(AccessibilityClient client, Report repor
             }
             await QuietAsync(cancellationToken);
             mark = Mark();
-            if (client.MovesBetweenViewsWithKeys)
+            // Shift+Tab from the panel's only control: the hand-off focuses the page's last one.
+            var returned = client.MovesBetweenViewsWithKeys ? Fixture.Finish : PageButton;
+            await ReturnAsync(page, cancellationToken);
+            // A sampled last phrase can miss the control's name before its hint, and VoiceOver's hint for the page's
+            // button is word for word the panel button's, which it already said, so it is no new phrase (sdk#1093:
+            // nothing new after Shift+Tab, focus on Finish). As SpeechScenario.FocusAsync does, the focus goes into the
+            // panel and back once the screen reader is quiet, up to twice; the check still needs a phrase with the
+            // page's button name after the first return.
+            for (var move = 1; move <= 2 && await HeardAsync(mark, returned, TimeSpan.FromSeconds(4), cancellationToken) is null; move++)
             {
-                // Shift+Tab from the panel's only control: the hand-off focuses the page's last one.
-                Console.WriteLine("PROBE REQUEST shift-tab");
-                await RecordAsync("side-panel-return", Fixture.Finish, mark, cancellationToken);
+                string said;
+                lock (_lock) said = string.Join(" | ", _phrases.Skip(mark));
+                Console.WriteLine($"  {reader.Name} did not say '{returned}' after the focus returned (it said: {said}; "
+                    + $"focused: {await client.FocusedAsync(cancellationToken) ?? "not reported"}); moving the focus into the panel and back.");
+                await QuietAsync(cancellationToken);
+                if (client.MovesBetweenViewsWithKeys) Console.WriteLine("PROBE REQUEST tab");
+                else await client.FocusAsync(panel, cancellationToken);
+                await HeardAsync(Mark(), PanelButton, TimeSpan.FromSeconds(4), cancellationToken);
+                await QuietAsync(cancellationToken);
+                await ReturnAsync(page, cancellationToken);
             }
-            else
-            {
-                await client.FocusAsync(page, cancellationToken);
-                await RecordAsync("side-panel-return", PageButton, mark, cancellationToken);
-            }
+            await RecordAsync("side-panel-return", returned, mark, cancellationToken);
             Console.WriteLine($"  focused after the return: {await client.FocusedAsync(cancellationToken) ?? "not reported"}");
         }
         finally
@@ -164,6 +175,13 @@ internal sealed class SidePanelScenario(AccessibilityClient client, Report repor
             await listening;
             lock (_lock) Console.WriteLine($"{reader.Name} phrases: " + string.Join(" | ", _phrases));
         }
+    }
+
+    // Moves the focus from the panel back to the page: on macOS with Shift+Tab, which the fixture presses.
+    private async Task ReturnAsync(Control page, CancellationToken cancellationToken)
+    {
+        if (client.MovesBetweenViewsWithKeys) Console.WriteLine("PROBE REQUEST shift-tab");
+        else await client.FocusAsync(page, cancellationToken);
     }
 
     private DateTime _lastPhrase = DateTime.UtcNow;
@@ -194,9 +212,12 @@ internal sealed class SidePanelScenario(AccessibilityClient client, Report repor
         }
     }
 
-    private async Task<string?> HeardAsync(int mark, string text, CancellationToken cancellationToken)
+    private Task<string?> HeardAsync(int mark, string text, CancellationToken cancellationToken) =>
+        HeardAsync(mark, text, SpeechTimeout, cancellationToken);
+
+    private async Task<string?> HeardAsync(int mark, string text, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var until = DateTime.UtcNow + SpeechTimeout;
+        var until = DateTime.UtcNow + timeout;
         while (true)
         {
             lock (_lock)
