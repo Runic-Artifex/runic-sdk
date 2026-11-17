@@ -89,7 +89,12 @@ internal static class SharedDirectoryWatches
             FileSystemWatcher? stopped = null;
             lock (Gate)
             {
-                entry.Sinks = [.. entry.Sinks.Where(item => !ReferenceEquals(item, sink))];
+                // Remove this lease's registration only. A watcher has one sink for all its leases and can hold two of
+                // one entry for a moment: it disposes a released lease on the thread pool, and its next evaluation can
+                // acquire the entry again first. Removing every copy stopped the watch the newer lease holds (#1123).
+                var sinks = entry.Sinks;
+                var index = Array.FindIndex(sinks, item => ReferenceEquals(item, sink));
+                if (index >= 0) entry.Sinks = [.. sinks[..index], .. sinks[(index + 1)..]];
                 if (entry.Sinks.Length == 0) stopped = entry.Stop();
             }
             // Outside the gate: disposing can wait for the platform's event thread, which may be delivering an
