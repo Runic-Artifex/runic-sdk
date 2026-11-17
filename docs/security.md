@@ -254,6 +254,15 @@ diagnostics that report grants a presentation cannot apply.
   application passes itself (`DesktopWindowOptions.BrowserArguments`) are not
   changed. See
   [the browser's developer tools per engine](debugging.md#the-browsers-developer-tools-per-engine).
+- **CS-WebUI's DevTools Protocol port** is Runic's own switch, not the
+  engine's: Runic.Desktop adds `--remote-debugging-port` to an installed
+  Chromium browser's command line only in Development, when
+  `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for it (since 0.22). Outside
+  Development the variable is ignored, so a build started with it opens
+  nothing unless it also runs in Development: the gate is the environment, not
+  the build configuration. A `--remote-debugging-port`, or
+  `--remote-allow-origins`, in the application's own `BrowserArguments` applies
+  in every environment; do not ship either.
 - **Failure detail** (exception type, message and stack) reaches the page only in
   Development, or when a window sets `IncludeFailureDetail`. Detail can contain
   paths and application data; do not enable it for a distributed build
@@ -308,8 +317,44 @@ and its Bridge:
   nothing more, but a replaced client of WebKit's own, such as GNOME Web's
   `inspector://` page, can crash the Window when it sends again.
 
+Since 0.22, on every operating system, a CS-WebUI Window's installed Chrome
+or Edge can open its Chrome DevTools Protocol endpoint, so an IDE's JavaScript
+debugger can attach to the page
+([CS-WebUI pages in a JavaScript debugger](debugging.md#cs-webui-pages-in-a-javascript-debugger)).
+It opens only when an IDE asks: `dotnet runic dev --debug-endpoint`, which
+an IDE passes when it starts `dev`, `--no-window` for the Window the IDE starts, or the
+template's `(CS-WebUI script debugging)` launch profile, on port 9225. A
+terminal `dotnet runic dev` opens none. It is the browser's endpoint, so:
+
+- **What it exposes.** Whoever connects controls the page completely: they
+  run script in it and so call the Window's Bridge as you, read what it shows,
+  navigate it, and read its cookies and storage. The browser profile is the
+  Window's own, generated per run unless the application sets `ProfilePath`,
+  so your everyday browser's data is not in it.
+- **Who can reach it.** Chromium binds it to 127.0.0.1, so other machines
+  cannot. Since Chromium 111 it refuses WebSocket clients that send an
+  `Origin`, so web pages in a browser cannot attach, and it answers `/json`
+  only for a `Host` that is an IP address or `localhost`, against DNS
+  rebinding. Any local process can attach, also another user's: unlike
+  Runic's adapter on Linux, Runic cannot check the account of a connection
+  to a port that the browser owns.
+- **When it is open.** Only in Development, only with the variable, and
+  while that window's browser runs. Runic never adds it outside Development.
+  If the Window process crashes, its browser keeps the endpoint open until
+  you close that browser window.
+- **A fixed port** (9225) can be held by another user first. The Window then
+  uses a free port and warns; it reports a fixed port only after
+  `/json/version` answers on 127.0.0.1 and, on Linux, no other user listens
+  there. `dev --no-window` warns and lists 9225 as unavailable when something
+  holds it. Attach to `127.0.0.1`, not `localhost`, which can resolve to
+  `[::1]`.
+- **The session file** (`debugEndpoints`) and `[dev] Debugging:` name the
+  port. That is no secret: the endpoint has no credential, and a local
+  process could find the port by trying.
+
 On a machine that you share with other users, run `dev` with
-`--no-debug-endpoint`, which opens neither.
+`--no-debug-endpoint`, which opens none of these, and do not use the script
+debugging profiles there. `--no-debug-endpoint` wins over `--debug-endpoint`.
 
 ## Hosted application windows
 
@@ -637,6 +682,9 @@ embedded frontend through a file handler keeps WebUI's authentication cookie on,
 which WebUI otherwise turns off for the whole process. Runic does not review native
 WebUI's admission; for untrusted content or shared machines, prefer Runic Desktop
 ([CS-WebUI security](../packages/dotnet/Runic.Application.Views.CsWebUi/README.md#security)).
+In Development, `dotnet runic dev` and the template's script debugging profile
+open the browser's DevTools Protocol endpoint on loopback
+([development server](#development-server)).
 
 ## Frontend packages and packed assets
 

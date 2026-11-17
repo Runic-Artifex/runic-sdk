@@ -34,9 +34,18 @@ internal sealed record DevOptions(
 
     /// <summary>
     /// False with <c>--no-debug-endpoint</c>: on Linux, dev opens neither WebKit's remote inspector nor Runic's CDP adapter
-    /// for the Window (<see cref="WebKit.WebKitDebugging"/>).
+    /// for the Window (<see cref="WebKit.WebKitDebugging"/>), and a CS-WebUI Window's browser opens no DevTools Protocol
+    /// port, whatever <see cref="CsWebUiDebugEndpoint"/> says (<see cref="CsWebUiDebugging"/>).
     /// </summary>
     internal bool DebugEndpoint { get; init; } = true;
+
+    /// <summary>
+    /// <c>--debug-endpoint</c> (D070.17): a CS-WebUI Window that dev starts opens its browser's DevTools Protocol port. Off
+    /// by default, so a terminal <c>dotnet runic dev</c> opens none; an IDE that starts dev is to pass it. <c>--no-window</c>
+    /// lists the fixed port for the IDE's Window without it (<see cref="CsWebUiDebugging"/>). False with
+    /// <c>--no-debug-endpoint</c>, which wins.
+    /// </summary>
+    internal bool CsWebUiDebugEndpoint { get; init; }
 
     /// <summary><c>--webkit-inspector</c>: WebKit's own inspector over HTTP instead of the CDP adapter, where WebKitGTK is safe.</summary>
     internal bool WebKitInspector { get; init; }

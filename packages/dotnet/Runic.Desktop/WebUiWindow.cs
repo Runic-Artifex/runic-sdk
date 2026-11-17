@@ -513,6 +513,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var installation = WebUiBrowserDiscovery.Find(requestedBrowser, BrowserFolder)
             ?? throw new InvalidOperationException($"No supported installation was found for {requestedBrowser}.");
         var profilePath = GetOrCreateProfilePath(installation.Browser);
+        int? requestedDebuggingPort = installation.IsChromiumBased
+            && !string.IsNullOrWhiteSpace(profilePath)
+            && !WebUiRemoteDebugging.NamesPort(_browserArgumentList)
+                ? WebUiRemoteDebugging.RequestedPort(Environment.GetEnvironmentVariable, _webContent.DevTools)
+                : null;
+        // Held until just before the browser starts (DEV-SEC-51); a taken fixed port becomes a free one, with a warning.
+        using var reservation = requestedDebuggingPort is int requested ? WebUiRemoteDebugging.Reserve(requested) : null;
+        int? debuggingPort = reservation?.Port;
+        if (reservation is { FellBack: true })
+        {
+            ReportDebuggingPortTaken(requestedDebuggingPort!.Value);
+        }
+        if (debuggingPort is not null)
+        {
+            WebUiRemoteDebugging.DeleteStaleRecord(profilePath!);
+        }
         var options = new WebUiBrowserLaunchOptions(
             _profileName,
             profilePath,
@@ -524,7 +540,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             _height,
             _x,
             _y,
-            _allowedPermissions);
+            _allowedPermissions,
+            debuggingPort);
         connection = BeginConnection();
         // The command line is readable by other users of a Linux or macOS machine: give the browser a one-time
         // code that binds it to the surface instead of the surface's address.
@@ -535,6 +552,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         Task outputClosed;
         try
         {
+            reservation?.Dispose();
             process = WebUiBrowserHost.Start(installation, launchUrl, options, out outputClosed);
         }
         catch
@@ -550,7 +568,43 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _browserOutputClosed = outputClosed;
         _currentBrowser = installation.Browser;
         _ = MonitorBrowserAsync(process);
+        if (debuggingPort is int port)
+        {
+            _ = WebUiRemoteDebugging.ReportAsync(process.WaitForExitAsync(), profilePath!, port, WebUiRemoteDebugging.WriteLine, ReportDebuggingPortUnavailable);
+        }
         return process;
+    }
+
+    // The Development DevTools Protocol endpoint's warnings (D070.7): to the application's logger, or else to Trace, and to
+    // standard error, where dotnet runic dev and an IDE's debug console show them.
+    private void ReportDebuggingPortUnavailable(int port, string reason)
+    {
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.RemoteDebuggingUnavailable(logger, port, reason);
+        }
+        else
+        {
+            Trace.TraceWarning(
+                $"The browser's DevTools Protocol endpoint on 127.0.0.1:{port} is not reported: {reason}. Do not attach a debugger to that port.");
+        }
+        WebUiRemoteDebugging.WriteWarning(
+            $"warning: Runic: the browser's DevTools Protocol endpoint on 127.0.0.1:{port} is not reported: {reason}. Do not attach a debugger to that port.");
+    }
+
+    private void ReportDebuggingPortTaken(int port)
+    {
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.RemoteDebuggingPortTaken(logger, port);
+        }
+        else
+        {
+            Trace.TraceWarning(
+                $"Port {port} for the browser's DevTools Protocol endpoint is taken on 127.0.0.1 or [::1]; the browser uses a free port instead.");
+        }
+        WebUiRemoteDebugging.WriteWarning(
+            $"warning: Runic: port {port} for the browser's DevTools Protocol endpoint is taken on 127.0.0.1 or [::1]; the browser uses a free port instead, which the RUNIC_APPLICATION_DEBUG_ENDPOINT line names. Do not attach a debugger to port {port}.");
     }
 
     private enum RelaunchOutcome

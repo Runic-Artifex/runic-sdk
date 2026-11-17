@@ -81,6 +81,10 @@ export const traceAllowList = [
     'TraceWarning($"The diagnostic sink failed for {diagnostic.Code}',
     'TraceError($"{diagnostic.Code}: {diagnostic.Message}")',
     'TraceWarning($"{diagnostic.Code}: {diagnostic.Message}")',
+    // A Development DevTools Protocol endpoint that could not be confirmed (event 3042), or whose fixed port was taken
+    // (event 3043; D070.7, DEV-SEC-51/54).
+    'TraceWarning($"The browser\'s DevTools Protocol endpoint on 127.0.0.1:{port} is not reported',
+    'TraceWarning($"Port {port} for the browser\'s DevTools Protocol endpoint is taken',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/WebUiWindow.cs', fragment })),
   // Reporting an expired handshake failed, typically because the application's logger threw (I-081).
   { file: 'packages/dotnet/Runic.Desktop/Internal/WebUiSession.cs',

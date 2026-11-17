@@ -13,6 +13,7 @@ internal sealed class HostProcessController : IAsyncDisposable
     private readonly DevOptions _options;
     private readonly IReadOnlyDictionary<string, string?> _developmentEnvironment;
     private readonly Action<string>? _serveOnlyLine;
+    private readonly Action<string>? _debugEndpointLine;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TaskCompletionSource<int> _unexpectedExit =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -40,12 +41,14 @@ internal sealed class HostProcessController : IAsyncDisposable
         DevProjectConfiguration configuration,
         DevOptions options,
         IReadOnlyDictionary<string, string?>? developmentEnvironment = null,
-        Action<string>? serveOnlyLine = null)
+        Action<string>? serveOnlyLine = null,
+        Action<string>? debugEndpointLine = null)
     {
         _dotnetHost = dotnetHost;
         _configuration = configuration;
         _options = options;
         _serveOnlyLine = serveOnlyLine;
+        _debugEndpointLine = debugEndpointLine;
         _developmentEnvironment = developmentEnvironment
             ?? new Dictionary<string, string?>(StringComparer.Ordinal);
     }
@@ -202,7 +205,7 @@ internal sealed class HostProcessController : IAsyncDisposable
                 debugEnvironment: _options.DebugEnvironment, browser: _options.Browser,
                 devToolsExtension: _options.WindowDevToolsExtension),
             SuppressLine,
-            _options.Browser ? ObserveServeOnly : null,
+            _options.Browser || _debugEndpointLine is not null ? ObserveProtocolLine : null,
             holdInput: _options.Browser);
         if (_options.WatchHost)
         {
@@ -213,15 +216,18 @@ internal sealed class HostProcessController : IAsyncDisposable
     }
 
     /// <summary>
-    /// dotnet watch's notice of an expected stop, and with <c>--browser</c> the serve-only lines, which carry the surface's
-    /// credential: dev prints the entry address instead (<see cref="BrowserEntry"/>).
+    /// dotnet watch's notice of an expected stop, with <c>--browser</c> the serve-only lines, which carry the surface's
+    /// credential: dev prints the entry address instead (<see cref="BrowserEntry"/>), and the debugging endpoint lines,
+    /// which dev prints as a <c>[dev]</c> hint (<see cref="CsWebUiDebugging"/>).
     /// </summary>
     private bool SuppressLine(string line) =>
-        (_options.WatchHost && IsExpectedTerminationNotice(line)) || (_options.Browser && BrowserEntry.IsServeOnlyLine(line));
+        (_options.WatchHost && IsExpectedTerminationNotice(line)) || (_options.Browser && BrowserEntry.IsServeOnlyLine(line)) ||
+        (_debugEndpointLine is not null && CsWebUiDebugging.IsProtocolLine(line));
 
-    private void ObserveServeOnly(string line)
+    private void ObserveProtocolLine(string line)
     {
         if (BrowserEntry.IsServeOnlyLine(line)) _serveOnlyLine?.Invoke(line);
+        else if (CsWebUiDebugging.IsProtocolLine(line)) _debugEndpointLine?.Invoke(line);
     }
 
     internal static IReadOnlyList<string> CreateWatchArguments(

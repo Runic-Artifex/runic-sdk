@@ -53,6 +53,10 @@ profiles next to the Start button:
 - **`<Project> (WebView2 script debugging)`** (Runic Desktop) also opens WebView2's DevTools Protocol endpoint on port
   9222 on Windows, and in Visual Studio attaches its JavaScript debugger to the page beside the .NET debugger
   (`jsWebView2Debugging`).
+- **`<Project> (CS-WebUI script debugging)`** (CS-WebUI, since 0.22) also opens the DevTools Protocol endpoint of the
+  Window's Chrome or Edge on `http://127.0.0.1:9225/`, for Visual Studio's Attach to Process. Any local process can
+  attach to it while the Window runs
+  ([CS-WebUI pages in a JavaScript debugger](#cs-webui-pages-in-a-javascript-debugger)).
 
 Run `dotnet runic dev --no-window` in a terminal (Visual Studio's Developer PowerShell, or Rider's terminal) and press
 F5. In Rider you can add `dotnet runic dev --no-window` to the run configuration's "Before launch" list as an external
@@ -223,6 +227,105 @@ attaches to the Window's page. In the page, `globalThis[Symbol.for("runic.vite.i
 Runic Inspect's overview as data (see [Runic Inspect](#runic-inspect)). On Linux, `dotnet runic dev`'s endpoint
 translates what JavaScript debuggers use, not the page automation these tools drive, so they are not supported there;
 on macOS there is no endpoint.
+
+## CS-WebUI pages in a JavaScript debugger
+
+Since 0.22, a CS-WebUI Window that runs in an installed Chrome, Edge or other Chromium browser can open that browser's
+Chrome DevTools Protocol endpoint, so an IDE's JavaScript debugger attaches to the page you are using: breakpoints,
+stepping, the console and the page's variables. Visual Studio debugs CS-WebUI pages only this way. Runic.Desktop adds
+`--remote-debugging-port` to the browser's command line only when all of these hold:
+
+- the Window process runs in **Development** (`DOTNET_ENVIRONMENT`, or else `ASPNETCORE_ENVIRONMENT`), the test that
+  turns the developer tools on, and a `DesktopWindowOptions.WebContent` policy does not set `DevTools = false`;
+- **`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`** asks for it: `0` for a free port that the browser picks at launch, or a fixed
+  port. Outside Development the variable is ignored;
+- the browser is Chromium-based and runs with its own profile directory: the generated one, or `ProfilePath`
+  (Chromium 136 and later refuse remote debugging in the default profile). Firefox and the platform WebView fallback
+  open no endpoint;
+- the application's own browser arguments (`SetBrowserArguments`, `DesktopWindowOptions.BrowserArguments`) do not name
+  `--remote-debugging-port`. If they do, theirs applies as written, in every environment, and Runic adds no second one.
+  Unlike other custom arguments, the Development port does not replace Runic's Chromium defaults.
+
+Any local process can attach to the endpoint, so it opens only when you or your IDE ask for it (D070.17): a terminal
+`dotnet runic dev` opens none.
+
+The browser listens on 127.0.0.1. Each window's browser gets its own port. When the endpoint is open, the Window process
+prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:<port>/` on its standard output, and
+`RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=http://127.0.0.1:<port>/` when that browser exits. Before it reports an
+endpoint, the Window confirms it:
+
+- **A free port (`0`):** Chromium writes the port it bound into `DevToolsActivePort` in the profile.
+- **A fixed port:** Chromium writes no such record, so the Window asks `/json/version` on 127.0.0.1. On Linux it also
+  checks that no other user listens on that port. The Window holds a fixed port on 127.0.0.1 and `[::1]` until just
+  before the browser starts. If something holds it already, the browser gets a free port instead, and the Window writes
+  a warning on its standard error (event 3043). Its opened line names the port it really uses.
+- **No endpoint:** if the endpoint cannot be confirmed, the Window writes a warning with the reason on its standard
+  error (event 3042) and no opened line. Typical reasons are another user's listener on the port, or Chromium listening
+  on `[::1]` because 127.0.0.1's port was taken. Do not attach a debugger to that port then.
+
+When the endpoint opens:
+
+| Start | Port | Where to find it |
+| --- | --- | --- |
+| `dotnet runic dev` in a terminal | None | `[dev] Debugging:` says how to ask for one |
+| `dotnet runic dev --debug-endpoint` (for an IDE to pass when it starts `dev`) | A free one (`0`) | `[dev] Debugging:` and the session file's `debugEndpoints` (`"engine": "chromium"`), while the browser runs |
+| `dotnet runic dev --no-window`, then the IDE starts the Window with the session file's `window.environment` | 9225 | `debugEndpoints`, for the session. If something holds 9225 when `dev` starts, or (on Linux) another user starts listening on it later, `dev` prints a warning and moves the entry to `unavailableDebugEndpoints` |
+| The template's `<Project> (CS-WebUI script debugging)` profile | 9225 | The profile, and the Window's warning if it had to use another port |
+| `dotnet runic dev -e RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=<port>` | Yours | `[dev] Debugging:` and `debugEndpoints` once the Window confirms it, as above |
+
+A plain `dotnet runic dev --no-window` puts the variable only in the session file's environment, which only an IDE
+applies to the Window it starts. With F5 on a profile that does not set it, no port opens.
+
+`--no-debug-endpoint` wins over `--debug-endpoint` and sets no variable. `--browser` sets none either: its page runs in
+the IDE's own browser ([above](#the-page-in-chrome-dotnet-runic-dev---browser)). A `-e` variable is passed on in any
+case: it is your explicit choice, as for WebView2's. 9225 follows the ports `dev` uses already:
+- 9222: the CDP adapter on Linux, and WebView2's in the template;
+- 9223: WebKit's inspector under `--no-window`;
+- 9224: `--browser`.
+
+**Visual Studio.** Start the Window: the `(CS-WebUI script debugging)` profile with F5 or Ctrl+F5, or `dotnet runic dev
+--debug-endpoint`. Then use Debug > Attach to Process:
+1. Choose the connection type "Chrome devtools protocol websocket (no authentication)".
+2. Type the endpoint as the connection target (`http://127.0.0.1:9225/`, or the port `dev` printed) and press Enter.
+3. Attach to the page's entry with the JavaScript code type: "JavaScript (Microsoft Edge - Chromium)", or "JavaScript
+   and TypeScript (Chrome Dev Tools/V8 Inspector)" in newer versions.
+
+The .NET debugger of an F5 session stays attached beside it. Visual Studio needs the JavaScript diagnostics component,
+which the template's `.vsconfig` names. These steps are not yet verified by hand in Visual Studio.
+
+**VS Code.** Attach js-debug to the port. Give the address as `127.0.0.1`: js-debug's default, `localhost`, can resolve
+to `[::1]`, where another user can listen beside the browser.
+
+```jsonc
+{
+  "name": "Attach to the CS-WebUI page",
+  "type": "chrome",                  // or "msedge" for Edge
+  "request": "attach",
+  "address": "127.0.0.1",
+  "port": 9225,                      // or the port that [dev] Debugging: names
+  "webRoot": "${workspaceFolder}/Frontend"
+}
+```
+
+For a port that stays the same across restarts, run `dotnet runic dev -e RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=9225`. An IDE
+extension can read the port from `debugEndpoints` instead.
+
+**Turn it off** in any of these ways:
+- leave out `--debug-endpoint` and `--no-window`, or pass `--no-debug-endpoint`;
+- leave the variable unset outside `dev`;
+- set `DevTools = false` in the window's `WebContent` policy;
+- run the Window outside Development.
+
+Some things stay true while it is on:
+- **The gate is the environment, not the build.** A Release build started with `DOTNET_ENVIRONMENT=Development` and the
+  variable opens the port too, as it gets the developer tools.
+- **The variable is inherited** by the processes the application starts.
+- **The browser can outlive the Window.** If the Window process dies without closing its window (a crash, or a kill
+  outside `dev`), its browser keeps the endpoint open until you close that browser window. `dev` stops listing it when
+  the Window exits.
+- **A shared profile.** Windows or applications that share one `ProfilePath` join the browser that holds the port.
+
+What the endpoint exposes is in the [security guide](security.md#development-server).
 
 ## The Runic dock
 

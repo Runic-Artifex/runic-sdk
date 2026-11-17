@@ -36,7 +36,9 @@ Every project has `Properties/launchSettings.json`, whose first profile,
 which `dotnet run` uses too, starts the Window with
 `DOTNET_ENVIRONMENT=Development`; with Runic Desktop, a second profile turns on
 WebView2 script debugging on Windows (not in an elevated Window: WebView2 ignores
-the profile's `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` there). Its `.vsconfig`
+the profile's `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` there); with CS-WebUI, it
+opens the DevTools Protocol of the Window's Chrome or Edge on port 9225 for a
+JavaScript debugger's attach (since 0.22). Its `.vsconfig`
 lets Visual Studio offer the components the profiles need: the .NET desktop
 development workload and JavaScript diagnostics, for script debugging. The generated README's "Debug it in your
 IDE" section shows how Visual Studio, Rider and VS Code debug the Window while
