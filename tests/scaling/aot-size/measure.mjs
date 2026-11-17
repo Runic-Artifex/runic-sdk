@@ -1,6 +1,8 @@
-// The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size"): publishes the fixture (Fixture/AotSize.csproj)
-// for linux-x64 with an mstat file, with no fixture ViewModel and at each size of the aot/ budget entries, reads each
-// mstat with MstatReader and checks the aot/ entries of tests/scaling/budgets.json.
+// The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size"): publishes the fixtures for linux-x64 with an
+// mstat file — the CS-WebUI fixture (Fixture/AotSize.csproj) with no fixture ViewModel and at each size of its aot/
+// budget entries, the Runic.Desktop host (DesktopFixture) and the CS-WebUI fixture with Translations
+// (TranslationsFixture) with none — reads each mstat with MstatReader and checks the aot/ entries of
+// tests/scaling/budgets.json.
 //   bun tests/scaling/aot-size/measure.mjs [--update] [--base <revision>] [--keep] [--rid <rid>]
 // --update records the results and rewrites the aot/ entries' measured and limit, as bun run scaling --update does for
 // the managed suite. --base lists the budgets that changed against that revision. --keep keeps the published
@@ -17,7 +19,6 @@ import { viewModelsSource } from "./fixture.mjs";
 
 const root = resolve(fileURLToPath(import.meta.url), "../../../..");
 const budgetsFile = resolve(root, "tests/scaling/budgets.json");
-const fixture = resolve(root, "tests/scaling/aot-size/Fixture/AotSize.csproj");
 const reader = resolve(root, "tests/scaling/aot-size/MstatReader/MstatReader.csproj");
 const output = resolve(root, "artifacts/scaling/aot-size");
 export const resultsFile = resolve(output, "results.json");
@@ -25,8 +26,13 @@ export const resultsFile = resolve(output, "results.json");
 const gatedRid = "linux-x64";
 const ridIndex = process.argv.indexOf("--rid");
 const rid = ridIndex >= 0 ? process.argv[ridIndex + 1] : gatedRid;
-const mstat = resolve(root, `tests/scaling/aot-size/Fixture/obj/Release/net10.0/${rid}/native/AotSize.mstat`);
-const executable = rid.startsWith("win-") ? "AotSize.exe" : "AotSize";
+
+// The published fixtures: each metric names one. All three share the ViewModels that fixture.mjs writes.
+export const fixtures = {
+  views: { directory: "Fixture", assembly: "AotSize" },
+  desktop: { directory: "DesktopFixture", assembly: "AotSizeDesktop" },
+  "views-translations": { directory: "TranslationsFixture", assembly: "AotSizeTranslations" },
+};
 
 // A metric is an improvement when it is below this share of its limit (as ScalingBudgets.cs).
 const improvementShare = 0.75;
@@ -36,11 +42,18 @@ const improvementShare = 0.75;
 const viewModel = /\bAotSize\.Models\.Vm\d+(?!\w)/;
 const generatedGeneric = /Runic\.Application\.Views\.Generated\.[\w.+]*<[^\t]*\bAotSize\.Models\.Vm\d+(?!\w)/;
 
-// The measurements of one build from its executable size and its mstat records (MstatReader: kind, size, name).
+// The mstat records that an assembly owns: its code, type nodes, frozen objects (preinitialized statics and string
+// literals) and RVA field data. Blobs (metadata, stack-trace mapping, hashtables) have no owner, and
+// DeduplicatedMethods records carry node ids, not sizes.
+const ownedKinds = new Set(["Methods", "Types", "FrozenObjects", "RvaFields"]);
+
+// The measurements of one build from its executable size and its mstat records (MstatReader: kind, size, owner, name).
+// assemblyBytes sums the owned records per owner assembly; a generic instantiation belongs to its definition's.
 export function measurement(executableBytes, records) {
-  const result = { executableBytes, viewModelTypes: 0, viewModelTypeBytes: 0, generatedGenericTypes: 0, viewModelMethodBytes: 0, types: 0 };
+  const result = { executableBytes, viewModelTypes: 0, viewModelTypeBytes: 0, generatedGenericTypes: 0, viewModelMethodBytes: 0, types: 0, assemblyBytes: {} };
   for (const line of records.split("\n")) {
-    const [kind, size, name] = line.split("\t");
+    const [kind, size, owner, name] = line.split("\t");
+    if (owner && ownedKinds.has(kind)) result.assemblyBytes[owner] = (result.assemblyBytes[owner] ?? 0) + Number(size);
     if (kind === "Types") {
       result.types++;
       if (viewModel.test(name)) {
@@ -53,13 +66,27 @@ export function measurement(executableBytes, records) {
   return result;
 }
 
-// The value of each aot/ metric in a build with `count` ViewModels; `baseline` is the build without any.
+// Framework assemblies that a Runic application must not contain on linux-x64 (D072.2): the HTTP client and TLS chain
+// that HttpListener and HttpClient brought in. Their budgets have limit 0 and name the regression at once.
+export const frameworkSentinels = ["System.Net.Http", "System.Net.Security"];
+// The Runic assemblies of the CS-WebUI fixture with a budget of their own, so that a regression names its package.
+export const runicAssemblies = ["Runic.Application.Views", "Runic.Navigation", "Runic.Application.Views.CsWebUi", "Runic.Assets"];
+
+const owned = assembly => build => build.assemblyBytes[assembly] ?? 0;
+
+// The value of each aot/ metric: its fixture, and its value in a build with `count` ViewModels, where `baseline` is
+// that fixture's build without any.
 export const metrics = {
   // The executable bytes above the build without fixture ViewModels.
-  "aot/bridge/executable-bytes": (build, baseline) => build.executableBytes - baseline.executableBytes,
-  "aot/bridge/view-model-types": build => build.viewModelTypes,
-  "aot/bridge/generated-generic-types": build => build.generatedGenericTypes,
-  "aot/executable-bytes": build => build.executableBytes,
+  "aot/bridge/executable-bytes": { fixture: "views", value: (build, baseline) => build.executableBytes - baseline.executableBytes },
+  "aot/bridge/view-model-types": { fixture: "views", value: build => build.viewModelTypes },
+  "aot/bridge/generated-generic-types": { fixture: "views", value: build => build.generatedGenericTypes },
+  "aot/executable-bytes": { fixture: "views", value: build => build.executableBytes },
+  ...Object.fromEntries(frameworkSentinels.map(assembly => [`aot/framework/${assembly}`, { fixture: "views", value: owned(assembly) }])),
+  ...Object.fromEntries(runicAssemblies.map(assembly => [`aot/assembly/${assembly}`, { fixture: "views", value: owned(assembly) }])),
+  "aot/desktop/executable-bytes": { fixture: "desktop", value: build => build.executableBytes },
+  ...Object.fromEntries(frameworkSentinels.map(assembly => [`aot/desktop/framework/${assembly}`, { fixture: "desktop", value: owned(assembly) }])),
+  "aot/views-translations/executable-bytes": { fixture: "views-translations", value: build => build.executableBytes },
 };
 
 // Checks one metric as ScalingBudgets.Check does. A "total" has no growth class: only its limit at the larger size.
@@ -119,16 +146,20 @@ function run(command, args) {
   return Date.now() - started;
 }
 
-// Publishes the fixture with `count` ViewModels and measures it.
-function publish(count, keep) {
+// Publishes a fixture with `count` ViewModels and measures it.
+function publish(name, count, keep) {
+  const { directory: fixtureDirectory, assembly } = fixtures[name];
+  const project = resolve(root, "tests/scaling/aot-size", fixtureDirectory, `${assembly}.csproj`);
+  const mstat = resolve(root, "tests/scaling/aot-size", fixtureDirectory, `obj/Release/net10.0/${rid}/native/${assembly}.mstat`);
+  const executable = rid.startsWith("win-") ? `${assembly}.exe` : assembly;
   const models = resolve(output, "models");
   mkdirSync(models, { recursive: true });
   writeFileSync(resolve(models, "ViewModels.g.cs"), viewModelsSource(count));
-  const directory = resolve(output, `k${count}`);
+  const directory = resolve(output, name === "views" ? `k${count}` : `${name}-k${count}`);
   rmSync(directory, { recursive: true, force: true });
   rmSync(mstat, { force: true });
-  console.log(`Publishing the NativeAOT size fixture with ${count} ViewModels…`);
-  const milliseconds = run("dotnet", ["publish", fixture, "-c", "Release", "-r", rid, "--self-contained", "true",
+  console.log(`Publishing the NativeAOT size fixture ${name} with ${count} ViewModels…`);
+  const milliseconds = run("dotnet", ["publish", project, "-c", "Release", "-r", rid, "--self-contained", "true",
     "-p:PublishAot=true", "-p:IlcGenerateMstatFile=true", "-p:IlcTreatWarningsAsErrors=true", `-p:AotSizeModelsDirectory=${models}`,
     "-o", resolve(directory, "bin"), "--nologo", "-v:q"]);
   const records = spawnSync("dotnet", [resolve(root, "tests/scaling/aot-size/MstatReader/bin/Release/net10.0/MstatReader.dll"), mstat],
@@ -136,7 +167,7 @@ function publish(count, keep) {
   if (records.status !== 0) throw new Error(`MstatReader failed on ${mstat}: ${records.stderr}`);
   const build = { ...measurement(statSync(resolve(directory, "bin", executable)).size, records.stdout), publishSeconds: Math.round(milliseconds / 1000) };
   if (keep) {
-    copyFileSync(mstat, resolve(directory, "AotSize.mstat"));
+    copyFileSync(mstat, resolve(directory, `${assembly}.mstat`));
     writeFileSync(resolve(directory, "records.tsv"), records.stdout);
   } else rmSync(directory, { recursive: true, force: true });
   console.log(`  ${build.executableBytes} bytes, ${build.viewModelTypes} ViewModel types, ${build.generatedGenericTypes} Generated.*<VM> types (${build.publishSeconds} s)`);
@@ -153,30 +184,40 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const revision = option("--base");
 
   const budgets = JSON.parse(readFileSync(budgetsFile, "utf8"));
-  const entries = suiteCases(budgets.cases, "aot-size");
-  for (const name of Object.keys(entries)) if (!metrics[name]) throw new Error(`budgets.json has ${name}, which measure.mjs does not measure.`);
-  for (const name of Object.keys(metrics)) if (!entries[name]) throw new Error(`${name} has no entry in budgets.json. Add one with its class and sizes, then run --update.`);
-  // The build without fixture ViewModels, then every size of the entries.
-  const counts = [...new Set([0, ...Object.values(entries).flatMap(entry => entry.sizes)])].sort((a, b) => a - b);
+  const allEntries = suiteCases(budgets.cases, "aot-size");
+  for (const name of Object.keys(allEntries)) if (!metrics[name]) throw new Error(`budgets.json has ${name}, which measure.mjs does not measure.`);
+  for (const name of Object.keys(metrics)) if (!allEntries[name]) throw new Error(`${name} has no entry in budgets.json. Add one with its class and sizes, then run --update.`);
+  // Another runtime only reports the CS-WebUI fixture: the Desktop and Translations fixtures add publishes, not a gate.
+  const entries = Object.fromEntries(Object.entries(allEntries).filter(([name]) => !reportOnly || metrics[name].fixture === "views"));
+  // Per fixture, the build without fixture ViewModels, then every size of its entries.
+  const counts = {};
+  for (const [name, entry] of Object.entries(entries)) {
+    const fixture = metrics[name].fixture;
+    counts[fixture] = [...new Set([0, ...(counts[fixture] ?? []), ...entry.sizes])].sort((a, b) => a - b);
+  }
 
   rmSync(resultsFile, { force: true });
   run("dotnet", ["build", reader, "-c", "Release", "--nologo", "-v:q"]);
-  const builds = Object.fromEntries(counts.map(count => [count, publish(count, keep)]));
+  const builds = Object.fromEntries(Object.entries(counts).map(([fixture, sizes]) =>
+    [fixture, Object.fromEntries(sizes.map(count => [count, publish(fixture, count, keep)]))]));
 
   const results = {};
   const failures = [];
   for (const [name, entry] of Object.entries(entries)) {
-    const values = entry.sizes.map(size => metrics[name](builds[size], builds[0]));
+    const { fixture, value } = metrics[name];
+    const values = entry.sizes.map(size => value(builds[fixture][size], builds[fixture][0]));
     const { result, failure } = check(name, entry, values, updating);
     results[name] = result;
     if (failure) failures.push(failure);
   }
-  const table = perViewModel(builds);
+  const table = perViewModel(builds.views);
   mkdirSync(output, { recursive: true });
-  writeFileSync(resultsFile, `${JSON.stringify({ schema: 1, rid, cases: results, builds, perViewModel: table.slopes }, null, 2)}\n`);
+  writeFileSync(resultsFile, `${JSON.stringify({ schema: 2, rid, cases: results, builds, perViewModel: table.slopes }, null, 2)}\n`);
 
   if (reportOnly) {
-    const summary = `## NativeAOT size on ${rid}\n\nNot gated: the budgets gate ${gatedRid} (D064.5).\n\n${table.markdown}`;
+    const values = ["| Metric | Values |", "| --- | ---: |",
+      ...Object.entries(results).map(([name, result]) => `| \`${name}\` | ${result.values.map(value => value.toLocaleString("en-US")).join(" → ")} |`)];
+    const summary = `## NativeAOT size on ${rid}\n\nNot gated: the budgets gate ${gatedRid} (D064.5).\n\n${values.join("\n")}\n\n${table.markdown}`;
     console.log(summary);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
     process.exit(0);
