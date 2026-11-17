@@ -7,8 +7,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RunicApplicationFrontendCompositionType>SidePanelSample.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
-    <!-- The side panel is experimental (docs/experimental.md#RUNICDESK104). -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <OutputType>Library</OutputType>

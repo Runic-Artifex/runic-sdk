@@ -72,7 +72,7 @@ public sealed record RunicConnection(string ConnectionKey, string ClientKey)
     public override int GetHashCode() => HashCode.Combine(ConnectionKey, ClientKey);
 }
 
-// Which page of its Window a connection is (sdk#864, D062.1). Internal until the side panel's API (RUNICDESK104) makes it
+// Which page of its Window a connection is (sdk#864, D062.1). Internal until the side panel's API makes it
 // public on RunicConnection: a Window's page, or the page of its side panel, another page of the same surface beside it
 // that shares the Window's ViewModel tree. The transport sets it (BridgeRequest.ConnectionKind), never the page. A side
 // panel's connection is an ordinary connection of the Window, except that it is not granted navigation-path/1.

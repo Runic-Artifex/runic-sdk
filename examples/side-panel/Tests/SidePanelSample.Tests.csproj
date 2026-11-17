@@ -7,8 +7,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <!-- The side panel is experimental (docs/experimental.md#RUNICDESK104). -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TUnit" />

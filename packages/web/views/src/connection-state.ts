@@ -205,7 +205,7 @@ export function endWindowDraining(slots: Slots): void {
 }
 
 /**
- * Experimental (close drain, 0.19; the .NET side is `RUNICDESK105`): observes whether the application closed the current
+ * The close drain (0.19, stable since 0.22): observes whether the application closed the current
  * instance's window (the page's, outside `RunicInstance.run`) with a close drain. Calls `listener` with the current value
  * at once, then after each change, until the returned function is called. `true` from the `closing` push with
  * `draining: true` until the window's connection ends, when `onBridgeConnection` reports `closed`, or a new connection

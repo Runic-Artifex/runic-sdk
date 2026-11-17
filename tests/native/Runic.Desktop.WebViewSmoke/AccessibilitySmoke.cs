@@ -201,7 +201,6 @@ internal static class AccessibilitySmoke
         }
         if (sidePanel)
         {
-#pragma warning disable RUNICDESK104 // The side panel is experimental.
             // CheckSidePanel answers from the last reported state, which arrives after the window opened.
             await TestTimeouts.UntilAsync(() => window.State?.Bounds is not null, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(50),
                 CancellationToken.None);
@@ -215,7 +214,6 @@ internal static class AccessibilitySmoke
             if (opened is not DesktopSidePanelResult.Opened)
                 throw new InvalidOperationException($"The side panel fixture's panel did not open ({opened}): {await DescribeRoomAsync(host, window)}.");
             Console.WriteLine("ACCESSIBILITY side panel open on the right edge.");
-#pragma warning restore RUNICDESK104
         }
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
         using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(5));
@@ -244,9 +242,7 @@ internal static class AccessibilitySmoke
             }
             else if (request == "dock-left")
             {
-#pragma warning disable RUNICDESK104 // The side panel is experimental.
                 var refusal = await window.SidePanel!.MoveToEdgeAsync(DesktopWindowEdge.Left, deadline.Token);
-#pragma warning restore RUNICDESK104
                 if (refusal is not null) throw new InvalidOperationException($"The side panel fixture's panel did not move to the left edge: {refusal}.");
                 Console.WriteLine("ACCESSIBILITY side panel moved to the left edge.");
             }

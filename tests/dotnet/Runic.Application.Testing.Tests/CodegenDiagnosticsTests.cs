@@ -177,7 +177,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class ClassCloseWindow : RunicWindow<ClassCloseViewModel>;
                 public sealed partial class NoCloseOperationWindow : RunicWindow<NoCloseOperationViewModel>;
                 """;
-            const string Source = Preamble + "#pragma warning disable RUNICDESK105\n" + Models;
+            const string Source = Preamble + Models;
             var (exitCode, output, directory) = await RunGeneratorAsync(generator, Path.Combine(temporaryRoot, "declared"), "Close", Source).ConfigureAwait(false);
             var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE039:", StringComparison.Ordinal)).ToArray();
             int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
@@ -204,10 +204,10 @@ internal sealed partial class CodegenDiagnosticsTests
                         ("CloseViewModel", "Toggle"), ("NoCloseOperationViewModel", "Toggle") }
                         .All(command => !Descriptor(command.Item1, command.Item2).Contains("Close = ", StringComparison.Ordinal)),
                 "The generated descriptors do not carry exactly the declared non-Default policies of operations.");
-            // A Bridge that emits a policy suppresses the experimental ID, which the application opted in to where it declared it.
-            Require(Bridge("CloseViewModel").Contains("#pragma warning disable RUNICDESK105", StringComparison.Ordinal)
+            // The close drain is stable since 0.22 (D068.8): no Bridge suppresses its former experimental ID.
+            Require(!Bridge("CloseViewModel").Contains("RUNICDESK105", StringComparison.Ordinal)
                     && !Bridge("NoCloseOperationViewModel").Contains("RUNICDESK105", StringComparison.Ordinal),
-                "The generated Bridges do not suppress RUNICDESK105 exactly where they use RunicOperationClose.");
+                "A generated Bridge still suppresses the retired RUNICDESK105.");
 
             // The same models without the declarations: the TypeScript client and its contract hash are identical. The
             // declaration maps (#952) differ only because the attribute lines move the members.

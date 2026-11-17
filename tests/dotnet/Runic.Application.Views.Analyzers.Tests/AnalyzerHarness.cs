@@ -93,9 +93,7 @@ internal static class AnalyzerHarness
                 .ToMetadataReference());
         var workspace = new AdhocWorkspace();
         var project = workspace.AddProject(ProjectInfo.Create(ProjectId.CreateNewId(), VersionStamp.Default, "App", "App",
-            LanguageNames.CSharp, compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
-                // RunicOperationClose is experimental.
-                .WithSpecificDiagnosticOptions([new("RUNICDESK105", ReportDiagnostic.Suppress)]),
+            LanguageNames.CSharp, compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
             parseOptions: new CSharpParseOptions(LanguageVersion.Preview),
             metadataReferences: references.DistinctBy(reference => reference.Display)));
         project = workspace.AddDocument(project.Id, "Libraries.cs", SourceText.From(Libraries)).Project;

@@ -70,7 +70,12 @@ export {
   type UploadOptions,
   type UploadProgress,
 } from "./blobs.js";
-export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
+export {
+  onBridgeConnection,
+  onBridgeDraining,
+  type BridgeConnectionOptions,
+  type BridgeConnectionState,
+} from "./connection-state.js";
 export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
 export { configureClientLanguages, type ClientLanguagesOptions } from "./client-languages.js";
 export {

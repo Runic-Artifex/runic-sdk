@@ -76,8 +76,6 @@ public sealed class RunicTestWindow : IAsyncDisposable
     /// admission stopped, its page received <c>closing</c> with <c>draining: true</c> and still receives its state. It
     /// closes by itself when the work has ended or the drain's timeout passed on the Window's clock.
     /// </summary>
-    /// <remarks>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public bool IsDraining => _bridge.IsDraining;
 
     /// <summary>The Window's recording presentation.</summary>

@@ -591,8 +591,8 @@ process earlier, whatever the application does, so keep its limits above
 | A second Ctrl+C | at once |
 
 On macOS a quit's reply to the system waits until the application returned, so a
-logout waits for the drain too. The close drain is experimental
-(`RUNICDESK105`).
+logout waits for the drain too. The close drain is stable since 0.22; it was
+experimental under `RUNICDESK105` in 0.19 to 0.21.
 
 `DesktopWindow.NativeHandle` is the top-level window of an open embedded window,
 or zero for an installed browser or a closed window. Its kind depends on the
@@ -1246,12 +1246,11 @@ manager decides on Linux, so `StateChanged` reports the result. They need
 `DesktopWindow.OpenSidePanelAsync` shows a page of the window's surface beside
 the window's page, in a strip on one edge by which the window grows. The page
 keeps its size and its place on the screen: its viewport, media queries and
-`position: fixed` elements do not change. Experimental under
-[`RUNICDESK104`](../../../docs/experimental.md#RUNICDESK104); 0.19 shows it on
-Windows (WebView2), macOS (WKWebView) and Linux (WebKitGTK, GTK 3 and GTK 4).
+`position: fixed` elements do not change. It shows on Windows (WebView2), macOS
+(WKWebView) and Linux (WebKitGTK, GTK 3 and GTK 4). New in 0.19 and stable since
+0.22; it was experimental under `RUNICDESK104` in 0.19 to 0.21.
 
 ```csharp
-#pragma warning disable RUNICDESK104 // The side panel is experimental.
 var result = await window.OpenSidePanelAsync(new DesktopSidePanelOptions
 {
     Edge = DesktopWindowEdge.End, // the right edge of a left-to-right window
@@ -1262,7 +1261,6 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
 {
     // Show the content in an overlay of the page instead.
 }
-#pragma warning restore RUNICDESK104
 ```
 
 - **One step, exact bounds.** The window loads the panel's page in a hidden view
@@ -2330,13 +2328,12 @@ describes the window owner the platform services receive for a window.
 
 ## Experimental APIs
 
-The [side panel](#side-panel) is experimental under `RUNICDESK104` (0.19, for one
-minor), the [close drain](#closing-after-the-work-has-drained) (`CloseDrainAsync`,
-`DesktopCloseDrainContext`, `DesktopCloseReason`, `ShutdownDrainTimeout` and
-`ShutdownStarting`) under `RUNICDESK105` (0.19, for one minor), and `DesktopWindowHostOptions.EphemeralDataStore` with
-`IDesktopEphemeralDataStoreWindowHost` under `RUNICDESK103` (hosted windows). The
-former IDs are retired, so remove their suppressions: `RUNICDESK100` (custom window hosts) graduated in 0.10.0, and
-`RUNICDESK101` (the low-level presentation transport) was split in 0.10.0:
+`DesktopWindowHostOptions.EphemeralDataStore` with
+`IDesktopEphemeralDataStoreWindowHost` is experimental under `RUNICDESK103` (hosted windows). The
+former IDs are retired, so remove their suppressions: the [side panel](#side-panel) (`RUNICDESK104`) and the
+[close drain](#closing-after-the-work-has-drained) (`RUNICDESK105`: `CloseDrainAsync`, `DesktopCloseDrainContext`,
+`DesktopCloseReason`, `ShutdownDrainTimeout` and `ShutdownStarting`) graduated in 0.22.0, `RUNICDESK100` (custom
+window hosts) graduated in 0.10.0, and `RUNICDESK101` (the low-level presentation transport) was split in 0.10.0:
 `ExecuteJavaScriptAsync`, `ConnectionCount` and `SubscribeConnectionEvents`, with
 `DesktopConnectionEvent` and `DesktopConnectionEventKind`, are stable, and the
 rest is internal to Runic Desktop and Runic Windows and Views. See

@@ -140,9 +140,7 @@ public sealed record RunicDesktopHostOptions
     /// and the process still waits for durable work before the Window's scope is released. A hosted application's Window
     /// drains before it reports <c>window-closed</c>, and the host keeps its window until then.
     /// </para>
-    /// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicCloseDrain? CloseDrain { get; init; }
 
     /// <summary>

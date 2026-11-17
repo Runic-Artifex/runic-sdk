@@ -490,7 +490,7 @@ When the user closes a hosted window, or the host's application asks to close it
   window whose decision is pending waits for the same decision.
 - `RunicWindow.RequestCloseAsync` in the guest asks the same decision locally: the guest runs the guard and, when it
   allows, closes the Window, which pushes `window-closed`.
-- A Window with a close drain (`RunicWindowOptions.CloseDrain`, experimental) answers `allow: true` once its guard
+- A Window with a close drain (`RunicWindowOptions.CloseDrain`) answers `allow: true` once its guard
   agreed, then stays open while its accepted work drains: its page receives `closing` with `draining: true` and stays
   connected. It pushes `window-closed` after the drain, which may take as long as the work does; the host keeps the
   hosted window, or the region, until then, and may show it as closing. `"force": true` skips the decision, not the

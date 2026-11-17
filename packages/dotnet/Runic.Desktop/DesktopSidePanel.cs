@@ -4,8 +4,6 @@ using Runic.Desktop.Internal;
 namespace Runic.Desktop;
 
 /// <summary>What <see cref="DesktopWindow.OpenSidePanelAsync"/> opens: a page of the window's surface beside its page.</summary>
-/// <remarks>Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record DesktopSidePanelOptions
 {
     /// <summary>The smallest <see cref="Width"/>, in device-independent pixels.</summary>
@@ -50,8 +48,7 @@ public sealed record DesktopSidePanelOptions
 }
 
 /// <summary>The outcome of <see cref="DesktopWindow.OpenSidePanelAsync"/>: <see cref="Opened"/> or <see cref="Refused"/>.</summary>
-/// <remarks>Closed: these two cases are all there are. Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+/// <remarks>Closed: these two cases are all there are.</remarks>
 public abstract record DesktopSidePanelResult
 {
     private DesktopSidePanelResult()
@@ -69,10 +66,8 @@ public abstract record DesktopSidePanelResult
 
 /// <summary>Why a side panel did not open or change.</summary>
 /// <remarks>
-/// Open: a minor release may add values; handle an unknown value as <see cref="Unsupported"/>. Experimental
-/// (<c>RUNICDESK104</c>).
+/// Open: a minor release may add values; handle an unknown value as <see cref="Unsupported"/>.
 /// </remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum DesktopSidePanelRefusal
 {
     /// <summary>
@@ -118,8 +113,7 @@ public enum DesktopSidePanelRefusal
 }
 
 /// <summary>Why a side panel closed, for <see cref="DesktopSidePanel.Closed"/>.</summary>
-/// <remarks>Open: a minor release may add values. Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+/// <remarks>Open: a minor release may add values.</remarks>
 public enum DesktopSidePanelCloseReason
 {
     /// <summary>The application closed it (<see cref="DesktopSidePanel.CloseAsync"/>), or its page did (<c>window.close()</c>).</summary>
@@ -133,8 +127,6 @@ public enum DesktopSidePanelCloseReason
 }
 
 /// <summary>Provides the reason for <see cref="DesktopSidePanel.Closed"/>.</summary>
-/// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class DesktopSidePanelClosedEventArgs : EventArgs
 {
     /// <summary>Creates event data for <paramref name="reason"/>.</summary>
@@ -156,10 +148,9 @@ public sealed class DesktopSidePanelClosedEventArgs : EventArgs
 /// the window the panel keeps its width and the page takes the rest, also when the window is maximized or full-screen.
 /// </para>
 /// <para>
-/// Disposing it closes it. Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
+/// Disposing it closes it.
 /// </para>
 /// </remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class DesktopSidePanel : IAsyncDisposable
 {
     private readonly DesktopWindow _window;

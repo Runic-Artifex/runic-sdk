@@ -113,9 +113,12 @@ the release notes, which give the full detail and the pull requests:
    prerelease version of its own; take the one listed in the release notes.
 2. Remove every `RUNICDESK100`, `RUNICDESK101` and `RUNICASSETS001` suppression
    and every `./experimental` import of 0.9 (see [npm packages](#npm-packages)).
+   From 0.22, also remove every `RUNICDESK104` (side panel) and `RUNICDESK105`
+   (close drain) suppression, and import `onBridgeDraining` from
+   `@runic-artifex/views` instead of `@runic-artifex/views/experimental`, where
+   it is deprecated in 0.22 and removed in 0.23.
    What is experimental now, hosted applications (`RUNICDESK103`), from 0.18
-   the npm packages' new `./experimental` entries for hosted regions, and from
-   0.19 the side panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`),
+   the npm packages' new `./experimental` entries for hosted regions,
    from 0.20 `runicComponentMount` in `@runic-artifex/angular/experimental`, and
    from 0.21 trusted component mode in the `./experimental` entries of
    `@runic-artifex/views` and `@runic-artifex/vite-plugin-runic`, is

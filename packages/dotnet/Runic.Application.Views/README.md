@@ -946,7 +946,7 @@ casts `IRunicWindow.Host` to a host's type:
 | `SetColorSchemeAsync(scheme)` | Switches it between light and dark; the page's `prefers-color-scheme` follows. |
 | `IsActive`, `IsMinimized`, `IsVisible`, `Activity` | Whether it has the keyboard focus, is minimized and is shown, with `ActivityChanged` and `PropertyChanged`. |
 | `Features` | What the host can do now. |
-| `OpenSidePanelAsync(options)`, `SidePanel` | Opens another page of the Window beside its page, growing the Window; [experimental](#a-side-panel-beside-the-windows-page). |
+| `OpenSidePanelAsync(options)`, `SidePanel` | Opens another page of the Window beside its page, growing the Window; see [a side panel beside the Window's page](#a-side-panel-beside-the-windows-page). |
 
 With CommunityToolkit.Mvvm, a ViewModel that polls less while the user works
 elsewhere and hides to the status area:
@@ -1101,8 +1101,7 @@ A custom Runic Desktop window host supports them by implementing
 
 #### A side panel beside the Window's page
 
-`OpenSidePanelAsync` (0.19, experimental under
-[`RUNICDESK104`](../../../docs/experimental.md#RUNICDESK104)) opens another
+`OpenSidePanelAsync` (0.19, stable since 0.22) opens another
 page of the Window beside its page, in a strip on one edge by which the Window
 grows, so the page keeps its size and its place on the screen. The panel's page
 is a second connection of the same Window: it binds to the same ViewModel tree,
@@ -1223,10 +1222,9 @@ unacknowledged close is logged at Debug as event 1026.
 
 ### Closing after the Window's work has drained
 
-> Experimental (0.19, [`RUNICDESK105`](../../../docs/experimental.md#RUNICDESK105)):
-> `RunicCloseDrain`, `RunicWindowOptions.CloseDrain`, `RunicOperationClose`,
-> `IRunicWindowContext.DrainOnClose` and `RunicWindowCloseResult.RemainingDurableWork`.
-> `AcceptedWorkScope.WaitForAcceptedAsync` is stable.
+> New in 0.19 and stable since 0.22: `RunicCloseDrain`, `RunicWindowOptions.CloseDrain`,
+> `RunicOperationClose`, `IRunicWindowContext.DrainOnClose` and
+> `RunicWindowCloseResult.RemainingDurableWork` were experimental under `RUNICDESK105` in 0.19 to 0.21.
 
 An application whose Window runs durable work, such as a change to an external
 system that must not stop halfway, can keep the window open after the user
@@ -4888,7 +4886,7 @@ trace id; correlate them with the host's spans by time and route.
 | 1052 | `WindowCloseGuardFailed` | Error | A guarded Window's `CanCloseAsync` throws; the window stays open. A departure guard that throws is logged by the navigator as 1060 instead. | `Window`, `ErrorType` |
 | 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
 | 1054 | `WindowFileDropFailed` | Error | `IRunicFileDropTarget.OnFilesDroppedAsync` of a Window's root ViewModel threw for a drop of files; later drops still arrive. | `ViewModel`, `FileCount`, `ErrorType` |
-| 1055 | `WindowCloseDrainUnavailable` | Warning | A Window with a close drain (`RunicWindowOptions.CloseDrain`, `RunicDesktopHostOptions.CloseDrain`) opens on a presentation that cannot keep its window open, such as an installed browser, serve-only mode or CS-WebUI: the window closes at once, and the Window's scope still waits for durable work. Experimental (`RUNICDESK105`). | `Window`, `Presentation` |
+| 1055 | `WindowCloseDrainUnavailable` | Warning | A Window with a close drain (`RunicWindowOptions.CloseDrain`, `RunicDesktopHostOptions.CloseDrain`) opens on a presentation that cannot keep its window open, such as an installed browser, serve-only mode or CS-WebUI: the window closes at once, and the Window's scope still waits for durable work. | `Window`, `Presentation` |
 | 1090 | `ReactiveSchedulerKept` | Information | A Runic Desktop, CS-WebUI or test-host window opens while ReactiveUI's main-thread scheduler is one set before `AddRunicReactiveModelContext()`, so Runic's was not installed. Once per scheduler type; a UI dispatcher's scheduler, such as WPF's, is not logged. | `Scheduler` |
 | 1091 | `ReactiveSchedulerReplaced` | Warning | Such a window opens after another scheduler replaced the installed one, for example a later `RxAppBuilder` `BuildApp()` with `WithPlatformServices()`. Call `WithRunicModelContext()` on that builder. Once per scheduler type; a UI dispatcher's scheduler is not logged. | `Scheduler` |
 | 1100 | `HotReloadRestartRequired` | Error | A Hot Reload edit changed a generated Bridge contract; restart the application. The `RUNIC_IDE_CONTRACT_RESTART_REQUIRED` line also goes to standard error. | `Mismatch` |
@@ -5345,7 +5343,7 @@ keep its Window open. Called from accepted work of the scope, it does not wait
 for that work, as `DrainAsync` does not. Its token stops only the wait.
 
 A Window's close waits for a scope that its context registered with
-`IRunicWindowContext.DrainOnClose(scope)` (0.19, experimental), within the
+`IRunicWindowContext.DrainOnClose(scope)` (0.19), within the
 close's timeout or [close drain](#closing-after-the-windows-work-has-drained),
 and never cancels its work. This replaces draining the scope inside a close
 guard, which closed its admission before a later guard could still keep the

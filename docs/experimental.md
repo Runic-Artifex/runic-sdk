@@ -6,10 +6,10 @@ type or member as an error with that ID, and the message links to the entry on
 this page for the release you use. Suppressing the ID is the opt-in: it says
 your project accepts changes to that API before it is supported.
 
-Three .NET API families are experimental: [`RUNICDESK103`](#RUNICDESK103), hosted
-application windows, [`RUNICDESK104`](#RUNICDESK104), the side panel, and
-[`RUNICDESK105`](#RUNICDESK105), the close drain. Each family is listed here with
-its ID, API and packages.
+One .NET API family is experimental: [`RUNICDESK103`](#RUNICDESK103), hosted
+application windows. It is listed here with its ID, API and packages. The side
+panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`) graduated in 0.22.0
+([graduated and retired IDs](#retired)).
 
 An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
 that names no other diagnostics numbers its experimental families from `001`,
@@ -19,7 +19,7 @@ source generator reports `RUNICDBUS001` to `RUNICDBUS013`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
 Runic.Desktop, Runic.Desktop.Kestrel and Runic.Desktop.NativeServer build targets
 report `RUNICDESK001` to `RUNICDESK006`, so the experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
-`RUNICDESK102` are retired, `RUNICDESK103` to `RUNICDESK105` are in use, so the
+`RUNICDESK102`, `RUNICDESK104` and `RUNICDESK105` are retired, `RUNICDESK103` is in use, so the
 next is `RUNICDESK106`. The Navigation
 ReactiveUI build targets report `RUNICNAV002`, after the retired `RUNICNAV001`,
 so an experimental Navigation family would be `RUNICNAV100`.
@@ -71,53 +71,6 @@ region example's [design menu](../examples/hosted-region/README.md#design).
 | `Runic.Desktop` | `DesktopWindowHostOptions.EphemeralDataStore` and `IDesktopEphemeralDataStoreWindowHost`, which a custom window host implements to show hosted windows |
 | `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest`, `RunicTestPresentationRequest`, `RunicTestPresentationKind` and `RunicTestLaunchRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)). From 0.18: `RunicTestHostOptions.EmbedWindow` and `AllowElevatedGuest`, `RunicTestHostedWindow`'s region members (`AttachRegionAsync`, `AttachComponentAsync`, `DetachRegionAsync`, `SetRegionBoundsAsync`, `FocusRegionAsync`, `IsRegion`, `IsAttached`, `FrameIsSameSite`, `Titles`, `RegionPages`) and `RunicTestComponent`. From 0.19: `RunicTestHostOptions.RegionAppearance` and `RunicTestHost.SetRegionAppearanceAsync` |
 
-<a id="RUNICDESK104"></a>
-
-## RUNICDESK104
-
-The side panel (0.19, sdk#864): a page of a window's surface shown beside the
-window's page, in a strip on one edge by which the window grows, so the page keeps
-its size and its place on the screen. The panel's page is a second connection of the
-window and binds to the same ViewModel tree. Experimental for one minor (D062.7);
-the window building blocks it uses (`DesktopWindowState.Bounds`, `SetBoundsAsync`,
-`SetMinimumSizeAsync`, `IsSnapped`) are stable. 0.19 shows it on Windows (WebView2),
-macOS (WKWebView) and Linux (WebKitGTK, GTK 3 and the GTK 4 profile of
-`Runic.Desktop.Gtk4`; on Wayland the right edge only); other custom window hosts,
-WPF, hosted windows and installed browsers refuse it with `Unsupported`. Start with the
-[Runic.Desktop README](../packages/dotnet/Runic.Desktop/README.md#side-panel).
-
-| Package | API |
-| --- | --- |
-| `Runic.Desktop` | `DesktopWindow.OpenSidePanelAsync`, `DesktopWindow.SidePanel`, `DesktopWindow.CheckSidePanel`, `DesktopSidePanel`, `DesktopSidePanelOptions`, `DesktopSidePanelResult` (`Opened`, `Refused`), `DesktopSidePanelRefusal`, `DesktopSidePanelCloseReason` and `DesktopSidePanelClosedEventArgs` |
-| `Runic.Application.Views` | `IRunicWindowPresentation.OpenSidePanelAsync` and `SidePanel`, `RunicWindowPresentationFeatures.SidePanel`, `IRunicSidePanel`, `RunicSidePanelOptions`, `RunicSidePanelEdge`, `RunicSidePanelResult` (`Opened`, `Refused`), `RunicSidePanelRefusal`, `RunicSidePanelCloseReason` and `RunicSidePanelClosedEventArgs` ([a side panel beside the Window's page](../packages/dotnet/Runic.Application.Views/README.md#a-side-panel-beside-the-windows-page)) |
-| `Runic.Application.Testing` | `RunicTestWindowPresentation`'s side panel: `OpenSidePanelAsync`, `SidePanel`, `SetSidePanelRefusal`, `CloseSidePanel`, `WindowX`, `WindowWidth`, `WorkAreaWidth`, `IsMaximized`, `IsSnapped` and `IsRightToLeft`; `RunicWindowPresentationRequest.SidePanel`, `Edge` and `Width`; the `RunicWindowPresentationRequestKind` values `OpenSidePanel`, `MoveSidePanel`, `SetSidePanelWidth`, `FocusSidePanel` and `CloseSidePanel` |
-
-<a id="RUNICDESK105"></a>
-
-## RUNICDESK105
-
-The close drain (0.19, sdk#900): a Window stays open after its close was decided
-until its accepted work has drained, and each operation declares what a close
-does to it, so a close or a shutdown never cancels durable work. Experimental for
-one minor (D064.20), because it changes how windows close and how the
-application shuts down. `AcceptedWorkScope.WaitForAcceptedAsync`, which it
-builds on, is stable. Start with
-[closing after the Window's work has drained](../packages/dotnet/Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained).
-Runic Desktop's embedded windows, a hosted application's Windows and
-`RunicWindowTestHost` drain, and so does Runic Desktop's shutdown (Ctrl+C,
-SIGTERM, quit), within `DesktopHostOptions.ShutdownDrainTimeout`.
-
-| Package | API |
-| --- | --- |
-| `Runic.Application.Views` | `RunicCloseDrain`, `RunicWindowOptions.CloseDrain`, `RunicOperationClose`, `RunicOperationCloseAttribute`, `IRunicWindowContext.DrainOnClose`, `RunicWindowCloseResult.RemainingDurableWork` and, for generated code, `CommandDescriptor.Close` |
-| `Runic.Application.Testing` | `RunicWindowTestHostOptions.CloseDrain` and `RunicTestWindow.IsDraining` |
-| `Runic.Application.Views` (hosts) | `RunicWindowOpening<TViewModel>.ReportCloseDrainUnavailable` |
-| `Runic.Application.Views.Desktop` | `RunicDesktopHostOptions.CloseDrain` |
-| `Runic.Desktop` | `DesktopWindowOptions.CloseDrainAsync`, `DesktopCloseDrainContext`, `DesktopCloseReason`, `DesktopHostOptions.ShutdownDrainTimeout` and `DesktopHost.ShutdownStarting` |
-
-A generated Bridge that emits a declared `RunicOperationClose` suppresses the ID
-in its own file; suppress it in the project that declares the attribute.
-
 <a id="experimental-packages"></a>
 
 ## Experimental packages
@@ -134,10 +87,12 @@ When a family graduates, its attribute is removed and its API is supported like
 the rest of its package. Its ID is retired and never names another family, so a
 leftover suppression is harmless; remove it.
 
-<a id="RUNICDESK102"></a><a id="RUNICASSETS001"></a><a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
+<a id="RUNICDESK105"></a><a id="RUNICDESK104"></a><a id="RUNICDESK102"></a><a id="RUNICASSETS001"></a><a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
 
 | ID | API family | Graduated in |
 |---|---|---|
+| `RUNICDESK105` | The close drain (0.19, sdk#900): a Window stays open after its close was decided until its accepted work has drained, and each operation declares what a close does to it, so a close or a shutdown never cancels durable work. Now stable: in `Runic.Application.Views`, `RunicCloseDrain`, `RunicWindowOptions.CloseDrain`, `RunicOperationClose`, `RunicOperationCloseAttribute`, `IRunicWindowContext.DrainOnClose`, `RunicWindowCloseResult.RemainingDurableWork`, `RunicWindowOpening<TViewModel>.ReportCloseDrainUnavailable` and, for generated code, `CommandDescriptor.Close`; `RunicDesktopHostOptions.CloseDrain` (`Runic.Application.Views.Desktop`); `RunicWindowTestHostOptions.CloseDrain` and `RunicTestWindow.IsDraining` (`Runic.Application.Testing`); `DesktopWindowOptions.CloseDrainAsync`, `DesktopCloseDrainContext`, `DesktopCloseReason`, `DesktopHostOptions.ShutdownDrainTimeout` and `DesktopHost.ShutdownStarting` (`Runic.Desktop`). On npm, `onBridgeDraining` is a root export; `@runic-artifex/views/experimental` keeps a deprecated re-export of the same function in 0.22, which 0.23 removes. Generated Bridges no longer suppress the ID. See [closing after the Window's work has drained](../packages/dotnet/Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained). Remove a leftover `NoWarn` entry or `#pragma`. | 0.22.0 |
+| `RUNICDESK104` | The side panel (0.19, sdk#864): a page of a window's surface shown beside the window's page, in a strip on one edge by which the window grows. Now stable, unchanged since 0.21: `DesktopWindow.OpenSidePanelAsync`, `SidePanel` and `CheckSidePanel` and the `DesktopSidePanel*` types (`Runic.Desktop`); `IRunicWindowPresentation.OpenSidePanelAsync` and `SidePanel`, `RunicWindowPresentationFeatures.SidePanel`, `IRunicSidePanel` and the `RunicSidePanel*` types (`Runic.Application.Views`); `RunicTestWindowPresentation`'s side panel members and the side panel requests of `RunicWindowPresentationRequest` (`Runic.Application.Testing`). See the [side panel guide](side-panel.md). Remove a leftover `NoWarn` entry or `#pragma`. | 0.22.0 |
 | `RUNICDESK102` | Experimental package: the native Desktop server, `Runic.Desktop.NativeServer` (X1), which served Runic Desktop surfaces from a Rust (axum) server instead of ASP.NET Core Kestrel. Its build targets reported the ID until a project suppressed it. It graduated with its first release (D053.26): new applications use it (D053.24), `Runic.Desktop.Kestrel` is the opt-in, and the [package README](../packages/dotnet/Runic.Desktop.NativeServer/README.md) describes it. Remove a leftover `NoWarn` entry. | 0.15.0 |
 | `RUNICASSETS001` | Development-directory asset source (`Runic.Assets`): `DevelopmentDirectoryAssetSource`, `IAssetSourceChangeNotifier`, `AssetWatchOptions` and `AssetSourceChangedEventArgs`, now on Linux, Windows and macOS. `Refresh` became `RefreshAsync`; `StartWatching(options)` returns nothing and the watch runs until the source is disposed, so `IAssetWatch` was removed. `dotnet runic dev` uses it when no Vite or Angular development server runs: the Runic Desktop window serves the frontend output directory and reloads when it changes ([dotnet-runic](../tools/dotnet-runic/README.md)). | 0.10.0 |
 | `RUNICDESK101` | Low-level presentation transport (`Runic.Desktop`), partly graduated and the rest made internal. Stable: `DesktopSurface.ExecuteJavaScriptAsync` (now returning `ValueTask<string>`), `DesktopSurface.ConnectionCount` and `DesktopSurface.SubscribeConnectionEvents`, whose handler receives the new `DesktopConnectionEvent` (`Kind`, `Surface`) with `DesktopConnectionEventKind` instead of `PresentationInvocation`. Internal: `RegisterCapability`, `RunJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types; calls between JavaScript and .NET go through [Runic Windows and Views](../packages/dotnet/Runic.Application.Views.Desktop/README.md). | 0.10.0 |
@@ -157,25 +112,28 @@ An npm package has no diagnostic ID: an experimental API is exported only from
 the package's `./experimental` subpath, so importing one is the opt-in. It may
 change or be removed in a minor release, and no stable export names an
 experimental type. Graduation moves the export to the package's root entry.
-Before 1.0 it is removed from `./experimental` in the same minor release; from
-1.0 the experimental export remains as a deprecated alias until the next major.
+Before 1.0 it stays in `./experimental` for one more minor release as a
+deprecated re-export (from 0.22, D069.3), then it is removed; from 1.0 the
+experimental export remains as a deprecated alias until the next major.
 
 Experimental npm APIs:
 
 | Package | `./experimental` exports | Since |
 |---|---|---|
 | `@runic-artifex/views` | Hosted regions: `defineHostedRegion`, `hostedRegionTag`, `HostedRegionSizing`, `HostedRegionState`, `HostedRegionStateChangeDetail`, `HostedRegionTitleChangeDetail` and `RunicHostedRegionElement`, the `<runic-hosted-region>` element that shows a hosted guest's Window in a region of a host page ([hosted regions](../specs/application/README.md#hosted-regions), feature `hosted-regions/1`). From 0.19 it sets the CSS `color-scheme` of the frame, or of a component's element, from the region's appearance override. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 |
-| `@runic-artifex/views` | The close drain: `onBridgeDraining`, whether the application closed the window with a close drain, which keeps it visible and connected while its work drains (`closing` with `draining: true`, [window close](../specs/application/README.md#window-close)). Its .NET side is [`RUNICDESK105`](#RUNICDESK105). | 0.19.0 |
 | `@runic-artifex/react`, `@runic-artifex/vue`, `@runic-artifex/svelte`, `@runic-artifex/angular` | `RunicHostedRegion`, the framework's component for `<runic-hosted-region>`, and the element's types (Angular also `HostedRegionStateChange`) | 0.18.0 |
 | `@runic-artifex/views` | Trusted component mode: `defineRunicComponent`, `connectComponentBridge` and the types `RunicComponentBridge`, `RunicComponentConnection`, `RunicComponentContext`, `RunicComponentDefinition`, `RunicComponentElement`, `RunicComponentEndpoint`, `RunicComponentMount`, `RunicComponentOptions` and `RunicComponentStyle`, the runtime of a guest's Views as a custom element in a host page's own document ([components](../packages/web/views/README.md#components-experimental)). The `./component` entry of 0.18 to 0.20 exported them; 0.21 removed it. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 (`./experimental` since 0.21.0) |
 | `@runic-artifex/vite-plugin-runic` | `runic` with the `component` build target, which builds a guest's component next to its page, and the types `RunicExperimentalViteOptions` and `RunicComponentOptions` ([component build target](../packages/web/vite-plugin-runic/README.md#component-build-target-experimental)). Until 0.20 the root entry's `runic` took `component`; from 0.21 it throws for it. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 (`./experimental` since 0.21.0) |
 | `@runic-artifex/angular` | `runicComponentMount` and `RunicComponentMountOptions`: the mount function of an Angular guest's component build in [trusted component mode](hosted-regions.md#component-mode), with its styles in the element's shadow root ([components](../packages/web/angular/README.md#components-experimental)). Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.20.0 |
 
-The APIs below graduated in 0.10.0, which removed the `./experimental` entries of
-all six packages then. Import them from the package root.
+The APIs below graduated. 0.10.0 removed the `./experimental` entries of all six
+packages then; 0.22.0 deprecated `onBridgeDraining` in `@runic-artifex/views/experimental`, which keeps it
+for one minor and 0.23.0 removes it.
+Import them from the package root.
 
 | Package | Graduated exports | Graduated in |
 |---|---|---|
+| `@runic-artifex/views` | `onBridgeDraining`, the close drain's flag (`closing` with `draining: true`, [window close](../specs/application/README.md#window-close)); `./experimental` keeps a deprecated re-export until 0.23.0. Its .NET side is [`RUNICDESK105`](#RUNICDESK105). | 0.22.0 |
 | `@runic-artifex/views` | `collectionViewport`, `createCollectionViewportController`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions`. The viewport keeps a fixed row height; `createQueryViewportController` (0.16) lays out query collections with variable heights. | 0.10.0 |
 | `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState`. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation` wrap it, and the [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer) is its sample. | 0.10.0 |
 | `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | 0.10.0 |

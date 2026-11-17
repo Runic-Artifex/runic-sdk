@@ -9,9 +9,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- The GTK 4 window host honours Runic Desktop's experimental runic-host/1 data store option, and shows its
-         experimental side panel (RUNICDESK104). -->
-    <NoWarn>$(NoWarn);RUNICDESK103;RUNICDESK104</NoWarn>
+    <!-- The GTK 4 window host honours Runic Desktop's experimental runic-host/1 data store option. -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />

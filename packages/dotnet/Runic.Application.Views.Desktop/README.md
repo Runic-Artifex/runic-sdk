@@ -160,8 +160,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   close and logs event 1053 `WindowCloseGuardUnavailable`; `RequestCloseAsync`
   still asks `CanCloseAsync` there.
 - A Window with a close drain (`RunicWindowOptions.CloseDrain`, or
-  `RunicDesktopHostOptions.CloseDrain` for every Window; experimental,
-  `RUNICDESK105`) keeps its embedded window open after the user's close,
+  `RunicDesktopHostOptions.CloseDrain` for every Window) keeps its embedded window open after the user's close,
   `RequestCloseAsync` or a quit was approved, until its operations, awaited
   commands and drained scopes have ended (see
   [Closing after the Window's work has drained](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained)).

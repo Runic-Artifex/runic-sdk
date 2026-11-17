@@ -416,10 +416,8 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <see cref="ShutdownRequested"/> follows once the windows that drain (<see cref="DesktopWindowOptions.CloseDrainAsync"/>)
     /// have drained or <see cref="DesktopHostOptions.ShutdownDrainTimeout"/> passed, and together with this token when no
     /// window drains. Observe this one to stop work that should end early, such as polling or a background refresh;
-    /// work that the drains wait for observes <see cref="ShutdownRequested"/> or nothing. Experimental
-    /// (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.
+    /// work that the drains wait for observes <see cref="ShutdownRequested"/> or nothing.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public CancellationToken ShutdownStarting => _shutdownStarting.Token;
 
     // Cancelled when the shutdown's drains end: every one returned, ShutdownDrainTimeout passed, or the host was disposed.

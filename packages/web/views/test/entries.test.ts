@@ -28,14 +28,16 @@ test("binding and generator APIs are not in the application entries; graduated A
   for (const name of ["viewSourceIdentity", "isViewClient"])
     assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   // Graduated from ./experimental in 0.10 (docs/experimental.md).
-  for (const name of ["collectionViewport", "createCollectionViewportController", "createLatestOperationController"])
+  // The close drain's flag graduated in 0.22 (RUNICDESK105).
+  for (const name of ["collectionViewport", "createCollectionViewportController", "createLatestOperationController", "onBridgeDraining"])
     assert.equal(typeof (root as Record<string, unknown>)[name], "function", `${name} is a root export`);
-  // Hosted regions (0.18), the close drain's flag (0.19) and trusted component mode (0.18, moved from ./component in
-  // 0.21) are experimental: only ./experimental exports them.
+  // Hosted regions (0.18) and trusted component mode (0.18, moved from ./component in 0.21) are experimental: only
+  // ./experimental exports them. onBridgeDraining graduated in 0.22; ./experimental keeps it, deprecated, until 0.23.
   const experimental = await import("@runic-artifex/views/experimental");
   assert.deepEqual(Object.keys(experimental).sort(),
     ["connectComponentBridge", "defineHostedRegion", "defineRunicComponent", "hostedRegionTag", "onBridgeDraining"]);
-  for (const name of Object.keys(experimental)) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
+  assert.equal(experimental.onBridgeDraining, root.onBridgeDraining, "the deprecated ./experimental onBridgeDraining is the root export");
+  for (const name of Object.keys(experimental).filter(name => name !== "onBridgeDraining")) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   const bindings = await import("@runic-artifex/views/bindings");
   assert.deepEqual(Object.keys(bindings).sort(), [
     "checkKeepAlive", "defaultKeepAlive", "describeViewClient", "isViewClient", "missingViewMessage", "reportMissingView", "translationsTextRevision", "viewSourceIdentity",
