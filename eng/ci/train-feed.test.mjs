@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { trainVersions, trainFeedSource, activeTrainFeed, trainFeedNpm, trainFeedNpmSpec } from './train-feed.mjs';
+import { trainCommits, trainVersions, trainFeedSource, activeTrainFeed, trainFeedNpm, trainFeedNpmSpec } from './train-feed.mjs';
 
 test('the train versions are the central versions of Runic.CommandLine and Runic.Translations', () => {
   const props = `<Project><ItemGroup>
@@ -16,6 +16,20 @@ test('the train versions are the central versions of Runic.CommandLine and Runic
   assert.throws(() => trainVersions('<Project />'), /no PackageVersion for Runic.CommandLine/);
   // The repository's own pins parse.
   assert.match(trainVersions().cli, /^\d+\.\d+\.\d+/);
+});
+
+test('a train version not on nuget.org names the upstream commit of the train candidate', () => {
+  const commit = 'c1eb5af8'.padEnd(40, '0');
+  const props = `<Project><ItemGroup>
+    <PackageVersion Include="Runic.Translations" Version="0.14.0" TrainCommit="${commit}" />
+    <PackageVersion Include="Runic.Translations.Hosting" Version="0.14.0" TrainCommit="${'f'.repeat(40)}" />
+    <PackageVersion Include="Runic.CommandLine" Version="0.13.0" />
+  </ItemGroup></Project>`;
+  assert.deepEqual(trainCommits(props), { cli: null, translations: commit });
+  assert.deepEqual(trainVersions(props), { cli: '0.13.0', translations: '0.14.0' });
+  assert.throws(() => trainCommits('<PackageVersion Include="Runic.CommandLine" Version="0.13.0" TrainCommit="c1eb5af8" />'), /not a full commit SHA/);
+  // The repository's own pins parse.
+  assert.equal(typeof trainCommits(), 'object');
 });
 
 test('consumers add the feed with a mapping for the upstream package ids only while it is active', () => {

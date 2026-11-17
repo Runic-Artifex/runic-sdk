@@ -17,18 +17,28 @@ const CI_EVENTS = ['push', 'schedule', 'workflow_dispatch'];
 
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-// `published` (the newest version on nuget.org), `published:<version>`, `run` (the newest successful ci.yml run on
-// main), `run:<run id>` or, locally, `local:<dir>` (packages packed in a checkout, <dir>/nuget and <dir>/npm).
+// `published` (the newest version on nuget.org), `published:<version>`, `run@<commit>` (the newest successful ci.yml
+// run on main at or after that commit), `run:<run id>`, `run` (the newest successful main run; only for the
+// informational N-main row, never for a train row) or, locally, `local:<dir>` (packages packed in a checkout,
+// <dir>/nuget and <dir>/npm).
+export const COMMIT = /^[0-9a-f]{40}$/;
 export function parseSpec(text) {
   const value = String(text ?? '').trim();
-  const match = /^(published|run|local)(?::(.+))?$/.exec(value);
-  if (!match) throw new Error(`Expected published, published:<version>, run, run:<ci run id> or local:<dir>, not '${value}'`);
-  const [, kind, argument] = match;
+  const match = /^(published|run|local)(?:([:@])(.+))?$/.exec(value);
+  if (!match) throw new Error(`Expected published, published:<version>, run@<commit>, run:<ci run id>, run or local:<dir>, not '${value}'`);
+  const [, kind, separator, argument] = match;
+  if (separator === '@') {
+    if (kind !== 'run' || !COMMIT.test(argument)) throw new Error(`Expected run@<full 40-character commit SHA>, not '${value}'`);
+    return { kind, argument: null, commit: argument, text: value };
+  }
   if (kind === 'published' && argument !== undefined) parseVersion(argument);
   if (kind === 'run' && argument !== undefined && !/^[1-9]\d*$/.test(argument)) throw new Error(`Not a run id: ${argument}`);
   if (kind === 'local' && !argument) throw new Error('local needs a directory: local:<dir>');
-  return { kind, argument: argument ?? null, text: value };
+  return { kind, argument: argument ?? null, commit: null, text: value };
 }
+
+// A `run` without a run id or commit: the newest main run, whatever it built (I2, I6). Train rows refuse it.
+export const followsMain = spec => spec.kind === 'run' && !spec.argument && !spec.commit;
 
 async function request(url, { token, accept = 'application/json', fetchImpl = fetch, attempts = 3 } = {}) {
   const headers = { accept, 'user-agent': 'runic-train-compat' };
@@ -181,20 +191,69 @@ export function successfulMainRuns(runs) {
     .sort((a, b) => b.id - a.id);
 }
 
+export const describeRun = run => `${run.id} (${String(run.head_sha ?? '').slice(0, 9)}, ${run.event}, ${run.status}${run.conclusion ? `/${run.conclusion}` : ''})`;
+
+// Whether `head` is `commit` or a descendant of it, by GitHub's compare API: `identical` or `ahead`.
+async function atOrAfter(repo, commit, head, options, cache) {
+  if (head === commit) return 'identical';
+  if (!cache.has(head)) cache.set(head, (async () => {
+    try {
+      return (await json(`${GITHUB}/repos/${repo.repository}/compare/${commit}...${head}?per_page=1`, options)).status;
+    } catch (error) {
+      if (error.status === 404) return 'unknown';
+      throw error;
+    }
+  })());
+  return cache.get(head);
+}
+
+// The selection rule for a train input (H2; the lessons' C6: "the newest green main run at or after commit X"):
+// among the ci.yml runs on main, newest first, the first that completed successfully, whose head is `commit` or a
+// descendant of it, that has its package artifact and that `accept` takes. `accept(run, artifact)` returns
+// `{ value }` or `{ reason }` (a rejection, reported with the others). The listing is unfiltered (see above) plus the
+// runs of `commit` itself, so neither GitHub's status filter nor a busy main pushes the commit's own run out of it.
+// Without such a run the error names the commit and every run it considered.
+export async function selectRunAtOrAfter(repo, commit, options = {}, accept = async run => ({ value: run })) {
+  if (!COMMIT.test(commit)) throw new Error(`Expected a full commit SHA, not '${commit}'`);
+  const listed = new Map();
+  for (const query of [mainRunsQuery, new URLSearchParams({ branch: 'main', head_sha: commit, per_page: '20' })])
+    for (const run of (await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${query}`, options)).workflow_runs ?? [])
+      if (isCiRun(run, repo)) listed.set(run.id, run);
+  const runs = [...listed.values()].sort((a, b) => b.id - a.id);
+  const green = new Set(successfulMainRuns(runs));
+  const seen = [], cache = new Map();
+  for (const run of runs) {
+    if (!green.has(run)) { seen.push(`${describeRun(run)}: not a success`); continue; }
+    const relation = await atOrAfter(repo, commit, run.head_sha, options, cache);
+    if (relation === 'unknown') throw new Error(`${repo.repository} has no commit ${commit} (GitHub's compare API answered 404)`);
+    if (relation !== 'identical' && relation !== 'ahead') { seen.push(`${describeRun(run)}: ${relation} ${commit.slice(0, 9)}, not at or after it`); continue; }
+    const artifact = await runArtifact(repo, run, options);
+    if (!artifact) { seen.push(`${describeRun(run)}: no unexpired ${repo.artifact(run.id)} artifact`); continue; }
+    const verdict = await accept(run, artifact);
+    if ('value' in verdict) return verdict.value;
+    seen.push(`${describeRun(run)}: ${verdict.reason}`);
+  }
+  throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main at or after ${commit}. ` +
+    `Runs found: ${seen.length ? seen.slice(0, 12).join('; ') + (seen.length > 12 ? `; and ${seen.length - 12} more` : '') : 'none'}. ` +
+    'If the commit is on main, dispatch ci.yml on main once and let it finish (eng/train/README.md, "Choreography").');
+}
+
 // A CI run's package artifact of one repository (exported for eng/ci/train-feed.mjs).
 export async function resolveRun(repo, spec, directory, options) {
-  let run;
+  let run, artifact;
   if (spec.argument) {
     run = await json(`${GITHUB}/repos/${repo.repository}/actions/runs/${spec.argument}`, options);
     if (!isNamedCiRun(run, repo)) throw new Error(`Run ${spec.argument} is not a ${CI_WORKFLOW} run of ${repo.repository}`);
     if (run.status !== 'completed' || run.conclusion !== 'success') throw new Error(`CI run ${run.html_url} is ${run.status}/${run.conclusion}, not a success`);
+  } else if (spec.commit) {
+    ({ run, artifact } = await selectRunAtOrAfter(repo, spec.commit, options, async (found, file) => ({ value: { run: found, artifact: file } })));
   } else {
     const { workflow_runs: runs } = await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${mainRunsQuery}`, options);
     for (const candidate of successfulMainRuns(runs).filter(item => isCiRun(item, repo)))
       if (await runArtifact(repo, candidate, options)) { run = candidate; break; }
     if (!run) throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main with a ${repo.artifact('<run id>')} artifact`);
   }
-  const artifact = await runArtifact(repo, run, options);
+  artifact ??= await runArtifact(repo, run, options);
   if (!artifact) throw new Error(`CI run ${run.html_url} has no unexpired ${repo.artifact(run.id)} artifact`);
   const files = await downloadArtifact(repo, artifact, join(directory, repo.key), options);
   const { packages, npm } = readCandidates(repo, files, `CI run ${run.html_url}`);
@@ -205,6 +264,56 @@ export async function resolveRun(repo, spec, directory, options) {
     run: { id: run.id, url: run.html_url, headSha: run.head_sha, branch: run.head_branch, event: run.event,
       artifact: { id: artifact.id, name: artifact.name, digest: artifact.digest ?? null } },
   };
+}
+
+// The train-feed.json of a runic-sdk CI run that built against the train feed (eng/ci/train-feed.mjs), or null for a
+// run without the `train-feed` artifact.
+export const TRAIN_FEED_ARTIFACT = 'train-feed';
+export async function runTrainFeed(repo, runId, directory, options = {}) {
+  const { artifacts } = await json(`${GITHUB}/repos/${repo.repository}/actions/runs/${runId}/artifacts?name=${TRAIN_FEED_ARTIFACT}&per_page=10`, options);
+  const live = (artifacts ?? []).filter(item => item.name === TRAIN_FEED_ARTIFACT && !item.expired);
+  if (!live.length) return null;
+  const url = `${GITHUB}/repos/${repo.repository}/actions/artifacts/${live[0].id}/zip`;
+  const response = await request(url, { ...options, accept: 'application/vnd.github+json' });
+  if (!response.ok) throw Object.assign(new Error(`Downloading the ${TRAIN_FEED_ARTIFACT} artifact of ${repo.repository} run ${runId} was refused: HTTP ${response.status}`),
+    { artifactAccess: { repository: repo.repository, status: response.status } });
+  mkdirSync(directory, { recursive: true });
+  const archive = join(directory, `${TRAIN_FEED_ARTIFACT}-${runId}.zip`);
+  writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
+  const entry = zipEntries(archive).find(item => decodeURIComponent(item.name) === 'train-feed.json');
+  if (!entry) throw new Error(`The ${TRAIN_FEED_ARTIFACT} artifact of ${repo.repository} run ${runId} has no train-feed.json`);
+  return JSON.parse(entry.read().toString('utf8'));
+}
+
+// H5 (the lessons' C4): an upstream candidate of this gate run must be the one runic-sdk's train candidate built
+// against. `feed` is the train-feed.json of the runic-sdk run; `sources` the resolved inputs. For each upstream with
+// a CI-run input whose version the feed also serves, the commits must match, or, if the upstream's main moved
+// (I4), every package the feed served must be byte-identical in the candidate (reproducible archives, H1: a commit
+// that changed no package input). Returns `{ checked, problems }`, one text each.
+export function upstreamMovement(feed, sources) {
+  const checked = [], problems = [];
+  for (const [key, upstream] of Object.entries(feed?.upstreams ?? {})) {
+    const source = sources[key];
+    if (!source?.run || source.version !== upstream.version) continue;
+    const from = upstream.run?.headSha, to = source.run.headSha;
+    const where = `${source.repository} ${upstream.version}: runic-sdk's train candidate built against run ${upstream.run?.id} (${from})`;
+    if (from === to) { checked.push(`${where}, the same commit as this candidate`); continue; }
+    const have = new Map([...source.packages.map(item => [`nuget:${item.id}@${item.version}`.toLowerCase(), item.sha256]),
+      ...source.npm.map(item => [`npm:${item.name}@${item.version}`, item.sha256])]);
+    const served = [...(upstream.packages ?? []).map(item => [`nuget:${item.id}@${item.version}`.toLowerCase(), item.sha256]),
+      ...(upstream.npm ?? []).map(item => [`npm:${item.name}@${item.version}`, item.sha256])];
+    const differ = served.filter(([name, hash]) => have.get(name) !== hash).map(([name]) => name);
+    const extra = [...have.keys()].filter(name => name.startsWith('nuget:') && name.endsWith(`@${upstream.version}`.toLowerCase())
+      && !served.some(([other]) => other === name));
+    if (served.length && !differ.length && !extra.length) {
+      checked.push(`${where}; this candidate is ${to}, but every package is byte-identical`);
+      continue;
+    }
+    problems.push(`${source.repository} main moved since runic-sdk's train candidate used it: the feed served run ${upstream.run?.id} on ${from}, ` +
+      `this candidate is run ${source.run.id} on ${to}, and ${[...differ, ...extra].slice(0, 5).join(', ') || 'no package'}${differ.length + extra.length > 5 ? ', ...' : ''} ` +
+      'differ. Publish the commit the train candidate used, or rebuild runic-sdk\'s candidate on this one (eng/train/README.md, "Choreography").');
+  }
+  return { checked, problems };
 }
 
 // Resolves every repository's input. `specs` maps cli, translations and sdk to their input texts.
