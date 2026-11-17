@@ -38,6 +38,7 @@ ${props.map(file => `  <Import Project="${file}" />`).join("\n")}
 ${properties}
   </PropertyGroup>
   <Target Name="PrepareForBuild" />
+  <Target Name="PrepareForILLink" />
 ${after.map(file => `  <Import Project="${file}" />`).join("\n")}
 </Project>
 `);
@@ -59,19 +60,63 @@ test("RunicDesktopMinimalHost writes the trimmable runtime switch, false by defa
 });
 
 // The CS-WebUI Window's Development DevTools Protocol endpoint (WebUiRemoteDebugging, D072.2 S2): a trimmed or NativeAOT
-// publish turns its feature switch off, so the trimmer removes it and its HTTP client; other builds leave it on.
-function remoteDebuggingSwitch(name, properties) {
+// publish turns its feature switch off, so the trimmer removes it and its HTTP client. Only the publish does, in
+// PrepareForILLink (before ILLink and ILC): a build of a project that sets PublishAot or PublishTrimmed keeps the endpoint,
+// and its runtimeconfig.json has no switch. The fixture's PrepareForILLink is the SDK target's stand-in.
+const publishProperties = ["", "<PublishAot>true</PublishAot>", "<PublishTrimmed>true</PublishTrimmed>"];
+
+function remoteDebuggingSwitch(name, properties, { publish = false } = {}) {
   const result = spawnSync("dotnet", ["msbuild", project(name, properties, []), "-getItem:RuntimeHostConfigurationOption",
-    "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
+    ...(publish ? ["-t:PrepareForILLink"] : []), "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const items = JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
   return items.filter(item => item.Identity === "Runic.Desktop.WebUiRemoteDebugging").map(item => ({ value: item.Value, trim: item.Trim }));
 }
 
+test("a build keeps the WebUI remote-debugging endpoint, also with PublishAot or PublishTrimmed in the project", () => {
+  publishProperties.forEach((properties, index) =>
+    assert.deepEqual(remoteDebuggingSwitch(`debugging-build-${index}`, properties), [], properties));
+});
+
 test("a trimmed or NativeAOT publish turns the WebUI remote-debugging switch off", () => {
-  assert.deepEqual(remoteDebuggingSwitch("debugging-default", ""), []);
-  assert.deepEqual(remoteDebuggingSwitch("debugging-aot", "<PublishAot>true</PublishAot>"), [{ value: "false", trim: "true" }]);
-  assert.deepEqual(remoteDebuggingSwitch("debugging-trimmed", "<PublishTrimmed>true</PublishTrimmed>"), [{ value: "false", trim: "true" }]);
+  publishProperties.forEach((properties, index) =>
+    assert.deepEqual(remoteDebuggingSwitch(`debugging-publish-${index}`, properties, { publish: true }),
+      [{ value: "false", trim: "true" }], properties));
+});
+
+// dotnet runic dev's live frontend directory (DevelopmentAssets in Runic.Application.Views.Desktop, D072.2 S4): a trimmed
+// or NativeAOT publish turns its feature switch off, so the trimmer removes it and its file watcher; a build keeps it, as
+// for WebUiRemoteDebugging above.
+const viewsDesktopTargets = resolve(root, "packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets");
+
+function developmentAssetsSwitch(name, properties, { publish = false } = {}) {
+  const folder = join(directory, name);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "App.proj"), `<Project>
+  <PropertyGroup>
+${properties}
+  </PropertyGroup>
+  <Target Name="PrepareForILLink" />
+  <Import Project="${viewsDesktopTargets}" />
+</Project>
+`);
+  const result = spawnSync("dotnet", ["msbuild", join(folder, "App.proj"), "-getItem:RuntimeHostConfigurationOption",
+    ...(publish ? ["-t:PrepareForILLink"] : []), "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const items = JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
+  return items.filter(item => item.Identity === "Runic.Application.Views.Desktop.DevelopmentAssets")
+    .map(item => ({ value: item.Value, trim: item.Trim }));
+}
+
+test("a build keeps the development assets, also with PublishAot or PublishTrimmed in the project", () => {
+  publishProperties.forEach((properties, index) =>
+    assert.deepEqual(developmentAssetsSwitch(`assets-build-${index}`, properties), [], properties));
+});
+
+test("a trimmed or NativeAOT publish turns the development assets switch off", () => {
+  publishProperties.forEach((properties, index) =>
+    assert.deepEqual(developmentAssetsSwitch(`assets-publish-${index}`, properties, { publish: true }),
+      [{ value: "false", trim: "true" }], properties));
 });
 
 function validate(name, value) {
