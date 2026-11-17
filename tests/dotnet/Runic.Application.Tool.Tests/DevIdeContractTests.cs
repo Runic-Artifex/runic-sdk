@@ -344,8 +344,9 @@ internal sealed partial class ToolTests
             Equal(JsonValueKind.Null, stopped.RootElement.GetProperty("window").GetProperty("processId").ValueKind);
             Equal(2, stopped.RootElement.GetProperty("window").GetProperty("starts").GetInt32());
         }
-        // Each write replaces the file whole; no temporary file stays behind.
-        SequenceEqual(["dev-session.json"], Directory.GetFiles(Path.GetDirectoryName(session.Path)!).Select(Path.GetFileName).ToArray());
+        // Each write replaces the file whole; no temporary file stays behind. The stop stamp is for Visual Studio (WIN-01).
+        SequenceEqual(["dev-session.json", DevSession.StoppedStampName],
+            Directory.GetFiles(Path.GetDirectoryName(session.Path)!).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray());
 
         // Without a development server there is no URL; the page is the built index.html.
         DevProjectConfiguration built = CreateConfiguration(workspace, string.Empty);

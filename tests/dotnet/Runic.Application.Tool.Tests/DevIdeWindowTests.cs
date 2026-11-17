@@ -114,11 +114,17 @@ internal sealed partial class ToolTests
         stop.Cancel();
         await renewal.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
 
-        // When dev ends, builds run the frontend build and copy again.
+        // When dev ends, builds run the frontend build and copy again, and the stop stamp, which Visual Studio's fast
+        // up-to-date check reads (WIN-01), is newer than the last build.
+        Write(session.StoppedStampPath, string.Empty);
+        File.SetLastWriteTimeUtc(session.StoppedStampPath, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        DateTime beforeStop = DateTime.UtcNow - TimeSpan.FromSeconds(2);
         session.Stop();
         False(File.Exists(session.FrontendMarkerPath), "The frontend marker outlived the session.");
         False(Directory.Exists(session.PagesDirectory), "The development pages outlived the session.");
         True(File.Exists(session.Path), "The stopped session file was removed.");
+        Equal(Path.Combine(configuration.SessionDirectory, DevSession.StoppedStampName), session.StoppedStampPath);
+        True(File.GetLastWriteTimeUtc(session.StoppedStampPath) >= beforeStop, "dev did not touch the stop stamp.");
 
         // Without a development server, a Runic Desktop Window serves the watcher's output live, as under dev.
         DevProjectConfiguration watched = CreateConfiguration(workspace, string.Empty) with { ApplicationHosts = ["desktop"] };
