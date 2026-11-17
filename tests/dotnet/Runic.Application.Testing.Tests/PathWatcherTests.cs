@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
@@ -12,6 +13,7 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class PathWatcherTests
 {
     // FSEvents can deliver an event some time after the change; give each platform time to report a burst.
+    private static readonly DateTimeOffset Epoch = new FakeTimeProvider().GetUtcNow();
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(OperatingSystem.IsMacOS() ? 1000 : 300);
 
     [Test]
@@ -278,7 +280,7 @@ internal sealed class PathWatcherTests
         await using var context = new RunicModelContext();
         var tester = new RunicPathWatchTester();
         var target = RunicWatchTarget.File(file);
-        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, _ => { }, tester.Options);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, _ => { }, WithoutPolling(tester));
 
         // As `rm -rf checkout && git clone`: the directory is replaced before the watcher reads anything.
         var written = File.GetLastWriteTimeUtc(file);
@@ -291,7 +293,7 @@ internal sealed class PathWatcherTests
         File.SetLastWriteTimeUtc(file, written);
         // A watcher started now must not join the watch of the replaced directory; it restarts the shared watch.
         var other = RunicWatchTarget.File(Path.Combine(directory, "other"));
-        using var late = RunicPathWatcher.Start(context, [other], _ => { }, _ => { }, tester.Options);
+        using var late = RunicPathWatcher.Start(context, [other], _ => { }, _ => { }, WithoutPolling(tester));
         Require((await EventAsync(tester, watcher)).Contains(target), $"Replacing the directory was not reported. {watcher.Describe()}");
         await Task.Delay(Settle);
         await tester.DrainAsync();
@@ -306,7 +308,8 @@ internal sealed class PathWatcherTests
 
     // Windows stops the watch of a deleted directory with an error, which can arrive before a later watcher restarts
     // the shared watch for the replacement (#1008). That stop is no failure of the watch: the replacement is watched
-    // at once, not only after the next poll retries it. Called directly, as Linux keeps watching a deleted directory.
+    // at once, not only after a poll retries it (none comes here). Called directly, as Linux keeps watching a deleted
+    // directory; on Windows the deleted directory's own watch also stops, which must not count as a failure either.
     [Test]
     public async Task AWatchStoppedByItsDirectoryBeingReplacedIsNotAFailure()
     {
@@ -317,7 +320,7 @@ internal sealed class PathWatcherTests
         var tester = new RunicPathWatchTester();
         var target = RunicWatchTarget.File(file);
         var errors = new System.Collections.Concurrent.ConcurrentQueue<RunicPathWatchError>();
-        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, errors.Enqueue, tester.Options);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, errors.Enqueue, WithoutPolling(tester));
         Require(watcher.IsEventDriven, $"The watcher did not start watching. {watcher.Describe()}");
 
         Directory.Delete(directory, recursive: true);
@@ -327,7 +330,7 @@ internal sealed class PathWatcherTests
         Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), $"Replacing the directory was not reported. {watcher.Describe()}");
         await Task.Delay(Settle);
         await tester.DrainAsync();
-        Require(errors.IsEmpty, $"A replaced directory was reported as a failed watch: {string.Join(", ", errors.Select(error => error.Kind))}");
+        Require(errors.IsEmpty, $"A replaced directory was reported as a failed watch: {string.Join("; ", errors.Select(error => $"{error.Kind} {error.Path}: {error.Exception?.GetType().Name} {error.Exception?.Message}"))} {watcher.Describe()}");
 
         File.WriteAllText(file, "33");
         Require((await EventAsync(tester, watcher)).Contains(target), "A write in the replaced directory was not reported by an event.");
@@ -398,11 +401,24 @@ internal sealed class PathWatcherTests
 
     // Awaits a change that an event reported: every target is watched, and an event, not a poll or the backstop
     // read, led to reading the target that changed. Disabling events, or a watch that died, fails it.
+    // The tester's clock advances one debounce interval (250 ms) per ~20 ms of real waiting, so a test that waits a few
+    // seconds in all passes the 30-second backstop read, which can then report a write before the platform's event
+    // does (#1008: "A poll, not an event" at tester clock 00:00:30 on win-x64). A test that requires an event, across
+    // several waits, uses a polling interval it cannot reach: the backstop and the polling of an unwatched directory.
+    private static RunicPathWatcherOptions WithoutPolling(RunicPathWatchTester tester) => new()
+    {
+        Debounce = tester.Options.Debounce,
+        TimeProvider = tester.Time,
+        Observer = tester.Options.Observer,
+        PollingInterval = TimeSpan.FromHours(1),
+    };
+
     private static async Task<RunicPathChange> EventAsync(RunicPathWatchTester tester, RunicPathWatcher watcher)
     {
         Require(watcher.IsEventDriven, $"The watcher polls instead of watching. {watcher.Describe()}");
         var change = await NextOrDescribeAsync(tester, watcher);
-        Require(change.ByEvent, $"A poll, not an event, reported the change. {watcher.Describe()}");
+        // The tester's clock, which started at FakeTimeProvider's default: how much watcher time the waits advanced.
+        Require(change.ByEvent, $"A poll, not an event, reported the change (tester clock {tester.Time.GetUtcNow() - Epoch}). {watcher.Describe()}");
         return change;
     }
 

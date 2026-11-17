@@ -119,6 +119,11 @@ internal static class SharedDirectoryWatches
         public bool IsReplacedBy(string? identity) =>
             identity is not null && _identity is not null && !string.Equals(identity, _identity, StringComparison.Ordinal);
 
+        // Called under Gate. Whether the watched directory is gone or replaced: its identity changed, or it had one and
+        // can no longer be read. A watch stopped so restarts at once; when the directory is there but cannot be opened,
+        // starting the new watch fails and reports that failure.
+        public bool IsGone(string? identity) => IsReplacedBy(identity) || (identity is null && _identity is not null);
+
         // Called under Gate.
         public void Start(string? identity)
         {
@@ -202,9 +207,11 @@ internal static class SharedDirectoryWatches
             var exception = e.GetException();
             var stopped = exception is not InternalBufferOverflowException;
             // Windows stops a watch whose directory is deleted (ERROR_ACCESS_DENIED from ReadDirectoryChangesW), and the
-            // error can arrive before a lease restarts the watch for the directory's replacement (#1008). A missing or
-            // delete-pending directory has no identity and does not exist.
+            // error can arrive before a lease restarts the watch for the directory's replacement (#1008). The directory
+            // is then missing, delete-pending, or already replaced; in the first two, its identity cannot be read, while
+            // Directory.Exists can still find the pending one or, a moment later, the new one (win-x64 stress runs).
             var identity = stopped ? DirectoryIdentity.Read(Directory) : null;
+            // Without identities (DirectoryIdentity unsupported), only a missing directory tells.
             var missing = stopped && identity is null && !System.IO.Directory.Exists(Directory);
             IDirectoryWatchSink[] sinks;
             FileSystemWatcher? failed = null;
@@ -214,7 +221,7 @@ internal static class SharedDirectoryWatches
                 // A watcher replaced by Restart reports for a directory that is gone.
                 if (!ReferenceEquals(sender, _watcher)) return;
                 sinks = Sinks;
-                replaced = stopped && (missing || IsReplacedBy(identity));
+                replaced = stopped && (missing || IsGone(identity));
                 // Any other failure can leave the watcher stopped; drop it so the next lease starts a new one.
                 if (stopped) failed = Stop();
             }
