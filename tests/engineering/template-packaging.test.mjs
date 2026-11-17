@@ -485,19 +485,11 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.deepEqual(create("none", "--editor", "none"), plain);
     for (const [path, text] of Object.entries(plain)) assert.doesNotMatch(text, /\/\/#(if|else|endif)/, path);
 
-    // The first profile is the one dotnet run uses (D066.25 2). Windows: WebView2's DevTools Protocol for script
-    // debugging (D066.25 3); WebView2 appends the variable to Runic's own AdditionalBrowserArguments.
+    // The profile dotnet run uses (D066.25 2). Runic Desktop has no WebView2 script-debugging profile since 0.22
+    // (D070.18): Visual Studio's JavaScript adapter dropped its variables; Runic DevKit's Debug the Window replaces it.
     const profiles = JSON.parse(plain["Properties/launchSettings.json"]).profiles;
-    assert.deepEqual(Object.keys(profiles), ["Ide.App", "Ide.App (WebView2 script debugging)"]);
+    assert.deepEqual(Object.keys(profiles), ["Ide.App"]);
     assert.deepEqual(profiles["Ide.App"], { commandName: "Project", environmentVariables: environment });
-    const webView2Profile = profiles["Ide.App (WebView2 script debugging)"];
-    assert.equal(webView2Profile.commandName, "Project");
-    assert.equal(webView2Profile.jsWebView2Debugging, true);
-    const webView2Arguments = webView2Profile.environmentVariables.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS;
-    assert.deepEqual(webView2Profile.environmentVariables, { ...environment, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: webView2Arguments });
-    const port = Number(/--remote-debugging-port=(\d+)/.exec(webView2Arguments)?.[1]);
-    assert.ok(port > 0, webView2Arguments);
-    assert.match(webView2Arguments, sessionPort, "dotnet runic dev would not list the port in debugEndpoints");
 
     // D070.8: .vsconfig, in the directory where Visual Studio keeps the project's solution, makes it offer the .NET
     // desktop workload and JavaScript diagnostics (its JavaScript debugger, for WebView2 and Chrome or Edge).
@@ -578,10 +570,15 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
       name: "Window in Chrome", type: "chrome", request: "launch", preLaunchTask: "runic: dev --browser",
       url: `http://127.0.0.1:${browserPort}/`, webRoot: "${workspaceFolder}/Frontend",
     });
-    // Windows: the Window with the same variable as the launch profile, and js-debug on the same port.
+    // Windows: the Window with WebView2's DevTools Protocol for script debugging (D066.25 3), and js-debug on its port.
+    // WebView2 appends the variable to Runic's own AdditionalBrowserArguments.
     const webView2Window = configuration["Window with WebView2 debugging (Windows)"];
     assert.equal(webView2Window.program, `${program}.exe`);
-    assert.deepEqual(webView2Window.env, webView2Profile.environmentVariables);
+    const webView2Arguments = webView2Window.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS;
+    assert.deepEqual(webView2Window.env, { ...environment, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: webView2Arguments });
+    const port = Number(/--remote-debugging-port=(\d+)/.exec(webView2Arguments)?.[1]);
+    assert.ok(port > 0, webView2Arguments);
+    assert.match(webView2Arguments, sessionPort, "dotnet runic dev would not list the port in debugEndpoints");
     // One attach configuration on WebView2's port for both: on Linux dotnet runic dev's CDP adapter serves 9222 (#1029).
     const webView2 = configuration["Attach to the page (JavaScript)"];
     assert.deepEqual([webView2.type, webView2.request, webView2.port, webView2.useWebView], ["msedge", "attach", port, true]);
@@ -598,9 +595,9 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     }]);
     // The endpoint that tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs proves against WebView2 on
     // Windows with the same rules, and that dev's session file lists: js-debug's attach reaches it and selects the page.
-    const debugging = webView2Debugging(JSON.parse(plain["Properties/launchSettings.json"]), launch);
-    assert.deepEqual([debugging.profileName, debugging.port, debugging.endpoint, debugging.windowConfiguration, debugging.attach.name],
-      ["Ide.App (WebView2 script debugging)", port, cdpEndpoint(port), "Window with WebView2 debugging (Windows)", "Attach to the page (JavaScript)"]);
+    const debugging = webView2Debugging(launch, JSON.parse(plain["Properties/launchSettings.json"]));
+    assert.deepEqual([debugging.port, debugging.endpoint, debugging.windowConfiguration, debugging.attach.name],
+      [port, cdpEndpoint(port), "Window with WebView2 debugging (Windows)", "Attach to the page (JavaScript)"]);
     assert.equal(cdpEndpoint(port), `http://127.0.0.1:${port}/`);
     assert.ok(attachSelects(webView2, { type: "page", url: "http://127.0.0.1:49152/index.html" }));
     assert.ok(!attachSelects(webView2, { type: "service_worker", url: "http://127.0.0.1:49152/sw.js" }));
@@ -616,6 +613,9 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
       { commandName: "Project", environmentVariables: { ...environment, RUNIC_WEBUI_REMOTE_DEBUGGING_PORT: noWindowPort } });
     assert.match(cswebui["README.md"], /`Ide\.App \(CS-WebUI script debugging\)`.*http:\/\/127\.0\.0\.1:9225\//);
     assert.doesNotMatch(plain["README.md"], /CS-WebUI script debugging/);
+    for (const readme of [plain["README.md"], cswebui["README.md"]]) assert.doesNotMatch(readme, /WebView2 script debugging|jsWebView2Debugging/);
+    assert.match(plain["README.md"], /\*\*Debug the\s+Window\*\* of \[Runic DevKit for Visual Studio\]/);
+    assert.doesNotMatch(cswebui["README.md"], /Debug the\s+Window/);
     // Its page in Chrome or Edge (dotnet runic dev --browser) uses Visual Studio's JavaScript debugger too.
     assert.equal(cswebui[".vsconfig"], plain[".vsconfig"]);
     const cswebuiLaunch = parseJsonc(cswebui[".vscode/launch.json"]);

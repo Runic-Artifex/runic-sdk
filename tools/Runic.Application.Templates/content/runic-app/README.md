@@ -93,13 +93,19 @@ the first one:
 | Profile | What it starts |
 | --- | --- |
 | `RunicWindowApp` | The Window with `DOTNET_ENVIRONMENT=Development`: the browser's developer tools on the page (F12 or Inspect) and detailed Bridge errors. |
-<!--#if (desktopHost) -->
-| `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). WebView2 ignores the variable while the Window runs elevated (Runtime 150 and later), for example under an IDE started as administrator; start the IDE without elevation. |
-<!--#else -->
+<!--#if (host == "cswebui") -->
 | `RunicWindowApp (CS-WebUI script debugging)` | The same, with the DevTools Protocol of the Window's Chrome or Edge on `http://127.0.0.1:9225/` (`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, honoured in Development only). In Visual Studio, start it, then Debug > Attach to Process, connection type "Chrome devtools protocol websocket (no authentication)", target `http://127.0.0.1:9225/`, and pick the page. Firefox and the platform WebView fallback open no port. Any local process can attach to the port while the Window runs. |
 <!--#endif -->
 
-`.vsconfig` names the Visual Studio components these profiles need: the .NET
+<!--#if (desktopHost) -->
+To stop at breakpoints in `Frontend/src` in Visual Studio, use **Debug the
+Window** of [Runic DevKit for Visual Studio](https://github.com/Runic-Artifex/runic-editors/blob/main/visualstudio/README.md):
+it starts the Window under the .NET debugger with WebView2's DevTools Protocol
+endpoint and attaches Visual Studio's JavaScript debugger to the page, so C#
+and page breakpoints stop in one session.
+<!--#endif -->
+
+`.vsconfig` names the Visual Studio components that debugging needs: the .NET
 desktop development workload and JavaScript diagnostics, the optional component
 behind Visual Studio's JavaScript debugger for WebView2 and for Chrome or Edge.
 When one is missing, Visual Studio offers to install it as it opens the project.
