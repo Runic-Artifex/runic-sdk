@@ -1,3 +1,5 @@
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Runic.Desktop;
@@ -192,23 +194,23 @@ internal sealed class HostedRegion : IDisposable
     // How long the guest waits for its own surface to serve the component manifest.
     private static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(10);
 
+    // The largest manifest the guest reads, in bytes.
+    internal const int MaximumManifestBytes = 65_536;
+
     // The module of the component build that the surface serves at root, as the host page will request it: with the
     // embedder's Origin, through the surface's content. The manifest is {version: 1, module, …}; module is a relative path
-    // below root that ends in .js. Null when there is none or it is not valid.
-    internal static async Task<Uri?> ReadComponentModuleAsync(Uri root, string embedder)
+    // below root that ends in .js. Null when there is none or it is not valid. The GET goes through LoopbackGet, not
+    // HttpClient, so the application links no HTTP client or TLS stack for it (D072.2, S3).
+    internal static async Task<Uri?> ReadComponentModuleAsync(Uri root, string embedder, TimeSpan? timeout = null)
     {
-        using var http = new HttpClient(new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = false, UseProxy = false })
-        {
-            Timeout = ManifestTimeout,
-        };
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(root, "runic-component.json"));
-        request.Headers.TryAddWithoutValidation("Origin", embedder);
+        using var deadline = new CancellationTokenSource(timeout ?? ManifestTimeout);
         try
         {
-            using var response = await http.SendAsync(request).ConfigureAwait(false);
-            if (response.StatusCode != System.Net.HttpStatusCode.OK || response.Content.Headers.ContentLength is > 65_536) return null;
-            var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            if (text.Length > 65_536 || JsonNode.Parse(text) is not JsonObject manifest ||
+            if (await LoopbackGet.GetAsync(new Uri(root, "runic-component.json"), embedder, MaximumManifestBytes, deadline.Token)
+                    .ConfigureAwait(false) is not { } body)
+                return null;
+            var text = Encoding.UTF8.GetString(body).TrimStart('\uFEFF');
+            if (text.Length > MaximumManifestBytes || JsonNode.Parse(text) is not JsonObject manifest ||
                 HostProtocol.Integer(manifest, "version") != 1 ||
                 HostProtocol.String(manifest, "module") is not { Length: > 3 and <= 256 } path ||
                 !path.EndsWith(".js", StringComparison.Ordinal) || path.StartsWith('/') || path.Contains('\\') ||
@@ -217,7 +219,7 @@ internal sealed class HostedRegion : IDisposable
             var module = new Uri(root, path);
             return module.AbsoluteUri.StartsWith(root.AbsoluteUri, StringComparison.Ordinal) ? module : null;
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or IOException)
+        catch (Exception error) when (error is OperationCanceledException or SocketException or JsonException or IOException or ObjectDisposedException)
         {
             return null;
         }
