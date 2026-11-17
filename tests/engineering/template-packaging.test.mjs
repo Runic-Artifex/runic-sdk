@@ -618,8 +618,9 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.match(cswebui["README.md"], /`Ide\.App \(CS-WebUI script debugging\)`.*http:\/\/127\.0\.0\.1:9225\//);
     assert.doesNotMatch(plain["README.md"], /CS-WebUI script debugging/);
     for (const readme of [plain["README.md"], cswebui["README.md"]]) assert.doesNotMatch(readme, /WebView2 script debugging|jsWebView2Debugging/);
-    assert.match(plain["README.md"], /\*\*Debug the\s+Window\*\* of \[Runic DevKit for Visual Studio\]/);
-    assert.doesNotMatch(cswebui["README.md"], /Debug the\s+Window/);
+    // Runic DevKit's Debug the Window debugs both hosts' pages (WebView2, and CS-WebUI's Chromium on port 9225).
+    for (const readme of [plain["README.md"], cswebui["README.md"]])
+      assert.match(readme, /\*\*Debug the\s+Window\*\* of \[Runic DevKit for Visual Studio\]/);
     // Its page in Chrome or Edge (dotnet runic dev --browser) uses Visual Studio's JavaScript debugger too.
     assert.equal(cswebui[".vsconfig"], plain[".vsconfig"]);
     const cswebuiLaunch = parseJsonc(cswebui[".vscode/launch.json"]);

@@ -82,8 +82,8 @@ bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, m
   and the host window cost the same at every K.
 - `measure.mjs` publishes [`aot-size/Fixture`](aot-size/Fixture) with `PublishAot=true` and
   `-p:IlcGenerateMstatFile=true` for linux-x64 with K = 0 and at each size of the entries (1 and 9), about 20 s each
-  with warm packages. [`aot-size/MstatReader`](aot-size/MstatReader) prints ILC's mstat records
-  (`kind<TAB>size<TAB>name`).
+  with warm packages, then the Desktop and Translations fixtures (below) once each. [`aot-size/MstatReader`](aot-size/MstatReader) prints ILC's mstat records
+  (`kind<TAB>size<TAB>owner<TAB>name`).
 - `aot/bridge/executable-bytes` (O(n)): the executable bytes above the build with K = 0. Section alignment makes it
   not exactly linear: a 4 KiB section boundary can move either measurement by a few KiB, which the factor of 9
   amplifies at K = 1. So it has a `noise` of 8 KiB and a 2 % `margin`; its `limit` is the gate on the size itself.
@@ -92,6 +92,28 @@ bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, m
   `Runic.Application.Views.Generated` type over a fixture ViewModel, also inside another generic.
 - `aot/executable-bytes` (class `total`, no growth check): the whole executable at the larger size, with a 2 % margin,
   so that a fixed-size regression is also caught.
+- `aot/framework/System.Net.Http` and `aot/framework/System.Net.Security` (`total`, limit 0): the mstat bytes those
+  assemblies own. Neither may be in a CS-WebUI application on linux-x64 (D072.2): a failure means something reached
+  the HTTP client or TLS stack again, as `HttpListener` did before 0.22.
+- `aot/assembly/<Runic assembly>` (`total`, 5 % margin) for Runic.Application.Views, Runic.Navigation,
+  Runic.Application.Views.CsWebUi and Runic.Assets: the mstat bytes each assembly owns, so a regression names its
+  package. mstat bytes do not move with section alignment, so they need no noise.
+
+An assembly owns the methods, type nodes, frozen objects and RVA data that MstatReader attributes to it: the declaring
+type's assembly, for a generic instantiation its definition's (a `List<T>` over a Runic type is
+System.Private.CoreLib's), and for a frozen object the assembly of the type whose static holds it. Blobs (metadata,
+stack-trace data, hashtables) and string literals belong to no Runic assembly.
+
+Two more fixtures share the ViewModels, each published once with K = 0 (sizes `[0, 0]`):
+
+- [`aot-size/DesktopFixture`](aot-size/DesktopFixture): the same application on the Runic.Desktop host with
+  `RunicDesktopServer=None` and no server package, so the host is measured without a presentation server.
+  `aot/desktop/executable-bytes` (2 % margin), and `aot/desktop/framework/System.Net.Http` and
+  `…/System.Net.Security` with limit 0.
+- [`aot-size/TranslationsFixture`](aot-size/TranslationsFixture): the CS-WebUI fixture with Runic.Translations.Hosting
+  and Runic.Application.Views.Translations registered. `aot/views-translations/executable-bytes` (2 % margin).
+
+`--rid` with another runtime publishes only the CS-WebUI fixture and lists every metric's values without checking them.
 
 The report adds a table per ViewModel: each measurement at K = 0, 1 and 9 and its slope from 1 to 9. The counts are
 deterministic for a given ILCompiler; a .NET SDK update can change them and then needs `--update`.

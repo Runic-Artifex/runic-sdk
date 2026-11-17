@@ -192,6 +192,21 @@ function saveAtomically(path, text) {
   fs.renameSync(temporary, path);
 }
 const counterReady = `document.querySelector(${JSON.stringify(counter)})?.disabled === false`;
+// Waits until the page has stopped loading: the Counter button works, and the same document keeps it for a while. Vite
+// reloads the page again for each batch of deleted modules that were in its graph, and the next scenario's breakpoints
+// must not arrive in the middle of such a load: before js-debug has the source map of the page's App.tsx, it sets a
+// breakpoint at its source line in the served JavaScript, which is not where the source line runs (#1108).
+async function settled(what, ms = 120000) {
+  for (const deadline = Date.now() + ms; ;) {
+    await until(counterReady, what, Math.max(deadline - Date.now(), 1000));
+    const mark = `__webkitCdpSettled${Date.now()}`;
+    await c.send("evaluate", { expression: `globalThis.${mark} = true`, context: "repl" });
+    await sleep(2000);
+    const result = await c.send("evaluate", { expression: `Boolean(globalThis.${mark} && ${counterReady})`, context: "repl" });
+    if (result.success && result.body.result === "true") return;
+    if (Date.now() > deadline) throw new Error(`${what}: the page kept loading for ${ms / 1000} s`);
+  }
+}
 // A plain client of WebKit's inspector server (WEBKIT_INSPECTOR_SERVER), as GNOME Web's inspector:// connects: it sets
 // up, which gives it WebKit's single client slot, and resolves once the server described its protocol.
 function inspectorClient(address) {
@@ -377,11 +392,16 @@ const scenarios = {
     } finally {
       saveAtomically(main, original);
       await until(`!globalThis.__webkitCdpMany && ${counterReady}`, "the page without the late module", 300000).catch(() => null);
+      // Vite reloads the page again for the deleted modules: the next scenario starts once it has.
       fs.rmSync(directory, { recursive: true, force: true });
+      await settled("the page after the late module's files were deleted", 300000).catch(() => null);
     }
   },
   async "window-restart"() {
     if (!a["restart-file"]) return [true, "skipped (no --restart-file)"];
+    // The adapter gives the restarted Window's page the breakpoints as js-debug set them on this one, so js-debug must
+    // set them on a loaded page, through App.tsx's source map.
+    await settled("the page before the restart");
     await setBps([{ line: clickLine }]);
     // A mark in this Window's page: the restarted Window's page does not have it.
     await c.send("evaluate", { expression: "globalThis.__webkitCdpBeforeRestart = true", context: "repl" });
