@@ -22,7 +22,7 @@ internal sealed class ToolkitViewRequestBridge : global::Runic.Application.Views
             new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Discard", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).DiscardCommand) { ExecuteAsync = static async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).DiscardCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = static (vm, changed) => new ToolkitRunningSubscription(((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).DiscardCommand, changed), WireName = "discard" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor("Discard", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).DiscardCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).DiscardCommand, token, null, null), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).DiscardCommand, changed), WireName = "discard" },
         ], "<fingerprint>", content,
         [
             global::Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<global::Runic.Application.Testing.Tests.ViewRequestDiscard, global::System.Boolean>("confirmDiscard", "<fingerprint>:interaction:ConfirmDiscard", static vm => ((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).ConfirmDiscard, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmDiscardInteractionInputCodec.Write(writer, input)), element => ConfirmDiscardInteractionOutputCodec.Read(element)),
@@ -42,19 +42,6 @@ internal sealed class ToolkitViewRequestBridge : global::Runic.Application.Views
             new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", TitleGetter, propertyName: "Title"),
         ]
     ;
-    private sealed class ToolkitRunningSubscription : global::System.IDisposable
-    {
-        private readonly global::System.ComponentModel.INotifyPropertyChanged _command;
-        private readonly global::System.ComponentModel.PropertyChangedEventHandler _handler;
-        internal ToolkitRunningSubscription(object command, global::System.Action changed)
-        {
-            _command = (global::System.ComponentModel.INotifyPropertyChanged)command;
-            _handler = (_, e) => { if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == "IsRunning") changed(); };
-            _command.PropertyChanged += _handler;
-        }
-        public void Dispose() => _command.PropertyChanged -= _handler;
-    }
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("title", static (writer, vm) => TitleValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitViewRequestViewModel)vm).Title)),

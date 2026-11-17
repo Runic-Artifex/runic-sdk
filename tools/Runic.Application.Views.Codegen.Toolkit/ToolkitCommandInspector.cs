@@ -69,6 +69,13 @@ public static class ToolkitCommandInspector
     /// cancels the command's current execution, rather than a bridge request
     /// independently, so callers must not advertise per-invocation isolation.
     /// </summary>
+    /// <remarks>
+    /// An async command's execution is a non-async lambda that calls the
+    /// assembly's generated <c>RunicToolkitCommands</c>, which the main
+    /// generator writes beside the Bridges: one state machine for every command
+    /// rather than one per command. <paramref name="encodeResult"/> encodes
+    /// <c>result</c>, the value of the command's completed <c>Task&lt;T&gt;</c>.
+    /// </remarks>
     public static string DescriptorFor(PropertyInfo command, string modelType,
         ToolkitCommandContract contract, string? inputType = null,
         string? readArgument = null, string? encodeArgument = null, string? subscribe = null,
@@ -88,23 +95,24 @@ public static class ToolkitCommandInspector
         var extras = JoinNamedArguments(readArgument, encodeArgument, subscribe);
         if (!contract.IsAsync) return prefix + extras + ")";
 
-        var commandType = contract.HasInput
-            ? $"global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<{inputType}>"
-            : "global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand";
-        var typedCommand = $"({commandType}){model}.{command.Name}";
-        var argument = contract.HasInput ? $"({inputType})argument!" : "null";
-        // Registering a pre-cancelled token invokes Cancel synchronously. Do
-        // not then start a fresh Toolkit execution after that cancellation has
-        // already happened.
+        // RunicToolkitCommands checks the token, registers Cancel, starts the
+        // command and awaits it. A command with a parameter starts through its
+        // typed ExecuteAsync(T); one without calls ExecuteAsync(null) (start null).
+        var start = contract.HasInput
+            ? $"static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<{inputType}>)command).ExecuteAsync(({inputType})value!)"
+            : "null";
+        var argument = contract.HasInput ? "argument" : "null";
+        var target = $"{model}.{command.Name}";
         if (contract.Result is not null)
         {
             if (string.IsNullOrWhiteSpace(resultType) || string.IsNullOrWhiteSpace(encodeResult))
                 throw new ArgumentException("A Toolkit command with a result needs its generated C# result type and encoder.", nameof(resultType));
-            // ExecuteAsync returns the task of the [RelayCommand] method.
-            var executeResult = $"static async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); var execution = command.ExecuteAsync({argument}); await execution.ConfigureAwait(false); var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result; return {encodeResult}; }}";
+            // ExecuteAsync returns the task of the [RelayCommand] method; its value is read once it completed.
+            var encode = $"static execution => {{ var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result; return {encodeResult}; }}";
+            var executeResult = $"static (vm, token, argument) => {GeneratedCommands}.ExecuteResult({target}, token, {argument}, {start}, {encode})";
             return prefix + ", ExecuteResultAsync: " + executeResult + extras + ")";
         }
-        var execute = $"static async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); await command.ExecuteAsync({argument}).ConfigureAwait(false); }}";
+        var execute = $"static (vm, token, argument) => {GeneratedCommands}.Execute({target}, token, {argument}, {start})";
         return prefix + ", " + execute + extras + ")";
     }
 
@@ -204,6 +212,9 @@ public static class ToolkitCommandInspector
             foreach (var candidate in current.GetInterfaces()) yield return candidate;
         }
     }
+
+    // The generated helper class of async commands; ToolkitCodegenConvention writes it.
+    private const string GeneratedCommands = "global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands";
 
     private static string JoinNamedArguments(params string?[] values)
     {
