@@ -35,9 +35,9 @@
       },
       "Runic.Translations.Build": {
         "type": "Direct",
-        "requested": "[0.13.0, )",
-        "resolved": "0.13.0",
-        "contentHash": "EeIzjPSJI3m0bcsP/HmlIQ5JuuW/we8tZ8EV8rG48uTkxYbZv15lqGdVhdrgx+wHZ1PjYJ9esQZ4VKdcVhZfHQ=="
+        "requested": "[0.14.0, )",
+        "resolved": "0.14.0",
+        "contentHash": "D/COeY6gEmqMqfSqmYUv2fU5CVK3eW+6KPaMFaRwrFPKhb+mxqwIPa5I1K7O6A5AsI710Xa1LLsOvLgu6LkAiw=="
       },
       "TUnit.Core": {
         "type": "Direct",
@@ -114,8 +114,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Application.Views": "[0.22.0, )",
-          "Runic.Translations": "[0.13.0, )",
-          "Runic.Translations.Hosting": "[0.13.0, )"
+          "Runic.Translations": "[0.14.0, )",
+          "Runic.Translations.Hosting": "[0.14.0, )"
         }
       },
       "runic.desktop": {
@@ -181,18 +181,18 @@
       },
       "Runic.Translations": {
         "type": "CentralTransitive",
-        "requested": "[0.13.0, )",
-        "resolved": "0.13.0",
-        "contentHash": "j0v/cRX9fxTIktN1KSkpiy7gfymG3qptKBYSBwcEaNrC/Q8oQCIr+9JfAHq1V4/z0qIaf6PsiXK1mpwff3EyCQ=="
+        "requested": "[0.14.0, )",
+        "resolved": "0.14.0",
+        "contentHash": "LFp21MvrAj7BUY8tSqZ195m2bs3T+YtOj28VZN/P3bhWWT2rBGpW5eey0vsjmOunb0Wawy/EQPVGSwMicPszkA=="
       },
       "Runic.Translations.Hosting": {
         "type": "CentralTransitive",
-        "requested": "[0.13.0, )",
-        "resolved": "0.13.0",
-        "contentHash": "txQK+f9viIpFgJX+Fh+2Xh1lPHhvnVOiGUjAktRdNqD7nwal+AyOT40CVPIHrc02+9qr99IR9nCobS0AbhFT8g==",
+        "requested": "[0.14.0, )",
+        "resolved": "0.14.0",
+        "contentHash": "OkhMbeUO3duGpCFikcvopBaN9UXghDpiXcXsQjLZoeCtXjshPIa3vHM68r/Pt4L/cSGClcugKTqsP7eTiMYL7g==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
-          "Runic.Translations": "[0.13.0, 0.14.0-0.0)"
+          "Runic.Translations": "[0.14.0, 0.15.0-0.0)"
         }
       },
       "Tmds.DBus.Protocol": {
