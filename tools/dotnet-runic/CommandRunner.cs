@@ -162,6 +162,25 @@ internal static class CommandRunner
         return startInfo;
     }
 
+    /// <summary>
+    /// <see cref="CreateStartInfo(string, string, IReadOnlyList{string})"/> with this console's standard streams instead
+    /// of pipes, for a program that talks to the user directly.
+    /// </summary>
+    internal static ProcessStartInfo CreateInteractiveStartInfo(
+        string executable,
+        string workingDirectory,
+        IReadOnlyList<string> arguments)
+    {
+        ProcessStartInfo startInfo = CreateStartInfo(executable, workingDirectory, arguments);
+        startInfo.RedirectStandardOutput = false;
+        startInfo.RedirectStandardError = false;
+        startInfo.RedirectStandardInput = false;
+        startInfo.StandardOutputEncoding = null;
+        startInfo.StandardErrorEncoding = null;
+        startInfo.CreateNoWindow = false;
+        return startInfo;
+    }
+
     internal static void TryTerminate(Process process)
     {
         try

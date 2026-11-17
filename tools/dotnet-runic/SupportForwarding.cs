@@ -123,15 +123,14 @@ internal sealed class SupportForwarding
     internal async Task<int> RunAsync((string Executable, IReadOnlyList<string> Prefix) tool, ICommandConsole console)
     {
         await console.WriteErrorAsync((MovedNotice + "\n").AsMemory(), default).ConfigureAwait(false);
-        var start = new ProcessStartInfo(tool.Executable) { UseShellExecute = false };
-        foreach (string argument in tool.Prefix) start.ArgumentList.Add(argument);
-        foreach (string argument in Arguments) start.ArgumentList.Add(argument);
+        ProcessStartInfo start = CommandRunner.CreateInteractiveStartInfo(
+            tool.Executable, Environment.CurrentDirectory, [.. tool.Prefix, .. Arguments]);
         // A terminal Ctrl+C reaches the Translations tool too; wait for its exit code instead of ending first.
         Action<PosixSignalContext> wait = static context => context.Cancel = true;
         using var interrupt = PosixSignalRegistration.Create(PosixSignal.SIGINT, wait);
         using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, wait);
-        using Process process = Process.Start(start)
-            ?? throw new DevDevelopmentException(MissingToolCode, MissingToolMessage);
+        using var process = new Process { StartInfo = start };
+        if (!process.Start()) throw new DevDevelopmentException(MissingToolCode, MissingToolMessage);
         await process.WaitForExitAsync().ConfigureAwait(false);
         return process.ExitCode;
     }
