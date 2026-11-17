@@ -268,11 +268,15 @@ test("--angular-build vite builds Angular with Vite and leaves the Angular CLI t
       typecheck: "ngc --project tsconfig.app.json --noEmit" });
     assert.equal(manifest.devDependencies["@analogjs/vite-plugin-angular"], "2.9.7");
     assert.ok(!manifest.devDependencies["@angular/cli"], "the Vite build installs the Angular CLI");
-    // The same Angular, Vite and test versions as the Angular CLI project.
+    // The same Angular, Vite and test versions as the Angular CLI project, except @angular/build: the Angular CLI project
+    // moved to a release that depends on a fixed Vite and dropped its override, while the Vite build keeps its
+    // @angular/build and vite override for now (D072.3).
     const cliManifest = JSON.parse(cli["Frontend/package.json"]);
     for (const [name, version] of Object.entries({ ...cliManifest.dependencies, ...cliManifest.devDependencies }))
-      if (name !== "@angular/cli") assert.equal({ ...manifest.dependencies, ...manifest.devDependencies }[name], version, name);
-    assert.deepEqual(manifest.overrides, cliManifest.overrides);
+      if (name !== "@angular/cli" && name !== "@angular/build")
+        assert.equal({ ...manifest.dependencies, ...manifest.devDependencies }[name], version, name);
+    assert.equal(cliManifest.overrides, undefined);
+    assert.deepEqual(manifest.overrides, { vite: manifest.devDependencies.vite });
     assert.doesNotMatch(vite["Frontend/src/main.ts"], /vite-plugin-runic\/client|ngDevMode/);
     assert.match(vite["Frontend/index.html"], /<script type="module" src="\/src\/main\.ts"><\/script>/);
     // dotnet runic dev serves a frontend without angular.json with Vite; the project file sets nothing for it.

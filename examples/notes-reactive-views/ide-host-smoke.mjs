@@ -70,11 +70,21 @@ async function verify(framework, stopWithSignal = false) {
     if (framework === "angular") {
       if (!angularOrigin) throw new Error(`Angular map proxy did not report its internal port: ${output}`);
       const bundle = await (await fetch(new URL("/main.js", frontend))).text();
-      if (/^\/\/# debugId=/m.test(bundle) || !bundle.includes("sourceMappingURL=main.js.map"))
-        throw new Error("Angular Debug response lost its source map or retained the Debug ID directive.");
+      if (/^\/\/# debugId=/m.test(bundle))
+        throw new Error("Angular Debug response retained the Debug ID directive.");
+      // The map a browser uses is the last directive: `ng serve` (Vite) appends an inline map of the TypeScript
+      // sources, and older releases also kept a superseded `main.js.map` directive before it.
+      const directive = [...bundle.matchAll(/^\/\/# sourceMappingURL=(\S+)\s*$/gm)].at(-1)?.[1];
+      if (!directive) throw new Error("Angular Debug response lost its source map directive.");
       // The map is large and a loaded runner can take longer than one 700 ms probe.
       const map = await respondsWithin(new URL("/main.js.map", frontend));
       if (!map.ok) throw new Error(`Angular source map was unavailable through the Debug proxy: ${JSON.stringify(map)}`);
+      const inline = directive.match(/^data:application\/json;(?:charset=utf-8;)?base64,(.+)$/);
+      const effective = inline ? JSON.parse(Buffer.from(inline[1], "base64").toString("utf8"))
+        : await (await fetch(new URL(directive, new URL("/main.js", frontend)))).json();
+      const app = effective.sources?.flatMap((source, index) => /(?:^|\/)src\/app\/[^/]+\.ts$/.test(source) ? [index] : []) ?? [];
+      if (app.length === 0 || !app.every(index => effective.sourcesContent?.[index]))
+        throw new Error(`Angular Debug response's source map (${inline ? "inline" : directive}) does not map the app's TypeScript sources.`);
     }
 
     if (stopWithSignal) host.kill("SIGTERM");
