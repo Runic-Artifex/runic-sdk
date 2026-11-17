@@ -30,6 +30,12 @@ test('real archives reject stale extras, source, metadata and internal dependenc
   for(const [key,value] of [['version','0.1.0'],['gitHead','b'.repeat(40)],['repository','https://github.com/obsolete/repo']]) {
    const original=npm[key];npm[key]=value;pack();expect(()=>scan(dir,inventory,source)).toThrow();npm[key]=original;
   }
+  // An npm archive names the commit that last changed its inputs; npmSource checks it against the release commit.
+  const older='c'.repeat(40), checked=[];npm.gitHead=older;pack();
+  expect(scan(dir,inventory,source,{npmSource:(...args)=>checked.push(args)})).toHaveLength(2);
+  expect(checked).toEqual([['@runic-artifex/test',older,source]]);
+  expect(()=>scan(dir,inventory,source,{npmSource:()=>{throw new Error('refused');}})).toThrow('refused');
+  npm.gitHead=source;
   npm.dependencies['Runic.Test']='workspace:*';pack();expect(()=>scan(dir,inventory,source)).toThrow();
   npm.dependencies['Runic.Test']=VERSION;pack();writeFileSync(join(dir,'nuget','stale.txt'),'stale');expect(()=>scan(dir,inventory,source)).toThrow();
  } finally {rmSync(dir,{recursive:true,force:true});}

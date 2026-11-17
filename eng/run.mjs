@@ -2,6 +2,7 @@
 import { nodeCompatibility } from "./node-compatibility.mjs";
 import { spawnSync, execFileSync } from "node:child_process";
 import { packNpm } from "./release/pack-npm.mjs";
+import { dirtyNpmInputs, npmSourceCommit } from "./release/npm-inputs.mjs";
 import { authority, scan } from "./release/artifacts.mjs";
 import { stageAndPromote } from "./release/stage.mjs";
 import { packageVersion, separateVersions } from "./version.mjs";
@@ -138,9 +139,17 @@ function pack(built = false) {
     const npm = resolve(staging, "npm");
     mkdirSync(nugetDirectory);
     mkdirSync(npm);
-    // Template lock integrities must describe the final gitHead-stamped archives.
-    for (const p of orderedPackages())
-      packNpm(resolve(root, p.path), npm, revision);
+    // Template lock integrities must describe the final gitHead-stamped archives. Each archive's gitHead is the commit
+    // that last changed its inputs (eng/release/npm-inputs.mjs), so a commit outside them keeps its bytes.
+    for (const p of orderedPackages()) {
+      const dirty = dirtyNpmInputs(p.name, { root, workspace });
+      if (dirty.length) {
+        const message = `${p.name}: uncommitted changes to its inputs, so its archive is not its gitHead's:\n${dirty.join("\n")}`;
+        if (process.env.CI) throw new Error(message);
+        console.warn(`warning: ${message}`);
+      }
+      packNpm(resolve(root, p.path), npm, npmSourceCommit(p.name, { root, workspace }));
+    }
     for (const p of packedNuget())
       run("dotnet", nugetPackArguments(workspace, p, { built, nuget: nugetDirectory, npm }));
     run("bun", ["eng/release/verify-template-locks.mjs", nugetDirectory, npm]);

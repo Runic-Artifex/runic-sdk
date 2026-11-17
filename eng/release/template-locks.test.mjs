@@ -70,7 +70,8 @@ test('the translated Vite frontends resolve the published Translations Vite plug
   expect(() => verifyTemplateLock(JSON.stringify(lock), 'package-lock.json', candidates)).toThrow('nonpublic');
 });
 // The template tests bind every manager's lock to the train candidate of the independently released Translations Vite
-// plugin: each upstream CI run packs the same version with a different gitHead, so the committed hash goes stale.
+// plugin: an upstream commit that changes the plugin's inputs packs the same version with a different gitHead, so the
+// committed hash goes stale.
 const registry = 'http://127.0.0.1:42111';
 const trainIntegrity = 'sha512-train-candidate-of-this-run';
 for (const {directory, runicPackages, independentPackages} of templateLockDirectories.filter(entry => entry.translations)) {
