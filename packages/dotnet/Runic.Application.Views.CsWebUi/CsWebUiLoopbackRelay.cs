@@ -204,16 +204,18 @@ internal sealed class CsWebUiLoopbackRelay : IDisposable
             var toUpstream = PumpAsync(pair, client, upstream);
             var toClient = PumpAsync(pair, upstream, client);
             var first = await Task.WhenAny(toUpstream, toClient).ConfigureAwait(false);
-            await first.ConfigureAwait(false);
-            var other = first == toUpstream ? toClient : toUpstream;
-            // DEV-SEC-79: a client that never closes its half would keep both sockets open for good.
-            using (var halfClosed = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token))
+            if (!first.IsCompletedSuccessfully) Close(pair);
+            else
             {
+                // DEV-SEC-79: a client that never closes its half would keep both sockets open for good.
+                var other = first == toUpstream ? toClient : toUpstream;
+                using var halfClosed = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                 if (await Task.WhenAny(other, Task.Delay(_halfCloseTimeout, halfClosed.Token)).ConfigureAwait(false) != other)
                     Close(pair);
                 await halfClosed.CancelAsync().ConfigureAwait(false);
             }
-            await other.ConfigureAwait(false);
+            // Both pumps are observed, also the one that fails after the other did or after the pair was closed.
+            await Task.WhenAll(toUpstream, toClient).ConfigureAwait(false);
         }
         catch (Exception error) when (error is SocketException or ObjectDisposedException or OperationCanceledException)
         {

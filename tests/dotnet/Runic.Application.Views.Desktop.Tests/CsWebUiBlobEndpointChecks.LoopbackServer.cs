@@ -578,16 +578,19 @@ internal sealed partial class CsWebUiBlobEndpointChecks
             server.PeerOf = static _ => new IPEndPoint(IPAddress.Parse("10.9.0.2"), 40_000);
             var events = new ConcurrentBag<string>();
             server.Serve(request => HandleAsync(request, events));
+            // The reset can surface at the connect, as EPIPE on the send (macOS: SocketError.Shutdown, "Broken pipe"),
+            // as ECONNRESET or an abort on the read, or as EOF: each means the server refused the client.
             string end;
             var received = "";
             try
             {
                 using var client = await RawClient.ConnectAsync(server.LocalEndPoint);
-                await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: localhost:{server.LocalEndPoint.Port}\r\n\r\n");
+                try { await client.SendAsync($"GET /echo HTTP/1.1\r\nHost: localhost:{server.LocalEndPoint.Port}\r\n\r\n"); }
+                catch (SocketException error) when (IsRefusal(error.SocketErrorCode)) { }
                 end = await client.EndAsync(TimeSpan.FromSeconds(5));
                 received = client.Received;
             }
-            catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionAborted)
+            catch (SocketException error) when (IsRefusal(error.SocketErrorCode))
             {
                 end = "reset";
             }
@@ -595,6 +598,10 @@ internal sealed partial class CsWebUiBlobEndpointChecks
                 $"A client of another machine ended {end} after {received}; the handler saw {string.Join(", ", events)}.");
         }
     }
+
+    // How a platform reports a connection that the other side reset: ECONNRESET, ECONNABORTED, or EPIPE on a send.
+    private static bool IsRefusal(SocketError error) =>
+        error is SocketError.ConnectionReset or SocketError.ConnectionAborted or SocketError.Shutdown;
 
     // DEV-SEC-68b: the head is scanned once as it arrives, however small its pieces (a rescan per read made a 32 KiB head
     // in 8-byte pieces cost about 100 times the CPU of one write). The scanner's count of bytes looked at stays linear.
@@ -943,7 +950,7 @@ internal sealed partial class CsWebUiBlobEndpointChecks
                 }
             }
             catch (OperationCanceledException) { return "open"; }
-            catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionAborted) { return "reset"; }
+            catch (SocketException error) when (IsRefusal(error.SocketErrorCode)) { return "reset"; }
             finally
             {
                 Received = Encoding.Latin1.GetString(_pending.ToArray());
