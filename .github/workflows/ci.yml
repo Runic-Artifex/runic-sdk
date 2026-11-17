@@ -800,7 +800,8 @@ jobs:
           - first: vue
             second: angular
             desktop-smoke: "1"
-          # The starters' engines.node admits Node 24 and 26 (D031.3); this lane builds them on Node 26.
+          # The starters' engines.node admits Node 24 and 26 (D031.3); this lane builds them on Node 26, with the
+          # npm 11 that Node 26 ships, which doctor supports beside the certified npm 12 (#1088).
           - first: sveltekit
             node: "26.12.1"
           # #946: Angular built with Vite and the Analog plugin (--angular-build vite), with every package manager.
@@ -822,11 +823,12 @@ jobs:
         if: matrix.node
         with:
           node-version: ${{ matrix.node }}
-      - name: Install the pinned package managers on Node ${{ matrix.node }}
+      - name: Install the pinned pnpm on Node ${{ matrix.node }}, keeping its own npm
         if: matrix.node
         run: |
-          npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
+          npm install --global "pnpm@$(bun eng/toolchain.mjs pnpm)" --allow-scripts=pnpm
           node --version | grep "^v${{ matrix.node }}$"
+          npm --version | grep "^11\."
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         id: candidates
         with:
@@ -1444,13 +1446,14 @@ jobs:
           New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
           icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
           icacls $env:GITHUB_WORKSPACE
-      # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
-      # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
-      # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
-      # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
+      # D066.25 3: the template's WebView2 script debugging (its VS Code configurations; no launch profile since D070.18) in
+      # a real Runic Desktop Window, through dotnet run --launch-profile with the configuration's variables and dotnet
+      # runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug attaches to, Runtime.evaluate
+      # and Debugger.enable in the Window's page, the application's own browser arguments next to the variable's, and the
+      # session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
       # WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated process, so the Window runs as the standard
       # user above, as a developer's IDE starts it.
-      - name: Check the template's WebView2 script-debugging profile
+      - name: Check the template's WebView2 script debugging
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         timeout-minutes: 20
@@ -1460,6 +1463,19 @@ jobs:
         run: |
           dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
           node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
+      # #1081: Node.js installs npm as npm.cmd on Windows. dotnet runic finds it through PATH and PATHEXT and starts it
+      # through cmd.exe; the batch file must receive its arguments unchanged, and stopping it must stop what it started.
+      # Then dotnet runic dev runs the dev-live-assets frontend as an npm project: npm ci, npm run dev and the served page.
+      - name: Test dotnet runic's program starts on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Application.Tool.Tests -c Release --
+          --treenode-filter "/*/*/*/*[Category=WindowsCommands]" --timeout 5m --output detailed
+      - name: Exercise dotnet runic dev with npm on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 15
+        run: node tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs
       - name: Show hosted application windows on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5

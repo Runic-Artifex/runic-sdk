@@ -5,7 +5,7 @@
 // the guest's origin in the host page's document.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import path, { join, type PlatformPath } from "node:path";
 import type { EnvironmentOptions, Rollup, ViteBuilder } from "vite";
 
 type OutputBundle = Rollup.OutputBundle;
@@ -119,6 +119,16 @@ export interface ComponentHooks {
   generateBundle(context: { emitFile: (file: { type: "asset"; fileName: string; source: string }) => unknown }, bundle: OutputBundle): void;
 }
 
+/**
+ * The component entry's module ID, as Vite names the file (its `normalizePath`): resolved against the Vite root, with `/`
+ * separators on Windows (`C:/p/src/component.ts`), so that the entry has one ID in the module graph. `paths` is
+ * `node:path`, `path.win32` in tests.
+ */
+export function componentEntryId(entry: string, root: string, paths: PlatformPath = path): string {
+  const file = paths.isAbsolute(entry) ? paths.normalize(entry) : paths.resolve(root, entry);
+  return paths.sep === "\\" ? file.replaceAll("\\", "/") : file;
+}
+
 export function componentHooks(component: ResolvedComponent, root: () => string): ComponentHooks {
   let prefix = component.name;
   return {
@@ -130,9 +140,8 @@ export function componentHooks(component: ResolvedComponent, root: () => string)
     },
     load(id) {
       if (id !== resolvedEntryId) return undefined;
-      const entry = isAbsolute(component.entry) ? component.entry : resolve(root(), component.entry);
       return [
-        `import mount from ${JSON.stringify(entry)};`,
+        `import mount from ${JSON.stringify(componentEntryId(component.entry, root()))};`,
         `import meta from ${JSON.stringify(metaId)};`,
         `import { defineRunicComponent } from "@runic-artifex/views/experimental";`,
         `const definition = defineRunicComponent({ tag: meta.tag, styles: meta.styles, mount });`,

@@ -70,6 +70,15 @@ export const releaseJobs = [
 // the ReactiveUI adapters, examples and documentation) need no Windows or macOS leg; unowned files
 // need every leg unless they are neutral.
 const all = platforms;
+// dotnet runic's files that start programs or decide which program and how (#1081); see the win-x64 rule below. A tool
+// file that creates a ProcessStartInfo or calls Process.Start must be CommandRunner.cs (plan.test.mjs).
+export const windowsProgramStartPaths = [
+  "tools/dotnet-runic/CommandRunner.cs", "tools/dotnet-runic/ExecutableSearch.cs", "tools/dotnet-runic/JavaScriptPackageManager.cs",
+  "tools/dotnet-runic/RunningProcess.cs", "tools/dotnet-runic/HostProcessController.cs",
+  "tools/dotnet-runic/ViteDevelopmentServer.cs", "tools/dotnet-runic/AngularDevelopmentServer.cs",
+  "tests/dotnet/Runic.Application.Tool.Tests/ToolTests.WindowsCommands.cs",
+  "tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs",
+];
 export const platformRules = [
   // GTK 4, the Linux providers and the manual global menu check run on the Linux legs only.
   { platforms: [], paths: ["packages/dotnet/Runic.Desktop.Gtk4", "tests/native/Runic.Desktop.Gtk4.Smoke", "tests/native/Runic.Desktop.GlobalMenuCheck",
@@ -99,12 +108,17 @@ export const platformRules = [
   { platforms: [], paths: ["examples/hosted-components/Widget/Angular", "examples/hosted-components/angular-component-smoke.mjs"] },
   // The region mode examples, whose probes run in the native job's Windows x64 leg as the elevated pair (#865, #866).
   { platforms: ["win-x64"], paths: ["examples/hosted-region", "examples/hosted-components"] },
-  // The template's WebView2 script-debugging launch profile and VS Code launch configurations (D066.25 3), which the native
+  // The template's launch profiles and its VS Code WebView2 launch configurations (D066.25 3), which the native
   // job's Windows x64 leg checks against WebView2 with the dev-live-assets fixture (webview2-debug-smoke.mjs), and the
   // session file and contract lines that check reads.
   { platforms: ["win-x64"], paths: ["tools/Runic.Application.Templates/content/runic-app/Properties/launchSettings.json",
     "tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json", "tests/fixtures/application/dev-live-assets",
     "tools/dotnet-runic/DevSession.cs", "tools/dotnet-runic/DevApplication.cs"] },
+  // How dotnet runic starts programs on Windows (#1081): npm and pnpm are batch files there (npm.cmd). The native job's
+  // Windows x64 leg tests the resolution, quoting and stop (ToolTests.WindowsCommands.cs) and runs dev with npm
+  // (dev-npm-smoke.mjs). Only the files that start programs or choose which and how plan that leg: every process start
+  // of the tool goes through CommandRunner, which plan.test.mjs checks in the tool's sources.
+  { platforms: ["win-x64"], paths: windowsProgramStartPaths },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },

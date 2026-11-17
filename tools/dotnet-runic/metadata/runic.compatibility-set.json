@@ -259,6 +259,33 @@
       "version": "0.22.0"
     }
   ],
+  "train": [
+    {
+      "name": "Command Line",
+      "repository": "Runic-Artifex/runic-cli-sdk",
+      "version": "0.13.0",
+      "nuget": [
+        "Runic.CommandLine",
+        "Runic.CommandLine.*"
+      ],
+      "npm": []
+    },
+    {
+      "name": "Translations",
+      "repository": "Runic-Artifex/runic-translations-sdk",
+      "version": "0.13.0",
+      "nuget": [
+        "Runic.Translations",
+        "Runic.Translations.*",
+        "dotnet-runic-translations"
+      ],
+      "npm": [
+        "@runic-artifex/translations-svelte",
+        "@runic-artifex/translations-sveltekit",
+        "@runic-artifex/vite-plugin-runic-translations"
+      ]
+    }
+  ],
   "support": {
     "statuses": {
       "ci-verified": "Runic CI builds and runs the host's native window layer on this RID for changes that affect it.",

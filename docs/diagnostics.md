@@ -1046,6 +1046,9 @@ the package manager. Exit code 1.
 
 **Fix:** install the program and make sure it is on `PATH`.
 `dotnet runic doctor` lists the runtime and package manager the project needs.
+On Windows the tool finds a program through `PATH` and `PATHEXT`, as the shell
+and `doctor` do, so `npm.cmd` and `pnpm.cmd` count. A batch file cannot receive
+an argument with a line break; the message says so.
 
 ### RAPPDEV1005
 
