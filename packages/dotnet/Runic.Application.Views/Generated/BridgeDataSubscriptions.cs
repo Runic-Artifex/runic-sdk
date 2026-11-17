@@ -671,13 +671,13 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         internal HashSet<Node> Nodes { get; } = new(ReferenceEqualityComparer.Instance);
     }
 
-    private readonly record struct NodeKey(object Owner, IReadOnlyList<BridgeDataSubscriptionMember> Members);
+    private sealed record NodeKey(object Owner, IReadOnlyList<BridgeDataSubscriptionMember> Members);
 
     private sealed class NodeKeyComparer : IEqualityComparer<NodeKey>
     {
         internal static NodeKeyComparer Instance { get; } = new();
-        public bool Equals(NodeKey left, NodeKey right) =>
-            ReferenceEquals(left.Owner, right.Owner) && ReferenceEquals(left.Members, right.Members);
+        public bool Equals(NodeKey? left, NodeKey? right) => ReferenceEquals(left, right) ||
+            left is not null && right is not null && ReferenceEquals(left.Owner, right.Owner) && ReferenceEquals(left.Members, right.Members);
         public int GetHashCode(NodeKey value) =>
             HashCode.Combine(RuntimeHelpers.GetHashCode(value.Owner), RuntimeHelpers.GetHashCode(value.Members));
     }

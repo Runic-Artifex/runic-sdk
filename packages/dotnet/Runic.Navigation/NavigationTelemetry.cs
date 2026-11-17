@@ -31,7 +31,7 @@ internal static partial class ModelContextLog
 }
 
 // Without an ILoggerFactory, failures go to System.Diagnostics.Trace, so they stay
-// visible to a debugger or trace listener.
+// visible to a debugger or trace listener. Runic.Application.Views uses this instance too.
 internal sealed class TraceFallbackLogger : ILogger
 {
     internal static readonly TraceFallbackLogger Instance = new();
@@ -44,11 +44,15 @@ internal sealed class TraceFallbackLogger : ILogger
 
     public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning && logLevel != LogLevel.None;
 
+    // Log<TState> compiles once per state type, so it stays small and Write holds the rest.
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
         Func<TState, Exception?, string> formatter)
     {
-        if (!IsEnabled(logLevel)) return;
-        var message = formatter(state, exception);
+        if (IsEnabled(logLevel)) Write(logLevel, formatter(state, exception), exception);
+    }
+
+    private static void Write(LogLevel logLevel, string message, Exception? exception)
+    {
         if (exception is not null) message = $"{message} {exception}";
         if (logLevel >= LogLevel.Error) Trace.TraceError(message);
         else Trace.TraceWarning(message);
