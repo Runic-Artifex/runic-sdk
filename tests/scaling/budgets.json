@@ -220,8 +220,8 @@
     "aot/bridge/executable-bytes": {
       "class": "O(n)",
       "sizes": [1, 9],
-      "limit": 238207,
-      "measured": [25056, 233536],
+      "limit": 233997,
+      "measured": [29120, 229408],
       "noise": 8192,
       "note": "linux-x64 executable bytes above the build without fixture ViewModels; the slope from 1 to 9 is the cost per ViewModel, about 24 KiB after #901 (118 KiB before; win-x64 22.2 KiB, osx-arm64 24.4 KiB in the ci:all-platforms run of #918): the generated Bridge's constructor, codecs and lambdas and the ViewModel itself. Section alignment moves each measurement by a few KiB: the 8 KiB noise and the 2 % margin absorb it",
       "margin": 0.02
@@ -243,48 +243,48 @@
     "aot/executable-bytes": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 11158572,
-      "measured": [10706240, 10939776],
+      "limit": 8145117,
+      "measured": [7756000, 7985408],
       "margin": 0.02,
-      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %"
+      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %. 10,706,240 B at K = 0 before the loopback server replaced HttpListener (#1111)"
     },
     "aot/framework/System.Net.Http": {
       "class": "total",
       "sizes": [0, 9],
       "limit": 0,
-      "measured": [390725, 390725],
+      "measured": [0, 0],
       "note": "mstat bytes owned by System.Net.Http (methods, types, frozen objects, RVA data) in the linux-x64 CS-WebUI fixture. 0 since the Unix loopback server replaced HttpListener (#1111, D072.2 S1); HttpListener's TLS chain brought it in (#1096 added 229 KB of it)"
     },
     "aot/framework/System.Net.Security": {
       "class": "total",
       "sizes": [0, 9],
       "limit": 0,
-      "measured": [140031, 140031],
+      "measured": [0, 0],
       "note": "mstat bytes owned by System.Net.Security (methods, types, frozen objects, RVA data) in the linux-x64 CS-WebUI fixture. 0 since the Unix loopback server replaced HttpListener (#1111, D072.2 S1); HttpListener's TLS chain brought it in (#1096 added 229 KB of it)"
     },
     "aot/assembly/Runic.Application.Views": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 588099,
-      "measured": [560115, 560094],
+      "limit": 585223,
+      "measured": [557376, 557355],
       "margin": 0.05,
       "note": "mstat bytes owned by Runic.Application.Views (the Views runtime and the generated Bridge support): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
     "aot/assembly/Runic.Navigation": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 206743,
-      "measured": [196898, 196898],
+      "limit": 205269,
+      "measured": [195494, 195494],
       "margin": 0.05,
       "note": "mstat bytes owned by Runic.Navigation (routing, pages and the navigation host): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
     "aot/assembly/Runic.Application.Views.CsWebUi": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 108789,
-      "measured": [103608, 103608],
+      "limit": 148241,
+      "measured": [141181, 141181],
       "margin": 0.05,
-      "note": "mstat bytes owned by Runic.Application.Views.CsWebUi (the CS-WebUI host adapter and its loopback blob server): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
+      "note": "mstat bytes owned by Runic.Application.Views.CsWebUi (the CS-WebUI host adapter and, since #1111, its own loopback HTTP server: 103,608 B before): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
     "aot/assembly/Runic.Assets": {
       "class": "total",
@@ -319,8 +319,8 @@
     "aot/views-translations/executable-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 12116956,
-      "measured": [11879368, 11879368],
+      "limit": 9153391,
+      "measured": [8973912, 8973912],
       "margin": 0.02,
       "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. SDK-5 tightens it after Translations 0.14"
     }
