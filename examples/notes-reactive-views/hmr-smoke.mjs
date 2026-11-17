@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
@@ -9,6 +9,7 @@ const frontend = process.env.RUNIC_HMR_FRONTEND;
 if (frontend !== "angular" && frontend !== "svelte")
   throw new Error("Set RUNIC_HMR_FRONTEND to angular or svelte.");
 const angular = frontend === "angular";
+const windows = process.platform === "win32";
 const viaRunicDev = process.env.RUNIC_HMR_VIA_RUNIC_DEV === "1";
 const viaIde = process.env.RUNIC_HMR_VIA_IDE === "1";
 if (viaIde && (!angular || viaRunicDev))
@@ -69,7 +70,8 @@ try {
     const args = angular
       ? ["run", "start", "--", "--host", "127.0.0.1", "--port", String(devPort)]
       : ["run", "dev", "--", "--port", String(devPort), "--strictPort"];
-    devServer = spawn("npm", args, {
+    // npm is npm.cmd on Windows, which only cmd.exe runs (as notes-ide-frontend.mjs runs npm ci).
+    devServer = spawn(windows ? "cmd.exe" : "npm", windows ? ["/d", "/s", "/c", "npm.cmd", ...args] : args, {
       cwd: frontendDir,
       env: { ...process.env, RUNIC_WEBUI_ORIGIN: origin },
       stdio: ["ignore", "pipe", "pipe"],
@@ -172,7 +174,10 @@ try {
 } finally {
   if (originalShell !== undefined) await writeFile(shellFile, originalShell);
   await browser?.close().catch(error => { cleanupError = error; });
-  devServer?.kill("SIGTERM");
+  // On Windows, cmd.exe's npm and dev server outlive cmd.exe; stop the tree.
+  if (windows && devServer?.pid !== undefined && devServer.exitCode === null)
+    spawnSync("taskkill.exe", ["/PID", String(devServer.pid), "/T", "/F"], { timeout: 5000 });
+  else devServer?.kill("SIGTERM");
   if (viaRunicDev) host.kill("SIGTERM");
   else if (!host.stdin.writableEnded) host.stdin.end("\n");
   await pause(300);

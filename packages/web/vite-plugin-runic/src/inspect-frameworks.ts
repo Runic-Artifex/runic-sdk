@@ -191,10 +191,19 @@ export function sourceFile(source: string, url: string, root: string | undefined
   let path: string;
   try { path = decodeURIComponent(new URL(source, url).pathname); }
   catch { return source; }
-  if (path.startsWith("/@fs/")) return path.slice(4);
+  if (path.startsWith("/@fs/")) return fsPath(path);
   // A rooted source outside the Vite root (a monorepo package) is a file path already.
   if (source.startsWith("/") && !source.startsWith("/src/")) return source;
   return absolutePath(path.replace(/^\//u, ""), root);
+}
+
+/**
+ * The file of a `/@fs/` URL path, as Vite's `fsPathFromId` reads it: `/@fs/home/p/x.ts` is `/home/p/x.ts`, and on
+ * Windows `/@fs/C:/p/x.ts` is `C:/p/x.ts`, not the `/C:/p/x.ts` that Node would resolve to `C:\C:\p\x.ts`.
+ */
+export function fsPath(path: string): string {
+  const file = path.slice("/@fs".length);
+  return /^\/[a-z]:\//iu.test(file) ? file.slice(1) : file;
 }
 
 /** Resolves a frame of a served module to its original location through the module's inline source map. */
@@ -204,7 +213,7 @@ export async function resolveFrame(
   const fallback = (): RunicInspectLocation => {
     let path = frame.url;
     try { path = decodeURIComponent(new URL(frame.url).pathname); } catch { /* keep the URL */ }
-    return { file: path.startsWith("/@fs/") ? path.slice(4) : absolutePath(path.replace(/^\//u, ""), root),
+    return { file: path.startsWith("/@fs/") ? fsPath(path) : absolutePath(path.replace(/^\//u, ""), root),
       line: frame.line, column: frame.column, editor: "vite" };
   };
   const code = await fetchText(frame.url);

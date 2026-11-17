@@ -568,6 +568,10 @@ None of this ships:
   `[dev] Debugging:` hint; the session file lists the endpoint under `unavailableDebugEndpoints`. Run both without
   elevation. Without that hint, check that `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` reaches the Window: set it in the
   launch profile, with `dotnet runic dev -e`, or in the environment `dev` runs in.
+- **Windows Defender Firewall asks about `node.exe` or `bun.exe` on the first `dev`.** Vite 8 checks that the
+  port is free by listening on it briefly on all interfaces (`0.0.0.0` and `::`) before it binds the `127.0.0.1`
+  that `dev` passes. Nothing is served on that short listen. Cancel or deny the prompt: the development server stays
+  on loopback and works as before, and Windows asks once per program.
 - **F12 does nothing.** The Window does not run in Development: start it with `dotnet runic dev` or a launch profile
   that sets `DOTNET_ENVIRONMENT=Development`. On macOS, use Safari's Develop menu instead, and on Linux Inspect
   Element from the page's context menu.
