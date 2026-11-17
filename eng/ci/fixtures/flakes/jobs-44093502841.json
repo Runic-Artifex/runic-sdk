@@ -1,0 +1,32 @@
+{
+ "jobs": [
+  {
+   "id": 134074693218,
+   "name": "Native / win-x64",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-17T13:31:28Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44093502841/job/134074693218",
+   "steps": [
+    {
+     "name": "Test managed desktop contracts",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 134093335900,
+   "name": "verify",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-17T14:03:11Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44093502841/job/134093335900",
+   "steps": [
+    {
+     "name": "Require every planned verification job to pass",
+     "conclusion": "failure"
+    }
+   ]
+  }
+ ]
+}

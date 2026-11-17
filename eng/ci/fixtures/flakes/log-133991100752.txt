@@ -1,0 +1,8 @@
+2026-11-17T10:58:27.5018240Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Desktop.Tests/bin/Release/net10.0/Runic.Desktop.Tests.dll (net10.0|arm64)
+2026-11-17T11:00:06.8167360Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Testing.Tests/bin/Release/net10.0/Runic.Application.Testing.Tests.dll (net10.0|arm64)
+2026-11-17T11:00:24.0517680Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Assets.Tests/bin/Release/net10.0/Runic.Assets.Tests.dll (net10.0|arm64)
+2026-11-17T11:01:01.5593950Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll (net10.0|arm64)
+2026-11-17T11:02:09.4723060Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll (net10.0|arm64)
+2026-11-17T11:06:09.2787080Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll (net10.0|arm64)
+2026-11-17T11:11:31.4578130Z FAIL           voiceover-side-panel-return: VoiceOver did not say 'Finish'; it said: You are currently on a button. To click this button, press Control-Option-Space.
+2026-11-17T11:11:33.8644640Z ##[error]Process completed with exit code 1.

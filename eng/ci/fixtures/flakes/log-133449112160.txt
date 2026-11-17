@@ -1,0 +1,8 @@
+2026-11-16T16:49:48.7612390Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Desktop.Tests/bin/Release/net10.0/Runic.Desktop.Tests.dll (net10.0|arm64)
+2026-11-16T16:51:53.4158270Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Testing.Tests/bin/Release/net10.0/Runic.Application.Testing.Tests.dll (net10.0|arm64)
+2026-11-16T16:52:09.3024030Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Assets.Tests/bin/Release/net10.0/Runic.Assets.Tests.dll (net10.0|arm64)
+2026-11-16T16:52:38.3337330Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll (net10.0|arm64)
+2026-11-16T16:53:43.4105470Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll (net10.0|arm64)
+2026-11-16T16:58:01.0392600Z Test run summary: Passed! - /Users/runner/work/runic-sdk/runic-sdk/tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll (net10.0|arm64)
+2026-11-16T17:03:01.9181820Z FAIL           voiceover-side-panel-return: VoiceOver did not say 'Finish'; it said: Panel action button Debug tools complementary | Runic accessibility fixture web content | You are currently on web content. To enter the web area, press Control-Option-Shift-Down Arrow.
+2026-11-16T17:03:04.7056590Z ##[error]Process completed with exit code 1.

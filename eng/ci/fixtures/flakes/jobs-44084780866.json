@@ -1,0 +1,32 @@
+{
+ "jobs": [
+  {
+   "id": 134044392111,
+   "name": "Native / win-arm64",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-17T12:37:07Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44084780866/job/134044392111",
+   "steps": [
+    {
+     "name": "Test file watching on Windows and macOS",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 134064901223,
+   "name": "verify",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-17T13:14:59Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44084780866/job/134064901223",
+   "steps": [
+    {
+     "name": "Require every planned verification job to pass",
+     "conclusion": "failure"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,7 @@
+2026-11-16T13:54:08.0270553Z ##[error]
+2026-11-16T13:54:08.0280786Z (fail) Runic Inspect keeps a pressed card link through a refresh in chromium [41408.56ms]
+2026-11-16T13:54:49.2051682Z ##[error]
+2026-11-16T13:54:49.2055216Z (fail) Runic Inspect keeps a pressed card link through a refresh in webkit [41181.91ms]
+2026-11-16T13:55:09.2959550Z (fail) Runic Inspect keeps a pressed card link through a refresh in chromium [41408.56ms]
+2026-11-16T13:55:09.2960112Z (fail) Runic Inspect keeps a pressed card link through a refresh in webkit [41181.91ms]
+2026-11-16T13:55:09.3410698Z ##[error]Process completed with exit code 1.

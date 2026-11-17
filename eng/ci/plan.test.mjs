@@ -5,10 +5,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
-import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
+import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
-  windowsProgramStartPaths } from './platforms.mjs';
+  globalPaths, windowsProgramStartPaths, matchesPath } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -54,8 +54,8 @@ test('an empty or failed diff plans every job', () => {
 });
 
 test('shared or unowned inputs run everything', () => {
-  for (const file of ['Directory.Build.props', 'Directory.Packages.props', 'global.json', 'bun.lock', 'eng/run.mjs', 'eng/ci/plan.mjs',
-    'eng/build/nuget-lock.targets', 'eng/build/application.props', 'eng/build/application.targets', 'eng/dependencies/audit.test.mjs', 'eng/ci/fixtures/artifact-roundtrip.yml', '.github/workflows/ci.yml', '.github/actions/setup-sdk/action.yml', 'flake.nix', 'LICENSE']) {
+  for (const file of ['Directory.Build.props', 'Directory.Packages.props', 'global.json', 'bun.lock', 'eng/run.mjs', 'eng/ci/source-state.mjs',
+    'eng/build/nuget-lock.targets', 'eng/build/application.props', 'eng/build/application.targets', 'eng/dependencies/package-downloads.json', 'eng/ci/retry.sh', '.github/workflows/ci.yml', '.github/actions/setup-sdk/action.yml', 'flake.nix', 'LICENSE']) {
     const result = plan([file, 'docs/README.md']);
     // No Windows or macOS job reads the flake, so it plans every Linux job and leg; WPF has no Linux leg.
     const neutral = file === 'flake.nix';
@@ -195,7 +195,8 @@ test('the base checkout decides what is affected and this checkout enumerates su
   const decided = JSON.parse(cli(['--affected'], 'docs/README.md\0packages/web/svelte/src/index.ts\0'));
   assert.deepEqual(decided, affected(['docs/README.md', 'packages/web/svelte/src/index.ts']));
   assert.deepEqual(decided.components.sort(), ['examples', 'svelte', 'templates']);
-  assert.equal(JSON.parse(cli(['--affected'], 'eng/ci/plan.mjs\0')).full, true);
+  assert.equal(JSON.parse(cli(['--affected'], 'eng/run.mjs\0')).full, true);
+  assert.deepEqual(JSON.parse(cli(['--affected'], 'eng/ci/plan.mjs\0')).components, ['ci']);
   const planned = Object.fromEntries(cli(['--plan', JSON.stringify(decided)]).trim().split('\n').map(line => [line.slice(0, line.indexOf('=')), JSON.parse(line.slice(line.indexOf('=') + 1))]));
   assert.deepEqual(planned.skip, plan(['packages/web/svelte/src/index.ts']).skip);
   // An older base planner prints GitHub outputs instead; plan everything.
@@ -522,7 +523,7 @@ test('owned files without a rule, engineering-only and neutral files plan no Win
     assert.deepEqual(result.skip, ['wpf'], file);
   }
   // Any other unowned file plans every leg.
-  for (const file of ['global.json', 'eng/ci/plan.mjs', 'eng/support.json', '.github/actions/setup-sdk/action.yml', 'bun.lock', 'eng/workspace.json']) {
+  for (const file of ['global.json', 'eng/ci/build-artifact.mjs', 'eng/support.json', '.github/actions/setup-sdk/action.yml', 'bun.lock', 'eng/workspace.json']) {
     assert.deepEqual(plan([file]).platforms, platforms, file);
     assert.match(plan([file]).why, new RegExp(`^win-x64: ${file.replaceAll('.', '\\.')};`), file);
   }
@@ -817,3 +818,64 @@ test('TUnit suites write TRX and Cobertura reports; other executables and listin
     assert.deepEqual(testReportArguments('Other.Tests/Other.Tests.csproj', [], base), []);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });
+
+// I11 (0.21: a CI-only change ran every leg). Every tracked file has an owner, is engineering-only, neutral or global
+// on purpose; a new file that is none of these fails here instead of silently planning every job and leg.
+const ownedBy = file => Object.entries(workspace.components)
+  .filter(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`))).map(([name]) => name);
+export const unownedFiles = files => files.filter(file => !engineeringOnly(file) && ownedBy(file).length === 0
+  && !neutralPaths.some(path => matchesPath(file, path)) && !globalPaths.some(path => matchesPath(file, path)));
+
+test('every tracked file is owned, engineering-only, neutral or global on purpose', () => {
+  const unowned = unownedFiles(tracked());
+  assert.deepEqual(unowned, [], `give these files a component in eng/workspace.json, or list them in neutralPaths or globalPaths (eng/ci/platforms.mjs):\n${unowned.join('\n')}`);
+  // A new CI script under eng/ci is caught too.
+  assert.deepEqual(unownedFiles(['eng/ci/new-helper.sh', 'eng/ci/plan.mjs', 'eng/ci/new.test.mjs', 'nix/new.nix', 'eng/build/new.props']), ['eng/ci/new-helper.sh']);
+  // Every neutral and global entry names a tracked file, so a rename cannot leave one matching nothing.
+  for (const path of [...neutralPaths, ...globalPaths]) assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
+});
+
+test('the CI component plans only the always-run jobs, without Windows or macOS legs', () => {
+  const ci = workspace.components[ciComponent];
+  assert.deepEqual(ci.dependsOn, []);
+  assert.ok(!Object.values(workspace.components).some(component => component.dependsOn.includes(ciComponent)), 'no component depends on the CI component');
+  for (const path of ci.paths) {
+    assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
+    assert.ok(!platformRules.some(rule => rule.paths.some(item => matchesPath(path, item))), `${path} has a platform rule`);
+  }
+  for (const files of [['eng/ci/plan.mjs'], ['eng/ci/platforms.mjs', 'eng/ci/plan.test.mjs'], ['eng/ci/gate.mjs', 'eng/ci/contracts.test.mjs'],
+    ['eng/ci/flakes.mjs', 'eng/ci/flakes.test.mjs', 'eng/ci/README.md'], ['eng/ci/local.mjs', 'eng/ci/runner.Containerfile'],
+    ['eng/ci/fixtures/artifact-roundtrip.yml'], ['eng/reliability/run.mjs'], ['eng/json-schema.mjs'], ['.github/CODEOWNERS']]) {
+    const result = plan(files);
+    assert.equal(result.full, false, files.join());
+    assert.deepEqual(result.components, files.some(file => ownedBy(file).length) ? [ciComponent] : [], files.join());
+    assert.deepEqual(result.skip, skippableJobs, files.join());
+    assert.deepEqual(result.platforms, [], files.join());
+  }
+  // With a shipped component, package consumers and templates run as before.
+  assert.ok(runs(plan(['eng/ci/plan.mjs', 'packages/web/svelte/src/index.ts']), 'templates'));
+});
+
+test('the CI scripts of platform steps belong to the component whose job runs them and plan its legs only', () => {
+  for (const [file, component, legs, jobs] of [
+    ['eng/ci/macos-voiceover.sh', 'platform', ['osx-arm64'], ['native']],
+    ['eng/ci/macos-appearance.sh', 'platform', ['osx-arm64'], ['native']],
+    ['eng/ci/macos-open-probe.sh', 'platform', ['osx-arm64'], ['native']],
+    ['eng/ci/windows-nvda.ps1', 'platform', ['win-x64'], ['screen-readers']],
+    ['eng/ci/windows-native-run.mjs', 'platform', ['win-x64', 'win-arm64'], ['native']],
+    ['eng/ci/real-portal.sh', 'platform', [], ['native']],
+    ['eng/ci/windows-dismiss-oobe.ps1', 'desktop', ['win-x64', 'win-arm64'], ['native', 'wpf']],
+    ['eng/ci/native-musl.sh', 'desktop', [], ['native-musl']],
+    ['eng/ci/windows-httpsys-isolation.ps1', 'application', ['win-x64', 'osx-arm64'], ['native']],
+    ['eng/ci/hdiutil.sh', 'packaging', ['osx-arm64'], ['packaging']],
+    ['eng/ci/packaging-probe-check.mjs', 'packaging', platforms, ['packaging']],
+    ['eng/ci/packaging-rpm.sh', 'packaging', [], ['packaging']],
+  ]) {
+    assert.deepEqual(ownedBy(file), [component], file);
+    const result = plan([file]);
+    assert.equal(result.full, false, file);
+    assert.deepEqual(result.platforms, legs, file);
+    for (const job of jobs) assert.ok(runs(result, job), `${file}: ${job}`);
+  }
+});
+

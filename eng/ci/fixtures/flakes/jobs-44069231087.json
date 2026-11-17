@@ -1,0 +1,32 @@
+{
+ "jobs": [
+  {
+   "id": 133991100752,
+   "name": "Native / osx-arm64",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-17T10:55:42Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44069231087/job/133991100752",
+   "steps": [
+    {
+     "name": "Check what screen readers read in the embedded window",
+     "conclusion": "failure"
+    }
+   ]
+  },
+  {
+   "id": 134008382236,
+   "name": "verify",
+   "run_attempt": 1,
+   "conclusion": "failure",
+   "started_at": "2026-11-17T11:29:18Z",
+   "html_url": "https://github.com/Runic-Artifex/runic-sdk/actions/runs/44069231087/job/134008382236",
+   "steps": [
+    {
+     "name": "Require every planned verification job to pass",
+     "conclusion": "failure"
+    }
+   ]
+  }
+ ]
+}

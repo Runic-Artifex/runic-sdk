@@ -261,7 +261,9 @@
         "packages/dotnet/Runic.Desktop.NativeServer.Static",
         "native",
         "eng/native",
-        "nix/runic-server.nix"
+        "nix/runic-server.nix",
+        "eng/ci/windows-dismiss-oobe.ps1",
+        "eng/ci/native-musl.sh"
       ]
     },
     "assets": {
@@ -340,7 +342,13 @@
         "tests/fixtures/application/navigation-consumer",
         "tests/fixtures/application/reactiveui25-aot",
         "tests/fixtures/application/reactiveui-behavioral-conformance",
-        "tests/fixtures/application/reactiveui-reactive-flavor"
+        "tests/fixtures/application/reactiveui-reactive-flavor",
+        "eng/ci/windows-httpsys-agent.ps1",
+        "eng/ci/windows-httpsys-isolation.ps1",
+        "docs/runicbridge-diagnostics.json",
+        "tests/benchmarks/views-client",
+        "tests/web/angular-package-consumer",
+        "tests/web/lowest-peers"
       ]
     },
     "scaling": {
@@ -403,7 +411,8 @@
         "packages/web/svelte",
         "packages/web/sveltekit",
         "tests/fixtures/application/operations-consumer",
-        "tests/web/svelte-package-consumers"
+        "tests/web/svelte-package-consumers",
+        "eng/typescript/svelte.json"
       ]
     },
     "packaging": {
@@ -416,7 +425,10 @@
         "tools/Runic.Application.Templates/content/runic-app/icons",
         "tests/native/Runic.Packaging.Probe",
         "tests/native/Runic.Sandbox.Probe",
-        "tests/fixtures/flathub"
+        "tests/fixtures/flathub",
+        "eng/ci/hdiutil.sh",
+        "eng/ci/packaging-probe-check.mjs",
+        "eng/ci/packaging-rpm.sh"
       ]
     },
     "templates": {
@@ -430,7 +442,8 @@
         "tests/templates",
         "tests/fixtures/nix",
         "tools/Runic.Create",
-        "tests/dotnet/Runic.Create.Tests"
+        "tests/dotnet/Runic.Create.Tests",
+        "tests/webkit-cdp"
       ]
     },
     "examples": {
@@ -503,7 +516,33 @@
         "packages/dotnet/Runic.Platform.Windows.Elevation",
         "tests/dotnet/Runic.Platform.Windows.Elevation.Tests",
         "tests/native/Runic.Elevation.Smoke",
-        "specs/platform"
+        "specs/platform",
+        "eng/ci/macos-voiceover.sh",
+        "eng/ci/macos-appearance.sh",
+        "eng/ci/macos-open-probe.sh",
+        "eng/ci/windows-nvda.ps1",
+        "eng/ci/windows-native-run.mjs",
+        "eng/ci/windows-crash-report.ps1",
+        "eng/ci/real-portal.sh"
+      ]
+    },
+    "ci": {
+      "dependsOn": [],
+      "paths": [
+        "eng/ci/plan.mjs",
+        "eng/ci/platforms.mjs",
+        "eng/ci/gate.mjs",
+        "eng/ci/flakes.mjs",
+        "eng/ci/local.mjs",
+        "eng/ci/snapshot.mjs",
+        "eng/ci/runner.Containerfile",
+        "eng/ci/act-artifacts.patch",
+        "eng/ci/fixtures",
+        "eng/dependencies/audit.mjs",
+        "eng/json-schema.mjs",
+        "eng/reliability",
+        ".github/CODEOWNERS",
+        ".gitignore"
       ]
     }
   }

@@ -1,0 +1,5 @@
+2026-11-17T12:42:33.3554506Z Test run summary: Passed! - C:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Desktop.Tests\bin\Release\net10.0\Runic.Desktop.Tests.dll (net10.0|arm64)
+2026-11-17T12:43:33.7829665Z failed DirectoryReplacedWithoutAReadIsWatchedAgain(False) (793ms)
+2026-11-17T12:43:48.2874929Z Test run summary: Failed! - C:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Application.Testing.Tests\bin\Release\net10.0\Runic.Application.Testing.Tests.dll (net10.0|arm64)
+2026-11-17T12:43:48.4925259Z ##[error]Process completed with exit code 1.
+2026-11-17T12:43:50.5010636Z ##[error]Process completed with exit code 1.

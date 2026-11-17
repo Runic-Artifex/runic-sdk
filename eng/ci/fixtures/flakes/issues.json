@@ -1,0 +1,27 @@
+[
+ {
+  "number": 1093,
+  "state": "closed",
+  "closed_at": "2026-11-17T15:19:52Z",
+  "title": "Flaky on macOS: VoiceOver side-panel return reads the usage hint instead of 'Finish' (voiceover-side-panel-return)",
+  "body": "## Flake\n\nThe macOS native leg's accessibility smoke (`Runic.Desktop.WebViewSmoke --side-panel`, step \"Check what screen readers read in the embedded window\") sometimes fails in `voiceover-side-panel-return`:\n\n```text\nPROBE REQUEST shift-tab\nACCESSIBILITY pressed Shift+Tab.\n  event FocusChanged from '' (AXGroup): AXFocusedUIElementChanged\nFAIL           voiceover-side-panel-return: VoiceOver did not say 'Finish'; it said: You are currently on a button. To click this button, press Control-Option-Space.\n  focused after the return: AXButton () 'Finish'\n```\n\nFocus does move to the page's `Finish` ",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/issues/1093"
+ },
+ {
+  "number": 1008,
+  "state": "closed",
+  "closed_at": "2026-11-17T14:50:29Z",
+  "title": "Flaky on Windows: a replaced directory's file is not reported as changed (PathWatcher)",
+  "body": "`PathWatcherTests.DirectoryReplacedWithoutAReadIsWatchedAgain` failed in #973's merge-queue run (run 43675934962, job \"Native / win-arm64\", step \"Test file watching on Windows and macOS\"), unrelated to that PR (web packages only):\n\n```\n  TUnit.Engine.Exceptions.TestFailedException: [Test Failure] TimeoutException: No path change was reported within 10 s. Watcher: disposed=False events=4 evaluations=4 deliveries=0 poll=00:00:30 pending= watches=[n|C:\\Users\\runneradmin\\AppData\\Local\\Temp\\runic-watch-qrahxpc3.oke\\checkout, n|C:\\Users\\runneradmin\\AppData\\Local\\Temp\\runic-watch-qrahxpc3.oke] failed",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/issues/1008"
+ },
+ {
+  "number": 1100,
+  "state": "closed",
+  "closed_at": "2026-11-17T14:50:00Z",
+  "title": "a pull request",
+  "body": "DirectoryReplacedWithoutAReadIsWatchedAgain",
+  "html_url": "https://github.com/Runic-Artifex/runic-sdk/pull/1100",
+  "pull_request": {}
+ }
+]

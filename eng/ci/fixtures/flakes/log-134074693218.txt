@@ -1,0 +1,5 @@
+2026-11-17T13:39:20.3718382Z running... 751 completed, 0 failed | active: DevelopmentOpensALoopbackEndpointInAnInstalledBrowser
+2026-11-17T13:39:36.0568957Z Test run summary: Aborted - D:\a\runic-sdk\runic-sdk\tests\dotnet\Runic.Desktop.Tests\bin\Release\net10.0\Runic.Desktop.Tests.dll (net10.0|x64)
+2026-11-17T13:39:36.1878118Z Test session was aborted; recovered 751 test result(s) from the TRX streaming sidecar (additional results that were in flight at termination time may be missing).
+2026-11-17T13:39:41.4366705Z ##[error]Process completed with exit code 1.
+2026-11-17T13:39:45.4455553Z ##[error]Process completed with exit code 1.
