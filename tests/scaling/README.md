@@ -77,9 +77,11 @@ bun tests/scaling/aot-size/measure.mjs --update   # record the results and rewri
 bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, mstat files and records.tsv
 ```
 
-- [`aot-size/fixture.mjs`](aot-size/fixture.mjs) writes K CommunityToolkit ViewModels of one shape: four settable
-  members (checked properties), a read-only number and text member, a keyed collection, an observed sub-object, a view
-  request and two commands. A shell of the same shape is the one window the application opens, so the Bridge runtime
+- [`aot-size/fixture.mjs`](aot-size/fixture.mjs) writes K CommunityToolkit ViewModels of one shape, with each member
+  kind of the Bridge's descriptor table (D072.15): six settable members (checked properties: a number, a text, a flag,
+  a fraction, an enum and a record with field paths), a read-only number and text member, a keyed collection, an
+  observed sub-object, a view request, a view question and three commands (synchronous, asynchronous, and asynchronous
+  with an input and a result). A shell of the same shape is the one window the application opens, so the Bridge runtime
   and the host window cost the same at every K.
 - `measure.mjs` publishes [`aot-size/Fixture`](aot-size/Fixture) with `PublishAot=true` and
   `-p:IlcGenerateMstatFile=true` for linux-x64 with K = 0 and at each size of the entries (1 and 9), about 20 s each
@@ -91,7 +93,9 @@ bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, m
 - `aot/bridge/view-model-types` (O(n)): the mstat type records that name a fixture ViewModel.
 - `aot/bridge/view-model-methods` (O(n), D072.15): the mstat method records of a fixture ViewModel's generated Bridge
   (`Generated.Bridges.Vm<N>Bridge` and its nested types). It has no section-alignment noise and catches lambda and
-  state-machine fan-out at once. Its limit, 32 per ViewModel at K = 9, is fixed (`fixedLimit`).
+  state-machine fan-out at once. Its limit is the measured 34 per ViewModel at K = 9 (D072.15), fixed (`fixedLimit`) and
+  without margin, since method counts are exact: a generator change that adds methods per ViewModel must justify
+  raising it.
 - `aot/bridge/generated-generic-types` (O(n)): #901's metric, the type records that instantiate a
   `Runic.Application.Views.Generated` type over a fixture ViewModel, also inside another generic.
 - `aot/executable-bytes` (class `total`, no growth check): the whole executable at the larger size, with a 2 % margin,
