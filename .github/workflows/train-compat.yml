@@ -1,21 +1,22 @@
 name: Train compatibility
 # The cross-repository compatibility gate of a release train (eng/train/README.md, D061.11-D061.20): restores,
 # builds and runs consumers of one combination of Command Line, Translations and runic-sdk packages with warnings
-# as errors. Each input is published, published:<version>, run (newest successful ci.yml run on main) or
-# run:<ci run id>.
+# as errors. Each input is published, published:<version>, run@<commit> (the newest successful ci.yml run on main at
+# or after that commit), run:<ci run id>, or run (the newest successful main run; the nightly N-main row only: the
+# rows T, P-tr and P-sdk refuse it).
 on:
   workflow_dispatch:
     inputs:
       cli:
-        description: 'runic-cli-sdk: published, published:<version>, run or run:<ci run id>'
+        description: 'runic-cli-sdk: published, published:<version>, run@<commit>, run:<ci run id> or run (custom and N-main rows only)'
         type: string
         default: published
       translations:
-        description: 'runic-translations-sdk: published, published:<version>, run or run:<ci run id>'
+        description: 'runic-translations-sdk: published, published:<version>, run@<commit>, run:<ci run id> or run (custom and N-main rows only)'
         type: string
         default: published
       sdk:
-        description: 'runic-sdk: published, published:<version>, run or run:<ci run id>'
+        description: 'runic-sdk: published, published:<version>, run@<commit>, run:<ci run id> or run (custom and N-main rows only)'
         type: string
         default: published
       row:
@@ -38,7 +39,7 @@ on:
         type: string
         default: custom
       gate-ref:
-        description: The runic-sdk commit whose gate runs; pass the SHA of the uses line. Defaults to the caller's commit in runic-sdk and to main elsewhere.
+        description: The runic-sdk commit whose gate runs; pass the SHA of the uses line (and sdk run@<the same SHA>). Defaults to the caller's commit in runic-sdk and to main elsewhere.
         type: string
         default: ''
     secrets:
