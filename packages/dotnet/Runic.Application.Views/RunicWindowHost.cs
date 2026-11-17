@@ -240,10 +240,8 @@ public sealed record RunicWindowOptions
     /// a hosted application's Windows and <c>RunicWindowTestHost</c> (<c>RunicWindowTestHostOptions.CloseDrain</c>) drain.
     /// A presentation that cannot keep its window open, such as an installed browser, serve-only mode or CS-WebUI, closes
     /// it at once and logs <c>WindowCloseDrainUnavailable</c> (event 1055); the Window's scope still waits for durable
-    /// work. Operations keep their <see cref="RunicOperationClose"/> under every host. Experimental (<c>RUNICDESK105</c>);
-    /// see <c>docs/experimental.md</c>.
+    /// work. Operations keep their <see cref="RunicOperationClose"/> under every host.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicCloseDrain? CloseDrain { get; init; }
 
     /// <summary>
@@ -432,9 +430,7 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
     /// (<see cref="RunicWindowOptions.CloseDrain"/>), but <paramref name="presentation"/>, such as <c>CS-WebUI</c> or a
     /// browser, cannot keep its window open, so the window closes at once and its work drains without it.
     /// </summary>
-    /// <remarks>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</remarks>
     /// <param name="presentation">The presentation that cannot keep the window open, as it reads in a sentence.</param>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public void ReportCloseDrainUnavailable(string presentation)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(presentation);

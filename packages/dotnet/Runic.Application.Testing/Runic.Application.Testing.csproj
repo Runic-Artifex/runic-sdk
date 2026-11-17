@@ -11,10 +11,6 @@
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <!-- The package uses its own experimental runic-host/1 API. -->
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
-    <!-- ...and its experimental side panel API (sdk#864). -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
-    <!-- ...and its experimental close drain API (sdk#900). -->
-    <NoWarn>$(NoWarn);RUNICDESK105</NoWarn>
     <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>
     <!-- A test-only package: it reflects over the application's ViewModels in an
          untrimmed test process. -->

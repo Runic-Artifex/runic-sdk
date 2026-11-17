@@ -3,7 +3,7 @@ using Runic.Desktop.Internal;
 
 namespace Runic.Desktop;
 
-// sdk#864, P2: the side panel (side-panel/DESIGN.md §3.1; D062.3–D062.10), experimental under RUNICDESK104 (D062.7).
+// sdk#864, P2: the side panel (side-panel/DESIGN.md §3.1; D062.3–D062.10), stable since 0.22 (D068.8).
 public sealed partial class DesktopWindow
 {
     // Serializes opening the panel, which waits for its page to load, without holding the surface's window gate meanwhile.
@@ -13,9 +13,8 @@ public sealed partial class DesktopWindow
     /// <summary>Gets the open side panel, or <see langword="null"/>.</summary>
     /// <remarks>
     /// Set when <see cref="OpenSidePanelAsync"/> opened one, and <see langword="null"/> again once it closed, before its
-    /// <see cref="DesktopSidePanel.Closed"/> event. Experimental (<c>RUNICDESK104</c>).
+    /// <see cref="DesktopSidePanel.Closed"/> event.
     /// </remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public DesktopSidePanel? SidePanel => Volatile.Read(ref _sidePanel);
 
     /// <summary>
@@ -52,7 +51,7 @@ public sealed partial class DesktopWindow
     /// other presentation refuses with <see cref="DesktopSidePanelRefusal.Unsupported"/>. The other refusals are the
     /// window's state (<see cref="CheckSidePanel"/>), a panel that is open already, a page that did not load, and a window
     /// that closed while the panel opened (<see cref="DesktopSidePanelRefusal.Closed"/>).
-    /// Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
+    ///
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
@@ -63,7 +62,6 @@ public sealed partial class DesktopWindow
     /// <exception cref="ArgumentException">The path is empty, absolute, or leaves the surface.</exception>
     /// <exception cref="ObjectDisposedException">The window was closed or replaced before the call.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public async ValueTask<DesktopSidePanelResult> OpenSidePanelAsync(DesktopSidePanelOptions options,
         CancellationToken cancellationToken = default)
     {
@@ -140,11 +138,10 @@ public sealed partial class DesktopWindow
     /// the panel's page loads: <see cref="DesktopSidePanelRefusal.Unsupported"/>, <see cref="DesktopSidePanelRefusal.AlreadyOpen"/>,
     /// the window's state (minimized or hidden, full-screen, maximized, snapped), the left edge on a platform without
     /// positions, and room in the monitor's work area. The window can change before the panel opens, so the result of
-    /// <see cref="OpenSidePanelAsync"/> decides. Experimental (<c>RUNICDESK104</c>).
+    /// <see cref="OpenSidePanelAsync"/> decides.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="edge"/> is not defined, or <paramref name="width"/> is smaller than <see cref="DesktopSidePanelOptions.MinimumWidth"/>.</exception>
     /// <exception cref="ObjectDisposedException">The window is closed or was replaced.</exception>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public DesktopSidePanelRefusal? CheckSidePanel(DesktopWindowEdge edge, int width)
     {
         ValidateSidePanel(edge, width);

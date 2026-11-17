@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Runic.Application.Views;
 
 // sdk#900, W4a: the close drain's building blocks in Views (window-api-0.19/DESIGN.md §4.1–§4.2; D064.14–D064.20),
-// experimental under RUNICDESK105 for one minor (D064.20).
+// stable since 0.22 (D068.8).
 
 /// <summary>
 /// What a Window's close does to a running operation of the Window. Declare it with
@@ -22,9 +22,7 @@ namespace Runic.Application.Views;
 /// because that is the content's departure, not the Window's. The client's <c>cancel()</c> still cancels any operation.
 /// </para>
 /// <para>This set is closed: it gains values only in a major release.</para>
-/// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
 /// </remarks>
-[Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum RunicOperationClose
 {
     /// <summary>
@@ -58,10 +56,8 @@ public enum RunicOperationClose
 /// synchronous command or a state property, it has no effect and the Bridge generator warns (RUNICBRIDGE039). The policy
 /// is .NET-side only: the generated TypeScript, contract hash and mocks do not change.
 /// </para>
-/// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
 /// </remarks>
 /// <param name="close">What a Window's close does to the operation.</param>
-[Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
 public sealed class RunicOperationCloseAttribute(RunicOperationClose close) : Attribute
 {
@@ -89,11 +85,9 @@ public sealed class RunicOperationCloseAttribute(RunicOperationClose close) : At
 /// </para>
 /// <para>
 /// Runic Desktop's embedded windows, a hosted application's Windows and <c>RunicWindowTestHost</c> drain; a host's
-/// shutdown drains them too, within <c>DesktopHostOptions.ShutdownDrainTimeout</c>. Experimental (<c>RUNICDESK105</c>);
-/// see <c>docs/experimental.md</c>.
+/// shutdown drains them too, within <c>DesktopHostOptions.ShutdownDrainTimeout</c>.
 /// </para>
 /// </remarks>
-[Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record RunicCloseDrain
 {
     private RunicCloseDrain(TimeSpan timeout) => Timeout = timeout;

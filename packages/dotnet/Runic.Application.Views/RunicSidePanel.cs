@@ -2,15 +2,13 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Runic.Application.Views;
 
-// sdk#864, P5: the side panel for ViewModels (side-panel/DESIGN.md §3.2; D062.1–D062.10), experimental under
-// RUNICDESK104 (D062.7). The types mirror Runic.Desktop's DesktopSidePanel*, which this package does not reference.
+// sdk#864, P5: the side panel for ViewModels (side-panel/DESIGN.md §3.2; D062.1–D062.10), stable
+// since 0.22 (D068.8). The types mirror Runic.Desktop's DesktopSidePanel*, which this package does not reference.
 
 /// <summary>
 /// What <see cref="IRunicWindowPresentation.OpenSidePanelAsync"/> opens: a page of the Window shown beside its page, in a
 /// strip on one edge by which the Window grows.
 /// </summary>
-/// <remarks>Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record RunicSidePanelOptions
 {
     /// <summary>The smallest <see cref="Width"/>, in device-independent pixels.</summary>
@@ -83,8 +81,6 @@ public sealed record RunicSidePanelOptions
 }
 
 /// <summary>An edge of a Window, for <see cref="RunicSidePanelOptions.Edge"/> and <see cref="IRunicSidePanel.MoveToEdgeAsync"/>.</summary>
-/// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum RunicSidePanelEdge
 {
     /// <summary>The left edge, whatever the layout direction.</summary>
@@ -101,8 +97,7 @@ public enum RunicSidePanelEdge
 }
 
 /// <summary>The outcome of <see cref="IRunicWindowPresentation.OpenSidePanelAsync"/>: <see cref="Opened"/> or <see cref="Refused"/>.</summary>
-/// <remarks>Closed: these two cases are all there are. Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+/// <remarks>Closed: these two cases are all there are.</remarks>
 public abstract record RunicSidePanelResult
 {
     private RunicSidePanelResult()
@@ -120,10 +115,8 @@ public abstract record RunicSidePanelResult
 
 /// <summary>Why a side panel did not open or change.</summary>
 /// <remarks>
-/// Open: a minor release may add values; handle an unknown value as <see cref="Unsupported"/>. Experimental
-/// (<c>RUNICDESK104</c>).
+/// Open: a minor release may add values; handle an unknown value as <see cref="Unsupported"/>.
 /// </remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum RunicSidePanelRefusal
 {
     /// <summary>
@@ -164,8 +157,7 @@ public enum RunicSidePanelRefusal
 }
 
 /// <summary>Why a side panel closed, for <see cref="IRunicSidePanel.Closed"/>.</summary>
-/// <remarks>Open: a minor release may add values. Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+/// <remarks>Open: a minor release may add values.</remarks>
 public enum RunicSidePanelCloseReason
 {
     /// <summary>The application closed it (<see cref="IRunicSidePanel.CloseAsync"/>), or its page did (<c>window.close()</c>).</summary>
@@ -179,8 +171,6 @@ public enum RunicSidePanelCloseReason
 }
 
 /// <summary>Provides the reason for <see cref="IRunicSidePanel.Closed"/>.</summary>
-/// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class RunicSidePanelClosedEventArgs : EventArgs
 {
     /// <summary>Creates event data for <paramref name="reason"/>.</summary>
@@ -202,10 +192,9 @@ public sealed class RunicSidePanelClosedEventArgs : EventArgs
 /// ViewModel that opened the panel also serves it.
 /// </para>
 /// <para>
-/// Disposing it closes it. Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
+/// Disposing it closes it.
 /// </para>
 /// </remarks>
-[Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IRunicSidePanel : IAsyncDisposable
 {
     /// <summary>Gets the edge the panel is on: <see cref="RunicSidePanelEdge.Left"/> or <see cref="RunicSidePanelEdge.Right"/>.</summary>

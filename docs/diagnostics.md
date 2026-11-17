@@ -838,7 +838,6 @@ declaration has no effect:
 - its value is not a `RunicOperationClose` member; the declaration is ignored.
 
 The generated Bridge is the same as without the declaration.
-`RunicOperationClose` is experimental ([`RUNICDESK105`](experimental.md#RUNICDESK105)).
 
 **Fix:** put it on an asynchronous command property (for a CommunityToolkit
 `[RelayCommand]` method, `[property: RunicOperationClose(...)]`), or on the

@@ -30,9 +30,8 @@ public sealed class RunicWindowTestHostOptions
     /// <remarks>
     /// With a drain, <see cref="RunicTestWindow.RequestUserCloseAsync"/> returns once the close was decided, and the Window
     /// stays open (<see cref="RunicTestWindow.IsDraining"/>) with its page connected until its accepted work has ended or
-    /// the drain's timeout passed on the Window's clock. Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.
+    /// the drain's timeout passed on the Window's clock.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicCloseDrain? CloseDrain { get; init; }
 
     /// <summary>The model context the window graph must share, if any.</summary>

@@ -13,10 +13,6 @@ export {
   type RunicHostedRegionElement,
 } from "./hosted-region.js";
 
-// The close drain (0.19): whether the application closed the window with a close drain, which keeps it visible and
-// connected while its work drains; the .NET side is the experimental family RUNICDESK105.
-export { onBridgeDraining } from "./connection-state.js";
-
 // Trusted component mode (0.18; in `./experimental` since 0.21): a guest's Views as a custom element in a host page's
 // own document, the runtime that the `component` build target of `@runic-artifex/vite-plugin-runic` bundles; the .NET
 // side is the experimental family RUNICDESK103.

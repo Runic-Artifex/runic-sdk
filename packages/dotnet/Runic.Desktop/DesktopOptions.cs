@@ -218,9 +218,8 @@ public sealed record DesktopHostOptions
     /// default), <c>docker stop</c> after 10 seconds, and a hosting application after its stop timeout. Keep those
     /// limits above this one.
     /// </para>
-    /// <para>Zero closes the draining windows at once. Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
+    /// <para>Zero closes the draining windows at once.</para>
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public TimeSpan ShutdownDrainTimeout { get; init; } = DefaultShutdownDrainTimeout;
 
     internal static readonly TimeSpan DefaultShutdownDrainTimeout = TimeSpan.FromSeconds(30);
@@ -765,9 +764,7 @@ public sealed record DesktopWindowOptions
     /// the drain runs after the window is gone, and <see cref="DesktopWindow.WaitForCloseAsync"/> returns after it. The
     /// window then opens with the warning <c>close-drain-unavailable</c>.
     /// </para>
-    /// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public Func<DesktopCloseDrainContext, CancellationToken, ValueTask>? CloseDrainAsync { get; init; }
 
     /// <summary>Gets the presentation: the platform's embedded WebView by default, or an installed browser.</summary>

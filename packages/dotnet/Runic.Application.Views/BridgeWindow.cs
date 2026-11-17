@@ -30,8 +30,6 @@ public sealed record RunicWindowCloseResult(bool Drained, int RemainingOperation
     /// (<see cref="IRunicWindowContext.DrainOnClose"/>). None of it was asked to cancel, and <see cref="Completion"/>
     /// completes only after it. It is not counted in <see cref="RemainingOperations"/>.
     /// </summary>
-    /// <remarks>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int RemainingDurableWork { get; init; }
 }
 

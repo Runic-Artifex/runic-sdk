@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using Runic.Desktop;
 
 // sdk#864, P2–P4, --side-panel: the side panel on WebView2, WKWebView and WebKitGTK, GTK 3 and GTK 4
-// (DesktopWindow.OpenSidePanelAsync, RUNICDESK104). Linked into Runic.Desktop.Gtk4.Smoke for GTK 4.
+// (DesktopWindow.OpenSidePanelAsync). Linked into Runic.Desktop.Gtk4.Smoke for GTK 4.
 // - Open, close, move and resize on both edges: the window's bounds change by the panel's exact native width, the page
 //   is never resized (its resize events stay at zero, its innerWidth is unchanged), closing restores the exact bounds,
 //   the panel's page connects as a second connection of the window and disconnects when it closes.

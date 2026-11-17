@@ -49,7 +49,7 @@ namespace Runic.Application.Testing;
 /// after the scope ends. A change that a handler causes is raised after that handler returns, not inside it.
 /// </para>
 /// <para>
-/// It also decides a side panel (<see cref="OpenSidePanelAsync"/>, experimental under <c>RUNICDESK104</c>) as a Runic
+/// It also decides a side panel (<see cref="OpenSidePanelAsync"/>) as a Runic
 /// Desktop window on Windows does: an 860-wide window at <see cref="WindowX"/> 530 on a 1920-wide work area that grows
 /// on the panel's edge and shrinks back when it closes. <see cref="IsMaximized"/>, <see cref="IsSnapped"/>, the
 /// activity, <see cref="IsFullScreen"/> and the room produce the refusals; <see cref="SetSidePanelRefusal"/> chooses
@@ -403,26 +403,19 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     private RunicSidePanelRefusal? _sidePanelRefusal;
 
     /// <summary>Gets or sets the left edge of the window's frame on the work area, panel included; 530 by default, centred.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>), with the rest of the side panel.</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int WindowX { get; set; } = 530;
 
     /// <summary>Gets or sets the width of the window's frame, panel included; 860 by default. An open panel adds its width, closing it subtracts it.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int WindowWidth { get; set; } = 860;
 
     /// <summary>Gets or sets the width of the monitor's work area; 1920 by default.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int WorkAreaWidth { get; set; } = 1920;
 
     /// <summary>Gets or sets whether the window is maximized, which refuses a side panel with <see cref="RunicSidePanelRefusal.Maximized"/>.</summary>
     /// <remarks>
     /// <see cref="MaximizeAsync"/>, <see cref="RestoreAsync"/> and <see cref="SetPlacementAsync"/> change it too, and
-    /// <see cref="Placement"/> reports it. Experimental (<c>RUNICDESK104</c>).
+    /// <see cref="Placement"/> reports it.
     /// </remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public bool IsMaximized
     {
         get { lock (_gate) return _maximized; }
@@ -433,13 +426,9 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     }
 
     /// <summary>Gets or sets whether the desktop arranged the window, which refuses a side panel with <see cref="RunicSidePanelRefusal.Snapped"/>.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public bool IsSnapped { get; set; }
 
     /// <summary>Gets or sets whether the window lays out right to left, so <see cref="RunicSidePanelEdge.End"/> is its left edge.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public bool IsRightToLeft { get; set; }
 
     /// <summary>
@@ -454,21 +443,18 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     /// <see cref="RunicSidePanelRefusal.AlreadyOpen"/>, <see cref="RunicSidePanelRefusal.Minimized"/> (also hidden),
     /// <see cref="RunicSidePanelRefusal.FullScreen"/>, <see cref="RunicSidePanelRefusal.Maximized"/>,
     /// <see cref="RunicSidePanelRefusal.Snapped"/> and <see cref="RunicSidePanelRefusal.NoRoom"/>: the window, grown by
-    /// the panel on its edge, would leave the work area, or the panel is wider than half of it. Experimental (<c>RUNICDESK104</c>).
+    /// the panel on its edge, would leave the work area, or the panel is wider than half of it.
     /// </remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public void SetSidePanelRefusal(RunicSidePanelRefusal? reason)
     {
         lock (_gate) _sidePanelRefusal = reason;
     }
 
     /// <inheritdoc />
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public IRunicSidePanel? SidePanel => Volatile.Read(ref _sidePanel);
 
     /// <inheritdoc />
     /// <remarks>The request is recorded; an open panel grows <see cref="WindowWidth"/>, and on the left edge moves <see cref="WindowX"/>.</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public ValueTask<RunicSidePanelResult> OpenSidePanelAsync(RunicSidePanelOptions options, CancellationToken cancellationToken = default)
     {
         RunicSidePanelOptions.Validate(options);
@@ -503,8 +489,6 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     /// <see cref="RunicSidePanelCloseReason.WindowClosed"/>. Does nothing without one. Not recorded as a request.
     /// </summary>
     /// <param name="reason">Why the panel closed.</param>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public void CloseSidePanel(RunicSidePanelCloseReason reason) => Volatile.Read(ref _sidePanel)?.Close(reason);
 
     private bool IsLeft(RunicSidePanelEdge edge) => edge switch
@@ -661,18 +645,12 @@ public sealed record RunicWindowPresentationRequest(RunicWindowPresentationReque
     public RunicWindowPlacement? Placement { get; init; }
 
     /// <summary>Gets the options of <see cref="RunicWindowPresentationRequestKind.OpenSidePanel"/>.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicSidePanelOptions? SidePanel { get; init; }
 
     /// <summary>Gets the edge of <see cref="RunicWindowPresentationRequestKind.OpenSidePanel"/> and <see cref="RunicWindowPresentationRequestKind.MoveSidePanel"/>, as requested.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicSidePanelEdge? Edge { get; init; }
 
     /// <summary>Gets the width of <see cref="RunicWindowPresentationRequestKind.OpenSidePanel"/> and <see cref="RunicWindowPresentationRequestKind.SetSidePanelWidth"/>.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int? Width { get; init; }
 }
 
@@ -697,24 +675,19 @@ public enum RunicWindowPresentationRequestKind
     /// <summary><see cref="IRunicWindowPresentation.SetColorSchemeAsync"/>.</summary>
     SetColorScheme,
 
-    /// <summary><see cref="IRunicWindowPresentation.OpenSidePanelAsync"/>. Experimental (<c>RUNICDESK104</c>).</summary>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    /// <summary><see cref="IRunicWindowPresentation.OpenSidePanelAsync"/>.</summary>
     OpenSidePanel,
 
-    /// <summary><see cref="IRunicSidePanel.MoveToEdgeAsync"/>. Experimental (<c>RUNICDESK104</c>).</summary>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    /// <summary><see cref="IRunicSidePanel.MoveToEdgeAsync"/>.</summary>
     MoveSidePanel,
 
-    /// <summary><see cref="IRunicSidePanel.SetWidthAsync"/>. Experimental (<c>RUNICDESK104</c>).</summary>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    /// <summary><see cref="IRunicSidePanel.SetWidthAsync"/>.</summary>
     SetSidePanelWidth,
 
-    /// <summary><see cref="IRunicSidePanel.FocusAsync"/>. Experimental (<c>RUNICDESK104</c>).</summary>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    /// <summary><see cref="IRunicSidePanel.FocusAsync"/>.</summary>
     FocusSidePanel,
 
-    /// <summary><see cref="IRunicSidePanel.CloseAsync"/>, also by disposing it. Experimental (<c>RUNICDESK104</c>).</summary>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    /// <summary><see cref="IRunicSidePanel.CloseAsync"/>, also by disposing it.</summary>
     CloseSidePanel,
 
     /// <summary><see cref="IRunicWindowPresentation.MaximizeAsync"/>.</summary>

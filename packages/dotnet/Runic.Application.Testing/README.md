@@ -704,8 +704,8 @@ scope's presentation, and a ViewModel built by hand can take a
 at once on the calling thread, inside the request, and keeps answering after
 the scope ends; a change its own handlers cause is still raised after them.
 
-The fake also decides a side panel (`OpenSidePanelAsync`, experimental under
-`RUNICDESK104`) as a Runic Desktop window on Windows does. It is an 860-wide
+The fake also decides a side panel (`OpenSidePanelAsync`) as a Runic Desktop
+window on Windows does. It is an 860-wide
 window at `WindowX` 530 on a 1920-wide work area: an open panel grows
 `WindowWidth` on its edge (and moves `WindowX` on the left edge), moving it and
 changing its width move the frame, and closing it shrinks the window back. It
@@ -785,7 +785,7 @@ Assert.True(shell.IsBlocked);
 #### A close drain
 
 With `RunicWindowTestHostOptions.CloseDrain`, or the Window's own
-`RunicWindowOptions.CloseDrain` (0.19, experimental `RUNICDESK105`), a close that
+`RunicWindowOptions.CloseDrain` (0.19), a close that
 the Window's guards approved keeps it open while its accepted work drains, as
 described in
 [closing after the Window's work has drained](../Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained):

@@ -283,7 +283,7 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// </para>
     /// <para>
     /// The default implementation, for a presentation of 0.18 or earlier, refuses with
-    /// <see cref="RunicSidePanelRefusal.Unsupported"/>. Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
+    /// <see cref="RunicSidePanelRefusal.Unsupported"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
@@ -293,7 +293,6 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// </exception>
     /// <exception cref="ArgumentException">The path is empty, absolute, or leaves the Window's page.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     ValueTask<RunicSidePanelResult> OpenSidePanelAsync(RunicSidePanelOptions options, CancellationToken cancellationToken = default)
     {
         RunicSidePanelOptions.Validate(options);
@@ -306,9 +305,8 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// Set when <see cref="OpenSidePanelAsync"/> returns the panel; <see langword="null"/> again in the turn of the Window's
     /// model context that raises the panel's <see cref="IRunicSidePanel.Closed"/>, and
     /// <see cref="INotifyPropertyChanged.PropertyChanged"/> reports both changes. The default implementation returns
-    /// <see langword="null"/>. Experimental (<c>RUNICDESK104</c>).
+    /// <see langword="null"/>.
     /// </remarks>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     IRunicSidePanel? SidePanel => null;
 }
 
@@ -360,9 +358,8 @@ public enum RunicWindowPresentationFeatures
 
     /// <summary>
     /// <see cref="IRunicWindowPresentation.OpenSidePanelAsync"/> can open a side panel: the host has one, though the
-    /// Window's state can still refuse it. Experimental (<c>RUNICDESK104</c>).
+    /// Window's state can still refuse it.
     /// </summary>
-    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     SidePanel = 1 << 9,
 
     /// <summary>

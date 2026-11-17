@@ -8,10 +8,10 @@ tool, an inspector or a help pane is a typical panel. Where the window cannot
 grow, the application shows the same content another way, usually as an overlay
 of its page.
 
-The side panel is new in 0.19 and experimental for one minor release under
-[`RUNICDESK104`](experimental.md#RUNICDESK104). The window building blocks it
-uses (`DesktopWindowState.Bounds`, `SetBoundsAsync`, `SetMinimumSizeAsync`,
-`IsSnapped`) are stable. The [side panel example](../examples/side-panel/README.md)
+The side panel is new in 0.19 and stable since 0.22. It was experimental under
+`RUNICDESK104` in 0.19 to 0.21; that ID is
+[retired](experimental.md#retired), so remove its `NoWarn` entry or
+`#pragma warning disable`. The [side panel example](../examples/side-panel/README.md)
 is an 860 × 640 window with a debug panel and the overlay fallback.
 
 - [Open it from a ViewModel](#open-it-from-a-viewmodel)
@@ -26,14 +26,7 @@ is an 860 × 640 window with a debug panel and the overlay fallback.
 ## Open it from a ViewModel
 
 A ViewModel asks the Window's `IRunicWindowPresentation`, which every host
-provides (register it with `AddRunicWindowService()`). Suppress `RUNICDESK104`
-in the project, or around the calls:
-
-```xml
-<PropertyGroup>
-  <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
-</PropertyGroup>
-```
+provides (register it with `AddRunicWindowService()`):
 
 ```csharp
 public sealed partial class MainViewModel(IRunicWindowPresentation window) : ObservableObject
@@ -194,8 +187,6 @@ The enum is open: treat a reason you do not know as `Unsupported`.
 
 ## Known limits
 
-- **Experimental** under `RUNICDESK104` for 0.19: names and behaviour can change
-  in the next minor release.
 - **Wayland:** the left edge is refused with `PositionUnavailable`; dock right or
   fall back. The right edge on Wayland is not checked in CI, which has no headless
   compositor.

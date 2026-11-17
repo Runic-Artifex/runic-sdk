@@ -30,9 +30,9 @@ test("docs/experimental.md has an entry for every experimental diagnostic ID, or
     ...sources.flatMap(([, text]) => [...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1])),
   ]);
   // RUNICASSETS001 graduated in 0.10.0 (D029.3); RUNICDESK103 (hosted application windows) is experimental through 1.0
-  // (D055.8); RUNICDESK104 (the side panel) and RUNICDESK105 (the close drain) are experimental for one minor (D062.7,
-  // D064.20). A new family adds its ID here.
-  assert.deepEqual([...ids].sort(), ["RUNICDESK103", "RUNICDESK104", "RUNICDESK105"]);
+  // (D055.8); RUNICDESK104 (the side panel) and RUNICDESK105 (the close drain) graduated in 0.22.0 (D068.8). A new
+  // family adds its ID here.
+  assert.deepEqual([...ids].sort(), ["RUNICDESK103"]);
   if (ids.size === 0) assert.match(docs, /^No \.NET API is experimental\./m);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.
@@ -49,7 +49,7 @@ test("experimental help links name the release tag, not main", () => {
 });
 
 // A graduated family's ID is never reused: it stays listed as retired and no source marks an API with it.
-const retired = ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101", "RUNICDESK102", "RUNICNAV001", "RUNICWPF001"];
+const retired = ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101", "RUNICDESK102", "RUNICDESK104", "RUNICDESK105", "RUNICNAV001", "RUNICWPF001"];
 
 test("graduated diagnostic IDs are retired, not reused", () => {
   const section = docs.slice(docs.indexOf('<a id="retired"></a>'));
@@ -80,7 +80,7 @@ test("each npm ./experimental entry has its source and its row in the docs", () 
   const manifests = execFileSync("git", ["ls-files", "packages/web/*/package.json"], { cwd: root, encoding: "utf8" })
     .trim().split("\n");
   assert.ok(manifests.length >= 6);
-  const section = docs.slice(docs.indexOf('<a id="npm-packages"></a>'), docs.indexOf("The APIs below graduated in 0.10.0"));
+  const section = docs.slice(docs.indexOf('<a id="npm-packages"></a>'), docs.indexOf("The APIs below graduated."));
   for (const file of manifests) {
     const manifest = JSON.parse(readFileSync(resolve(root, file), "utf8"));
     const exported = "./experimental" in (manifest.exports ?? {});

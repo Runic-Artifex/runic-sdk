@@ -2,9 +2,8 @@
 
 An 860 × 640 order form on Runic Desktop with a debug panel that opens beside
 the window instead of covering it, with a CommunityToolkit.Mvvm ViewModel. The
-side panel is experimental under
-[`RUNICDESK104`](../../docs/experimental.md#RUNICDESK104); the
-[side panel guide](../../docs/side-panel.md) describes it on each platform.
+[side panel guide](../../docs/side-panel.md) describes the side panel on each
+platform.
 
 - [`MainViewModel`](MainViewModel.cs) takes the Window's
   `IRunicWindowPresentation` and opens the panel with

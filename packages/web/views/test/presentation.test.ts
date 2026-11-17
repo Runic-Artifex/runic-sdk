@@ -3,11 +3,10 @@
 // `closing`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createCommandController, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState, type RunicBridgeClient } from "../dist/index.js";
+import { createCommandController, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, onBridgeDraining, type BridgeConnectionState, type RunicBridgeClient } from "../dist/index.js";
 import { connectView } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge } from "../dist/mock.js";
-import { onBridgeDraining } from "../dist/experimental.js";
 
 type State = { readonly page: number; readonly title: string };
 const members = { page: (value: unknown) => bridgeWire.integer(value, 0, 1000), title: bridgeWire.string };

@@ -337,9 +337,8 @@ public sealed class CommandDescriptor(string name, Func<object, object> get)
 
     /// <summary>
     /// What a Window's close does to the command's running operations, from <see cref="RunicOperationCloseAttribute"/>.
-    /// <see cref="RunicOperationClose.Default"/> by default. Experimental (<c>RUNICDESK105</c>).
+    /// <see cref="RunicOperationClose.Default"/> by default.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicOperationClose Close { get; init; }
 }
 

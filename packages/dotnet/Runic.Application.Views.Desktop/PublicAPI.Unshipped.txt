@@ -1,1 +1,5 @@
 #nullable enable
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.CloseDrain.init -> void
+*REMOVED*[RUNICDESK105]Runic.Application.Views.Desktop.RunicDesktopHostOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
+*REMOVED*[RUNICDESK105]Runic.Application.Views.Desktop.RunicDesktopHostOptions.CloseDrain.init -> void

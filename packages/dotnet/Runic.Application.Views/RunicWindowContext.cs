@@ -64,14 +64,12 @@ public interface IRunicWindowContext
     /// drain one scope, such as an application-wide one; each waits for the work accepted before its own close.
     /// </para>
     /// <para>
-    /// The default implementation, for a test fake, does nothing. Experimental (<c>RUNICDESK105</c>); see
-    /// <c>docs/experimental.md</c>.
+    /// The default implementation, for a test fake, does nothing.
     /// </para>
     /// </remarks>
     /// <param name="work">The application work the close waits for.</param>
     /// <returns>Stops this registration when disposed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="work"/> is <see langword="null"/>.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     IDisposable DrainOnClose(AcceptedWorkScope work)
     {
         ArgumentNullException.ThrowIfNull(work);
