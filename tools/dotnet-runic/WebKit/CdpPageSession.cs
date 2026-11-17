@@ -146,11 +146,16 @@ internal sealed partial class CdpPageSession
     /// </summary>
     internal void Replied(string method)
     {
-        (TaskCompletionSource<string> Answer, string Command)? answered;
+        (TaskCompletionSource<string> Answer, string Command)? answered = null;
         lock (_stateGate)
         {
-            answered = _repliedAnswer;
-            _repliedAnswer = null;
+            // Only the reply to the answer itself: the debugger's other commands, such as an evaluation, can be answered
+            // in the meantime, and their replies can go out first.
+            if (_repliedAnswer is { } pending && pending.Command == method)
+            {
+                answered = pending;
+                _repliedAnswer = null;
+            }
         }
         // An answer to an emulated instrumentation pause did not go to WebKit, and holds no events.
         if (answered is { } instrumentation) instrumentation.Answer.TrySetResult(instrumentation.Command);

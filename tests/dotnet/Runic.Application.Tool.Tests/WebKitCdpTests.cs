@@ -361,6 +361,10 @@ internal sealed partial class ToolTests
         await session.HandleAsync("Debugger.resume", []);
         await Task.Delay(50);
         Equal(1, Emitted(webKit, "Debugger.paused"));
+        // Not after the reply to another command that went out first (#1108).
+        session.Replied("Runtime.evaluate");
+        await Task.Delay(50);
+        Equal(1, Emitted(webKit, "Debugger.paused"));
         session.Replied("Debugger.resume");
         await Until(() => Emitted(webKit, "Debugger.paused") == 2);
         Equal("3", LastPaused(webKit)["data"]!["scriptId"]!.GetValue<string>());
