@@ -40,7 +40,8 @@ The [security guide](security.md) is for authors of Runic applications: what Run
 protects by default, which options relax it, and what an application checks itself.
 
 The [packaging guide](packaging.md) covers `dotnet runic package`: what each
-format needs, and how you sign the packages with your own credentials.
+format needs, how you sign the packages with your own credentials, and the
+settings that make a NativeAOT executable smaller.
 
 The [MSBuild reference](msbuild.md) lists every MSBuild property and item that
 the SDK packages and tools read, with links to where each is described.

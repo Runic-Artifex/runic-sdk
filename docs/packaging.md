@@ -68,6 +68,62 @@ ICU is then never loaded, every culture formats and compares like the
 invariant culture, and creating a culture other than the invariant one throws
 `CultureNotFoundException` (unless `PredefinedCulturesOnly` is `false`).
 
+### Making the executable smaller
+
+Runic already keeps a NativeAOT or trimmed publish small without any setting
+of yours:
+
+- Its packages are built for trimming and NativeAOT, so the trimmer removes
+  the Runic code an application does not reach, including the platform
+  backends of other operating systems.
+- Development-only code sits behind feature switches that are off in a trimmed
+  or NativeAOT publish, such as `Runic.Application.DevelopmentServerForwarding`
+  ([Security](security.md)), so the trimmer removes it. Runic Desktop keeps only the
+  presentation server that `RunicDesktopServer` selects.
+- Runic Translations embeds its CLDR data compressed.
+
+Beyond that, four .NET settings make the executable smaller in exchange for
+something the application gives up. Runic sets none of them and the templates
+keep the defaults; each is the application's choice. Set them in the
+application project:
+
+```xml
+<PropertyGroup>
+  <StackTraceSupport>false</StackTraceSupport>
+  <InvariantGlobalization>true</InvariantGlobalization>
+  <OptimizationPreference>Size</OptimizationPreference>
+  <UseSystemResourceKeys>true</UseSystemResourceKeys>
+</PropertyGroup>
+```
+
+The savings were measured one setting at a time on linux-x64 for the CS-WebUI
+reference application in [`tests/scaling/aot-size`](../tests/scaling/aot-size).
+They vary by application, platform and .NET version, so measure your own
+(below).
+
+| Property | Saving | What the application gives up |
+| --- | ---: | --- |
+| `StackTraceSupport=false` | 574 KB | Stack traces have no method names, only offsets into the executable: `Exception.ToString()`, `Exception.StackTrace`, logged exceptions and crash output no longer say where an error happened. |
+| `InvariantGlobalization=true` | 222 KB | .NET's culture-aware APIs behave like the invariant culture: `ToString()` and parsing of numbers and dates, `string.Compare`, sorting and casing with a culture, and `CultureInfo` for any other culture throws `CultureNotFoundException` (unless `PredefinedCulturesOnly` is `false`). Runic Translations' own formatting of numbers, dates, plurals and lists uses its CLDR data and is unaffected. See [Startup](#startup-readytorun-and-invariant-globalization). |
+| `OptimizationPreference=Size` | 213 KB | The compiler optimizes for size rather than speed, so hot code can run slower. Measure the application's own hot paths. |
+| `UseSystemResourceKeys=true` | none measurable in the reference application; larger applications may save more | .NET's own exception and error messages become resource keys, such as `Arg_NullReferenceException`, instead of sentences. The application's own messages and Runic's are unchanged. |
+
+#### Measuring your own application
+
+`dotnet runic size` publishes the application and writes a JSON report with
+every published file and its size
+([Measure size](../tools/dotnet-runic/README.md#measure-size)). It publishes
+with `OptimizationPreference=Size` unless you pass
+`--property OptimizationPreference=Speed`; pass the other settings the same way
+to compare, for example `--property StackTraceSupport=false`.
+
+To see what takes the space inside the executable, publish with
+`-p:IlcGenerateMstatFile=true`. The NativeAOT compiler writes
+`<application>.mstat` next to its intermediate output under `obj/`, which lists
+the size of every type, method and data blob by assembly. Open it in
+[sizoscope](https://github.com/MichalStrehovsky/sizoscope), which also compares
+two builds.
+
 ## The manifests
 
 The command fills manifests from the project file's identity: `ApplicationId`,
