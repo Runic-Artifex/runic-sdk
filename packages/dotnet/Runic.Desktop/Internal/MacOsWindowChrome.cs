@@ -15,7 +15,6 @@ internal static class MacOsWindowChrome
 {
     internal const string MessageHandler = "runicWindowChrome";
     internal const string ContentWorld = "runic-desktop-window-chrome";
-    internal const string ScriptResource = "Runic.Desktop.MacOsWindowChrome.js";
     // The most regions a report may carry; the script stops at the same number.
     internal const int MaximumRegions = 512;
 
@@ -31,13 +30,9 @@ internal static class MacOsWindowChrome
     internal const long TitleVisible = 0;
     internal const long TitleHidden = 1;
 
-    private static readonly Lazy<string> LazyScript = new(static () =>
-    {
-        using var stream = typeof(MacOsWindowChrome).Assembly.GetManifestResourceStream(ScriptResource)
-            ?? throw new InvalidOperationException("The macOS window chrome script is not embedded.");
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    });
+    // MacOsWindowChrome.js, as UTF-8 data in PageScripts.g.cs (eng/generate-page-scripts.mjs): only a build that keeps
+    // the macOS host keeps it (runic-sdk#1109).
+    private static readonly Lazy<string> LazyScript = new(static () => System.Text.Encoding.UTF8.GetString(PageScripts.MacOsWindowChrome));
 
     internal static string Script => LazyScript.Value;
 

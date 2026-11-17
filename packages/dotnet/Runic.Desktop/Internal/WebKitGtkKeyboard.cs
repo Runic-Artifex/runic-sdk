@@ -134,17 +134,9 @@ internal static class WebKitGtkKeyboard
 
     internal const string ZoomMessageHandler = "runicZoom";
 
-    // The script lives in WebKitGtkKeyboard.js, which a browser test also loads, and is
-    // embedded in each assembly that links this file.
-    private static readonly Lazy<string> ScriptSource = new(static () =>
-    {
-        using var stream = typeof(WebKitGtkKeyboard).Assembly.GetManifestResourceStream(ScriptResource)
-            ?? throw new InvalidOperationException("The WebKitGTK keyboard script is not embedded.");
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    });
-
-    internal const string ScriptResource = "Runic.Desktop.WebKitGtkKeyboard.js";
+    // The script lives in WebKitGtkKeyboard.js, which a browser test also loads. The assembly holds it as UTF-8 data in
+    // PageScripts.g.cs (eng/generate-page-scripts.mjs), which only a build that keeps a WebKitGTK host keeps (runic-sdk#1109).
+    private static readonly Lazy<string> ScriptSource = new(static () => System.Text.Encoding.UTF8.GetString(PageScripts.WebKitGtkKeyboard));
 
     /// <summary>The keyboard script for the top frame; see WebKitGtkKeyboard.js.</summary>
     internal static string Script => ScriptSource.Value;

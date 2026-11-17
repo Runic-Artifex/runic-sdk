@@ -165,10 +165,10 @@ public sealed class FrameLaunchBindingTests
             Assert.Contains($"frame-ancestors {Embedder}", page.Headers.GetValues("Content-Security-Policy"));
         }
         var script = await http.GetStringAsync(new Uri(frame, "webui.js"));
-        Assert.Contains("const FRAME = true;", script);
+        Assert.Contains("const FRAME=true;", script);
         Assert.Contains("runic-frame", script);
         Assert.DoesNotContain(token, script);
-        Assert.Matches(@"const SESSION_CREDENTIAL = \(\(\) =>", script);
+        Assert.Matches(@"const SESSION_CREDENTIAL=\(\(\) =>", script);
 
         var origin = frame.GetLeftPart(UriPartial.Authority);
         // Without the token, with another, or from another origin: refused.
@@ -234,7 +234,7 @@ public sealed class FrameLaunchBindingTests
         var token = await SpendAsync(http, launch.Url);
 
         var script = await http.GetStringAsync(new Uri(frame, "webui.js"));
-        Assert.Contains("const MEASURE_HEIGHT = true;", script);
+        Assert.Contains("const MEASURE_HEIGHT=true;", script);
 
         using (var first = await PageAsync(http, frame, origin, token))
         {
@@ -432,7 +432,7 @@ public sealed class FrameLaunchBindingTests
     private static async Task<ClientWebSocket> PageAsync(HttpClient http, Uri frame, string origin, string token)
     {
         var script = await http.GetStringAsync(new Uri(frame, "webui.js"));
-        var check = uint.Parse(System.Text.RegularExpressions.Regex.Match(script, @"const TOKEN = (\d+);").Groups[1].Value,
+        var check = uint.Parse(System.Text.RegularExpressions.Regex.Match(script, @"const TOKEN=(\d+);").Groups[1].Value,
             System.Globalization.CultureInfo.InvariantCulture);
         var socket = await ConnectAsync(frame, origin, token);
         var packet = new byte[WebUiProtocol.HeaderSize + 1];

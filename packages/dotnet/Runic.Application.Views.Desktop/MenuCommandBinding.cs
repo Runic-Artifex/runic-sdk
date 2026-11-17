@@ -399,7 +399,9 @@ internal sealed partial class MenuCommandBinding : IDisposable
     }
 
     // A command id and the parameter an item passes to it.
-    internal readonly record struct MenuCommandKey(string CommandId, string? Parameter)
+    // A class, not a struct: the dictionaries and sets keyed by it then share the framework's generic code for reference
+    // types in a NativeAOT build instead of instantiating their own (runic-sdk#1109).
+    internal sealed record MenuCommandKey(string CommandId, string? Parameter)
     {
         internal static MenuCommandKey Of(DesktopMenuItem item) => new(item.CommandId, item.CommandParameter);
     }

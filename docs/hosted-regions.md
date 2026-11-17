@@ -51,7 +51,10 @@ region. What the guest should know:
 
 ### The host
 
-The host's policy decides per window, at its open, whether it shows in a window or a region:
+The host's policy decides per window, at its open, whether it shows in a window or a region. The host follows the
+regions its pages declare unless the application sets the MSBuild property `RunicDesktopRegionHost` to `false`
+([MSBuild](msbuild.md#runicapplicationviewsdesktop)), which an application without regions can do so that a trimmed or
+NativeAOT build leaves the region host out:
 
 ```csharp
 #pragma warning disable RUNICDESK103 // Hosted application windows are experimental.

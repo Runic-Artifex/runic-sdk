@@ -17,6 +17,12 @@
        trimmed or NativeAOT publish turns it off, so the trimmer removes it and its file watcher. Only the publish:
        PrepareForILLink runs before ILLink and before ILC writes its options, never in a build, so a project that sets
        PublishAot or PublishTrimmed keeps the live directory in its builds and in their runtimeconfig.json. -->
+  <!-- RunicDesktopRegionHost=false: the application's pages declare no hosted regions, so the host need not follow them
+       (region/1); a trimmed or NativeAOT build then drops the region host. The application's choice, so it applies to
+       every build, and dotnet run shows the same behaviour as the publish. -->
+  <ItemGroup Condition="'$(RunicDesktopRegionHost)' == 'false'">
+    <RuntimeHostConfigurationOption Include="Runic.Application.Views.Desktop.RegionHost" Value="false" Trim="true" />
+  </ItemGroup>
   <Target Name="_RunicViewsDesktopPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
     <ItemGroup>
       <RuntimeHostConfigurationOption Include="Runic.Application.Views.Desktop.DevelopmentAssets" Value="false" Trim="true" />

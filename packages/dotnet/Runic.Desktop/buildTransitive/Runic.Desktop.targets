@@ -15,6 +15,9 @@
     <!-- A trimming feature switch: a trimmed or NativeAOT application keeps one server and drops the other. -->
     <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="true" Trim="true" Condition="'$(RunicDesktopServer)' == 'Native'" />
     <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="false" Trim="true" Condition="'$(RunicDesktopServer)' == 'Kestrel'" />
+    <!-- None: no server at all, also when a server package is referenced (a window fails with
+         presentation-server-unavailable, as without one). The executable's declaration, so it applies to every build. -->
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.PresentationServer" Value="false" Trim="true" Condition="'$(RunicDesktopServer)' == 'None'" />
   </ItemGroup>
   <!-- A CS-WebUI window's Development DevTools Protocol endpoint (WebUiRemoteDebugging, D070.7) is for untrimmed
        development builds such as dotnet runic dev's: a trimmed or NativeAOT publish turns it off, so the trimmer removes
