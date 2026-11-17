@@ -518,19 +518,19 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var installation = WebUiBrowserDiscovery.Find(requestedBrowser, BrowserFolder)
             ?? throw new InvalidOperationException($"No supported installation was found for {requestedBrowser}.");
         var profilePath = GetOrCreateProfilePath(installation.Browser);
-        int? requestedDebuggingPort = installation.IsChromiumBased
+        int? requestedDebuggingPort = WebUiRemoteDebugging.IsSupported && installation.IsChromiumBased
             && !string.IsNullOrWhiteSpace(profilePath)
             && !WebUiRemoteDebugging.NamesPort(_browserArgumentList)
                 ? WebUiRemoteDebugging.RequestedPort(Environment.GetEnvironmentVariable, _webContent.DevTools)
                 : null;
         // Held until just before the browser starts (DEV-SEC-51); a taken fixed port becomes a free one, with a warning.
-        using var reservation = requestedDebuggingPort is int requested ? WebUiRemoteDebugging.Reserve(requested) : null;
+        using var reservation = WebUiRemoteDebugging.IsSupported && requestedDebuggingPort is int requested ? WebUiRemoteDebugging.Reserve(requested) : null;
         int? debuggingPort = reservation?.Port;
         if (reservation is { FellBack: true })
         {
             ReportDebuggingPortTaken(requestedDebuggingPort!.Value);
         }
-        if (debuggingPort is not null)
+        if (WebUiRemoteDebugging.IsSupported && debuggingPort is not null)
         {
             WebUiRemoteDebugging.DeleteStaleRecord(profilePath!);
         }
@@ -573,7 +573,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _browserOutputClosed = outputClosed;
         _currentBrowser = installation.Browser;
         _ = MonitorBrowserAsync(process);
-        if (debuggingPort is int port)
+        if (WebUiRemoteDebugging.IsSupported && debuggingPort is int port)
         {
             _ = WebUiRemoteDebugging.ReportAsync(process.WaitForExitAsync(), profilePath!, port, WebUiRemoteDebugging.WriteLine, ReportDebuggingPortUnavailable);
         }
