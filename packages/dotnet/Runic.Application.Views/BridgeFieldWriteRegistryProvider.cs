@@ -200,4 +200,4 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
     private sealed record FieldKey(string Contract, string Property);
 }
 
-internal readonly record struct BridgeFieldWriteLease<T>(BridgeFieldWriteRegistry<T> Registry, IDisposable Lease);
+internal sealed record BridgeFieldWriteLease<T>(BridgeFieldWriteRegistry<T> Registry, IDisposable Lease);
