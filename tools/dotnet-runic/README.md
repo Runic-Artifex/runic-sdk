@@ -716,19 +716,35 @@ names. The session file lists both under `debugEndpoints`.
   instead of ending. WebKit's own clients are not protected: after the adapter
   took the slot from GNOME Web's `inspector://` page and released it, that page's
   next attach can crash the Window.
-- **Port 9222 taken.** `dev` uses another free port and says which; change the
-  attach configuration's `port`. When another user holds 9222, or the
-  inspector port 9223 under `--no-window`, the `[dev]` line is a warning.
-  Under `--no-window`, which the IDE's compound starts with an attach
+- **Port 9222 taken.** `dev` uses another free port and says which, and names
+  what holds 9222 when it is your process, such as another `dev` session and
+  its directory. Change the attach configuration's `port` to the one `dev`
+  names; the session file lists it under `debugEndpoints`. When the project's
+  `.vscode/launch.json` (or one in a parent folder of the repository) has a
+  JavaScript attach configuration on 9222, such as the template's
+  `Attach to the page (JavaScript)`, the line is a warning that names it: as it
+  is, it would debug the other process's page. When another user holds 9222,
+  or the inspector port 9223 under `--no-window`, the `[dev]` line is a warning
+  too. Under `--no-window`, which the IDE's compound starts with an attach
   configuration on 9222, `dev` does not move: it stops with `RAPPDEV1017` and
   names what holds the port, often another `dev` session. `--no-debug-endpoint`
   opens nothing.
+- **No answer after attaching.** When the Window's page does not answer the
+  debugger's first command within 5 seconds, for example right after WebKit's
+  Web Inspector opened in the Window, `dev` prints a `[dev] Debugging:` line,
+  waits a second and sends the command again if sending it twice is harmless
+  (an `enable` or a `get…`). Without an answer then, the command fails with an
+  error that names it, and `dev` says to close WebKit's Web Inspector and any
+  `inspector://` page and attach again. A Window stopped at a .NET breakpoint
+  does not answer either.
 - **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
   traffic, which contains the page's data, to that file. `dev` creates the
   file readable by you only. JSON strings longer than 4096 characters, such as
-  script sources and inline source maps, keep only their first 200 characters;
-  `RUNIC_DEV_CDP_TRACE_SOURCES=1` keeps them whole, which on a page with
-  thousands of modules writes hundreds of megabytes in minutes.
+  script sources and inline source maps, keep only their first 200 characters,
+  so a script takes a few hundred bytes of the trace instead of its whole source.
+  `RUNIC_DEV_CDP_TRACE_SOURCES=1` keeps them whole: on a page with about 4,000
+  modules, a trace with the sources reached 723 MB in five minutes. The trace
+  never shrinks or rotates; delete it when you are done.
 
 ## Debug the page in Chrome (`--browser`)
 

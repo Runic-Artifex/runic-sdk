@@ -581,7 +581,17 @@ None of this ships:
   line: it ran with `--no-debug-endpoint` or `--webkit-inspector`, `WEBKIT_INSPECTOR_HTTP_SERVER` is set, or the
   application runs on CS-WebUI only. When the attach fails although the line is there, close GNOME Web's inspector
   (WebKit serves one client at a time), and check the line's port: another program had 9222, and `dev` took another.
+  `dev` names that program when it is yours, often another `dev` session, and warns when the project's
+  `.vscode/launch.json` attaches to 9222, which would reach that program's page: set the configuration's `port` to the
+  one `dev` names (the session file's `debugEndpoints` lists it), or stop the other program and restart `dev`.
   Under `--no-window`, `dev` stops with `RAPPDEV1017` instead, since the compound's attach configuration names 9222.
+- **The JavaScript debugger attaches on Linux but nothing loads.** `dev` printed `[dev] Debugging: the Window's page
+  did not answer …`: WebKit's inspector did not answer the debugger's first command within 5 seconds, which happened
+  right after WebKit's Web Inspector opened in the Window. `dev` sends the command once more; when that is not answered
+  either, close the Web Inspector (Inspect Element) and any `inspector://` page, then attach again. To report it, run
+  `dev` with `RUNIC_DEV_CDP_TRACE=<file>`. Script sources and inline source maps keep only their first 200 characters
+  there; `RUNIC_DEV_CDP_TRACE_SOURCES=1` keeps them whole, which reached 723 MB in five minutes on a page with about
+  4,000 modules.
 - **F5 shows the production page.** `dotnet runic dev --no-window` was not running when the IDE built. Start it
   first and wait for `[dev] Ready`.
 - **The dock asks for a code.** Enter the one-time code that Vite DevTools printed in the `dotnet runic dev` output.

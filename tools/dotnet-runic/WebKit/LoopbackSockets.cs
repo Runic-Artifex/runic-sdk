@@ -39,7 +39,8 @@ internal sealed partial class LoopbackSockets
     /// <summary>The effective uid of the user who runs dev.</summary>
     internal uint User { get; }
 
-    internal readonly record struct Entry(IPEndPoint Local, IPEndPoint Remote, int State, uint Uid);
+    /// <summary>A row of the tables; <paramref name="Inode"/> is the socket's inode, 0 when the row has none.</summary>
+    internal readonly record struct Entry(IPEndPoint Local, IPEndPoint Remote, int State, uint Uid, ulong Inode = 0);
 
     /// <summary>
     /// The owner of the socket at the other end of a connection whose ends are <paramref name="local"/> and
@@ -93,6 +94,21 @@ internal sealed partial class LoopbackSockets
         return peers;
     }
 
+    /// <summary>
+    /// The inodes of this user's listeners that a connection to <paramref name="address"/>:<paramref name="port"/> can
+    /// reach, to find the process that holds the port (<see cref="PortHolder"/>).
+    /// </summary>
+    internal IReadOnlyList<ulong> OwnListenerInodes(IPAddress address, int port)
+    {
+        IPAddress target = Normalize(address);
+        return Read()
+            .Where(entry => entry.State == ListenState && entry.Local.Port == port && entry.Uid == User && entry.Inode != 0 &&
+                (entry.Local.Address.Equals(target) || entry.Local.Address.Equals(IPAddress.Any) || entry.Local.Address.Equals(IPAddress.IPv6Any)))
+            .Select(static entry => entry.Inode)
+            .Distinct()
+            .ToList();
+    }
+
     /// <summary>A listener of another user on that address and port, if any.</summary>
     internal uint? ForeignListener(IPAddress address, int port) =>
         ListenerOwners(address, port).Cast<uint?>().FirstOrDefault(owner => owner != User);
@@ -115,7 +131,8 @@ internal sealed partial class LoopbackSockets
                 int.TryParse(fields[3], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int state) &&
                 uint.TryParse(fields[7], NumberStyles.None, CultureInfo.InvariantCulture, out uint uid))
             {
-                entries.Add(new Entry(local, remote, state, uid));
+                ulong inode = fields.Length > 9 && ulong.TryParse(fields[9], NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed) ? parsed : 0;
+                entries.Add(new Entry(local, remote, state, uid, inode));
             }
         }
         return entries;
