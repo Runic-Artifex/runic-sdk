@@ -557,15 +557,16 @@ test("Visual Studio's up-to-date check gets the frontend inputs and dev's stop s
   ]);
   assert.deepEqual(evaluated.built, [
     ["RunicDevSession", "obj/Debug/net10.0/runic-www.stamp"],
-    ["RunicFrontend", "bin/www/index.html"],
-    ["RunicFrontend", "obj/Debug/net10.0/runic-bridge-frontend.stamp"],
+    ["RunicFrontend", "obj/Debug/net10.0/runic-frontend-current.stamp"],
+    ["RunicWebRoot", "bin/www/index.html"],
   ]);
 
-  // While dev runs, its marker is an input too.
+  // #1121: an evaluation while dev runs gives the same items. dev renews its marker every 5 seconds, so as an input it
+  // would leave every F5 of the session out of date; Visual Studio does not evaluate again when dev starts or stops.
   mkdirSync(join(app.project, "obj/runic"), { recursive: true });
   writeFileSync(join(app.project, "obj/runic/dev-frontend"), "");
   evaluated = evaluate("BuildingInsideVisualStudio=true", "IntermediateOutputPath=obj/x64/");
-  assert.ok(evaluated.inputs.some(([set, path]) => set === "RunicDevSession" && path === "obj/runic/dev-frontend"), `${evaluated.inputs}`);
+  assert.ok(!evaluated.inputs.some(([, path]) => path === "obj/runic/dev-frontend"), `${evaluated.inputs}`);
   assert.ok(evaluated.built.some(([set, path]) => set === "RunicDevSession" && path === "obj/x64/runic-www.stamp"), `${evaluated.built}`);
   rmSync(join(app.project, "obj/runic/dev-frontend"));
 
@@ -598,6 +599,24 @@ test("Visual Studio's up-to-date check gets the frontend inputs and dev's stop s
   assert.equal(result.status, 0, result.output);
   assert.ok(statSync(stamp).mtimeMs >= stoppedAt, "The build did not record that www/ is restored.");
   assert.equal(statSync(stopped).mtimeMs, stoppedAt, "The build changed dev's stop stamp.");
+
+  // #1121: runic-frontend-current.stamp follows a build after which the frontend is current: one whose frontend stamp
+  // exists, or one during a dev session, which skips the frontend build and never has that stamp.
+  const current = join(app.project, "obj/Debug/net10.0/runic-frontend-current.stamp");
+  const frontendStamp = join(app.project, "obj/Debug/net10.0/runic-bridge-frontend.stamp");
+  rmSync(join(app.project, "obj"), { recursive: true, force: true });
+  result = build(app, { targets: "RunicViewsFrontendCurrent" });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(!existsSync(current), "A build without a current frontend wrote the stamp.");
+  result = build(app, { targets: "RunicViewsFrontendCurrent", properties: ["_RunicDevSessionLive=true"] });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(existsSync(current), "A build during a dev session did not write the stamp.");
+  utimesSync(current, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  const sessionAt = statSync(current).mtimeMs;
+  writeFileSync(frontendStamp, "");
+  result = build(app, { targets: "RunicViewsFrontendCurrent" });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(statSync(current).mtimeMs > sessionAt, "A build with a current frontend did not renew the stamp.");
 });
 
 // #236 and #237: the host and the build environment change the page without changing a file.
