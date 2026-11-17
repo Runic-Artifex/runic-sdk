@@ -304,6 +304,35 @@ internal sealed class PathWatcherTests
         Require((await EventAsync(tester, late)).Contains(other), "A watcher started after the replacement got no event.");
     }
 
+    // Windows stops the watch of a deleted directory with an error, which can arrive before a later watcher restarts
+    // the shared watch for the replacement (#1008). That stop is no failure of the watch: the replacement is watched
+    // at once, not only after the next poll retries it. Called directly, as Linux keeps watching a deleted directory.
+    [Test]
+    public async Task AWatchStoppedByItsDirectoryBeingReplacedIsNotAFailure()
+    {
+        using var root = new TempDirectory();
+        var directory = root.Directory("checkout");
+        var file = root.File(Path.Combine("checkout", "current"), "1");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var target = RunicWatchTarget.File(file);
+        var errors = new System.Collections.Concurrent.ConcurrentQueue<RunicPathWatchError>();
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, errors.Enqueue, tester.Options);
+        Require(watcher.IsEventDriven, $"The watcher did not start watching. {watcher.Describe()}");
+
+        Directory.Delete(directory, recursive: true);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(file, "2");
+        watcher.OnFailure(SharedDirectoryWatches.Key(directory, false), directory, new IOException("The directory was deleted."), stopped: true, replaced: true);
+        Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), $"Replacing the directory was not reported. {watcher.Describe()}");
+        await Task.Delay(Settle);
+        await tester.DrainAsync();
+        Require(errors.IsEmpty, $"A replaced directory was reported as a failed watch: {string.Join(", ", errors.Select(error => error.Kind))}");
+
+        File.WriteAllText(file, "33");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A write in the replaced directory was not reported by an event.");
+    }
+
     [Test]
     public async Task BackstopReadReportsChangesWithoutEvents()
     {
@@ -349,7 +378,7 @@ internal sealed class PathWatcherTests
 
         public void OnPath(string fullPath) { }
 
-        public void OnFailure(string key, string directory, Exception exception, bool stopped) { }
+        public void OnFailure(string key, string directory, Exception exception, bool stopped, bool replaced) { }
     }
 
     [Test]

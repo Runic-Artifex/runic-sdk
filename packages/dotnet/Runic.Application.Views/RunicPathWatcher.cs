@@ -218,7 +218,8 @@ public sealed class RunicPathWatcher : IDisposable
         }
     }
 
-    private void OnFailure(string key, string directory, Exception exception, bool stopped)
+    // Internal for tests, which cannot make every platform stop a watch.
+    internal void OnFailure(string key, string directory, Exception exception, bool stopped, bool replaced)
     {
         List<RunicPathWatchError> errors = [];
         IDisposable? released = null;
@@ -236,8 +237,14 @@ public sealed class RunicPathWatcher : IDisposable
                 if (_subscriptions.Remove(key, out var lease))
                 {
                     released = lease;
-                    _failedWatches[key] = RunicPathWatchErrorKind.Failed;
-                    AddOnce(errors, $"failed|{key}", new(RunicPathWatchErrorKind.Failed, directory, exception));
+                    // A deleted or replaced directory stopped the watch, not a fault: the evaluation this schedules
+                    // watches the replacement at once, or polls while the directory is missing. Skipping it until the
+                    // next poll would leave the replacement unwatched for a polling interval (#1008).
+                    if (!replaced)
+                    {
+                        _failedWatches[key] = RunicPathWatchErrorKind.Failed;
+                        AddOnce(errors, $"failed|{key}", new(RunicPathWatchErrorKind.Failed, directory, exception));
+                    }
                 }
             }
             else
@@ -563,8 +570,8 @@ public sealed class RunicPathWatcher : IDisposable
     {
         public void OnPath(string fullPath) => owner.OnPath(fullPath);
 
-        public void OnFailure(string key, string directory, Exception exception, bool stopped) =>
-            owner.OnFailure(key, directory, exception, stopped);
+        public void OnFailure(string key, string directory, Exception exception, bool stopped, bool replaced) =>
+            owner.OnFailure(key, directory, exception, stopped, replaced);
     }
 }
 
