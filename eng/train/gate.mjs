@@ -3,7 +3,8 @@
 //   bun eng/train/gate.mjs --cli <input> --translations <input> --sdk <input> [--row <name>] [--out <dir>]
 //                          [--only S1,S2] [--keep]
 //
-// Each input is `published`, `published:<version>`, `run`, `run:<ci run id>` or, locally, `local:<dir>`. CI artifacts are read with
+// Each input is `published`, `published:<version>`, `run@<commit>`, `run:<ci run id>`, `run` (informational rows only)
+// or, locally, `local:<dir>`. CI artifacts are read with
 // GH_TOKEN (GITHUB_TOKEN in Actions). Writes <out>/train-result.json, <out>/summary.md and the logs; exits 1 when a
 // required scenario has a failure that expected-failures.json does not name, and 3 when an artifact was refused.
 import { spawn, spawnSync } from 'node:child_process';
@@ -14,7 +15,7 @@ import { parseArgs } from 'node:util';
 import { activeEntries, classify, loadExpected, matchExpected } from './expected.mjs';
 import { repoKeys, repos, writeNugetConfig } from './nuget.mjs';
 import { createRunner, scenarios } from './scenarios.mjs';
-import { packageFile, resolveSources } from './sources.mjs';
+import { followsMain, packageFile, parseSpec, resolveSources, runTrainFeed, upstreamMovement } from './sources.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 export const RESULT_SCHEMA = 1;
@@ -43,6 +44,8 @@ function summary(result) {
     '| Repository | Input | Version | Source |', '| --- | --- | --- | --- |'];
   for (const input of Object.values(result.inputs))
     lines.push(`| ${input.repository} | \`${input.input}\` | ${input.version} | ${input.run ? `[run ${input.run.id}](${input.run.url}) (${input.run.headSha.slice(0, 9)})` : input.kind === 'local' ? 'local packages' : 'nuget.org'} |`);
+  for (const line of result.trainCandidate?.checked ?? []) lines.push('', `Train candidate: ${line}.`);
+  for (const line of result.trainCandidate?.problems ?? []) lines.push('', `**Train candidate refused:** ${line}`);
   lines.push('', '| Scenario | Result | Details |', '| --- | --- | --- |');
   for (const scenario of result.scenarios) {
     const details = [...scenario.failures.map(item => `${item.expected ? `expected ${item.expected}: ` : ''}${item.check}: ${item.message}`), ...scenario.notes]
@@ -57,7 +60,18 @@ function summary(result) {
   return `${lines.join('\n')}\n`;
 }
 
+// The rows that block a publish (eng/train/README.md, "Rows"). Their inputs name a commit or a run, never "the newest
+// main run" (H2): that is whatever main last built, which a busy queue or GitHub's listing can make an old one (I2, I6).
+export const TRAIN_ROWS = ['T', 'P-tr', 'P-sdk'];
+export function refuseFollowingMain(values) {
+  if (!TRAIN_ROWS.includes(values.row)) return;
+  const loose = repoKeys.filter(key => followsMain(parseSpec(values[key])));
+  if (loose.length) throw new Error(`Row ${values.row} needs a commit or run for ${loose.map(key => `--${key}`).join(', ')}: pass run@<commit> ` +
+    '(the newest successful main run at or after that commit) or run:<ci run id>, not run (eng/train/README.md, "Inputs").');
+}
+
 export async function runGate(values) {
+  refuseFollowingMain(values);
   const out = resolve(values.out);
   mkdirSync(out, { recursive: true });
   const work = values.work ? resolve(values.work) : mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), 'runic-train-compat-'));
@@ -68,7 +82,7 @@ export async function runGate(values) {
   const result = { schema: RESULT_SCHEMA, row: values.row, createdAt: new Date().toISOString(),
     gate: { repository: process.env.GITHUB_REPOSITORY ?? null, sha: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim() || null,
       run: process.env.GITHUB_RUN_ID ? { id: Number(process.env.GITHUB_RUN_ID), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1) } : null },
-    inputs: {}, scenarios: [], expected: { applied: [], stale: [], entries: [] }, artifactAccess: null, verdict: 'fail' };
+    inputs: {}, trainCandidate: null, scenarios: [], expected: { applied: [], stale: [], entries: [] }, artifactAccess: null, verdict: 'fail' };
   const finish = code => {
     writeFileSync(join(out, 'train-result.json'), `${JSON.stringify(result, null, 2)}\n`);
     const text = summary(result);
@@ -98,6 +112,26 @@ export async function runGate(values) {
       packages: source.packages.map(({ id, version, source: from, sha256 }) => ({ id, version, source: from, sha256 })),
       npm: source.npm.map(({ name, version, sha256 }) => ({ name, version, sha256 })) };
   console.log(Object.values(sources).map(source => `${repos[source.repo].title}: ${source.input} -> ${source.version}${source.run ? ` (run ${source.run.id})` : ''}`).join('\n'));
+
+  // H5: an upstream candidate must be the one runic-sdk's run built against through its train feed (I4). Checked
+  // before any consumer builds, so a moved upstream main fails in seconds.
+  if (sources.sdk.run) {
+    let feed;
+    try {
+      feed = await runTrainFeed(repos.sdk, sources.sdk.run.id, join(work, 'train-feed'), { token });
+    } catch (error) {
+      if (!error.artifactAccess) throw error;
+      result.artifactAccess = { ...error.artifactAccess, message: error.message };
+      console.log(`::error title=Cross-repository artifact refused::${error.message}. D061.12: the maintainer provides a read-only token or GitHub App (RUNIC_TRAIN_TOKEN).`);
+      return finish(3);
+    }
+    result.trainCandidate = { sdkRun: sources.sdk.run.id, feed: Boolean(feed), ...upstreamMovement(feed, sources) };
+    for (const line of result.trainCandidate.checked) console.log(`Train candidate: ${line}`);
+    if (result.trainCandidate.problems.length) {
+      for (const problem of result.trainCandidate.problems) console.log(`::error title=Upstream main moved::${problem}`);
+      return finish(1);
+    }
+  }
 
   // Candidates carry final release versions, so they must never reach a shared NuGet, npm or tool cache.
   const hasRun = Object.values(sources).some(source => source.kind !== 'published');

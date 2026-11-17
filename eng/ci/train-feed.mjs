@@ -2,13 +2,16 @@
 // The train feed (local-planning COMPATIBILITY.md 3.4; eng/train/README.md, "Train feed"): builds runic-sdk against
 // the Runic Command Line and Runic Translations releases of its train before they are on nuget.org.
 //
-//   bun eng/ci/train-feed.mjs prepare [--output <dir>] [--cli run[:<id>]] [--translations run[:<id>]]
+//   bun eng/ci/train-feed.mjs prepare [--output <dir>] [--cli run@<commit>|run:<id>] [--translations run@<commit>|run:<id>]
 //
-// Directory.Packages.props names the train's Runic.CommandLine and Runic.Translations versions. For each one that
-// nuget.org does not have, prepare puts the packages of the upstream repository's CI artifact into <output>/nuget
-// (default artifacts/train-feed/nuget): the given run (`run:<id>`), or the newest successful ci.yml run on its main
-// whose artifact has exactly that version (`run`, the default). It downloads them as the train gate does
-// (eng/train/sources.mjs, GH_TOKEN or GITHUB_TOKEN). With every version on nuget.org it does nothing.
+// Directory.Packages.props names the train's Runic.CommandLine and Runic.Translations versions, and for a version
+// that is not on nuget.org yet the upstream commit of the train candidate (`TrainCommit="<sha>"` on the same
+// PackageVersion). For each version that nuget.org does not have, prepare puts the packages of the upstream
+// repository's CI artifact into <output>/nuget (default artifacts/train-feed/nuget): the given run (`run:<id>`), or
+// the newest successful ci.yml run on its main at or after the pinned commit whose artifact has exactly that version
+// (`run@<commit>`, by default the TrainCommit; eng/train/sources.mjs, selectRunAtOrAfter). It never takes "the
+// newest main run" (H2). It downloads them as the train gate does (GH_TOKEN or GITHUB_TOKEN). With every version on
+// nuget.org it does nothing.
 //
 // The npm packages of the same artifact whose version the npm registry does not have go into <output>/npm; consumers
 // install them from there (trainFeedNpmSpec()).
@@ -24,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repos } from '../train/nuget.mjs';
-import { flatVersions, mainRunsQuery, parseSpec, resolveRun, successfulMainRuns } from '../train/sources.mjs';
+import { flatVersions, followsMain, parseSpec, resolveRun, selectRunAtOrAfter } from '../train/sources.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 export const TRAIN_FEED_ARTIFACT = 'train-feed';
@@ -42,6 +45,19 @@ export function trainVersions(props = readFileSync(join(root, 'Directory.Package
     versions[key] = version;
   }
   return versions;
+}
+
+// The upstream commit each train version is pinned to (`TrainCommit` on its PackageVersion), or null.
+export function trainCommits(props = readFileSync(join(root, 'Directory.Packages.props'), 'utf8')) {
+  const commits = {};
+  for (const key of UPSTREAMS) {
+    const id = repos[key].anchor.replaceAll('.', '\\.');
+    const element = new RegExp(`<PackageVersion\\s+Include="${id}"[^>]*>`).exec(props)?.[0] ?? '';
+    const commit = /\sTrainCommit="([^"]*)"/.exec(element)?.[1] ?? null;
+    if (commit !== null && !/^[0-9a-f]{40}$/.test(commit)) throw new Error(`TrainCommit of ${repos[key].anchor} is not a full commit SHA: '${commit}'`);
+    commits[key] = commit;
+  }
+  return commits;
 }
 
 // The feed directory of the current build, or null without a train feed.
@@ -98,16 +114,9 @@ async function published(id, version, options) {
   }
 }
 
-async function json(url, token) {
-  const headers = { accept: 'application/vnd.github+json', 'user-agent': 'runic-train-feed', 'x-github-api-version': '2022-11-28' };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const response = await fetch(url, { headers });
-  if (!response.ok) throw new Error(`GET ${url.split('?')[0]}: HTTP ${response.status}`);
-  return response.json();
-}
-
-// The upstream CI run whose artifact has exactly this version: the given run, or the newest successful main run.
-async function upstreamRun(key, spec, version, work, options) {
+// The upstream CI run whose artifact has exactly this version: the given run, or the newest successful main run at or
+// after the given commit (the train's pin).
+export async function upstreamRun(key, spec, version, work, options) {
   const repo = repos[key];
   if (spec.argument) {
     const resolved = await resolveRun(repo, spec, work, options);
@@ -115,22 +124,16 @@ async function upstreamRun(key, spec, version, work, options) {
       throw new Error(`CI run ${resolved.run.url} has ${repo.anchor} ${resolved.version}, but Directory.Packages.props pins ${version}`);
     return resolved;
   }
-  const { workflow_runs: runs } = await json(`https://api.github.com/repos/${repo.repository}/actions/workflows/ci.yml/runs?${mainRunsQuery}`, options.token);
-  const seen = [];
-  for (const run of successfulMainRuns(runs).slice(0, 5)) {
+  return selectRunAtOrAfter(repo, spec.commit, options, async run => {
     let resolved;
     try {
       resolved = await resolveRun(repo, { kind: 'run', argument: String(run.id) }, join(work, String(run.id)), options);
     } catch (error) {
       if (error.artifactAccess) throw error;
-      seen.push(`${run.html_url}: ${error.message}`);
-      continue;
+      return { reason: error.message };
     }
-    if (resolved.version === version) return resolved;
-    seen.push(`${run.html_url}: ${repo.anchor} ${resolved.version}`);
-  }
-  throw new Error(`No recent successful ci.yml run on ${repo.repository} main has ${repo.anchor} ${version}` +
-    (seen.length ? ` (${seen.join('; ')})` : '') + `. Pass --${key} run:<id>.`);
+    return resolved.version === version ? { value: resolved } : { reason: `${repo.anchor} ${resolved.version}, not ${version}` };
+  });
 }
 
 function option(args, name) {
@@ -143,7 +146,7 @@ function setOutput(values) {
   appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join(''));
 }
 
-export async function prepare(args = [], { versions = trainVersions(), token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN } = {}) {
+export async function prepare(args = [], { versions = trainVersions(), commits = trainCommits(), token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN } = {}) {
   const output = resolve(option(args, '--output') ?? join(root, 'artifacts/train-feed'));
   const feed = join(output, 'nuget');
   const options = { token };
@@ -164,8 +167,11 @@ export async function prepare(args = [], { versions = trainVersions(), token = p
   const upstreams = {};
   try {
     for (const key of missing) {
-      const spec = parseSpec(option(args, `--${key}`) ?? 'run');
-      if (spec.kind !== 'run') throw new Error(`--${key} takes run or run:<id>, not ${spec.text}`);
+      const given = option(args, `--${key}`) ?? (commits[key] && `run@${commits[key]}`);
+      if (!given) throw new Error(`${repos[key].anchor} ${versions[key]} is not on nuget.org, and Directory.Packages.props names no TrainCommit for it: ` +
+        `add TrainCommit="<${repos[key].repository} commit of the train candidate>" to its PackageVersion, or pass --${key} run:<id> (eng/train/README.md, "Train feed").`);
+      const spec = parseSpec(given);
+      if (spec.kind !== 'run' || followsMain(spec)) throw new Error(`--${key} takes run@<commit> or run:<id>, not ${spec.text}`);
       const resolved = await upstreamRun(key, spec, versions[key], join(work, key), options);
       const packages = resolved.packages.filter(item => item.version === versions[key])
         .map(item => { copyFileSync(item.file, join(feed, basename(item.file))); return { id: item.id, version: item.version, sha256: item.sha256 }; })
@@ -199,7 +205,7 @@ export async function prepare(args = [], { versions = trainVersions(), token = p
 if (import.meta.main) {
   const [command, ...args] = process.argv.slice(2);
   if (command !== 'prepare') {
-    console.error('Usage: bun eng/ci/train-feed.mjs prepare [--output <dir>] [--cli run[:<id>]] [--translations run[:<id>]]');
+    console.error('Usage: bun eng/ci/train-feed.mjs prepare [--output <dir>] [--cli run@<commit>|run:<id>] [--translations run@<commit>|run:<id>]');
     process.exit(2);
   }
   try {

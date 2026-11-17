@@ -21,12 +21,36 @@ Each repository gets one input:
 | --- | --- |
 | `published` | The newest version on nuget.org (of `Runic.CommandLine`, `Runic.Translations`, `Runic.Application.Views`) |
 | `published:<version>` | That version on nuget.org. A package on its own prerelease line joins with its newest prerelease of that release (`Runic.Application.Views.CsWebUi` 0.17.1-preview.1 for 0.17.1). |
-| `run` | The package artifact of the newest successful `ci.yml` run on `main` |
+| `run@<commit>` | The package artifact of the newest successful `ci.yml` run on `main` at or after that commit (a full SHA) |
 | `run:<ci run id>` | The package artifact of that successful `ci.yml` run |
+| `run` | The package artifact of the newest successful `ci.yml` run on `main`, whatever commit it built. Only for the nightly N-main row and custom runs: the rows T, P-tr and P-sdk refuse it. |
 | `local:<dir>` | Packages packed in a checkout (`bun eng/run.mjs pack` writes `artifacts/packages`, with `nuget/` and `npm/`); for a local run before CI. Its result names no CI run, so no publish workflow accepts it. |
 
 A `run:<ci run id>` is a push, scheduled or manual run on `main`, or a pull request's run from a branch of the same
 repository, to check a train candidate before it merges (publish workflows only pass `main` runs).
+
+### Run selection by commit
+
+A train input names a commit, never "the newest run" (H2). "The newest" was whatever `main` last built: in the 0.21
+train GitHub's `status=success` listing hid the green run for over an hour, so the gate took an older one (I2), and
+under a busy merge queue no push run finishes for hours (I6). `run@<commit>` (`selectRunAtOrAfter()` in
+`sources.mjs`) follows the rule of the lessons' C6, **the newest green `main` run at or after commit X**:
+
+1. List the repository's `ci.yml` runs on `main`, unfiltered (newest 50), plus the runs of X itself, and filter
+   locally: `completed`/`success`, a push, scheduled or manual run of that repository.
+2. Newest first, take the first whose head is X or a descendant of X (GitHub's compare API: `identical` or
+   `ahead`) and that has its unexpired package artifact. The train feed also needs the pinned version in it.
+3. Without one, fail with an error that names X and every run considered and why it was passed over (`not a
+   success`, `behind`/`diverged`, no artifact, another version). The usual fix is the lessons' C6: stop enqueueing,
+   dispatch `ci.yml` on `main` once, let it finish, and run the step again.
+
+A descendant is accepted, not only X's own run, because the train needs *a* green run that includes X, and X's own
+push run is often the one the merge queue replaced (I6). Whether a newer upstream commit changed the packages is
+the movement check's question ("Choreography", step 5), not the selection's.
+
+Publish uses the stricter rule of its own commit: `eng/release/ci-run.mjs` (and Translations'
+`eng/release/ci-artifact.mjs find-ci`) take only a successful `main` run **of the commit being published**
+(`head_sha`, unfiltered listing), because those are the bytes it publishes.
 
 The artifacts are `command-line-packages` (runic-cli-sdk), `runic-translations-packages` (runic-translations-sdk)
 and `runic-sdk-<run id>` (runic-sdk). The gate downloads them through the REST API with `GH_TOKEN`, records each
@@ -50,9 +74,13 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
 (`Runic.CommandLine`, `Runic.Translations`); the template's pins and `.config/dotnet-tools.json` follow.
 
 - **`eng/ci/train-feed.mjs prepare`** (the `plan` job of `ci.yml`; `setup-sdk` with `train-feed: prepare` in
-  `nix.yml` and `dependency-audit.yml`) checks nuget.org for each of the two versions. For a missing one it downloads
-  the package artifact of the newest successful `ci.yml` run on that repository's `main` with exactly that version
-  (`--cli run:<id>`, `--translations run:<id>` pick a run), with `GITHUB_TOKEN` as the gate does, and uploads it with
+  `nix.yml` and `dependency-audit.yml`) checks nuget.org for each of the two versions. A version that nuget.org lacks
+  names the upstream commit of the train candidate on its `PackageVersion`, after `Version`:
+  `<PackageVersion Include="Runic.Translations" Version="0.14.0" TrainCommit="<full SHA>" />` (only the anchor
+  package needs it). The feed downloads the package artifact of the newest successful `ci.yml` run on that
+  repository's `main` **at or after that commit** with exactly that version ("Run selection by commit";
+  `--cli run@<commit>|run:<id>`, `--translations run@<commit>|run:<id>` override it), with `GITHUB_TOKEN` as the
+  gate does; without a `TrainCommit` it fails rather than take the newest run. It uploads the packages with
   `train-feed.json` (each run and package SHA-256) as the **`train-feed`** artifact. The artifact's npm packages
   whose version the npm registry lacks (Translations' `@runic-artifex/*-translations*`) go into its `npm/` folder. With both published it does
   nothing, and nothing else changes.
@@ -79,7 +107,8 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
 
 **Once Command Line and Translations are published** (D043.7 steps 2 and 3), before runic-sdk's publish:
 
-1. Delete the candidates from the NuGet cache (above), unset `RUNIC_TRAIN_FEED`, and run `bun run lock:nuget`: the
+1. Delete the candidates from the NuGet cache (above), unset `RUNIC_TRAIN_FEED`, drop the `TrainCommit`
+   attributes, and run `bun run lock:nuget`: the
    lock files now hash nuget.org's packages (only `contentHash` lines change). Until then CI without the feed fails
    the locked restore with NU1403.
 2. Move `tests/fixtures/nix/completions/App` to the new Command Line (`App.csproj`, then `dotnet restore` its lock
@@ -119,18 +148,18 @@ Command Line 0.12.0 a package without `text-keys.json` fails S2.
 
 | Row | Command Line | Translations | SDK | When | Blocks |
 | --- | --- | --- | --- | --- | --- |
-| T | `run:<id>` | `run` | `run` | runic-cli-sdk's publish of the train | yes |
-| P-tr | `published:<train>` | `run:<id>` | `run` | runic-translations-sdk's publish | yes |
+| T | `run:<id>` | `run@<commit>` | `run@<gate SHA>` | runic-cli-sdk's publish of the train | yes |
+| P-tr | `published:<train>` | `run:<id>` | `run@<gate SHA>` | runic-translations-sdk's publish | yes |
 | P-sdk | `published:<train>` | `published:<train>` | `run:<id>` | runic-sdk's publish | yes |
 | N-pub | `published` | `published` | `published` | nightly, and pull requests that change the gate | the pull request only |
 | N-main | `run` | `run` | `run` | nightly, and pull requests that change the gate | no (informational) |
 
-The `<id>` is the CI run whose packages the publish workflow is about to publish. Before the first publish of a
-train all three release changes are on `main`, so `run` (the newest successful `main` run) is the train's candidate
-of the other repositories.
+The `<id>` is the CI run whose packages the publish workflow is about to publish. The other repositories' inputs
+name a commit: for runic-sdk the gate's own pinned SHA (`gate-ref`, the commit the train candidate merged as or a
+later `main` commit), for Translations in row T its train commit. The rows T, P-tr and P-sdk refuse a bare `run`.
 
 ```sh
-gh workflow run train-compat.yml -R Runic-Artifex/runic-sdk -f row=T -f cli=run:<id> -f translations=run -f sdk=run
+gh workflow run train-compat.yml -R Runic-Artifex/runic-sdk -f row=T -f cli=run:<id> -f translations=run@<sha> -f sdk=run@<sha>
 # locally, from the dev shell (GH_TOKEN only for run inputs):
 GH_TOKEN=$(gh auth token) bun eng/train/gate.mjs --cli published --translations published --sdk run --out artifacts/train-compat
 bun eng/train/gate.mjs --only S2,S6          # the package checks only, in seconds
@@ -145,7 +174,8 @@ The gate writes `train-result.json`, `summary.md` (also the job summary) and one
 workflow uploads them as `train-result-<run id>-<row>`. `train-result.json` records the row, the gate's commit and
 run, every input with its resolved version, CI run (id, URL, commit, artifact id) and each package's id, version
 and SHA-256, the status of each scenario with its failures and notes, the expected failures that applied and the
-verdict. The exit code is 0 when no required scenario has an unexpected failure, 1 when one has, and 3 when a CI
+verdict, and `trainCandidate`: the movement check ("Choreography", step 5) with the runic-sdk run, whether it had
+a train feed, and what it checked or refused. The exit code is 0 when no required scenario has an unexpected failure, 1 when one has, and 3 when a CI
 artifact was refused.
 
 ## Expected failures
@@ -187,7 +217,7 @@ too. `eng/release/README.md` describes runic-sdk's.
       row: P-tr
       cli: published:0.12.0
       translations: run:${{ needs.preflight.outputs.ci-run-id }}
-      sdk: run
+      sdk: run@<the same SHA>
       gate-ref: <the same SHA>
   publish:
     needs: [preflight, candidate, train]
@@ -196,13 +226,73 @@ too. `eng/release/README.md` describes runic-sdk's.
 Follow-up per repository:
 
 - **runic-cli-sdk** (`publish-preview.yml`): a `train` job as above with `row: T`,
-  `cli: run:<the CI run id the preflight job found>`, `translations: run`, `sdk: run`; the publishing job needs it.
-  Pin the reusable workflow to a runic-sdk SHA. The dry run runs it too.
+  `cli: run:<the CI run id the preflight job found>`, `translations: run@<Translations commit of the train>`,
+  `sdk: run@<the gate SHA>`; the publishing job needs it. Pin the reusable workflow to a runic-sdk SHA. The dry run
+  runs it too. Its pin (6584dc375) predates `run@`; moving the pin past this change needs the two inputs changed.
 - **runic-translations-sdk** (`publish-preview.yml`): the same with `row: P-tr`,
   `cli: published:<RunicCommandLineVersion from eng/Versions.props>`, `translations: run:<its CI run id>`,
-  `sdk: run`.
+  `sdk: run@<the gate SHA>`.
 - **runic-sdk** (`publish-preview.yml`): a `train` job with `row: P-sdk`,
   `cli: published:<Runic.CommandLine>`, `translations: published:<Runic.Translations>` (the versions in
   `Directory.Packages.props`, which the preflight job reads with `trainVersions()` from `eng/ci/train-feed.mjs`) and
   `sdk: run:<the CI run id preflight found>`. It calls `./.github/workflows/train-compat.yml`, so the gate runs from
   the commit being published, without `gate-ref`.
+
+## Choreography
+
+### Most changes need no train
+
+A release train is needed only when runic-sdk cannot build against the published upstream release and the new one
+at once. D069.3 (from 0.22) makes cross-repository breaking changes ship with a one-minor transition: the upstream
+release adds the new name and keeps the old one `[Obsolete]` for one minor. Then:
+
+1. The upstream repository (Translations, say 0.14.0) publishes on its own; its P-tr gate runs against the published
+   runic-sdk (`sdk: published`) or runic-sdk `main` (`run@<gate SHA>`), and nothing in runic-sdk waits for it.
+2. runic-sdk adopts the published release in an ordinary pull request (`Directory.Packages.props`, lock files,
+   template pins), moving off the obsolete names. No train feed, no freeze.
+3. The upstream removes the old names in the next minor, which runic-sdk already no longer uses.
+
+Only an unavoidable break (a change that cannot keep the old shape for a minor) runs the train below. 0.20 and 0.21
+were trains because Translations renamed `Add` → `AddCatalog` and removed `RUNIC_TRANSLATIONS_EDIT_ALLOW` without a
+transition (I5).
+
+### A Translations-then-SDK train
+
+The loop to break (I4): runic-sdk builds against the Translations candidate through the train feed; Translations'
+publish needs a green runic-sdk run that used it; and every Translations commit packs a different candidate. The
+steps are in order; the coordinator owns them.
+
+1. **Freeze Translations `main`** when its release pull request (version, notes) is ready to merge. From that merge
+   until the publish, nothing else merges into Translations `main`: no dependency bumps, no workflow or docs
+   changes. While archives are not reproducible (H1), every commit changes the candidate's bytes; afterwards a
+   commit that leaves the packages alone passes step 5, but the freeze stays the rule.
+2. **Pin the gate in the release pull request, not after it.** The release pull request also moves
+   `publish-preview.yml`'s `train-compat.yml@<SHA>`, its `gate-ref` and `sdk: run@<SHA>` to one runic-sdk commit
+   that has the gate the release needs (normally runic-sdk `main`). A separate pin pull request after the release
+   moves Translations `main` and with it the candidate (0.20, 0.21 needed two). If runic-sdk's train candidate has
+   not merged yet, pin to the commit it will descend from (runic-sdk `main` now): `run@` takes the newest green
+   `main` run at or after it, which will be the train candidate's once it merged and its push run is green.
+3. **runic-sdk's train candidate** (one pull request): `Directory.Packages.props` names the Translations version
+   with `TrainCommit=` the frozen Translations `main` commit from step 1; the adaptations to the break; the lock
+   files written with the feed. Its CI uses the train feed and uploads the `train-feed` artifact. Merge it.
+4. **A green runic-sdk `main` run that includes it.** Stop enqueueing runic-sdk pull requests, dispatch `ci.yml` on
+   `main` once (`gh workflow run ci.yml -R Runic-Artifex/runic-sdk --ref main`) unless a push run of the train
+   candidate's merge is already running, and let it finish (C6; CLAUDE.md "CI hygiene").
+5. **Translations dry run, then publish** (`publish-preview.yml` on the frozen commit; the dry run first). Its P-tr
+   gate resolves `sdk: run@<gate SHA>` to that green run, and before building anything **checks that Translations
+   `main` did not move**: the runic-sdk run's `train-feed.json` names the Translations run and commit its feed
+   served; the gate's Translations input (the CI run of the commit being published) must be that commit, or, when
+   `main` moved, every package the feed served must be byte-identical in the candidate (same SHA-256; with H1's
+   reproducible archives a commit that changed no package input passes). Otherwise the gate fails at once with
+   "main moved since runic-sdk's train candidate used it" and names both runs: publish the commit the candidate
+   used, or move `TrainCommit` and rebuild runic-sdk's candidate. A runic-sdk run without a train feed (no train)
+   skips the check.
+6. **Feed exit** right after the publish, as soon as nuget.org and npm serve the packages ("Train feed", "Once
+   Command Line and Translations are published"): drop `TrainCommit`, delete the cached candidates, rewrite the lock
+   files against nuget.org. Until it merges every runic-sdk pull request still builds on the feed.
+7. **Unfreeze Translations `main`** after its publish. Its gate pin stays valid; move it to runic-sdk `main` with
+   the next Translations change that needs a newer gate.
+8. runic-sdk publishes from the feed exit's commit or later (row P-sdk, `published:` Translations).
+
+A Command Line train adds the same steps before Translations (row T: `translations: run@<Translations commit>`,
+`sdk: run@<gate SHA>`), and the movement check covers Command Line's input the same way.

@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareVersions, lineUpperBound, parseRange, rangeContains, sameLine } from './versions.mjs';
 import { nugetConfig, parseNuspec, repoOf } from './nuget.mjs';
-import { parseSpec, successfulMainRuns, versionForRelease } from './sources.mjs';
+import { followsMain, parseSpec, selectRunAtOrAfter, successfulMainRuns, upstreamMovement, versionForRelease } from './sources.mjs';
+import { refuseFollowingMain } from './gate.mjs';
+import { repos as allRepos } from './nuget.mjs';
 import { keyCoverage, keysFromJson, keysFromMarkdown, lintLockstep, lintRanges, lintTemplatePins, lintToolPins, rmf2MessageNames } from './checks.mjs';
 import { activeEntries, classify, loadExpected } from './expected.mjs';
 import { bindingError, errorLines, scenarios } from './scenarios.mjs';
@@ -44,7 +46,7 @@ test('package ids map to their repository by the longest source-mapping pattern'
 });
 
 test('inputs are published[:version], run[:id] or local:<dir>, and a release includes its own prerelease line', () => {
-  expect(parseSpec('published')).toEqual({ kind: 'published', argument: null, text: 'published' });
+  expect(parseSpec('published')).toEqual({ kind: 'published', argument: null, commit: null, text: 'published' });
   expect(parseSpec('published:0.12.0').argument).toBe('0.12.0');
   expect(parseSpec('run:43302549984')).toMatchObject({ kind: 'run', argument: '43302549984' });
   expect(parseSpec('local:artifacts/packages')).toMatchObject({ kind: 'local', argument: 'artifacts/packages' });
@@ -203,4 +205,116 @@ test('a failed binding reports the script\'s error, not Bun\'s banner', () => {
   const output = 'error: x/package-lock.json: @runic-artifex/vite-plugin-runic-translations 0.12.0 is locked, but the train candidate is 0.13.0\n      at main (bind.mjs:12:5)\n\nBun v1.4.4 (Linux x64)\n';
   expect(bindingError(output)).toBe('error: x/package-lock.json: @runic-artifex/vite-plugin-runic-translations 0.12.0 is locked, but the train candidate is 0.13.0');
   expect(bindingError('Bun v1.4.4 (Linux x64)\n')).toBe('(no output)');
+});
+
+test('run@<commit> names a full commit; a bare run follows main and only informational rows take it', () => {
+  const commit = 'c1eb5af8'.padEnd(40, '0');
+  expect(parseSpec(`run@${commit}`)).toEqual({ kind: 'run', argument: null, commit, text: `run@${commit}` });
+  for (const bad of ['run@c1eb5af8', `published@${commit}`, `run@${commit.toUpperCase()}`]) expect(() => parseSpec(bad)).toThrow();
+  expect(followsMain(parseSpec('run'))).toBe(true);
+  expect(followsMain(parseSpec(`run@${commit}`))).toBe(false);
+  expect(followsMain(parseSpec('run:43913357796'))).toBe(false);
+  expect(() => refuseFollowingMain({ row: 'P-tr', cli: 'published:0.13.0', translations: 'run:1', sdk: 'run' })).toThrow(/Row P-tr needs a commit or run for --sdk: pass run@<commit>/);
+  expect(() => refuseFollowingMain({ row: 'P-tr', cli: 'published:0.13.0', translations: 'run:1', sdk: `run@${commit}` })).not.toThrow();
+  expect(() => refuseFollowingMain({ row: 'N-main', cli: 'run', translations: 'run', sdk: 'run' })).not.toThrow();
+  // The publish rows of the workflow pass their inputs through; the nightly N-main row is the one that follows main.
+  expect(workflow.on.workflow_dispatch.inputs.sdk.description).toContain('run@<commit>');
+});
+
+// A fake GitHub API: run listings of ci.yml, compare results by head commit and artifacts by run id.
+function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [] }) {
+  const requests = [];
+  const repo = allRepos.sdk;
+  const fetchImpl = async url => {
+    requests.push(url);
+    const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    const { pathname, searchParams } = new URL(url);
+    if (pathname.endsWith('/actions/workflows/ci.yml/runs')) {
+      let listed = runs.filter(run => !searchParams.get('head_sha') || run.head_sha === searchParams.get('head_sha'));
+      // GitHub's status filter omitted a successful run for over an hour (I2): a selection that used it would miss run 30.
+      if (searchParams.get('status') === 'success') listed = listed.filter(run => run.conclusion === 'success' && !missing.includes(run.id));
+      return reply({ workflow_runs: listed.map(run => ({ head_branch: 'main', event: 'push', path: '.github/workflows/ci.yml',
+        repository: { full_name: repo.repository }, html_url: `https://github.com/${repo.repository}/actions/runs/${run.id}`, ...run })) });
+    }
+    const compare = /\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)$/.exec(pathname);
+    if (compare) return ahead ? reply({ status: ahead[compare[2]] ?? 'behind' }) : reply({ message: 'Not Found' }, 404);
+    const artifact = /\/actions\/runs\/(\d+)\/artifacts$/.exec(pathname);
+    if (artifact) {
+      const id = Number(artifact[1]);
+      return reply({ artifacts: artifacts[id] === false ? [] : [{ id: id * 10, name: repo.artifact(id), expired: false }] });
+    }
+    return reply({ message: 'Not Found' }, 404);
+  };
+  return { repo, fetchImpl, requests };
+}
+
+const sha = text => text.padEnd(40, '0');
+
+test('a train input takes the newest green main run at or after its commit, from the unfiltered listing', async () => {
+  const pinned = sha('a1'), later = sha('b2'), older = sha('c3');
+  const { repo, fetchImpl, requests } = fakeGitHub({
+    runs: [
+      { id: 50, head_sha: later, status: 'in_progress', conclusion: null },
+      { id: 40, head_sha: later, status: 'completed', conclusion: 'failure' },
+      { id: 30, head_sha: later, status: 'completed', conclusion: 'success' },
+      { id: 20, head_sha: pinned, status: 'completed', conclusion: 'success' },
+      { id: 10, head_sha: older, status: 'completed', conclusion: 'success' },
+    ],
+    ahead: { [later]: 'ahead', [older]: 'behind' },
+    missing: [30],
+  });
+  const run = await selectRunAtOrAfter(repo, pinned, { fetchImpl });
+  // Run 30 is newer than the pinned commit's own run 20 and descends from it; the status filter would have hidden it.
+  expect(run.id).toBe(30);
+  expect(requests.some(url => url.includes('status='))).toBe(false);
+  // The pinned commit's own run is accepted when nothing newer qualifies.
+  const own = fakeGitHub({ runs: [{ id: 20, head_sha: pinned, status: 'completed', conclusion: 'success' }], ahead: {} });
+  expect((await selectRunAtOrAfter(own.repo, pinned, { fetchImpl: own.fetchImpl })).id).toBe(20);
+});
+
+test('without a run at or after the commit the error names the commit and every run found', async () => {
+  const pinned = sha('a1'), older = sha('c3'), later = sha('b2');
+  const { repo, fetchImpl } = fakeGitHub({
+    runs: [
+      { id: 60, head_sha: later, status: 'queued', conclusion: null },
+      { id: 50, head_sha: later, status: 'completed', conclusion: 'success' },
+      { id: 10, head_sha: older, status: 'completed', conclusion: 'success' },
+    ],
+    ahead: { [later]: 'ahead', [older]: 'behind' },
+    artifacts: { 50: false },
+  });
+  const error = await selectRunAtOrAfter(repo, pinned, { fetchImpl }).catch(caught => caught);
+  expect(error.message).toContain(`Runic-Artifex/runic-sdk has no successful ci.yml run on main at or after ${pinned}`);
+  expect(error.message).toContain('60 (b20000000, push, queued): not a success');
+  expect(error.message).toContain('50 (b20000000, push, completed/success): no unexpired runic-sdk-50 artifact');
+  expect(error.message).toContain('10 (c30000000, push, completed/success): behind a10000000, not at or after it');
+  expect(error.message).toContain('dispatch ci.yml on main once');
+  // A rejection by the caller (the train feed's version check) is reported with the others.
+  const rejected = fakeGitHub({ runs: [{ id: 20, head_sha: pinned, status: 'completed', conclusion: 'success' }], ahead: {} });
+  await expect(selectRunAtOrAfter(rejected.repo, pinned, { fetchImpl: rejected.fetchImpl }, async () => ({ reason: 'Runic.Translations 0.13.0, not 0.14.0' })))
+    .rejects.toThrow('20 (a10000000, push, completed/success): Runic.Translations 0.13.0, not 0.14.0');
+  // A commit GitHub does not know.
+  const unknown = fakeGitHub({ runs: [{ id: 20, head_sha: later, status: 'completed', conclusion: 'success' }] });
+  await expect(selectRunAtOrAfter(unknown.repo, pinned, { fetchImpl: unknown.fetchImpl })).rejects.toThrow(`has no commit ${pinned}`);
+  await expect(selectRunAtOrAfter(unknown.repo, 'a1', { fetchImpl: unknown.fetchImpl })).rejects.toThrow('Expected a full commit SHA');
+});
+
+test('an upstream candidate must be the commit, or the same bytes, that runic-sdk\'s train feed served', () => {
+  const feed = { upstreams: { translations: { repository: 'Runic-Artifex/runic-translations-sdk', version: '0.14.0', run: { id: 7, headSha: sha('a1') },
+    packages: [{ id: 'Runic.Translations', version: '0.14.0', sha256: 'n1' }],
+    npm: [{ name: '@runic-artifex/vite-plugin-runic-translations', version: '0.14.0', sha256: 'p1' }] } } };
+  const candidate = (headSha, nuget = 'n1', npm = 'p1') => ({ translations: { repository: 'Runic-Artifex/runic-translations-sdk', version: '0.14.0', run: { id: 9, headSha },
+    packages: [{ id: 'Runic.Translations', version: '0.14.0', sha256: nuget }],
+    npm: [{ name: '@runic-artifex/vite-plugin-runic-translations', version: '0.14.0', sha256: npm }] } });
+  expect(upstreamMovement(feed, candidate(sha('a1')))).toMatchObject({ problems: [] });
+  expect(upstreamMovement(feed, candidate(sha('a1'))).checked[0]).toContain('the same commit as this candidate');
+  // Main moved by a commit that changed no package (reproducible archives, H1).
+  expect(upstreamMovement(feed, candidate(sha('b2'))).checked[0]).toContain('every package is byte-identical');
+  const moved = upstreamMovement(feed, candidate(sha('b2'), 'n1', 'p2'));
+  expect(moved.problems[0]).toContain('Runic-Artifex/runic-translations-sdk main moved since runic-sdk\'s train candidate used it');
+  expect(moved.problems[0]).toContain('npm:@runic-artifex/vite-plugin-runic-translations@0.14.0');
+  // No train feed, another version, or a published input: nothing to compare.
+  expect(upstreamMovement(null, candidate(sha('b2')))).toEqual({ checked: [], problems: [] });
+  expect(upstreamMovement(feed, { translations: { ...candidate(sha('b2')).translations, version: '0.15.0' } })).toEqual({ checked: [], problems: [] });
+  expect(upstreamMovement(feed, { translations: { ...candidate(sha('b2')).translations, run: null } })).toEqual({ checked: [], problems: [] });
 });
