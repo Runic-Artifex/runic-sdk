@@ -78,10 +78,16 @@ of yours:
   backends of other operating systems.
 - Development-only code sits behind feature switches that are turned off in
   trimmed or NativeAOT publishes, such as `Runic.Application.DevelopmentServerForwarding`
-  ([Security](security.md)) and Runic Desktop's CS-WebUI remote-debugging
-  endpoint (`Runic.Desktop.WebUiRemoteDebugging`), so the trimmer removes it.
-  Runic Desktop keeps only the presentation server that `RunicDesktopServer`
-  selects.
+  ([Security](security.md)), Runic Desktop's CS-WebUI remote-debugging
+  endpoint (`Runic.Desktop.WebUiRemoteDebugging`) and `dotnet runic dev`'s live
+  frontend directory (`Runic.Application.Views.Desktop.DevelopmentAssets`), so
+  the trimmer removes it. Only the publish turns them off: builds and
+  `dotnet run` keep them, also when the project sets `PublishAot`.
+- Runic Desktop keeps only the presentation server that `RunicDesktopServer`
+  selects, and none for `None`. An application that is never a hosted guest
+  does not keep hosted mode, and one whose pages declare no hosted regions can
+  leave the region host out with `RunicDesktopRegionHost=false`
+  ([MSBuild](msbuild.md#runicapplicationviewsdesktop)).
 - On Linux and macOS, the CS-WebUI host serves blobs and uploads from a small
   loopback HTTP/1.1 server of its own instead of .NET's `HttpListener`, so the
   executable has no HTTP client, TLS or X.509 code for it (0.22).
