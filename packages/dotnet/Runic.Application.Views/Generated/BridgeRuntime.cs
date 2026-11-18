@@ -1139,8 +1139,12 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         }
     }
 
-    private sealed record CheckedPropertyBinding(CheckedPropertyDescriptor Descriptor,
-        BridgeFieldWriteRegistry<object?> Registry);
+    private sealed class CheckedPropertyBinding(CheckedPropertyDescriptor descriptor,
+        BridgeFieldWriteRegistry<object?> registry)
+    {
+        public CheckedPropertyDescriptor Descriptor { get; } = descriptor;
+        public BridgeFieldWriteRegistry<object?> Registry { get; } = registry;
+    }
 }
 
 /// <summary>JSON helpers called by generated bridges.</summary>

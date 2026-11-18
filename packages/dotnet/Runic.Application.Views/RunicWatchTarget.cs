@@ -367,8 +367,14 @@ internal readonly record struct WatchSpec(string Directory, string Pattern, bool
 
 // A target's state: what identifies it, which directories show its changes, a directory it needs that is missing,
 // and a GitHead directory that is not a repository.
-internal sealed record WatchProbe(string Signature, IReadOnlyList<WatchSpec> Specs, string? MissingDirectory, string? NotRepository)
+internal sealed class WatchProbe(string signature, IReadOnlyList<WatchSpec> specs,
+    string? missingDirectory, string? notRepository)
 {
+    public string Signature { get; } = signature;
+    public IReadOnlyList<WatchSpec> Specs { get; } = specs;
+    public string? MissingDirectory { get; } = missingDirectory;
+    public string? NotRepository { get; } = notRepository;
+
     // The matching entries of a Directory or Files target, by name, with what the signature says of each.
     public IReadOnlyDictionary<string, string>? Entries { get; init; }
 }

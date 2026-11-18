@@ -99,9 +99,11 @@ internal sealed class BridgeReplyOrder
     private void ReportWaitExceeded(string route)
     {
         if (Interlocked.Exchange(ref _waitExceededLogged, 1) != 0) return;
-        string pending;
+        List<string> routes = [];
         lock (_deliveries)
-            pending = string.Join(", ", _deliveries.Select(static delivery => delivery.Route).Order(StringComparer.Ordinal));
+            foreach (var delivery in _deliveries) routes.Add(delivery.Route);
+        routes.Sort(StringComparer.Ordinal);
+        var pending = string.Join(", ", routes);
         ViewsLog.ReplyWaitExceeded(BridgeDispatcher.For(_transport).Logger, route, WaitLimit.TotalSeconds,
             pending.Length == 0 ? "none" : pending);
     }

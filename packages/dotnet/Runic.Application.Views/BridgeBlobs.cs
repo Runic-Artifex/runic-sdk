@@ -865,7 +865,12 @@ internal sealed record BridgeBlobEndpoint(Func<Uri?> BlobBase, Func<Uri?> Upload
 }
 
 // The blobs member of a hello reply.
-internal sealed record BridgeUploadGrant(Uri UploadUrl, string Token, long MaximumBytes);
+internal sealed class BridgeUploadGrant(Uri uploadUrl, string token, long maximumBytes)
+{
+    public Uri UploadUrl { get; } = uploadUrl;
+    public string Token { get; } = token;
+    public long MaximumBytes { get; } = maximumBytes;
+}
 
 // One HTTP request to a Window's blob or upload endpoint, as a host presents it.
 internal interface IBridgeBlobExchange

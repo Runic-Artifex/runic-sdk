@@ -85,8 +85,11 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
   whose version the npm registry lacks (Translations' `@runic-artifex/*-translations*`) go into its `npm/` folder. With both published it does
   nothing, and nothing else changes.
 - **Restores** (`setup-sdk` sets `RUNIC_TRAIN_FEED`): `eng/build/nuget-lock.targets` adds the feed as a source and
-  restores unlocked against a lock path in `obj/`, because nuget.org re-signs packages, so no lock file can hash a
-  candidate (NU1403 after publication). `setup-sdk` restores the repository's tools once with `--add-source`, caches
+  restores unlocked against a lock path in `obj/`, because a later candidate of the same version has other bytes, and
+  a candidate from a commit other than the published one never matches nuget.org's package (NU1403 after
+  publication). The lock `contentHash` covers the package content without its signature, so nuget.org's repository
+  signature alone changes nothing: a candidate built from the published commit keeps its hashes (0.22 train,
+  Translations 0.14.0); one built from an earlier commit does not (0.21 train, Translations 0.13.0). `setup-sdk` restores the repository's tools once with `--add-source`, caches
   NuGet packages under `nuget-train-*` so candidates never seed a later locked restore, and the consumers outside
   the repository (`tests/templates/Test-Templates.sh`, `eng/verify-packages.mjs`) add the feed to their
   `NuGet.config`. `eng/verify-packages.mjs`, the only npm consumer of a Translations package
@@ -109,8 +112,9 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
 
 1. Delete the candidates from the NuGet cache (above), unset `RUNIC_TRAIN_FEED`, drop the `TrainCommit`
    attributes, and run `bun run lock:nuget`: the
-   lock files now hash nuget.org's packages (only `contentHash` lines change). Until then CI without the feed fails
-   the locked restore with NU1403.
+   lock files now hash nuget.org's packages. Only `contentHash` lines may change, and none do when the candidate was
+   built from the published commit; the run is still the check. If any changed, CI without the feed fails the locked
+   restore with NU1403 until this merges.
 2. Move `tests/fixtures/nix/completions/App` to the new Command Line (`App.csproj`, then `dotnet restore` its lock
    file).
 3. Merge that; its CI has no `train-feed` artifact. Row **P-sdk** then runs on it as part of Publish preview

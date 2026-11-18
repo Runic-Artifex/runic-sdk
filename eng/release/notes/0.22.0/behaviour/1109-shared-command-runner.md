@@ -4,8 +4,8 @@
   (`RunicShared.Toolkit.Bridge.g.cs`, `RunicShared.Commands.Bridge.g.cs`), with the same steps in the same order:
   the token check, `Cancel` registration and the typed `ExecuteAsync(T)` call for CommunityToolkit, then the await
   and the result's encoding. The Toolkit `IsRunning` subscription is shared the same way. In the research fixture of
-  #1109 a ViewModel with three async commands costs 32.5 KB instead of 43.1 KB on linux-x64 (56.3 KB in 0.21); in the
-  scaling suite's `aot-size` fixture 18.2 KB instead of 21.3 KB (25.0 KB in 0.21). ReactiveUI stream commands are
+  #1109 a ViewModel with three async commands costs 32.5 KB instead of 43.2 KB on linux-x64 (56.3 KB in 0.21); in the
+  scaling suite's `aot-size` fixture 18.2 KB instead of 21.3 KB (25.5 KB in 0.21). ReactiveUI stream commands are
   unchanged. `ToolkitCommandInspector.DescriptorFor` keeps its signature; the descriptor it emits now calls the
   generated runner, which the Runic generator writes whenever a Bridge has a CommunityToolkit async command. Generated
   TypeScript is byte-identical. Part of #1109.

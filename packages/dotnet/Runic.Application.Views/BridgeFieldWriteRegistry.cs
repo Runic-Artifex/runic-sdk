@@ -414,7 +414,12 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
-    private sealed record RetainedReceipt(RequestIdentity Identity, BridgeFieldWriteReceipt<T> Receipt, int Bytes);
+    private sealed class RetainedReceipt(RequestIdentity identity, BridgeFieldWriteReceipt<T> receipt, int bytes)
+    {
+        public RequestIdentity Identity { get; } = identity;
+        public BridgeFieldWriteReceipt<T> Receipt { get; } = receipt;
+        public int Bytes { get; } = bytes;
+    }
 
     // The digest is derived from generated canonical wire values and retains
     // no incoming value graph. Direct callers without a canonicalizer retain
@@ -498,7 +503,10 @@ internal sealed record BridgeFieldWriteReceipt<T>(
 
 internal enum BridgeFieldWriteStatusKind { Unknown, Retained }
 
-internal sealed record BridgeFieldWriteStatus<T>(
-    string RequestId,
-    BridgeFieldWriteStatusKind Kind,
-    BridgeFieldWriteReceipt<T>? Receipt);
+internal sealed class BridgeFieldWriteStatus<T>(string requestId,
+    BridgeFieldWriteStatusKind kind, BridgeFieldWriteReceipt<T>? receipt)
+{
+    public string RequestId { get; } = requestId;
+    public BridgeFieldWriteStatusKind Kind { get; } = kind;
+    public BridgeFieldWriteReceipt<T>? Receipt { get; } = receipt;
+}
