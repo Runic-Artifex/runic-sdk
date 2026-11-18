@@ -26,6 +26,21 @@ internal sealed class BridgeTableTests
             Require(table.GetType().Name == "RunicBridgeTable", $"{bridge.Name} has no descriptor table.");
     }
 
+    // The first window's Bridge reads its table before the page is served, and S1 keeps ICU off that path (#1159): the
+    // reader must not touch System.Globalization, where even CultureInfo.InvariantCulture or
+    // NumberFormatInfo.InvariantInfo loads ICU. native-server.yml measures it on a NativeAOT publish; this check runs
+    // with every generator change.
+    [Test]
+    public void TheTableReaderLeavesGlobalizationAlone()
+    {
+        var configuration = typeof(BridgeTableTests).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
+        var reader = Path.Combine(FindWorkspaceRoot(), "tests", "dotnet", "Runic.Application.Testing.Tests", "obj", configuration,
+            "net10.0", "runic-bridge", "RunicShared.Tables.Bridge.g.cs");
+        var source = string.Join('\n', File.ReadAllLines(reader).Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+        foreach (var culture in new[] { "Globalization", "Culture", "int.Parse", "IFormatProvider" })
+            Require(!source.Contains(culture, StringComparison.Ordinal), $"{reader} uses {culture}, which loads ICU on the startup path.");
+    }
+
     // A stream command's ExecuteStreamAsync and an async key resolver's ResolveArgumentAsync were async lambdas, and the
     // runtime calls them without awaiting first (BridgeRuntime.Operations): an exception, even one before their first
     // await, must stay the returned task's. Their arms are in async switch methods, so it does. A ViewModel of another
@@ -67,6 +82,13 @@ internal sealed class BridgeTableTests
             return;
         }
         throw new InvalidOperationException($"{member} did not fail with its ViewModel's cast.");
+    }
+
+    private static string FindWorkspaceRoot()
+    {
+        for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx"))) return directory.FullName;
+        throw new InvalidOperationException("Could not locate the Runic SDK workspace root.");
     }
 
     private static void Require(bool condition, string message)
