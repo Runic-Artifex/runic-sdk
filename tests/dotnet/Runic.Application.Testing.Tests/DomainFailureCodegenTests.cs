@@ -152,9 +152,9 @@ internal sealed class DomainFailureCodegenTests
         if (bridgeFiles.Length > 0)
         {
             outputs = [.. outputs, ("shared-codecs.txt", SharedCodecsOf(Path.Combine(project, "obj", $"{set}-shared-codecs.txt"), bridgeFiles))];
-            // And the generated command helpers that they call.
+            // And the generated helpers that they call: the table reader and the command runners.
             var bridgeText = string.Concat(bridgeFiles.Select(File.ReadAllText));
-            foreach (var (helper, file) in new[] { ("RunicToolkitCommands", "RunicShared.Toolkit.Bridge.g.cs"), ("RunicBridgeCommands", "RunicShared.Commands.Bridge.g.cs") })
+            foreach (var (helper, file) in new[] { ("RunicBridgeTable", "RunicShared.Tables.Bridge.g.cs"), ("RunicToolkitCommands", "RunicShared.Toolkit.Bridge.g.cs"), ("RunicBridgeCommands", "RunicShared.Commands.Bridge.g.cs") })
                 if (bridgeText.Contains(helper, StringComparison.Ordinal))
                     outputs = [.. outputs, (file, Path.Combine(Path.GetDirectoryName(bridgeFiles[0])!, file))];
         }

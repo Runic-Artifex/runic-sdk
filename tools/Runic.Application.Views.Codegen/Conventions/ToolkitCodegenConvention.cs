@@ -29,8 +29,8 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             BridgeSupportFiles.Use(BridgeSupportFiles.Toolkit, SupportFile);
     }
 
-    // The class of SupportFile, which ToolkitCommandInspector.DescriptorFor's lambdas call too.
-    private const string GeneratedCommands = "global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands";
+    // The class of SupportFile, in the Bridges' namespace (ToolkitCommandInspector.DescriptorFor's lambdas call it too).
+    private const string GeneratedCommands = "RunicToolkitCommands";
 
     // One state machine for every async command of the assembly instead of an async lambda per command
     // (runic-sdk#1109). The steps and their order are those each command's lambda had.
@@ -39,16 +39,39 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
         #nullable enable
         namespace Runic.Application.Views.Generated.Bridges;
 
-        // Runs this assembly's CommunityToolkit.Mvvm async commands for their Bridges. Each command's descriptor passes a
-        // non-async lambda that calls Execute or ExecuteResult with the ViewModel's command; a command with a parameter also
-        // passes `start`, which calls its typed ExecuteAsync(T), and one with a result `encode`, which encodes the value of
-        // its completed Task<T>. Toolkit cancellation is command-wide: Cancel cancels the command's current execution.
+        // Runs this assembly's CommunityToolkit.Mvvm async commands for their Bridges, one state machine for every command.
+        // A Bridge's Members calls Execute or ExecuteResult with its id; the runner reads the command (Members.Command),
+        // starts it with its typed ExecuteAsync (Members.Start) and encodes the value of its completed Task<T>
+        // (Members.EncodeResult). Toolkit cancellation is command-wide: Cancel cancels the command's current execution.
         internal static class RunicToolkitCommands
         {
+            internal static async global::System.Threading.Tasks.Task Execute(RunicBridgeMembers members, int id, object model,
+                global::System.Threading.CancellationToken token, object? argument)
+            {
+                // Registering a pre-cancelled token invokes Cancel synchronously: do not then start a fresh execution.
+                token.ThrowIfCancellationRequested();
+                var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)members.Command(model, id);
+                using var registration = token.Register(command.Cancel);
+                await members.Start(id, command, argument).ConfigureAwait(false);
+            }
+
+            internal static async global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> ExecuteResult(
+                RunicBridgeMembers members, int id, object model, global::System.Threading.CancellationToken token, object? argument)
+            {
+                token.ThrowIfCancellationRequested();
+                var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)members.Command(model, id);
+                using var registration = token.Register(command.Cancel);
+                var execution = members.Start(id, command, argument);
+                await execution.ConfigureAwait(false);
+                return members.EncodeResult(id, execution);
+            }
+
+            // The same with delegates, for descriptors that Runic.Application.Views.Codegen.Toolkit's
+            // ToolkitCommandInspector.DescriptorFor wrote: `start` calls a typed ExecuteAsync(T), null ExecuteAsync(null),
+            // and `encode` encodes the value of the completed Task<T>.
             internal static async global::System.Threading.Tasks.Task Execute(object command, global::System.Threading.CancellationToken token,
                 object? argument, global::System.Func<global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand, object?, global::System.Threading.Tasks.Task>? start)
             {
-                // Registering a pre-cancelled token invokes Cancel synchronously: do not then start a fresh execution.
                 token.ThrowIfCancellationRequested();
                 var typed = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command;
                 using var registration = token.Register(typed.Cancel);
@@ -63,7 +86,6 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
                 token.ThrowIfCancellationRequested();
                 var typed = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command;
                 using var registration = token.Register(typed.Cancel);
-                // ExecuteAsync returns the task of the [RelayCommand] method, a Task<T>.
                 var execution = start is null ? typed.ExecuteAsync(null) : start(typed, argument);
                 await execution.ConfigureAwait(false);
                 return encode(execution);
@@ -115,25 +137,35 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             return $"Cancels the running `{char.ToLowerInvariant(target[0])}{target[1..]}` call.";
         }
 
-        internal override string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan)
+        internal override void Describe(BridgeCommandTable command, PropertyInfo property, GeneratedCommandPlan plan)
         {
             // The command's parameter; a RunicCommandKey command's codec encodes its key instead.
             var toolkitType = contract.Input is null ? null : plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input);
             var keyType = plan.InputGraph?.RootCSharpType() ?? toolkitType;
-            var readArgument = contract.HasInput
-                ? $"ReadInput: input => {property.Name}InputCodec.Read(input)" : null;
-            var encodeArgument = contract.HasInput
-                ? $"EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))" : null;
+            if (contract.HasInput)
+            {
+                command.Return("ReadInput", $"{property.Name}InputCodec.Read(input)");
+                command.Return("EncodeArgument", $"global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))");
+            }
+            if (!contract.IsAsync) return;
             // IsRunning can change without CanExecuteChanged (for example with
             // concurrent executions), so publish on the command's own change.
-            var subscribeRunning = contract.IsAsync
-                ? $"Subscribe: static (vm, changed) => new {GeneratedCommands}.Running({GeneratedModel.Access(modelType)}.{property.Name}, changed)" : null;
-            var resultType = plan.ResultGraph?.RootCSharpType();
-            // Encodes `result`, the command's value, which DescriptorFor reads from the completed execution.
-            var encodeResult = resultType is null ? null
-                : $"global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)))";
-            return ToolkitCommandInspector.DescriptorFor(property, modelType, contract, toolkitType, readArgument, encodeArgument, subscribeRunning,
-                resultType, encodeResult);
+            command.Return("Subscribe", $"new {GeneratedCommands}.Running(vm.{property.Name}, changed)");
+            // RunicToolkitCommands checks the token, registers Cancel, starts the command here and awaits it. A command
+            // with a parameter starts through its typed ExecuteAsync(T).
+            command.Return("Start", contract.HasInput
+                ? $"((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<{toolkitType}>)command).ExecuteAsync(({toolkitType})argument!)"
+                : "((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command).ExecuteAsync(null)");
+            if (plan.ResultGraph is { } result)
+            {
+                command.Return("ExecuteResult", $"{GeneratedCommands}.ExecuteResult(this, id, model, token, argument)");
+                // ExecuteAsync returns the task of the [RelayCommand] method, a Task<T>; its value is read once it completed.
+                command.Arm("EncodeResult", $"""
+                    var result = ((global::System.Threading.Tasks.Task<{result.RootCSharpType()}>)execution).Result;
+                    return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)));
+                    """);
+            }
+            else command.Return("Execute", $"{GeneratedCommands}.Execute(this, id, model, token, argument)");
         }
 
         internal override IEnumerable<(string Member, string Value)> StateMembers(PropertyInfo command, string name, GeneratedCommandPlan plan) =>

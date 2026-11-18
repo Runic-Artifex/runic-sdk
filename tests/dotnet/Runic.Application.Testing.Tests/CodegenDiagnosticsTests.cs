@@ -72,26 +72,26 @@ internal sealed partial class CodegenDiagnosticsTests
             const string Source = Preamble + """
                 public sealed class RetirementViewModel : FixtureModel
                 {
-                    [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+                    [RunicOperationRetirement(global::Runic.Application.Views.RunicOperationRetirement.Cancel)]
                     public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                     [RunicOperationRetirement(RunicOperationRetirement.Keep)]
                     public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                     public IAsyncRelayCommand PlainCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
-                    [RunicOperationRetirement(RunicOperationRetirement.Drain)]
+                    [RunicOperationRetirement(global::Runic.Application.Views.RunicOperationRetirement.Drain)]
                     public IRelayCommand ToggleCommand { get; } = new RelayCommand(() => { });
-                    [RunicOperationRetirement(RunicOperationRetirement.Drain)]
+                    [RunicOperationRetirement(global::Runic.Application.Views.RunicOperationRetirement.Drain)]
                     public string Title { get; set; } = "";
                     [RunicOperationRetirement((RunicOperationRetirement)7)]
                     public IAsyncRelayCommand OddCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                 }
-                [RunicOperationRetirement(RunicOperationRetirement.Drain)]
+                [RunicOperationRetirement(global::Runic.Application.Views.RunicOperationRetirement.Drain)]
                 public sealed class ClassPolicyViewModel : FixtureModel
                 {
                     public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                     [RunicOperationRetirement(RunicOperationRetirement.Keep)]
                     public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                 }
-                [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+                [RunicOperationRetirement(global::Runic.Application.Views.RunicOperationRetirement.Cancel)]
                 public sealed class NoOperationViewModel : FixtureModel
                 {
                     public IRelayCommand ToggleCommand { get; } = new RelayCommand(() => { });
@@ -116,14 +116,15 @@ internal sealed partial class CodegenDiagnosticsTests
                     && !warnings.Any(text => text.Contains("ClassPolicyViewModel", StringComparison.Ordinal)),
                 $"RunicOperationRetirement without an operation was not reported as located RUNICBRIDGE028 warnings.\n{output}");
 
-            string Descriptor(string model, string command) => File.ReadAllLines(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs"))
-                .Single(line => line.Contains($"(\"{command}\", static vm => (object)((global::Fixture.{model})vm).{command}Command)", StringComparison.Ordinal));
-            const string Policy = "Retirement = global::Runic.Application.Views.RunicOperationRetirement.";
-            Require(Descriptor("RetirementViewModel", "Save").Contains(Policy + "Cancel", StringComparison.Ordinal)
-                    && Descriptor("ClassPolicyViewModel", "Save").Contains(Policy + "Drain", StringComparison.Ordinal)
+            // The retirement field of the command's K record in its Bridge's descriptor table, "-" for Keep.
+            string Retirement(string model, string command) =>
+                CommandRecord(File.ReadAllText(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs")), command)[5];
+            static string Policy(global::Runic.Application.Views.RunicOperationRetirement retirement) => ((int)retirement).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Require(Retirement("RetirementViewModel", "Save") == Policy(global::Runic.Application.Views.RunicOperationRetirement.Cancel)
+                    && Retirement("ClassPolicyViewModel", "Save") == Policy(global::Runic.Application.Views.RunicOperationRetirement.Drain)
                     && new[] { ("RetirementViewModel", "Load"), ("RetirementViewModel", "Plain"), ("RetirementViewModel", "Odd"),
                         ("RetirementViewModel", "Toggle"), ("ClassPolicyViewModel", "Load"), ("NoOperationViewModel", "Toggle") }
-                        .All(command => !Descriptor(command.Item1, command.Item2).Contains("Retirement = ", StringComparison.Ordinal)),
+                        .All(command => Retirement(command.Item1, command.Item2) == "-"),
                 "The generated descriptors do not carry exactly the declared non-Keep policies of operations.");
         }
         finally
@@ -194,15 +195,15 @@ internal sealed partial class CodegenDiagnosticsTests
                 $"RunicOperationClose without an operation was not reported as located RUNICBRIDGE039 warnings.\n{output}");
 
             string Bridge(string model) => File.ReadAllText(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs"));
-            string Descriptor(string model, string command) => Bridge(model).Split('\n')
-                .Single(line => line.Contains($"(\"{command}\", static vm => (object)((global::Fixture.{model})vm).{command}Command)", StringComparison.Ordinal));
-            const string Policy = "Close = global::Runic.Application.Views.RunicOperationClose.";
-            Require(Descriptor("CloseViewModel", "Save").Contains(Policy + "Durable", StringComparison.Ordinal)
-                    && Descriptor("ClassCloseViewModel", "Query").Contains(Policy + "Cancel", StringComparison.Ordinal)
-                    && Descriptor("ClassCloseViewModel", "Save").Contains(Policy + "Durable", StringComparison.Ordinal)
+            // The close field of the command's K record in its Bridge's descriptor table, "-" for Default.
+            string Close(string model, string command) => CommandRecord(Bridge(model), command)[6];
+            static string Policy(global::Runic.Application.Views.RunicOperationClose close) => ((int)close).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Require(Close("CloseViewModel", "Save") == Policy(global::Runic.Application.Views.RunicOperationClose.Durable)
+                    && Close("ClassCloseViewModel", "Query") == Policy(global::Runic.Application.Views.RunicOperationClose.Cancel)
+                    && Close("ClassCloseViewModel", "Save") == Policy(global::Runic.Application.Views.RunicOperationClose.Durable)
                     && new[] { ("CloseViewModel", "Load"), ("CloseViewModel", "Plain"), ("CloseViewModel", "Odd"),
                         ("CloseViewModel", "Toggle"), ("NoCloseOperationViewModel", "Toggle") }
-                        .All(command => !Descriptor(command.Item1, command.Item2).Contains("Close = ", StringComparison.Ordinal)),
+                        .All(command => Close(command.Item1, command.Item2) == "-"),
                 "The generated descriptors do not carry exactly the declared non-Default policies of operations.");
             // The close drain is stable since 0.22 (D068.8): no Bridge suppresses its former experimental ID.
             Require(!Bridge("CloseViewModel").Contains("RUNICDESK105", StringComparison.Ordinal)
@@ -768,7 +769,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class OverrideFailureWindow : RunicWindow<OverrideFailureViewModel>;
                 """).ConfigureAwait(false);
             Require(Directory.GetFiles(overridden, "*OverrideFailureViewModel.Bridge.g.cs").Select(File.ReadAllText)
-                    .Any(text => text.Contains("EncodeFailure = failure => failure is global::System.String declared", StringComparison.Ordinal)),
+                    .Any(text => text.Contains("return failure is global::System.String declared ? ", StringComparison.Ordinal)),
                 "An override of a declared abstract command lost its failure codec.");
             // A failure type the Bridge cannot encode is RUNICBRIDGE003 at {Model}.{Command}.failure.
             await RejectAt("FailurePayload", """
@@ -1077,7 +1078,8 @@ internal sealed partial class CodegenDiagnosticsTests
             // Navigation is a supported API: a Bridge that observes a region slot needs no warning
             // suppression of its own.
             var regionBridges = Directory.GetFiles(Path.Combine(missingViewDirectory, "cs"), "*.g.cs")
-                .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("static vm => ((global::", StringComparison.Ordinal))).ToArray();
+                // A region slot's Get arm reads its Current.
+                .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("?.Current;", StringComparison.Ordinal))).ToArray();
             Require(regionBridges.Length > 0 && regionBridges.All(lines => !lines.Any(line => line.StartsWith("#pragma warning", StringComparison.Ordinal))),
                 $"A generated Bridge with a navigation region slot suppresses a warning.\n{shellBridge}");
             // A Window's ViewModel has a Window, not a View: it is not reported
@@ -1422,6 +1424,11 @@ internal sealed partial class CodegenDiagnosticsTests
             if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx"))) return directory.FullName;
         throw new InvalidOperationException("Could not locate the Runic SDK workspace root.");
     }
+
+    // A command's K record (name, wire name, id, flags, retirement, close) in a Bridge's descriptor table
+    // (BridgeTableSupport), split into its fields.
+    private static string[] CommandRecord(string bridge, string command) => bridge.Split('\n')
+        .Select(line => line.Trim()).Single(line => line.StartsWith($"K {command} ", StringComparison.Ordinal)).Split(' ');
 
     private static void Require(bool condition, string message)
     {

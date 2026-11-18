@@ -15,3 +15,9 @@ public sealed partial class Detail : ObservableObject
 
 // The input of the view request.
 public sealed record FocusRow(int Id);
+
+// The settable enum member.
+public enum Priority { Low, Normal, High }
+
+// The settable record member, whose fields the page writes one by one (field paths).
+public sealed record Address(string Street, string City, int Zip);

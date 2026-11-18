@@ -10,44 +10,169 @@ using SaveCommandFailureCodec = global::Runic.Application.Views.Generated.Bridge
 using PublishCommandFailureCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NotePublishBlock;
 internal sealed class FailureToolkitBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> TitleGetter = static vm => ((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).Title;
     internal FailureToolkitBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureToolkitViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.FailureToolkitViewModel), routePrefix ?? "failureToolkit",
-        State,
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).Title = value },
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Reserve", static vm => (object)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).ReserveCommand) { ReadInput = input => ReserveCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandInputCodec.Write(writer, (global::System.Int32)argument!)), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteQuotaExceeded declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandFailureCodec.Write(writer, declared)) : null, WireName = "reserve" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Save", static vm => (object)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).SaveCommand) { EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null, WireName = "save" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Publish", static vm => (object)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).PublishCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).PublishCommand, token, null, null), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).PublishCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NotePublishBlock declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PublishCommandFailureCodec.Write(writer, declared)) : null, WireName = "publish" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Discard", static vm => (object)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).DiscardCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).DiscardCommand, token, null, null), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).DiscardCommand, changed), WireName = "discard" },
-        ], "<fingerprint>", content,
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", TitleGetter, propertyName: "Title"),
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
-    [
-        new global::Runic.Application.Views.Generated.BridgeStateMember("title", static (writer, vm) => TitleValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).Title)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canSave", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).SaveCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canPublish", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).PublishCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isPublishExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).PublishCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canDiscard", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).DiscardCommand).CanExecute(null))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isDiscardExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.FailureToolkitViewModel)vm).DiscardCommand).IsRunning)),
-    ]
-    ;
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P Title title 0 STX
+        C Title title 0 -
+        K Reserve reserve 0 AFI - -
+        K Save save 1 F - -
+        K Publish publish 2 EFU - -
+        K Discard discard 3 EU - -
+        D 0 - title Title - 0
+        S title 0
+        S canSave 1
+        S canPublish 2
+        S isPublishExecuting 3
+        S canDiscard 4
+        S isDiscardExecuting 5
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureToolkitViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.Title;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void Set(object model, int id, global::System.Text.Json.JsonElement value)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureToolkitViewModel)model;
+            switch (id)
+            {
+                case 0: vm.Title = TitleValueCodec.Read(value); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void SetValue(object model, int id, object? value)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureToolkitViewModel)model;
+            switch (id)
+            {
+                case 0: vm.Title = (global::System.String)value!; return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadValue(int id, global::System.Text.Json.JsonElement element)
+        {
+            switch (id)
+            {
+                case 0: return TitleValueCodec.Read(element);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteValue(int id, global::System.Text.Json.Utf8JsonWriter writer, object? value)
+        {
+            switch (id)
+            {
+                case 0: TitleValueCodec.Write(writer, (global::System.String)value!); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureToolkitViewModel)model;
+            switch (id)
+            {
+                case 0: TitleValueCodec.Write(writer, vm.Title); return;
+                case 1: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.SaveCommand).CanExecute(null)); return;
+                case 2: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.PublishCommand).CanExecute(null)); return;
+                case 3: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.PublishCommand).IsRunning); return;
+                case 4: writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.DiscardCommand).CanExecute(null)); return;
+                case 5: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.DiscardCommand).IsRunning); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object Command(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureToolkitViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.ReserveCommand;
+                case 1: return vm.SaveCommand;
+                case 2: return vm.PublishCommand;
+                case 3: return vm.DiscardCommand;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task Execute(object model, int id, global::System.Threading.CancellationToken token, object? argument)
+        {
+            switch (id)
+            {
+                case 2: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 3: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task Start(int id, object command, object? argument)
+        {
+            switch (id)
+            {
+                case 2: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command).ExecuteAsync(null);
+                case 3: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command).ExecuteAsync(null);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadInput(int id, global::System.Text.Json.JsonElement input)
+        {
+            switch (id)
+            {
+                case 0: return ReserveCommandInputCodec.Read(input);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override string EncodeArgument(int id, object? argument)
+        {
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandInputCodec.Write(writer, (global::System.Int32)argument!));
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable Subscribe(object model, int id, global::System.Action changed)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureToolkitViewModel)model;
+            switch (id)
+            {
+                case 2: return new RunicToolkitCommands.Running(vm.PublishCommand, changed);
+                case 3: return new RunicToolkitCommands.Running(vm.DiscardCommand, changed);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override string? EncodeFailure(int id, object failure)
+        {
+            switch (id)
+            {
+                case 0: { return failure is global::Runic.Application.Testing.Tests.NoteQuotaExceeded declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandFailureCodec.Write(writer, declared)) : null; }
+                case 1: { return failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null; }
+                case 2: { return failure is global::Runic.Application.Testing.Tests.NotePublishBlock declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PublishCommandFailureCodec.Write(writer, declared)) : null; }
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }

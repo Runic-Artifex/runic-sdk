@@ -1,9 +1,12 @@
 // The NativeAOT size fixture's ViewModels (tests/scaling/README.md, "NativeAOT size"): K bridged ViewModels of one
-// shape, the members #901 names plus a view request, whose descriptor was generic over the ViewModel too:
-//   - settable members (checked properties): a number, a text member, a flag and a fraction;
+// shape, the members #901 names plus a view request, whose descriptor was generic over the ViewModel too, and since
+// #1109 (D072.15) an enum, a record with field paths, a command with an input and a result and a view question, so
+// that each member kind of the Bridge's descriptor table is in the budget:
+//   - settable members (checked properties): a number, a text member, a flag, a fraction, an enum and a record;
 //   - read-only members: a number and a text member;
-//   - a keyed collection, an observed sub-object, a view request, a synchronous and an asynchronous command.
-// Row, Detail and FocusRow are shared (Fixture/Shared.cs). Each ViewModel has a window type, which the generated
+//   - a keyed collection, an observed sub-object, a view request and a view question;
+//   - a synchronous command, an asynchronous one and an asynchronous one with an input and a result.
+// Row, Detail, FocusRow, Priority and Address are shared (Fixture/Shared.cs). Each ViewModel has a window type, which the generated
 // composition needs, but the application opens only the shell's. The shell has the same shape, so that the Bridge
 // runtime code each member kind needs is already in the build with K = 0, and the bytes above that build are the
 // ViewModels' own.
@@ -17,6 +20,8 @@ export function viewModelsSource(count) {
     [ObservableProperty] private string title = "";
     [ObservableProperty] private bool enabled = true;
     [ObservableProperty] private double ratio = 0.5;
+    [ObservableProperty] private Priority level;
+    [ObservableProperty] private Address shipping = new("", "", 0);
 
     private int _count;
     public int Count { get => _count; private set => SetProperty(ref _count, value); }
@@ -29,6 +34,8 @@ export function viewModelsSource(count) {
 
     public ViewRequest<FocusRow> Focus { get; } = new();
 
+    public ViewQuestion<string, bool> Confirm { get; } = new();
+
     [RelayCommand]
     private void Increment()
     {
@@ -39,6 +46,9 @@ export function viewModelsSource(count) {
 
     [RelayCommand]
     private Task SaveAsync() => Task.CompletedTask;
+
+    [RelayCommand]
+    private async Task<int> LoadAsync(string filter) => await Confirm.AskAsync(filter) ? filter.Length : 0;
 }
 
 public sealed partial class ${name}Window : RunicWindow<${name}>;

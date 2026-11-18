@@ -13,6 +13,14 @@ if (args is ["probe"])
     Runic.Application.Views.Benchmarks.Probe.Run();
     return;
 }
+// The first Bridge of each fixture ViewModel type, in this fresh process: ... -- bridge-creation. By name: the
+// generator's bootstrap pass compiles this file without the generated Bridges that BridgeCreation creates.
+if (args is ["bridge-creation"])
+{
+    typeof(Program).Assembly.GetType("Runic.Application.Views.Benchmarks.BridgeCreation", throwOnError: true)!
+        .GetMethod("RunCold")!.Invoke(null, null);
+    return;
+}
 var config = DefaultConfig.Instance
     .AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance))
     .AddDiagnoser(MemoryDiagnoser.Default);

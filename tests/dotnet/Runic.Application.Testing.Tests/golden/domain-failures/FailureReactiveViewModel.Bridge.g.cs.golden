@@ -10,41 +10,179 @@ using ImportCommandResultCodec = global::Runic.Application.Views.Generated.Bridg
 using ImportCommandFailureCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NoteSaveFailureToPage;
 internal sealed class FailureReactiveBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> TitleGetter = static vm => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title;
     internal FailureReactiveBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureReactiveViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.FailureReactiveViewModel), routePrefix ?? "failureReactive",
-        State,
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = value },
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Save", static vm => (object)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand) { ExecuteResultAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicBridgeCommands.Result(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token), static execution => { var result = ((global::System.Threading.Tasks.Task<global::System.Int32>)execution).Result; return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }), CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null, WireName = "save", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, logger, "FailureReactiveViewModel.SaveCommand") },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Import", static vm => (object)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand) { CreateStream = () => new global::Runic.Application.Views.Generated.BridgeOperationStream(), ExecuteStreamAsync = static async (vm, execution, token, argument) => await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImportCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false), CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImportCommandFailureCodec.Write(writer, declared)) : null, WireName = "import", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand, logger, "FailureReactiveViewModel.ImportCommand") },
-        ], "<fingerprint>", content,
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", TitleGetter, propertyName: "Title"),
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
-    [
-        new global::Runic.Application.Views.Generated.BridgeStateMember("title", static (writer, vm) => TitleValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canSave", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isSaveExecuting", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("canImport", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isImportExecuting", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).ImportCommand))),
-    ]
-    ;
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P Title title 0 STX
+        C Title title 0 -
+        K Save save 0 CFORU - -
+        K Import import 1 CFMOU - -
+        D 0 - title Title - 0
+        S title 0
+        S canSave 1
+        S isSaveExecuting 2
+        S canImport 3
+        S isImportExecuting 4
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.Title;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void Set(object model, int id, global::System.Text.Json.JsonElement value)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: vm.Title = TitleValueCodec.Read(value); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void SetValue(object model, int id, object? value)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: vm.Title = (global::System.String)value!; return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadValue(int id, global::System.Text.Json.JsonElement element)
+        {
+            switch (id)
+            {
+                case 0: return TitleValueCodec.Read(element);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteValue(int id, global::System.Text.Json.Utf8JsonWriter writer, object? value)
+        {
+            switch (id)
+            {
+                case 0: TitleValueCodec.Write(writer, (global::System.String)value!); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: TitleValueCodec.Write(writer, vm.Title); return;
+                case 1: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default)); return;
+                case 2: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand)); return;
+                case 3: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default)); return;
+                case 4: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand)); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object Command(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.SaveCommand;
+                case 1: return vm.ImportCommand;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> ExecuteResult(object model, int id, global::System.Threading.CancellationToken token, object? argument)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return RunicBridgeCommands.Result(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token), this, id);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override async global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> ExecuteStream(object model, int id, global::Runic.Application.Views.Generated.BridgeOperationExecution execution, global::System.Threading.CancellationToken token, object? argument)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 1: return await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImportCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::Runic.Application.Views.Generated.BridgeOperationResult EncodeResult(int id, global::System.Threading.Tasks.Task execution)
+        {
+            switch (id)
+            {
+                case 0:
+                {
+                    var result = ((global::System.Threading.Tasks.Task<global::System.Int32>)execution).Result;
+                    return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result)));
+                }
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override bool CanExecute(object model, int id, object? argument)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default);
+                case 1: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable Subscribe(object model, int id, global::System.Action changed)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, changed);
+                case 1: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, changed);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override string? EncodeFailure(int id, object failure)
+        {
+            switch (id)
+            {
+                case 0: { return failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null; }
+                case 1: { return failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImportCommandFailureCodec.Write(writer, declared)) : null; }
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable ObserveFailures(object model, int id, global::Microsoft.Extensions.Logging.ILogger logger)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.FailureReactiveViewModel)model;
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, logger, "FailureReactiveViewModel.SaveCommand");
+                case 1: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, logger, "FailureReactiveViewModel.ImportCommand");
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }

@@ -7,36 +7,29 @@ using FocusRequestInputCodec = global::Runic.Application.Views.Generated.Bridges
 internal sealed class RequestOnlyBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
     private readonly global::System.IDisposable? _rootInteractionMount;
-    // One getter per property, shared by its descriptors and its data subscription.
     internal RequestOnlyBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.RequestOnlyViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.RequestOnlyViewModel), routePrefix ?? "requestOnly",
-        State,
-        [
-        ],
-        [
-        ],
-        [
-        ], "<fingerprint>", content,
-        [
-            global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<global::Runic.Application.Testing.Tests.ViewRequestFocusTarget>("focus", "<fingerprint>:request:Focus", static vm => ((global::Runic.Application.Testing.Tests.RequestOnlyViewModel)vm).Focus, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FocusRequestInputCodec.Write(writer, input))),
-        ],
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
+        Interactions,
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
         global::System.ArgumentNullException.ThrowIfNull(content);
         _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation("requestOnly") : null;
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
+    private static readonly global::Runic.Application.Views.Generated.BridgeInteractionDescriptor[] Interactions =
     [
-    ]
-    ;
+        global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<global::Runic.Application.Testing.Tests.ViewRequestFocusTarget>("focus", "<fingerprint>:request:Focus", static vm => ((global::Runic.Application.Testing.Tests.RequestOnlyViewModel)vm).Focus, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FocusRequestInputCodec.Write(writer, input))),
+    ];
+
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        ""u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+    }
     public override void Dispose()
     {
         _rootInteractionMount?.Dispose();
