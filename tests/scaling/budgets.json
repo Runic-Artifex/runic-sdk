@@ -331,6 +331,90 @@
       "measured": [8340392, 8340392],
       "margin": 0.02,
       "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. 8,898,760 B with Translations 0.13 (main CI run 44179860685); Translations 0.14's compressed catalogs and message table took it to 8,543,240 B (SDK-5)"
+    },
+    "fdd/folder-bytes": {
+      "class": "total",
+      "sizes": [0, 0],
+      "limit": 3722940,
+      "measured": [3649941, 3649941],
+      "margin": 0.02,
+      "note": "the linux-x64 framework-dependent publish (-r linux-x64 --self-contained false) of the CS-WebUI fixture (K = 0), without the XML docs, PDBs and BridgeCodegen files that only project-reference builds in this repository carry until FD5 (fdd-size-0.22.md §7.2); the limit is the measurement plus 2 %. files: the bytes per file at the last --update, which a failure compares with to name the files that grew",
+      "files": {
+        "AotSize": 105904,
+        "AotSize.deps.json": 7533,
+        "AotSize.dll": 52736,
+        "AotSize.runtimeconfig.json": 396,
+        "CommunityToolkit.Mvvm.dll": 146760,
+        "CsWebUi.Native.dll": 24576,
+        "CsWebUi.dll": 76800,
+        "Microsoft.Extensions.DependencyInjection.Abstractions.dll": 65832,
+        "Microsoft.Extensions.DependencyInjection.dll": 95528,
+        "Microsoft.Extensions.Logging.Abstractions.dll": 66896,
+        "Runic.Application.Views.CsWebUi.dll": 262656,
+        "Runic.Application.Views.dll": 1259520,
+        "Runic.Assets.dll": 102400,
+        "Runic.Navigation.dll": 373760,
+        "Runic.Platform.Runtime.dll": 320512,
+        "Runic.Platform.dll": 306688,
+        "libwebui-2.so": 337632,
+        "www/runic-cswebui.js": 21906,
+        "www/runic-views.js": 21906
+      }
+    },
+    "fdd/other-os-bytes": {
+      "class": "total",
+      "sizes": [0, 0],
+      "limit": 0,
+      "measured": [0, 0],
+      "note": "bytes of the CS-WebUI fixture's linux-x64 framework-dependent publish that belong to another operating system (Runic.Platform.Windows or .MacOS, Mach-O or native PE libraries, runtimes/<other rid>/): none"
+    },
+    "fdd/desktop/folder-bytes": {
+      "class": "total",
+      "sizes": [0, 0],
+      "limit": 9546865,
+      "measured": [9359671, 9359671],
+      "margin": 0.02,
+      "note": "the linux-x64 framework-dependent publish of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0), without XML docs, PDBs and BridgeCodegen until FD5; the limit is the measurement plus 2 %. files: the bytes per file at the last --update",
+      "files": {
+        "AotSizeDesktop": 105904,
+        "AotSizeDesktop.deps.json": 10732,
+        "AotSizeDesktop.dll": 52736,
+        "AotSizeDesktop.runtimeconfig.json": 445,
+        "CommunityToolkit.Mvvm.dll": 146760,
+        "Microsoft.Extensions.DependencyInjection.Abstractions.dll": 65832,
+        "Microsoft.Extensions.DependencyInjection.dll": 95528,
+        "Microsoft.Extensions.Logging.Abstractions.dll": 66896,
+        "Runic.Application.Views.Desktop.dll": 943616,
+        "Runic.Application.Views.dll": 1259520,
+        "Runic.Assets.Desktop.dll": 26112,
+        "Runic.Assets.dll": 102400,
+        "Runic.Desktop.dll": 1579520,
+        "Runic.Navigation.dll": 373760,
+        "Runic.Platform.Linux.DBus.dll": 124928,
+        "Runic.Platform.Linux.Gtk4.dll": 79360,
+        "Runic.Platform.Linux.Portal.dll": 928256,
+        "Runic.Platform.Linux.dll": 111616,
+        "Runic.Platform.MacOS.dll": 468480,
+        "Runic.Platform.Runtime.dll": 320512,
+        "Runic.Platform.Windows.dll": 1945088,
+        "Runic.Platform.dll": 306688,
+        "Tmds.DBus.Protocol.dll": 233472,
+        "www/runic-desktop-views.js": 5755,
+        "www/runic-views.js": 5755
+      }
+    },
+    "fdd/desktop/other-os-bytes": {
+      "class": "total",
+      "sizes": [0, 0],
+      "limit": 0,
+      "measured": [0, 0],
+      "known": "project-reference publishes in this repository do not get FD1: the fixture carries Runic.Platform.Windows.dll (1,945,088 B) and Runic.Platform.MacOS.dll (468,480 B), which a package consumer's linux-x64 publish leaves out. They are exempt by name, so any other file of another OS fails",
+      "issue": "sdk#1151",
+      "exempt": [
+        "Runic.Platform.Windows.dll",
+        "Runic.Platform.MacOS.dll"
+      ],
+      "note": "bytes of the Desktop fixture's linux-x64 framework-dependent publish that belong to another operating system, as FD1 (D072.9) defines them: the Windows and macOS Runic.Platform providers, Mach-O or native PE libraries and runtimes/<other rid>/ (Runic.Desktop.Gtk4 is not counted, sdk#1150; it is Linux's anyway)"
     }
   }
 }

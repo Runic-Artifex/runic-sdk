@@ -11,6 +11,8 @@ keys, row indexes rebuilt, pending changes visited, data graph walks, frame byte
 - Scripts: [`run.mjs`](run.mjs) (`bun run scaling`), [`report.mjs`](report.mjs) (the report and the job summary) and
   [`generate-fixtures.mjs`](generate-fixtures.mjs) (the sized ViewModels in `SizedFixtures.cs`).
 - NativeAOT size: [`aot-size/`](aot-size), the `aot/` entries of `budgets.json` (see [NativeAOT size](#nativeaot-size)).
+- Framework-dependent size: the `fdd/` entries, measured by the same script (see
+  [Framework-dependent size](#framework-dependent-size)).
 
 ## How a case is checked
 
@@ -133,6 +135,32 @@ the `scaling-results-<sha>` artifact.
 `--rid win-x64` or `--rid osx-arm64` measures on that runtime and only reports (D064.25). A pull request labelled
 `ci:all-platforms` runs it on the Windows x64 and macOS arm64 native legs, with `--keep`, and keeps the mstat files in
 the `aot-size-<rid>-<run>` artifact.
+
+## Framework-dependent size
+
+After the NativeAOT publishes, `measure.mjs` publishes the CS-WebUI fixture and the Desktop host fixture once more
+with `-r linux-x64 --self-contained false` and K = 0. This takes about 6–8 s each with the projects built by the
+NativeAOT publishes. It lists every file of each folder with its category, as the 0.22 framework-dependent research's
+`attribute.py` does (app, apphost, Runic, Microsoft, third-party, native, www, deps and runtimeconfig, XML docs, PDBs
+and tools), and the job summary gets a table of the bytes per category. The metrics follow the `aot/` names, with the
+Desktop fixture's under `fdd/desktop/`:
+
+- `fdd/folder-bytes` and `fdd/desktop/folder-bytes` (`total`, 2 % margin): the folder's bytes without `*.xml`, PDBs
+  and `BridgeCodegen*`. Only project-reference builds in this repository carry those, never a package consumer's
+  publish, until FD5 keeps them out. `--update` also records the entry's `files`, the bytes of each counted file. A
+  failure compares the current files with those and names the ones that grew or are new, largest growth first.
+- `fdd/other-os-bytes` and `fdd/desktop/other-os-bytes` (`total`, limit 0): the bytes of files that belong to another
+  operating system, as FD1 (D072.9) defines them for a RID-specific publish. On linux-x64 these are the Windows and
+  macOS `Runic.Platform` providers, files under `runtimes/<rid>/` of another runtime, Mach-O libraries and native PE
+  images. `Runic.Desktop.Gtk4` is not counted as Linux-only, since FD1 still copies it everywhere
+  ([#1150](https://github.com/Runic-Artifex/runic-sdk/issues/1150)). A failure names every such file.
+
+FD1 selects the assemblies to leave out by NuGet package, so a project-reference publish such as this fixture's still
+carries `Runic.Platform.Windows.dll` and `Runic.Platform.MacOS.dll`
+([#1151](https://github.com/Runic-Artifex/runic-sdk/issues/1151)). `fdd/desktop/other-os-bytes` is a known cost that
+lists them in `exempt`. Exempt files are reported but not counted, so any other file of another OS fails. The fix
+removes `exempt` and `known`. With `--keep`, the folders stay under `artifacts/scaling/aot-size/fdd-<fixture>/`, and
+`results.json` has every file under `frameworkDependent`.
 
 ## Counters in the product
 
