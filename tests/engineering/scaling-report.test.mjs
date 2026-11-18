@@ -117,6 +117,16 @@ test("the NativeAOT size check adds its noise before the class factor and at the
   expect(check("e", executable, [20960, 280000]).failure).toContain("grows faster than O(n)");
 });
 
+test("the NativeAOT size limit allows the metric's alignment noise", () => {
+  // sdk#1120's merge-queue run: the same per-ViewModel code measured 237632 at K = 9 against a limit of 233997 recorded
+  // from a build one 4 KiB alignment step lower; the limit allows the entry's noise as the growth check does.
+  const executable = { class: "O(n)", sizes: [1, 9], limit: 233997, margin: 0.02, noise: 8192 };
+  expect(check("e", executable, [29152, 237632]).result.status).toBe("ok");
+  expect(check("e", executable, [29152, 242190]).failure).toContain("over its limit 233997 (+ 8192 noise)");
+  const exact = { class: "O(n)", sizes: [1, 9], limit: 900 };
+  expect(check("x", exact, [110, 901]).failure).toBe("x is 901 at 9, over its limit 900.");
+});
+
 test("the NativeAOT size check applies the class with its slack, the limit and the total's margin", () => {
   const perViewModel = { class: "O(n)", sizes: [1, 9], limit: 1000, slack: 50 };
   expect(check("a", perViewModel, [100, 940]).result.status).toBe("ok");

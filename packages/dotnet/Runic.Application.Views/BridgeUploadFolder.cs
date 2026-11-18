@@ -180,9 +180,9 @@ internal static partial class BridgeUploadFolder
                 try
                 {
                     // Uploads are regular files: a link inside counts for nothing, and its target's time is never read.
-                    var newest = directory.EnumerateFileSystemInfos("*", SearchOption.AllDirectories)
-                        .Where(static entry => entry.LinkTarget is null)
-                        .Select(static entry => entry.LastWriteTimeUtc).Append(directory.LastWriteTimeUtc).Max();
+                    var newest = directory.LastWriteTimeUtc;
+                    foreach (var entry in directory.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+                        if (entry.LinkTarget is null && entry.LastWriteTimeUtc > newest) newest = entry.LastWriteTimeUtc;
                     if (now - newest < StaleAfter) continue;
                     // Recursive deletion removes links inside the folder, never their targets.
                     directory.Delete(recursive: true);

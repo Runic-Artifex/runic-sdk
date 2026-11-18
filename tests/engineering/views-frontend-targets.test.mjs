@@ -1009,8 +1009,9 @@ test("NoBuild without generated Bridge code fails with RUNICBRIDGE022", () => {
 
 // S1 (D053.25): a publish passes its properties to the whole build. The generator's own build and the bootstrap pass
 // clear the runtime identifier, so PublishReadyToRun reached them without one and failed with NETSDK1191, as
-// PublishTrimmed did before #743. A stand-in dotnet on PATH answers the generator's run; the generator project itself
-// is built for real (CONFIGURATION, as eng/run.mjs builds it).
+// PublishTrimmed did before #743 and PublishSingleFile did until 0.22 (D072.7, FD3). A stand-in dotnet on PATH answers
+// the generator's run; the generator project itself is built for real (CONFIGURATION, as eng/run.mjs builds it). The
+// source-tree ProjectReferences to the generator and the analyzers drop the same properties.
 test("publish properties reach neither the generator's build nor the bootstrap pass", () => {
   const project = join(directory, "publish-properties");
   const fake = join(project, "fake-dotnet");
@@ -1028,7 +1029,7 @@ test("publish properties reach neither the generator's build nor the bootstrap p
   <Target Name="InitializeSourceRootMappedPaths" />
   <Target Name="Build">
     <WriteLinesToFile File="$(MSBuildProjectDirectory)/bootstrap.log" Overwrite="true"
-                      Lines="RuntimeIdentifier=$(RuntimeIdentifier);PublishReadyToRun=$(PublishReadyToRun);PublishAot=$(PublishAot);PublishTrimmed=$(PublishTrimmed);SelfContained=$(SelfContained)" />
+                      Lines="RuntimeIdentifier=$(RuntimeIdentifier);PublishReadyToRun=$(PublishReadyToRun);PublishAot=$(PublishAot);PublishTrimmed=$(PublishTrimmed);PublishSingleFile=$(PublishSingleFile);IncludeNativeLibrariesForSelfExtract=$(IncludeNativeLibrariesForSelfExtract);SelfContained=$(SelfContained)" />
   </Target>
   <Import Project="${targets}" />
 </Project>
@@ -1036,13 +1037,24 @@ test("publish properties reach neither the generator's build nor the bootstrap p
   const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
   const result = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-t:RunicViewsGenerateBridge", `-p:Configuration=${configuration}`,
     "-p:RuntimeIdentifier=linux-x64", "-p:PublishReadyToRun=true", "-p:PublishAot=true", "-p:PublishTrimmed=true", "-p:SelfContained=true",
+    "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true",
     "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"],
     { cwd: project, encoding: "utf8", env: { ...process.env, PATH: `${fake}:${process.env.PATH}` } });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.doesNotMatch(result.stdout, /NETSDK\d+/);
   assert.deepEqual(readFileSync(join(project, "bootstrap.log"), "utf8").trim().split("\n"),
-    ["RuntimeIdentifier=", "PublishReadyToRun=false", "PublishAot=false", "PublishTrimmed=false", "SelfContained=false"]);
+    ["RuntimeIdentifier=", "PublishReadyToRun=false", "PublishAot=false", "PublishTrimmed=false",
+      "PublishSingleFile=false", "IncludeNativeLibrariesForSelfExtract=false", "SelfContained=false"]);
   assert.match(readFileSync(join(project, "generator.log"), "utf8"), /--generate/);
+  const references = [...readFileSync(targets, "utf8").matchAll(
+    /<ProjectReference Include="\$\((_RunicBridgeCodegenProject|_RunicViewsAnalyzersProject)\)[^>]*?GlobalPropertiesToRemove="([^"]*)"/g)];
+  assert.deepEqual(references.map(([, name]) => name), ["_RunicBridgeCodegenProject", "_RunicViewsAnalyzersProject"]);
+  for (const [, name, removed] of references) {
+    for (const property of ["RuntimeIdentifier", "PublishReadyToRun", "PublishAot", "PublishTrimmed", "PublishSingleFile",
+      "IncludeNativeLibrariesForSelfExtract", "SelfContained"]) {
+      assert.ok(removed.split(";").includes(property), `${name} keeps ${property}`);
+    }
+  }
 });
 
 // S1 (D053.25): every build started the generator twice, once for the bootstrap pass's composition stub and once for

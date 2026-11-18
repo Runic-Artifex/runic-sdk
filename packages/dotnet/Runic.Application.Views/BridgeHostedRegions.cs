@@ -35,7 +35,7 @@ internal sealed class BridgeHostedRegions
     // The connection that currently declares each name, latest declaration first.
     private readonly Dictionary<string, Owner> _owners = new(StringComparer.Ordinal);
     // The names each connection declared and did not remove, also those another connection's declaration superseded.
-    private readonly Dictionary<string, Dictionary<string, HostedRegionSizing>> _declared = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _declared = new(StringComparer.Ordinal);
     private readonly List<IHostedRegionObserver> _observers = [];
     private readonly Queue<(IHostedRegionObserver[] Observers, Action<IHostedRegionObserver> Raise)> _events = new();
     private bool _raising;
@@ -251,11 +251,11 @@ internal sealed class BridgeHostedRegions
         lock (_gate)
         {
             if (!_declared.TryGetValue(connectionKey, out var names)) _declared[connectionKey] = names = new(StringComparer.Ordinal);
-            if (names.ContainsKey(name))
+            if (names.Contains(name))
                 return BridgeMessages.Rejected("invalid-request", $"The connection declared the region '{name}' already.");
             if (names.Count >= MaximumPerConnection)
                 return BridgeMessages.Rejected("capacity", $"The connection declares {MaximumPerConnection} regions already.");
-            names[name] = sizing;
+            names.Add(name);
             if (_owners.TryGetValue(name, out var earlier))
             {
                 superseded = earlier.ConnectionKey;
@@ -309,7 +309,7 @@ internal sealed class BridgeHostedRegions
         var report = new HostedRegionReport(name, connectionKey, width, height, scale, x, y, visible, focused, focusSource);
         lock (_gate)
         {
-            if (!_declared.TryGetValue(connectionKey, out var names) || !names.ContainsKey(name))
+            if (!_declared.TryGetValue(connectionKey, out var names) || !names.Contains(name))
                 return BridgeMessages.Rejected("invalid-request", $"The connection did not declare the region '{name}'.");
             // A superseded declaration's reports change nothing.
             if (_owners.TryGetValue(name, out var owner) && owner.ConnectionKey == connectionKey)
@@ -327,7 +327,7 @@ internal sealed class BridgeHostedRegions
         lock (_gate)
         {
             if (!_declared.Remove(connectionKey, out var names)) return;
-            foreach (var name in names.Keys)
+            foreach (var name in names)
             {
                 if (!_owners.TryGetValue(name, out var owner) || owner.ConnectionKey != connectionKey) continue;
                 _owners.Remove(name);

@@ -1227,10 +1227,10 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
                     }
                 }
                 // Then the arrival hooks of the entries the commit made current (W315-020 §1.2).
-                var (activation, activationError) = commit.Activated.Count == 0
-                    ? (NavigationArrivalState.None, null)
+                var activation = commit.Activated.Count == 0
+                    ? ArrivalOutcome.None
                     : await this.AfterUserCode(ActivateAsync(transition, commit.Activated, transition.Operation));
-                outcome = TransitionOutcome.Commit(commit.Current, retired, activation, activationError);
+                outcome = TransitionOutcome.Commit(commit.Current, retired, activation.State, activation.Error);
             }
             else if (transition.Pending is { } pending)
             {
@@ -1315,7 +1315,7 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
     // Runs the arrival hooks of the entries a commit made current, one after another, after the presentation yielded.
     // Each hook's token is cancelled when its entry stops being current (the commit that moves it cancels the entry's
     // Arrival), when it retires, and when the navigator closes. The first failure is reported; otherwise a cancellation.
-    private async Task<(NavigationArrivalState State, Exception? Error)> ActivateAsync(NavigationTransition transition,
+    private async Task<ArrivalOutcome> ActivateAsync(NavigationTransition transition,
         List<NavigationEntryCore> entries, NavigationOperation operation)
     {
         var closing = _closingSource.Token;
@@ -1323,8 +1323,8 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
         if (ModelContext is IRunicModelPresentationYield presentation)
         {
             try { await this.AfterUserCode(presentation.YieldToPresentationAsync(closing)); }
-            catch (Exception) when (closing.IsCancellationRequested || IsClosed) { return (NavigationArrivalState.Cancelled, null); }
-            catch (ObjectDisposedException) { return (NavigationArrivalState.Cancelled, null); }
+            catch (Exception) when (closing.IsCancellationRequested || IsClosed) { return ArrivalOutcome.Cancelled; }
+            catch (ObjectDisposedException) { return ArrivalOutcome.Cancelled; }
             // A presentation that can't yield doesn't keep the entry from activating.
             catch (Exception) { }
         }
@@ -1378,8 +1378,20 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
                 arrival.Dispose();
             }
         }
-        if (failure is not null) return (NavigationArrivalState.Failed, failure);
-        return (cancelled ? NavigationArrivalState.Cancelled : NavigationArrivalState.Completed, null);
+        if (failure is not null) return new(NavigationArrivalState.Failed, failure);
+        return cancelled ? ArrivalOutcome.Cancelled : ArrivalOutcome.Completed;
+    }
+
+    // ActivateAsync's result. A class, not a tuple: an async method with a value-type result compiles its own copy of
+    // the async machinery in a NativeAOT build.
+    private sealed class ArrivalOutcome(NavigationArrivalState state, Exception? error = null)
+    {
+        internal static readonly ArrivalOutcome None = new(NavigationArrivalState.None);
+        internal static readonly ArrivalOutcome Cancelled = new(NavigationArrivalState.Cancelled);
+        internal static readonly ArrivalOutcome Completed = new(NavigationArrivalState.Completed);
+
+        internal NavigationArrivalState State { get; } = state;
+        internal Exception? Error { get; } = error;
     }
 
     // Cancels a source outside model turns: its callbacks can run user continuations. A disposed source is ignored.

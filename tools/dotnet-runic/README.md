@@ -625,6 +625,22 @@ debug the "Window (dotnet runic dev --no-window)" launch profile.
 **Visual Studio**: start `dotnet runic dev --no-window` in the Developer
 PowerShell or a terminal, choose the "Window (dotnet runic dev --no-window)"
 profile next to the Start button, and press F5.
+[Runic DevKit for Visual Studio](https://marketplace.visualstudio.com/items?itemName=runic-artifex.runic-devkit-vs)
+(`runic-artifex.runic-devkit-vs`) does this for you: when F5 starts a Runic
+project and no `dev --no-window` runs, it asks whether to start it, and starts
+the Window once `dev` is ready. Its **Debug the Window** command also attaches
+Visual Studio's JavaScript debugger to the page over a DevTools Protocol port,
+so C# and `Frontend/src` breakpoints stop in one session. It needs Visual
+Studio's JavaScript diagnostics component, which the template's `.vsconfig`
+names. See
+[Visual Studio](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#visual-studio)
+in the debugging guide.
+
+**VS Code** with
+[Runic DevKit for VS Code](https://marketplace.visualstudio.com/items?itemName=runic-artifex.runic-devkit)
+(`runic-artifex.runic-devkit`): its `runic` debug type starts
+`dev --no-window`, waits for `Ready` and starts the Window under the debugger
+without the tasks above.
 
 To keep `dev` starting the Window and attach instead, use the
 [IDE contract](#ide-contract): `[dev] Window started: process <pid>` names the
