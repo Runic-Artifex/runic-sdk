@@ -194,9 +194,15 @@ public sealed class ViewRequest<T>
 }
 
 // One route of a window that presents the ViewModel of a ViewRequest.
-internal sealed record ViewRequestBinding<T>(WindowContentSession Session, string Route, string Name, string Contract,
-    Func<T, string> EncodeInput)
+internal sealed class ViewRequestBinding<T>(WindowContentSession session, string route,
+    string name, string contract, Func<T, string> encodeInput)
 {
+    public WindowContentSession Session { get; } = session;
+    public string Route { get; } = route;
+    public string Name { get; } = name;
+    public string Contract { get; } = contract;
+    public Func<T, string> EncodeInput { get; } = encodeInput;
+
     // The input's wire JSON, checked against the window's input limit.
     internal string Encode(T input, WindowContentSession session)
     {

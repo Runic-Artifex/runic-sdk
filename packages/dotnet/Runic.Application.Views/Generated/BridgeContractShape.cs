@@ -319,7 +319,12 @@ public static class BridgeContractShape
     private static IEnumerable<Type> LoadableTypes(Assembly assembly) { try { return assembly.GetTypes(); } catch (ReflectionTypeLoadException error) { return error.Types.OfType<Type>(); } }
     private static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal) ? model.Name[..^"ViewModel".Length] : model.Name;
     private static string TypeName(Type type) { if (type.IsArray) return TypeName(type.GetElementType()!) + "[]"; if (!type.IsGenericType) return type.FullName ?? type.Name; var name = type.GetGenericTypeDefinition().FullName!; name = name[..name.IndexOf('`')]; return name + "<" + string.Join(",", type.GetGenericArguments().Select(TypeName)) + ">"; }
-    private sealed record PresentationView(Type ViewType, Type ModelType, string? Contract);
+    private sealed class PresentationView(Type viewType, Type modelType, string? contract)
+    {
+        public Type ViewType { get; } = viewType;
+        public Type ModelType { get; } = modelType;
+        public string? Contract { get; } = contract;
+    }
 }
 
 // field-paths/1: the [RunicRowEditor] methods of a model and the collections they edit. Only BridgeContractShape uses it.

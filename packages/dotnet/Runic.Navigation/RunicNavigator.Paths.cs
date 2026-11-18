@@ -234,13 +234,30 @@ public sealed partial class RunicNavigator
 
     // ---- Snapshot (under the gate) ------------------------------------------------------------------------------------
 
-    private sealed record PathSnapshot(RegionSnapshot[] Regions, SelectionSnapshot[] Selections);
+    private sealed class PathSnapshot(RegionSnapshot[] regions, SelectionSnapshot[] selections)
+    {
+        public RegionSnapshot[] Regions { get; } = regions;
+        public SelectionSnapshot[] Selections { get; } = selections;
+    }
 
-    private sealed record RegionSnapshot(EntrySnapshot[] Entries);
+    private sealed class RegionSnapshot(EntrySnapshot[] entries)
+    {
+        public EntrySnapshot[] Entries { get; } = entries;
+    }
 
-    private sealed record EntrySnapshot(NavigationEntryCore Entry, RegionSnapshot[] Regions, SelectionSnapshot[] Selections);
+    private sealed class EntrySnapshot(NavigationEntryCore entry,
+        RegionSnapshot[] regions, SelectionSnapshot[] selections)
+    {
+        public NavigationEntryCore Entry { get; } = entry;
+        public RegionSnapshot[] Regions { get; } = regions;
+        public SelectionSnapshot[] Selections { get; } = selections;
+    }
 
-    private sealed record SelectionSnapshot(RegionSnapshot[] Regions, int Selected);
+    private sealed class SelectionSnapshot(RegionSnapshot[] regions, int selected)
+    {
+        public RegionSnapshot[] Regions { get; } = regions;
+        public int Selected { get; } = selected;
+    }
 
     // The contents of the committed entries of live regions: the owners whose regions are child regions.
     private HashSet<object> EntryContentsLocked()

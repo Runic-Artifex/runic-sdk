@@ -1,4 +1,4 @@
-- **Runic Translations 0.14** (the 0.22 train candidate).
+- **Runic Translations 0.14**.
   `Runic.Application.Views.Translations` requires Runic Translations
   `[0.14.0, 0.15.0)`, so an application that uses it moves every Translations
   package, NuGet and npm, to 0.14.0. The template pins Translations 0.14.0 three

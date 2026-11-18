@@ -305,10 +305,25 @@ public partial class ViewModelBridge
             if (spliceCount == 2) texts.Add(Change.Splice(member.WireName, baseline.Length - first.Delete, second, version, value!));
         }
         count += memberSets.Count + texts.Count;
+        // The first collection with the most changes.
+        static KeyValuePair<BridgeCollectionDescriptor, List<BridgeCollectionChange>> Largest(
+            Dictionary<BridgeCollectionDescriptor, List<BridgeCollectionChange>> indexed)
+        {
+            var found = false;
+            KeyValuePair<BridgeCollectionDescriptor, List<BridgeCollectionChange>> largest = default;
+            foreach (var pair in indexed)
+                if (!found || pair.Value.Count > largest.Value.Count)
+                {
+                    largest = pair;
+                    found = true;
+                }
+            return largest;
+        }
+
         // A frame carries at most 4,096 changes: the indexed changes of the collection with the most become a set.
         while (count > MaximumChanges && indexed.Count > 0)
         {
-            var largest = indexed.MaxBy(pair => pair.Value.Count);
+            var largest = Largest(indexed);
             indexed.Remove(largest.Key);
             sets.Add(largest.Key);
             count -= largest.Value.Count - 1;

@@ -819,7 +819,8 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
                     await this.AfterUserCode(RetireAsync(entry, null));
             NavigationEntryCore[] remaining;
             lock (Gate) remaining = [.. _tracked];
-            foreach (var entry in remaining.OrderBy(entry => entry.Id.Value))
+            SortById(remaining);
+            foreach (var entry in remaining)
                 await this.AfterUserCode(RetireAsync(entry, null));
             lock (Gate) _presentations.Clear();
             await this.AfterUserCode(WaitForDeferredReleasesAsync());
@@ -851,9 +852,14 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
         catch (TimeoutException) { }
         NavigationEntryCore[] overdue;
         lock (Gate) overdue = [.. _deferredReleases.Values];
-        foreach (var entry in overdue.OrderBy(entry => entry.Id.Value))
+        SortById(overdue);
+        foreach (var entry in overdue)
             NavigationLog.NavigationContentReleaseOverdue(Logger, null, entry.Region.ContentTypeName, entry.Region.Id, entry.ContentTypeName);
     }
+
+    // Entry IDs are unique, so this orders like a stable sort.
+    private static void SortById(NavigationEntryCore[] entries) =>
+        Array.Sort(entries, static (left, right) => left.Id.Value.CompareTo(right.Id.Value));
 
     // Refuses new requests, dismisses open PushForResult requests (so guards awaiting a result
     // unblock), then cancels in-flight transitions as closed. Idempotent.
@@ -2180,7 +2186,7 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
                 plan.NewStack = pending is null ? [] : [pending];
                 break;
             case NavigationOperation.ClearHistory:
-                plan.Removed.AddRange(TopDown(stack, 0).Skip(current is null ? 0 : 1));
+                plan.Removed.AddRange(TopDown(current is null ? stack : stack[..^1], 0));
                 plan.NewStack = current is null ? [] : [current];
                 break;
             case NavigationOperation.Clear:
@@ -2189,7 +2195,7 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
                 break;
         }
         foreach (var entry in plan.Removed) AddRetiring(plan, entry);
-        plan.Basis = [.. plan.Regions.Select(affected => affected.Version), .. plan.Kept.Select(kept => kept.Version)];
+        plan.TakeBasis();
         return plan;
     }
 
@@ -2220,7 +2226,7 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
             plan.ChildResets.Add((member, [], removed));
             foreach (var entry in removed) AddRetiring(plan, entry);
         }
-        plan.Basis = [.. plan.Regions.Select(affected => affected.Version), .. plan.Kept.Select(kept => kept.Version)];
+        plan.TakeBasis();
         return plan;
     }
 
@@ -2652,8 +2658,14 @@ public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
 
     // What an entry releases after its presentations' work: its content (null when another entry holds it or the
     // entry holds none), its service scopes and its model-context lease (steps 4 to 5).
-    private sealed record EntryRelease(NavigationEntryCore Entry, object? Content, List<IServiceScope> Scopes,
-        IRunicModelContextLease? Lease);
+    private sealed class EntryRelease(NavigationEntryCore entry, object? content,
+        List<IServiceScope> scopes, IRunicModelContextLease? lease)
+    {
+        public NavigationEntryCore Entry { get; } = entry;
+        public object? Content { get; } = content;
+        public List<IServiceScope> Scopes { get; } = scopes;
+        public IRunicModelContextLease? Lease { get; } = lease;
+    }
 
     private async Task ReleaseAsync(EntryRelease release)
     {
@@ -3472,7 +3484,7 @@ internal sealed class NavigationBackCaller(CancellationToken token)
 internal sealed class NavigationPlan
 {
     public List<NavigationRegionCore> Regions { get; } = [];
-    public long[] Basis { get; set; } = [];
+    public long[] Basis { get; private set; } = [];
     public List<(NavigationEntryCore Entry, NavigationDepartureKind Kind)> Guards { get; } = [];
     public List<NavigationEntryCore> Removed { get; } = [];
     public List<(NavigationRegionCore Region, NavigationEntryCore[] Stack, List<NavigationEntryCore> Removed)> ChildResets { get; } = [];
@@ -3491,6 +3503,14 @@ internal sealed class NavigationPlan
     }
 
     // Call under the gate.
+    // The versions of the plan's regions and kept regions, which BasisMatches compares against later.
+    public void TakeBasis()
+    {
+        Basis = new long[Regions.Count + Kept.Count];
+        for (var index = 0; index < Regions.Count; index++) Basis[index] = Regions[index].Version;
+        for (var index = 0; index < Kept.Count; index++) Basis[Regions.Count + index] = Kept[index].Version;
+    }
+
     public bool BasisMatches()
     {
         for (var index = 0; index < Regions.Count; index++)
@@ -3523,7 +3543,11 @@ internal sealed class NavigationCommit
     public List<CancellationTokenSource> EndArrivals { get; } = [];
 }
 
-internal sealed record NavigationCommitResult(TransitionOutcome Outcome, NavigationCommit? Commit);
+internal sealed class NavigationCommitResult(TransitionOutcome outcome, NavigationCommit? commit)
+{
+    public TransitionOutcome Outcome { get; } = outcome;
+    public NavigationCommit? Commit { get; } = commit;
+}
 
 internal enum TransitionOutcomeKind
 {
