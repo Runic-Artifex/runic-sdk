@@ -4,7 +4,7 @@ A view that only development needs, such as a mock-control or diagnostics panel,
 executable: mark its ViewModel with `[RunicDevelopmentOnly]`, or mark single state properties and commands (on the
 command property or its `[RelayCommand]` method). Builds, `dotnet run`, the debugger and untrimmed publishes keep
 everything. A trimmed or NativeAOT publish turns the feature switch `Runic.Application.Views.DevelopmentOnlyViews` off,
-so the trimmer removes the marked ViewModel's generated Bridge, about 16 KB per ViewModel in the measurements of
+so the trimmer removes the marked ViewModel's generated Bridge, about 15 KB per ViewModel in the measurements of
 #1109, and the code of marked members:
 
 - Opening or presenting a marked ViewModel throws an `InvalidOperationException` that names it. Test

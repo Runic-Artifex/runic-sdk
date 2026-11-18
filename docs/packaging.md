@@ -146,7 +146,7 @@ Builds, `dotnet run`, the debugger and untrimmed publishes keep everything as
 without the attribute. A trimmed or NativeAOT publish leaves the marked code
 out, and the trimmer removes the generated Bridge of a marked ViewModel and
 the code of marked members, with their codecs when nothing else uses them
-(about 16 KB per ViewModel in the measurements of #1109):
+(about 15 KB per ViewModel in the measurements of #1109):
 
 - Opening a Window or View of a marked ViewModel, or presenting it as content,
   throws an `InvalidOperationException` that names it. Present it only when
