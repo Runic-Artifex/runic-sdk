@@ -32,6 +32,7 @@
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE034;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE034</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE039;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE039</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE053;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE053</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE072;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE072</_RunicBridgeWarningsAsErrors>
     <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
@@ -153,9 +154,14 @@
        or NativeAOT publish turns it off, so the trimmer removes it and its HTTP client. Only the publish: PrepareForILLink
        runs before ILLink and before ILC writes its options, never in a build, so a project that sets PublishAot or
        PublishTrimmed keeps the fallback in its builds and in their runtimeconfig.json. -->
+  <!-- Development-only views and members ([RunicDevelopmentOnly], D072.12/D072.13): RunicDevelopmentOnlyViews=auto (the
+       default) leaves them out of trimmed and NativeAOT publishes, here for the same reason, so that the trimmer removes
+       their Bridges and members; true keeps them in every publish. Builds, dotnet run and untrimmed publishes keep them. -->
   <Target Name="_RunicViewsPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
     <ItemGroup>
       <RuntimeHostConfigurationOption Include="Runic.Application.DevelopmentServerForwarding" Value="false" Trim="true" />
+      <RuntimeHostConfigurationOption Include="Runic.Application.Views.DevelopmentOnlyViews" Value="false" Trim="true"
+                                      Condition="'$(RunicDevelopmentOnlyViews)' != 'true'" />
     </ItemGroup>
   </Target>
 

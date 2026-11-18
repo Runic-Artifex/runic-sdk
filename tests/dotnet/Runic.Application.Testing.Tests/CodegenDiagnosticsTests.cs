@@ -276,6 +276,46 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // RUNICBRIDGE072: RunicDevelopmentOnly on an interaction or view request has no effect, and is a located warning.
+    [Test]
+    public async Task DevelopmentOnlyInteractionsAreReportedAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-development-only-{Guid.NewGuid():N}");
+        try
+        {
+            const string Source = Preamble + """
+                public sealed class ProbeViewModel : FixtureModel
+                {
+                    public string Title { get; set; } = "";
+                    [RunicDevelopmentOnly]
+                    public ViewQuestion<string, bool> Confirm { get; } = new();
+                    [RunicDevelopmentOnly]
+                    public ViewRequest<string> Focus { get; } = new();
+                }
+                public sealed partial class ProbeWindow : RunicWindow<ProbeViewModel>;
+                """;
+            var (exitCode, output, directory) = await RunGeneratorAsync(generator, temporaryRoot, "DevelopmentOnly", Source).ConfigureAwait(false);
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE072:", StringComparison.Ordinal)).ToArray();
+            int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
+            bool At(string declaration, string member) => warnings.Any(text =>
+                text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
+                && text.Contains($"ProbeViewModel.{member}: RunicDevelopmentOnly applies to a ViewModel, a state property or a command", StringComparison.Ordinal));
+            Require(exitCode == 0 && warnings.Length == 2 && At("public ViewQuestion<string, bool> Confirm", "Confirm")
+                    && At("public ViewRequest<string> Focus", "Focus")
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE072")}", StringComparison.Ordinal)),
+                $"RunicDevelopmentOnly on an interaction or view request was not reported as located RUNICBRIDGE072 warnings.\n{output}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     // RUNICBRIDGE034: RunicPresentationScoped on a member that is not a Bridge command is a located warning, and the
     // generated client scopes exactly the declared commands.
     [Test]

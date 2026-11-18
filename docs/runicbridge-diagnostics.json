@@ -235,6 +235,11 @@
       "id": "RUNICBRIDGE071",
       "severity": "error",
       "title": "A region collection's select or close client method collides with another client member"
+    },
+    {
+      "id": "RUNICBRIDGE072",
+      "severity": "warning",
+      "title": "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"
     }
   ]
 }

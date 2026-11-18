@@ -123,6 +123,52 @@ They vary by application, platform and .NET version, so measure your own
 | `OptimizationPreference=Size` | 213 KB | The compiler optimizes for size rather than speed, so hot code can run slower. Measure the application's own hot paths. |
 | `UseSystemResourceKeys=true` | none measurable in the reference application; larger applications may save more | .NET's own exception and error messages become resource keys, such as `Arg_NullReferenceException`, instead of sentences. The application's own messages and Runic's are unchanged. |
 
+#### Development-only views and members
+
+A view that only development needs, such as a mock-control or diagnostics
+panel, can stay out of the published executable. Mark its ViewModel, or single
+properties and commands of another ViewModel, with `[RunicDevelopmentOnly]`
+(0.22):
+
+```csharp
+[RunicDevelopmentOnly]
+public sealed partial class MockControlsViewModel : ObservableObject { /* ... */ }
+
+public sealed partial class OrdersViewModel : ObservableObject
+{
+    [ObservableProperty, RunicDevelopmentOnly] public partial string Diagnostics { get; set; } = "";
+
+    [RelayCommand, RunicDevelopmentOnly] private void InjectFault() { /* ... */ }
+}
+```
+
+Builds, `dotnet run`, the debugger and untrimmed publishes keep everything as
+without the attribute. A trimmed or NativeAOT publish leaves the marked code
+out, and the trimmer removes the generated Bridge of a marked ViewModel and
+the code of marked members, with their codecs when nothing else uses them
+(about 15 KB per ViewModel in the measurements of #1109):
+
+- Opening a Window or View of a marked ViewModel, or presenting it as content,
+  throws an `InvalidOperationException` that names it. Present it only when
+  `RunicDevelopmentOnly.IsSupported`, which your own development-only code can
+  test as well.
+- A marked property is absent from the state, and the page cannot set or write
+  it. A marked command, on its property or its `[RelayCommand]` method, and its
+  `can…` and `is…Executing` state are absent too; calling or starting it is
+  rejected with reason `unavailable`.
+
+The generated client is the same in every configuration, so its types say what
+a publish may do: a marked member is an optional state member, and the
+documentation of a marked command notes that it may be unavailable. Marking a
+member changes the View's contract; marking a ViewModel does not.
+
+The MSBuild property `RunicDevelopmentOnlyViews` controls it: `auto`, the
+default, leaves the marked code out of trimmed and NativeAOT publishes only;
+`true` keeps it in every publish. The feature switch is
+`Runic.Application.Views.DevelopmentOnlyViews`. Interactions and view requests
+cannot be development-only on their own (`RUNICBRIDGE072`): mark their
+ViewModel.
+
 #### Measuring your own application
 
 `dotnet runic size` publishes the application and writes a JSON report with

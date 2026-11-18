@@ -32,7 +32,10 @@ export function defineText(nullable = false): BridgeCollectionDefinition {
 export interface BridgeCollections {
   /** Whether `field` is a keyed collection or a text field. */
   kind(field: string): "collection" | "text" | undefined;
-  /** Throws when a decoded value of `field` is not a valid collection (rows with nonempty, unique keys) or text. */
+  /**
+   * Throws when a decoded value of `field` is not a valid collection (rows with nonempty, unique keys) or text. An
+   * absent (undefined) value is a development-only member that a publish left out.
+   */
   validate(field: string, value: unknown): void;
   /**
    * Applies one indexed or text change to `current`, the field's value as the previous change of the frame left it.
@@ -63,7 +66,9 @@ export function defineCollections(definitions: Readonly<Record<string, BridgeCol
     },
     validate(field, value) {
       const found = definition(field);
-      if (!found) return;
+      // A development-only member ([RunicDevelopmentOnly]) is absent from the state of a trimmed or NativeAOT publish;
+      // its decoder already accepted that, and every other member's decoder rejects a missing value.
+      if (!found || value === undefined) return;
       if (found.text) {
         if (typeof value !== "string" && !(found.text.nullable && value === null)) throw new Error(`The text field ${field} is not a string.`);
         return;

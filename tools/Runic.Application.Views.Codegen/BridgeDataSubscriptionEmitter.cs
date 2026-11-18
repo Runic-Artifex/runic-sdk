@@ -10,12 +10,18 @@ using System.ComponentModel;
 internal static class BridgeDataSubscriptionEmitter
 {
     /// <param name="properties">The ViewModel's data members with their property ids, which their Get arms read.</param>
-    internal static void AppendTable(BridgeTableBuilder table, IEnumerable<(PropertyInfo Property, int Id, BridgeTypeGraph Graph)> properties)
+    /// <param name="developmentOnly">Whether a member is development-only: its records and arms, its children's too, are marked.</param>
+    internal static void AppendTable(BridgeTableBuilder table, IEnumerable<(PropertyInfo Property, int Id, BridgeTypeGraph Graph)> properties,
+        Func<PropertyInfo, bool> developmentOnly)
     {
         ArgumentNullException.ThrowIfNull(table);
+        ArgumentNullException.ThrowIfNull(developmentOnly);
         var next = 0;
         foreach (var (property, id, graph) in properties)
+        {
+            using var scope = table.DevelopmentOnly(developmentOnly(property));
             AppendMember(table, ref next, "-", WireName(property), property.Name, null, graph.Root, ValidationProperty(property), id);
+        }
     }
 
     // A member's record, then its children's. A ViewModel member reads its property; a child reads its owner with its

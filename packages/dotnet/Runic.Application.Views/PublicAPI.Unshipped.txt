@@ -235,3 +235,9 @@ static Runic.Application.Views.RunicSidePanelResult.operator ==(Runic.Applicatio
 virtual Runic.Application.Views.RunicSidePanelResult.EqualityContract.get -> System.Type!
 virtual Runic.Application.Views.RunicSidePanelResult.Equals(Runic.Application.Views.RunicSidePanelResult? other) -> bool
 virtual Runic.Application.Views.RunicSidePanelResult.PrintMembers(System.Text.StringBuilder! builder) -> bool
+const Runic.Application.Views.RunicDevelopmentOnly.FeatureSwitch = "Runic.Application.Views.DevelopmentOnlyViews" -> string!
+Runic.Application.Views.RunicDevelopmentOnly
+Runic.Application.Views.RunicDevelopmentOnlyAttribute
+Runic.Application.Views.RunicDevelopmentOnlyAttribute.RunicDevelopmentOnlyAttribute() -> void
+static Runic.Application.Views.RunicDevelopmentOnly.IsSupported.get -> bool
+static Runic.Application.Views.RunicDevelopmentOnly.Removed(System.Type! viewModel) -> System.InvalidOperationException!

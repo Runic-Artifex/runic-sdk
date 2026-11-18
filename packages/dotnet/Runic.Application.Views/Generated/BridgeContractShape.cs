@@ -57,6 +57,7 @@ public static class BridgeContractShape
             var kind = interaction is not null ? "interaction" : request is not null ? "request"
                 : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
+            if (kind is "state" or "command") AppendDevelopmentOnly(parts, model, property, kind == "command");
             if (kind == "command" && command is not null)
             {
                 AppendType(parts, command.GenericTypeArguments[0], ContractAnnotation(property, command, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
@@ -162,6 +163,16 @@ public static class BridgeContractShape
                 AppendType(parts, key.ParameterType, new NullabilityInfoContext().Create(key), $"{model.Name}.{command.Name}.key", [],
                     BridgeDtoContract.HonorsJsonIgnore(model.Assembly));
         }
+    }
+
+    // A development-only member (RunicDevelopmentOnlyAttribute) is optional state or a possibly unavailable command in
+    // the generated client. Only marked members add a part, so other models keep their fingerprint; a marked ViewModel
+    // adds none, because its client is unchanged.
+    private static void AppendDevelopmentOnly(List<string> parts, Type model, PropertyInfo property, bool command)
+    {
+        if (command ? BridgeCommandSources.IsDevelopmentOnly(model, property)
+            : property.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null)
+            parts.Add($"development-only:{TypeName(model)}:{property.Name}");
     }
 
     // A command scoped to its presentation (presentation-epoch/1) is sent with its presentation's epoch. Only scoped
