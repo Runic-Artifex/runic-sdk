@@ -4,7 +4,7 @@
 // the real apt-get, sudo or curl.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -40,7 +40,7 @@ signal=\${1#-}
 if [ "$3" = apt-get ] && [ -f "$FAKE_STATE/apt.pid" ]; then kill "-$signal" "$(cat "$FAKE_STATE/apt.pid")" 2>/dev/null; fi
 exit 0
 `,
-  // Serves one archive of FAKE_SIZE bytes from the mirror apt would try first, at that mirror's rate in FAKE_RATES
+  // Serves one archive (pkg_<FAKE_VERSION>_amd64.deb, stored as pkg.deb) of FAKE_SIZE bytes from the mirror apt would try first, at that mirror's rate in FAKE_RATES
   // ("host=bytes-per-second" or "host=stall"), resuming a partial download.
   'apt-get': `#!/usr/bin/env bash
 archives=
@@ -61,9 +61,10 @@ host() {
 }
 mirror=$(host)
 echo "$mirror" >>"$FAKE_STATE/mirrors"
+echo "\${args[*]}" >>"$FAKE_STATE/commands"
 case " \${args[*]} " in
-  *" update "*) echo "Hit:1 http://$mirror/ubuntu noble InRelease" ;;
-  *" --print-uris "*) if [ ! -f "$archives/pkg.deb" ]; then echo "'http://$mirror/ubuntu/pool/main/p/pkg.deb' pkg.deb $FAKE_SIZE SHA256:00"; fi ;;
+  *" update "*) if [ -n "\${FAKE_UPDATE_FAILS:-}" ]; then echo "E: Failed to fetch"; exit 100; fi; echo "Hit:1 http://$mirror/ubuntu noble InRelease" ;;
+  *" --print-uris "*) if [ ! -f "$archives/pkg.deb" ]; then echo "'http://$mirror/ubuntu/pool/main/p/pkg.deb' pkg_\${FAKE_VERSION:-1.0}_amd64.deb $FAKE_SIZE SHA256:00"; fi ;;
   *" --download-only "*)
     if [ -f "$archives/pkg.deb" ]; then exit 0; fi
     echo $$ >"$FAKE_STATE/apt.pid"
@@ -84,7 +85,7 @@ exit 0
 `,
 };
 
-const run = (setup, env) => {
+const run = (setup, env, args = ['pkg']) => {
   const directory = mkdtempSync(resolve(tmpdir(), 'runic-apt-test-'));
   try {
     const bin = resolve(directory, 'bin');
@@ -96,7 +97,7 @@ const run = (setup, env) => {
       chmodSync(resolve(bin, name), 0o755);
     }
     setup(etc);
-    const result = spawnSync('bash', [resolve(root, 'eng/ci/apt-install.sh'), 'pkg'], {
+    const result = spawnSync('bash', [resolve(root, 'eng/ci/apt-install.sh'), ...args], {
       encoding: 'utf8',
       timeout: 120000,
       env: {
@@ -109,7 +110,9 @@ const run = (setup, env) => {
     return {
       status: result.status, output: result.stdout + result.stderr,
       list: read(resolve(etc, 'apt-mirrors.txt')), sources: read(resolve(etc, 'sources.list.d/ubuntu.sources')),
+      stdout: result.stdout,
       mirrors: read(resolve(state, 'mirrors')).trim().split('\n'),
+      commands: read(resolve(state, 'commands')).trim().split('\n').filter(Boolean),
       probes: read(resolve(state, 'probes')).trim().split('\n').filter(Boolean),
       size: (() => { try { return statSync(archive).size; } catch { return 0; } })(),
     };
@@ -221,4 +224,35 @@ test('apt-install fails within the download budget and says how far it got', lin
   assert.match(result.output, /::error title=Ubuntu packages could not be downloaded::pkg could not be downloaded within 6s \(0\.\d MB fetched\)\. attempt 1 via [^:]*: fetched 0\.\d MB in \d+s \(\d+ kB\/s\), 0\.\d MB still to fetch; download budget used up while fetching/);
   // The budget left less than a stall window, so no second attempt started.
   assert.doesNotMatch(result.output, /Attempt 2/);
+});
+
+// #1131: the action keys its archive cache by this hash, so a new package version gets its own entry.
+test('apt-install --resolve prints a hash of the archive versions from a cold cache', linux, () => {
+  const resolved = env => run(mirrorList, { FAKE_SIZE: '50000', ...env }, ['--resolve', '--no-install-recommends', 'pkg']);
+  const first = resolved({});
+  assert.equal(first.status, 0, first.output);
+  const hash = first.stdout.trim();
+  assert.match(hash, /^[0-9a-f]{16}$/);
+  assert.equal(hash, execFileSync('sha256sum', { input: 'pkg_1.0_amd64.deb\n', encoding: 'utf8' }).slice(0, 16));
+  assert.match(first.output, new RegExp(`Package versions ${hash}: 1 archives, 0\\.1 MB not on the image`));
+  // apt-get update, then the listing with the options of the install; nothing is downloaded or probed.
+  assert.deepEqual(first.commands.map(command => command.split(' ').filter(word => !word.startsWith('-')).join(' ')),
+    ['update', 'install pkg']);
+  assert.match(first.commands[1], /--download-only --print-uris -qq --no-install-recommends pkg/);
+  assert.deepEqual(first.probes, []);
+  assert.equal(first.size, 0);
+  assert.equal(resolved({}).stdout.trim(), hash);
+  assert.notEqual(resolved({ FAKE_VERSION: '1.1' }).stdout.trim(), hash);
+  // Without indexes the versions stay unresolved: no hash, and the job goes on to the install.
+  const failed = resolved({ FAKE_UPDATE_FAILS: '1' });
+  assert.equal(failed.status, 0, failed.output);
+  assert.equal(failed.stdout, '');
+  assert.match(failed.output, /::warning::apt-get update failed; the package versions are unresolved/);
+});
+
+test('apt-install reuses the resolved indexes for its first attempt', linux, () => {
+  const updates = env => run(mirrorList, { FAKE_SIZE: '50000', FAKE_RATES: `${us}=400000`, APT_DOWNLOAD_SECONDS: '60', ...env })
+    .commands.filter(command => command === 'update').length;
+  assert.equal(updates({}), 1);
+  assert.equal(updates({ APT_UPDATED: 'true' }), 0);
 });
