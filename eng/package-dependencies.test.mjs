@@ -97,6 +97,9 @@ test("a RID-specific publish leaves other operating systems' platform packages o
   const packages = {
     "Runic.Platform.Windows": "windows", "Runic.Platform.MacOS": "macos", "Runic.Platform.Linux.Portal": "linux",
     "Tmds.DBus.Protocol": "linux", "GirCore.GLib-2.0": "linux", "Shared.Library": "any",
+    // Runic.Desktop.Gtk4 stays in every publish (#1150): a GTK 4 application calls its WithGtk4 from Main on every
+    // operating system, and the JIT loads it when it compiles Main. Only its GirCore bindings are Linux-only.
+    "Runic.Desktop.Gtk4": "any",
   };
   const type = id => id.replace(/[^A-Za-z0-9]/g, "_");
   try {
@@ -122,6 +125,8 @@ test("a RID-specific publish leaves other operating systems' platform packages o
     const ids = Object.keys(packages).filter(id => packages[id] !== "any");
     writeFileSync(join(directory, "app", "Program.cs"), `using System.Runtime.CompilerServices;
 Console.WriteLine(Declarations.All);
+// As the GTK 4 template's Program.cs calls DesktopHostOptions.WithGtk4 on every operating system.
+Console.WriteLine(global::Runic_Desktop_Gtk4.Name);
 ${ids.map(id => `if (${probe[packages[id]]}) Console.WriteLine(Probes.${type(id)}());`).join("\n")}
 // As the generated PrivilegedActions class: static fields of every provider's types, initialized on first use.
 static class Declarations
@@ -159,7 +164,7 @@ ${ids.map(id => `    [MethodImpl(MethodImplOptions.NoInlining)] public static st
     const built = join(directory, "app", "bin", "Release", "net10.0", "linux-x64");
     assert.deepEqual(all.filter(id => existsSync(join(built, `${id}.dll`))), all);
     if (process.platform === "linux" && process.arch === "x64") {
-      const linuxOutput = ["Shared.Library", "Runic.Platform.Linux.Portal", "Tmds.DBus.Protocol", "GirCore.GLib-2.0"];
+      const linuxOutput = ["Shared.Library", "Runic.Desktop.Gtk4", "Runic.Platform.Linux.Portal", "Tmds.DBus.Protocol", "GirCore.GLib-2.0"];
       const run = spawnSync("dotnet", [join(linux.output, "App.dll")], { encoding: "utf8", timeout: 60000 });
       assert.equal(run.status, 0, run.stdout + run.stderr);
       assert.deepEqual(run.stdout.trim().split(/\r?\n/), linuxOutput);

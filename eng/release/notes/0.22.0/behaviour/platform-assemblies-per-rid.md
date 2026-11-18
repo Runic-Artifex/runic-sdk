@@ -11,7 +11,9 @@
   bytes), 1.9 MB on win-x64 (13,014,138 to 11,063,439 bytes), 3.4 MB on osx-arm64,
   4.1 MB with ReadyToRun on linux-x64 (26,229,892 to 22,107,458 bytes) and 2.4 MB as a
   single file on linux-x64 (11,621,833 to 9,206,817 bytes); a GTK 4
-  application also leaves its 6.8 MB of GirCore bindings out on Windows and macOS.
+  application also leaves its 6.8 MB of GirCore bindings out on Windows and macOS. It
+  keeps `Runic.Desktop.Gtk4` (0.2 MB) on every operating system, because the
+  application calls `DesktopHostOptions.WithGtk4()` on each one.
 
   **Unchanged:** `dotnet build`, `dotnet run` and the debugger, a publish without
   `-r`, trimmed (`PublishTrimmed`) and NativeAOT publishes, and so **every

@@ -51,11 +51,12 @@ dotnet publish -c Release -r linux-x64 --self-contained false
 Since 0.22 such a publish, framework-dependent or self-contained without
 trimming, also with ReadyToRun or single-file, ships only its own operating
 system's `Runic.Platform` assemblies, and the Linux-only libraries (the GirCore
-GTK 4 bindings and `Tmds.DBus.Protocol`) only for Linux. Code that calls
-another operating system's `Runic.Platform` API directly, from a method that
-also runs on this one, then gets `FileNotFoundException` instead of the
-platform guard. `RunicPublishAllPlatformAssemblies=true` keeps every operating
-system's assemblies
+GTK 4 bindings and `Tmds.DBus.Protocol`) only for Linux. `Runic.Desktop.Gtk4`
+ships for every OS, since an application calls its `WithGtk4()` on each one.
+Code that calls another operating system's `Runic.Platform` API directly, from
+a method that also runs on this one, then gets `FileNotFoundException` instead
+of the platform guard. `RunicPublishAllPlatformAssemblies=true` keeps every
+operating system's assemblies
 ([MSBuild](msbuild.md#runicplatform-and-the-privileged-action-packages)).
 
 Without `-r`, `dotnet publish` writes a portable framework-dependent folder.
@@ -100,7 +101,7 @@ Desktop template as well:
 | Choice | Desktop | Cost |
 | --- | ---: | --- |
 | `--desktop-server kestrel` | 9.2 | Smaller folder: no native server, and ASP.NET Core and `Microsoft.Extensions.*` come from the shared ASP.NET Core runtime, which the machine must have in addition to the .NET runtime. Its NativeAOT executable is 15.5 MB. |
-| `--linux-gtk 4` | 17.7 | The GirCore GTK 4 bindings add 6.8 MB and `Runic.Desktop.Gtk4` 0.2 MB. Windows and macOS publishes leave the bindings out (`win-x64`: 11.3). NativeAOT keeps about 1.5 MB of them: the executable is 13.9 MB. |
+| `--linux-gtk 4` | 17.7 | The GirCore GTK 4 bindings add 6.8 MB and `Runic.Desktop.Gtk4` 0.2 MB. Windows and macOS publishes leave the bindings out (`win-x64`: 11.3) but keep `Runic.Desktop.Gtk4`, whose `WithGtk4()` the application calls on every OS. NativeAOT keeps about 1.5 MB of them: the executable is 13.9 MB. |
 | `--view-models toolkit` | 8.6 | CommunityToolkit.Mvvm instead of the default ReactiveUI saves 2.1 MB on either host (CS-WebUI: 4.0 MB), almost all of it ReactiveUI's and Splat's assemblies. |
 
 ### Startup: ReadyToRun and invariant globalization
