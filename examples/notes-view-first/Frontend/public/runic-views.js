@@ -2,6 +2,12 @@
 // small host-neutral Bridge client (Views protocol 4, specs/application/README.md,
 // "Host bridge (page)") instead of importing CS-WebUI.
 (() => {
+  // The build copies this script as runic-views.js and under its own name, runic-cswebui.js. That copy is
+  // deprecated and removed in Runic 0.23 (D072.11), so a page that loads it by that name is told once.
+  if (/(?:^|\/)runic-cswebui\.js$/.test(globalThis.document?.currentScript?.src?.split(/[?#]/)[0] ?? ""))
+    console.warn("Runic: runic-cswebui.js is deprecated and is removed in Runic 0.23. Load runic-views.js instead, " +
+      "the same script under its host-neutral name; a project that references more than one host also sets " +
+      "RunicApplicationHost.");
   const connected = () => window.webui?.isConnected() ?? false;
   // A WebSocket reconnect keeps the page, and each new connection needs its own
   // hello. WebUI reports the transitions to its one event callback
