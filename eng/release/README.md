@@ -622,7 +622,7 @@ of the same major without changes by its author. That includes:
 - **Versioned JSON contracts** (`runic.create/2`, `runic.application.tool.dev/1`,
   `runic.application.tool.size/1`, `runic.application.tool.doctor/1`,
   `runic.application.tool.package/1`,
-  `runic.size/2`, `runic.assets/1`, `runic.assets.archive/1`,
+  `runic.size/2`, `runic.assets/1`, `runic.assets.archive/1` and `/2`,
   `runic.assets.pack-result/1`; support envelopes belong to
   [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/eng/release/README.md#versioning-and-support-from-10)):
   removing, renaming or retyping a field, changing property casing, or changing

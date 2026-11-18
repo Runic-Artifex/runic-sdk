@@ -4,7 +4,9 @@
 > compatibility-report/migration APIs described here are not part of the current
 > AssetArchive surface; those APIs were removed when the asset contract was
 > reconciled. Keep this file as design history, not as a current roadmap or
-> release requirement. The active contract is [archive schema 1](archive-v1.md).
+> release requirement. The active contract is [archive schemas 1 and 2](archive-v1.md);
+> the schema 2 that 0.22 introduced stores identical content once and is not one
+> of the candidates below.
 
 At the time of this decision, schema 1 was the v0.2 writer and reader contract.
 It provided the durable archive obligations that were representable without a
