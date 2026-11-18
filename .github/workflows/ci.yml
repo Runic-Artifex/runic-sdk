@@ -630,10 +630,12 @@ jobs:
           dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -p:ILLinkTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/desktop-views-trimmed
           RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-trimmed/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
       # ReadyToRun, which docs/packaging.md recommends for framework-dependent publishes, reached the Views generator's
-      # own build and its bootstrap pass, which clear the runtime identifier, and failed them with NETSDK1191 (S1).
-      - name: Publish the Runic Desktop Views host framework-dependent with ReadyToRun, and exercise it
+      # own build and its bootstrap pass, which clear the runtime identifier, and failed them with NETSDK1191 (S1), as
+      # PublishSingleFile did until 0.22 (D072.7, FD3). The one publish covers both; the smoke runs the single file.
+      - name: Publish the Runic Desktop Views host framework-dependent with ReadyToRun as a single file, and exercise it
         run: |
-          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained false -p:PublishReadyToRun=true -o artifacts/desktop-views-r2r
+          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -o artifacts/desktop-views-r2r
+          test ! -e artifacts/desktop-views-r2r/FirstWindowDesktop.dll
           RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-r2r/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
@@ -1228,13 +1230,18 @@ jobs:
           dotnet publish tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/dbus-aot
           dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests
           dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
+      # Outside the next check's own limit, which a slow mirror would otherwise use up.
+      - name: Install GNOME Keyring
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gnome-keyring libsecret-tools
       # A real Secret Service: GNOME Keyring with an unlocked login keyring on a private session bus, from the JIT build
       # and the NativeAOT executable. The case requires the encrypted session and has secret-tool read what it stored.
       - name: Verify secret storage against GNOME Keyring with JIT and NativeAOT
         if: runner.os == 'Linux'
         timeout-minutes: 8
         run: |
-          eng/ci/apt-install.sh gnome-keyring libsecret-tools
           for tests in "dotnet tests/dotnet/Runic.Platform.Linux.Portal.Tests/bin/Release/net10.0/Runic.Platform.Linux.Portal.Tests.dll" artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests; do
             RUNIC_TEST_SECRET_SERVICE=gnome-keyring dbus-run-session -- sh -c "printf runic | gnome-keyring-daemon --unlock --components=secrets >/dev/null && $tests --treenode-filter '/*/*/*/*[Category=SecretService]' --output detailed"
           done
@@ -1931,6 +1938,11 @@ jobs:
           deadline 120 tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
           deadline 120 ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
           deadline 240 eng/ci/macos-open-probe.sh artifacts/platform-runtime-aot
+      - name: Install gio for desktop registration
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libglib2.0-bin
       # Files and URLs opened through the desktop's own registration reach the running instance, with a scheme unique
       # to the run: a desktop entry opened with gio in an isolated session without a display (Linux), and a per-user
       # URL protocol opened by the shell (Windows). CI runners only.
@@ -1941,7 +1953,6 @@ jobs:
         env:
           RUNIC_TEST_OPEN_REGISTRATION: "1"
         run: |
-          if [ "$RUNNER_OS" = Linux ]; then eng/ci/apt-install.sh libglib2.0-bin; fi
           dotnet build tests/dotnet/Runic.Platform.Runtime.Tests -c Release
           for tests in tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests${{ matrix.extension }} artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}; do
             if [ "$RUNNER_OS" = Linux ]; then
@@ -2604,7 +2615,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.screen-readers) }}
     runs-on: ${{ matrix.os }}
-    # The checks take a few minutes; apt-install.sh may retry a stalled mirror for up to half an hour.
+    # The checks take a few minutes; apt-install.sh may keep downloading from a slow mirror for 20 minutes.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2615,10 +2626,15 @@ jobs:
           train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: native
           install: "false"
+      # Through the action, so the WebKitGTK and Orca archives (over 100 MB) are cached (#1129).
       - name: Install Orca and the native WebView prerequisites
         if: matrix.reader == 'orca'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core orca
+      - name: Permit the WebKit sandbox and list the installed versions
+        if: matrix.reader == 'orca'
         run: |
-          eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core orca
           eng/ci/permit-webkit-sandbox.sh
           dpkg-query -W orca speech-dispatcher libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4
       - name: Install a portable NVDA
@@ -2690,7 +2706,8 @@ jobs:
     needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'webkit-cdp') }}
     runs-on: ubuntu-24.04
-    # Two generated projects restore, build and run under dotnet runic dev; apt-install.sh may retry a stalled mirror.
+    # Two generated projects restore, build and run under dotnet runic dev; apt-install.sh may keep downloading from a
+    # slow mirror for 20 minutes.
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

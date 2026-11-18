@@ -695,7 +695,7 @@ public static class BridgeValidation
             return false;
         }
 
-        private readonly record struct NodeKey(object Owner, IReadOnlyList<BridgeDataSubscriptionMember> Members);
+        private sealed record NodeKey(object Owner, IReadOnlyList<BridgeDataSubscriptionMember> Members);
 
         // The object being visited, its members and its path.
         private sealed record Node(object Owner, IReadOnlyList<BridgeDataSubscriptionMember> Members, IReadOnlyList<object> Path);
@@ -703,8 +703,8 @@ public static class BridgeValidation
         private sealed class NodeKeyComparer : IEqualityComparer<NodeKey>
         {
             internal static NodeKeyComparer Instance { get; } = new();
-            public bool Equals(NodeKey left, NodeKey right) =>
-                ReferenceEquals(left.Owner, right.Owner) && ReferenceEquals(left.Members, right.Members);
+            public bool Equals(NodeKey? left, NodeKey? right) => ReferenceEquals(left, right) ||
+                left is not null && right is not null && ReferenceEquals(left.Owner, right.Owner) && ReferenceEquals(left.Members, right.Members);
             public int GetHashCode(NodeKey value) => HashCode.Combine(
                 System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value.Owner),
                 System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value.Members));

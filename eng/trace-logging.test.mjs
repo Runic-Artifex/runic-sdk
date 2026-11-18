@@ -14,13 +14,20 @@ const traceImport = /\busing\s+(static\s+)?(\w+\s*=\s*)?(global::)?System\s*\.\s
 
 // The fallback loggers: ILogger implementations that write to Trace only when there is no ILoggerFactory.
 export const fallbackLoggers = [
-  ['packages/dotnet/Runic.Application.Views/RunicViewsTelemetry.cs', 'TraceFallbackLogger'],
   ['packages/dotnet/Runic.Application.Views.Desktop/LentLoggerFactory.cs', 'DesktopTraceFallbackLogger'],
   ['packages/dotnet/Runic.Application.Views.ReactiveUI/ReactiveLog.cs', 'TraceLogger'],
   ['packages/dotnet/Runic.Application.Views.Wpf/WpfViewsLog.cs', 'TraceFallbackLogger'],
   ['packages/dotnet/Runic.Navigation/NavigationTelemetry.cs', 'TraceFallbackLogger'],
   ['packages/dotnet/Runic.Navigation.Wpf/WpfNavigationLog.cs', 'TraceFallbackLogger'],
 ].map(([file, type]) => ({ file, type }));
+
+// Packages that reuse another package's fallback logger instead of compiling their own (D072.2, S5): a type whose body
+// hands out the target's Instance and writes nothing itself (a Trace call in it is a direct call, checked below).
+export const fallbackLoggerForwards = [
+  { file: 'packages/dotnet/Runic.Application.Views/RunicViewsTelemetry.cs', type: 'TraceFallbackLogger',
+    target: { file: 'packages/dotnet/Runic.Navigation/NavigationTelemetry.cs', type: 'TraceFallbackLogger' },
+    instance: 'Runic.Navigation.TraceFallbackLogger.Instance' },
+];
 
 // Direct calls outside a fallback logger, by file and a fragment of the call with its whitespace collapsed. Each
 // entry matches exactly one call: the no-logger branch of a call that uses the logger first. Runic.Desktop has no
@@ -149,6 +156,7 @@ function typeBodies(skeleton) {
 
 const calls = [];
 const imports = [];
+const forwardBodies = [];
 for (const path of sources(join(root, 'packages/dotnet'))) {
   const file = relative(root, path).replaceAll('\\', '/');
   const code = withoutComments(readFileSync(path, 'utf8'));
@@ -156,6 +164,9 @@ for (const path of sources(join(root, 'packages/dotnet'))) {
   for (const match of code.matchAll(traceImport)) imports.push(`${file}:${lineOf(match.index)}: ${match[0]}`);
   const skeleton = withoutLiterals(code);
   const bodies = typeBodies(skeleton);
+  for (const forward of fallbackLoggerForwards.filter(forward => forward.file === file))
+    for (const body of bodies.filter(body => body.name === forward.type))
+      forwardBodies.push({ forward, text: code.slice(body.start, body.end + 1).replace(/\s+/g, ' ') });
   for (const match of code.matchAll(traceCall)) {
     const end = skeleton.indexOf(';', match.index);
     // The call as Trace.Name( and its arguments with whitespace collapsed.
@@ -174,6 +185,12 @@ const direct = calls.filter(call => !inFallbackLogger(call));
 test('the scan finds every fallback logger and the calls split across lines', () => {
   for (const logger of fallbackLoggers)
     expect(calls.some(call => call.file === logger.file && call.owner === logger.type), `${logger.file}: ${logger.type}`).toBe(true);
+  for (const forward of fallbackLoggerForwards) {
+    expect(fallbackLoggers.some(logger => logger.file === forward.target.file && logger.type === forward.target.type),
+      `${forward.file}: ${forward.type} forwards to a fallback logger`).toBe(true);
+    expect(forwardBodies.some(body => body.forward === forward && body.text.includes(forward.instance)),
+      `${forward.file}: ${forward.type} hands out ${forward.instance}`).toBe(true);
+  }
   expect(calls.some(call => call.file === 'packages/dotnet/Runic.Desktop/WebUiWindow.cs'
     && call.text.includes('BridgeHandshakeExpiredCode'))).toBe(true);
 });

@@ -397,6 +397,13 @@ test('Linux packages install through the bounded, cached paths', () => {
     const commands = readFileSync(resolve(root, path), 'utf8').split('\n').filter(line => !/^\s*#/.test(line)).join('\n');
     assert.doesNotMatch(commands, /\bapt-get\s+(update|install)|\bapt\s+install|--with-deps|\bdnf\s+(-\S+\s+)*install/, path);
   }
+  // #1129: every install goes through the action, so its archives are cached; the orca job's WebKitGTK and Orca set
+  // took over 10 minutes from an uncached, slow mirror.
+  const direct = files.filter(path => path !== '.github/actions/apt-install/action.yml' && readFileSync(resolve(root, path), 'utf8')
+    .split('\n').some(line => !/^\s*#/.test(line) && line.includes('eng/ci/apt-install.sh')));
+  assert.deepEqual(direct, []);
+  const orca = workflow.jobs['screen-readers'].steps.find(step => step.with?.packages?.split(' ').includes('orca'));
+  assert.equal(orca?.uses, './.github/actions/apt-install');
   const browser = yaml('.github/actions/install-browser/action.yml').runs.steps;
   const apt = browser.find(step => step.uses === './.github/actions/apt-install');
   assert.deepEqual(apt?.with, { packages: '${{ steps.deps.outputs.packages }}', 'install-recommends': 'false' });
@@ -417,17 +424,25 @@ test('dependency caches restore everywhere and save only on main', () => {
   const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0').filter(path => /\.ya?ml$/.test(path));
   const users = files.filter(path => /uses:\s*actions\/cache(\/\w+)?@/.test(readFileSync(resolve(root, path), 'utf8')));
   assert.deepEqual(users, ['.github/actions/dependency-cache/action.yml']);
-  const [save, restore] = yaml('.github/actions/dependency-cache/action.yml').runs.steps;
+  const [save, restore, saveNow] = yaml('.github/actions/dependency-cache/action.yml').runs.steps;
   assert.match(save.uses, /^actions\/cache@/);
-  // A lookup (the native server's library jobs run only on a miss) never saves.
-  assert.equal(save.if, "github.ref == 'refs/heads/main' && inputs.lookup-only != 'true'");
+  // A lookup (the native server's library jobs run only on a miss) never saves; a deferred save waits for save-now.
+  assert.equal(save.if, "github.ref == 'refs/heads/main' && inputs.lookup-only != 'true' && inputs.defer-save != 'true' && inputs.save-now != 'true'");
   assert.match(restore.uses, /^actions\/cache\/restore@/);
-  assert.equal(restore.if, "github.ref != 'refs/heads/main' || inputs.lookup-only == 'true'");
-  assert.equal(save.uses.split('@')[1], restore.uses.split('@')[1]);
+  assert.equal(restore.if, "inputs.save-now != 'true' && (github.ref != 'refs/heads/main' || inputs.lookup-only == 'true' || inputs.defer-save == 'true')");
+  // #1129: the Ubuntu package archives are saved as soon as they are installed, still only on main.
+  assert.match(saveNow.uses, /^actions\/cache\/save@/);
+  assert.equal(saveNow.if, "github.ref == 'refs/heads/main' && inputs.save-now == 'true'");
+  assert.equal(new Set([save, restore, saveNow].map(step => step.uses.split('@')[1])).size, 1);
   const shared = { path: '${{ inputs.path }}', key: '${{ inputs.key }}', 'restore-keys': '${{ inputs.restore-keys }}',
     enableCrossOsArchive: '${{ inputs.enable-cross-os-archive }}' };
   assert.deepEqual(save.with, shared);
   assert.deepEqual(restore.with, { ...shared, 'lookup-only': '${{ inputs.lookup-only }}' });
+  assert.deepEqual(saveNow.with, { path: '${{ inputs.path }}', key: '${{ inputs.key }}', enableCrossOsArchive: '${{ inputs.enable-cross-os-archive }}' });
+  const apt = yaml('.github/actions/apt-install/action.yml').runs.steps.filter(step => step.uses === './.github/actions/dependency-cache');
+  assert.deepEqual(apt.map(step => [step.with['defer-save'], step.with['save-now']]), [['true', undefined], [undefined, 'true']]);
+  assert.equal(apt[0].with.key, apt[1].with.key);
+  assert.equal(apt[1].if, "steps.cache.outputs.cache-hit != 'true' && steps.install.outputs.archives != '0'");
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {

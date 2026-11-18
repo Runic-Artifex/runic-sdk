@@ -41,15 +41,15 @@
       },
       "Runic.Translations": {
         "type": "Direct",
-        "requested": "[0.13.0, )",
-        "resolved": "0.13.0",
-        "contentHash": "j0v/cRX9fxTIktN1KSkpiy7gfymG3qptKBYSBwcEaNrC/Q8oQCIr+9JfAHq1V4/z0qIaf6PsiXK1mpwff3EyCQ=="
+        "requested": "[0.14.0, )",
+        "resolved": "0.14.0",
+        "contentHash": "LFp21MvrAj7BUY8tSqZ195m2bs3T+YtOj28VZN/P3bhWWT2rBGpW5eey0vsjmOunb0Wawy/EQPVGSwMicPszkA=="
       },
       "Runic.Translations.Build": {
         "type": "Direct",
-        "requested": "[0.13.0, )",
-        "resolved": "0.13.0",
-        "contentHash": "EeIzjPSJI3m0bcsP/HmlIQ5JuuW/we8tZ8EV8rG48uTkxYbZv15lqGdVhdrgx+wHZ1PjYJ9esQZ4VKdcVhZfHQ=="
+        "requested": "[0.14.0, )",
+        "resolved": "0.14.0",
+        "contentHash": "D/COeY6gEmqMqfSqmYUv2fU5CVK3eW+6KPaMFaRwrFPKhb+mxqwIPa5I1K7O6A5AsI710Xa1LLsOvLgu6LkAiw=="
       },
       "Microsoft.Extensions.Configuration": {
         "type": "Transitive",

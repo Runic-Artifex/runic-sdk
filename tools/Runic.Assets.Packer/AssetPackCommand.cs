@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -152,12 +151,13 @@ internal static class AssetPackCommand
 
                 // The build verifies what it embeds: read the written archive back and check every asset against
                 // its digest, since AssetArchive.ReadEmbedded no longer does at run time.
+                AssetArchiveSource verified;
                 await using (var written = new FileStream(temporary, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
-                    await AssetArchive.ReadAsync(written, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    verified = await AssetArchive.ReadAsync(written, cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
 
-                sourceMaps = FindSourceMaps(temporary);
+                sourceMaps = FindSourceMaps(verified.Manifest);
                 File.Move(temporary, fullDestination, overwrite: true);
             }
             finally
@@ -274,19 +274,17 @@ internal static class AssetPackCommand
         return count;
     }
 
-    // The archive's source maps, read from its ZIP directory: the count and the first asset path.
-    private static (int Count, string? First) FindSourceMaps(string archivePath)
+    // The archive's source maps, read from its manifest (an asset that shares stored content has no ZIP entry of its
+    // own): the count and the first asset path in ordinal order.
+    private static (int Count, string? First) FindSourceMaps(AssetManifest manifest)
     {
-        const string ContentPrefix = "assets/";
-        using ZipArchive archive = ZipFile.OpenRead(archivePath);
         int count = 0;
         string? first = null;
-        foreach (ZipArchiveEntry entry in archive.Entries)
+        foreach (AssetDescriptor asset in manifest.Assets)
         {
-            if (entry.FullName.StartsWith(ContentPrefix, StringComparison.Ordinal)
-                && entry.FullName.EndsWith(".map", StringComparison.OrdinalIgnoreCase))
+            if (asset.RelativePath.EndsWith(".map", StringComparison.OrdinalIgnoreCase))
             {
-                first ??= entry.FullName[ContentPrefix.Length..];
+                first ??= asset.RelativePath;
                 count++;
             }
         }

@@ -398,38 +398,90 @@ cache quota and evict `main`'s caches, which every run restores from.
 ## Ubuntu packages
 
 `eng/ci/apt-install.sh <package>...` installs Ubuntu packages on Linux runners. The
-x64 runners' Azure mirror (`azure.archive.ubuntu.com`) is sometimes throttled to tens of
-kB/s: the WebKitGTK set (about 90 MB) then took over 30 minutes and failed the job,
-while a healthy mirror delivers it in seconds. The script therefore separates the
-download from the install:
+x64 runners' mirror list (`/etc/apt/apt-mirrors.txt`) starts with the Azure mirror
+(`azure.archive.ubuntu.com`) on some runner images and with an EC2 mirror
+(`us-east-2.ec2.archive.ubuntu.com`) on others, followed by `archive.ubuntu.com` and
+`security.ubuntu.com`. Either first mirror can crawl. The Azure one has been throttled
+to tens of kB/s before, which is why an earlier version simply dropped it. In run
+44255182128 (#1129), with nothing cached, it was the other way round:
 
-- `apt-get update` and `apt-get install --download-only` get a time limit per attempt:
-  2 minutes for the update, 90 seconds for the first download and 4 minutes for each of
-  the two retries. apt's own network timeout is 30 seconds with three retries per file.
-  Files completed by a stopped attempt are kept.
-- After a failed attempt the script drops the Azure mirror from the runner's mirror list
-  (`/etc/apt/apt-mirrors.txt`), leaving the official `archive.ubuntu.com` and
-  `security.ubuntu.com`, or replaces the Azure host in the apt sources when there is no
-  list. The rest of the job uses those mirrors. The arm64 runners use `ports.ubuntu.com`
-  directly, so they only retry.
+| Job | First mirror | Size | Time | Rate |
+|---|---|---|---|---|
+| Packaging / deb | Azure | 53.8 MB | 17 s | 3167 kB/s |
+| Templates / vue+angular | Azure | 99.6 MB | 12 s | 8301 kB/s |
+| Packaging / appimage | EC2 | 53.8 MB | 465 s | 116 kB/s |
+| WebKitGTK debugging / js-debug | EC2 | 99.6 MB | 458 s | 217 kB/s |
+| Screen reader / orca | EC2 | 113.3 MB | 1169 s | 97 kB/s |
+| Web packages | EC2 | 125.1 MB | budget used up | about 100 kB/s |
+
+So no host is assumed slow; the script measures them. It separates the download from
+the install:
+
+- `apt-get update` gets 2 minutes per attempt. `apt-get install --print-uris` then lists
+  the archives to fetch.
+- **Probe.** Before the first download, each candidate mirror gets a ranged GET
+  (`curl --range`) of the first 2 MB (`APT_PROBE_BYTES`) of the largest archive to
+  fetch. The probes run in parallel, each at most 8 seconds (`APT_PROBE_SECONDS`).
+  The candidates are the runner's own Ubuntu mirrors plus `azure.archive.ubuntu.com`
+  and `archive.ubuntu.com`, deduplicated; only `*.ubuntu.com` hosts are used. The
+  mirrors are ordered by measured rate, and a host whose probe fails or delivers
+  nothing goes last. One log line lists host and rate. Nothing is probed when there is
+  nothing to fetch.
+- **Applying the order.** For the mirror list, the script rewrites it with explicit
+  `priority:` tags; apt otherwise picks among untagged mirrors at random. For plain
+  sources, it replaces the archive host and leaves the security pocket's entry alone,
+  then refreshes the indexes, since apt keeps them per host. The rest of the job uses
+  the last order.
+- **Stop rules.** `apt-get install --download-only` runs as long as it makes progress,
+  and is stopped in two cases:
+  - no growth for 60 seconds (`APT_STALL_SECONDS`) in the archives directory (finished
+    `.deb` files and apt's `partial/` downloads);
+  - while an untried mirror is left, an average rate below 1 MB/s (`APT_RATE_FLOOR`,
+    in bytes per second) after 45 seconds (`APT_RATE_WINDOW`).
+- **Next attempt.** It uses the fastest untried mirror. A mirror stopped for its rate
+  keeps the rate it measured, and a stalled one goes last. Completed and partial files
+  are kept and resumed.
+- **Budget.** All attempts (at most five) share a 20-minute download budget
+  (`APT_DOWNLOAD_SECONDS`). The last remaining mirror has no rate floor, so a slow but
+  steady one still finishes: the Orca job's 113 MB took 1169 seconds at 97 kB/s.
+- apt's own network timeout is 30 seconds with three retries per file.
+- The arm64 runners use `ports.ubuntu.com`, which has no alternative. They skip the
+  probe and the rate floor, and only retry.
+- **Logging.** Each attempt logs what it has to fetch and, at the end, the bytes it
+  fetched, its average rate and the bytes still to fetch. A running download logs its
+  progress every minute.
 - The install then runs with `--no-download`.
-- The final failure is an `::error` annotation naming the packages, the mirrors of each
-  attempt and apt's errors or the file whose download the time limit stopped.
+- **Failure.** The final failure is an `::error` annotation naming the packages. For
+  each attempt it gives the mirrors, bytes, rate and remaining bytes, and why the
+  attempt stopped (no progress, the rate floor or the budget), with apt's errors or the
+  file being fetched.
 
 All mirrors are official Ubuntu archives signed by the same key. Signature verification
 stays on: apt verifies the signed indexes and every archive's hash, including cached
-archives before it uses them.
+archives before it uses them. `eng/ci/apt-install.test.mjs` runs the script against a
+stubbed `sudo`, `apt-get` and `curl`. It covers:
 
-`.github/actions/apt-install` (the native job's WebView prerequisites, the Desktop
-template runtimes, Playwright's Chromium dependencies and flatpak-builder) also caches
-the downloaded `.deb` archives in `/var/cache/runic-apt` through the dependency cache, so
-only `main` saves them. The key is
-`apt-<Ubuntu release>-<arch>-<hash of the package list>[-norecommends]-<runner image version>`;
+- a probe that picks the fast mirror;
+- a mirror that probes well but downloads below the floor;
+- a slow last mirror that keeps delivering;
+- a stalled mirror;
+- plain sources;
+- `ports.ubuntu.com`;
+- the budget.
+
+Every workflow step installs through `.github/actions/apt-install` (the native job's
+WebView prerequisites, GNOME Keyring and gio, the Desktop template runtimes, Orca,
+Playwright's Chromium dependencies and the packaging tools); `contracts.test.mjs` fails
+on a direct call of the script. The action caches the downloaded `.deb` archives in
+`/var/cache/runic-apt` through the dependency cache. On `main` it saves them right after
+the install (`defer-save`, then `save-now`) rather than at the end of the job, so a later
+failure in the job no longer discards a slow download; other branches only restore. It
+does not save after an exact hit or when every package was already on the image. The key
+is `apt-<Ubuntu release>-<arch>-<hash of the package list>[-norecommends]-<runner image version>`;
 a new runner image restores the previous image's archives by prefix, and apt downloads
 only the versions that changed. `apt-get autoclean` removes archives the current indexes
-no longer offer before the cache is saved. Smaller installs inside multi-command steps
-call the script directly. `--no-install-recommends` as the script's first argument, or
-`install-recommends: "false"` for the action, leaves out recommended packages.
+no longer offer before the cache is saved. `--no-install-recommends` as the script's first
+argument, or `install-recommends: "false"` for the action, leaves out recommended packages.
 
 No workflow step runs `apt-get` directly. `.github/actions/install-browser` does not use
 Playwright's `install --with-deps`, which runs `apt-get update` and `apt-get install`
