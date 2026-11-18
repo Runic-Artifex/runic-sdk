@@ -7,7 +7,7 @@ import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 // The window binds all WebUI events, so once the page connects, WebUI cancels its navigations until a Bridge
 // call allows them and reports each as a navigation event instead (#196). The host carries out a same-origin
 // one, such as a reload or a link to another page, and leaves a cross-origin one cancelled. A probe page with
-// webui.js and runic-cswebui.js but no generated client makes no Bridge call, so every navigation below starts
+// webui.js and runic-views.js but no generated client makes no Bridge call, so every navigation below starts
 // in that state. Chromium has the Navigation API through which WebUI cancels them.
 const dll = process.env.RUNIC_FIRST_WINDOW_DLL
   ?? fileURLToPath(new URL("./bin/Release/net10.0/FirstWindow.dll", import.meta.url));
@@ -18,7 +18,7 @@ await writeFile(probe, `<!doctype html>
     <meta charset="utf-8">
     <title>Navigation probe</title>
     <script src="webui.js"></script>
-    <script src="runic-cswebui.js"></script>
+    <script src="runic-views.js"></script>
     <script>sessionStorage.setItem("loads", String(Number(sessionStorage.getItem("loads") ?? 0) + 1));</script>
   </head>
   <body>

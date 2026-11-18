@@ -605,7 +605,8 @@ CS-WebUI, whose package copies its own client as `runic-views.js`. A project
 that references both hosts sets `RunicApplicationHost` (`desktop` or
 `cswebui`); see
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
-Pages that load `runic-desktop-views.js` keep working. `runic({ desktop: true })`
+Pages that load `runic-desktop-views.js` keep working in 0.22 but log a console
+warning: that copy is deprecated and removed in 0.23. `runic({ desktop: true })`
 is not needed for a Views page. The adapter uses the same host-neutral client
 contract as the CS-WebUI adapter, and its build defaults match
 `Runic.Application.Views.CsWebUi`, so `AddRunicViews()` is generated in

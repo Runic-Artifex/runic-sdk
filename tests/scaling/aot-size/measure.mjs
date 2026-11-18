@@ -40,6 +40,8 @@ const improvementShare = 0.75;
 // The fixture's ViewModels, and the records of #901's metric: types that instantiate a type of the Bridge's
 // generated-code support API over a fixture ViewModel, also inside another generic (a Dictionary of descriptors).
 const viewModel = /\bAotSize\.Models\.Vm\d+(?!\w)/;
+// The generated Bridge of a fixture ViewModel and its nested types (D072.15): its methods are the per-ViewModel code.
+const viewModelBridge = /\bGenerated\.Bridges\.Vm\d+Bridge(?!\w)/;
 const generatedGeneric = /Runic\.Application\.Views\.Generated\.[\w.+]*<[^\t]*\bAotSize\.Models\.Vm\d+(?!\w)/;
 
 // The mstat records that an assembly owns: its code, type nodes, frozen objects (preinitialized statics and string
@@ -50,7 +52,7 @@ const ownedKinds = new Set(["Methods", "Types", "FrozenObjects", "RvaFields"]);
 // The measurements of one build from its executable size and its mstat records (MstatReader: kind, size, owner, name).
 // assemblyBytes sums the owned records per owner assembly; a generic instantiation belongs to its definition's.
 export function measurement(executableBytes, records) {
-  const result = { executableBytes, viewModelTypes: 0, viewModelTypeBytes: 0, generatedGenericTypes: 0, viewModelMethodBytes: 0, types: 0, assemblyBytes: {} };
+  const result = { executableBytes, viewModelTypes: 0, viewModelTypeBytes: 0, generatedGenericTypes: 0, viewModelMethodBytes: 0, viewModelBridgeMethods: 0, types: 0, assemblyBytes: {} };
   for (const line of records.split("\n")) {
     const [kind, size, owner, name] = line.split("\t");
     if (owner && ownedKinds.has(kind)) result.assemblyBytes[owner] = (result.assemblyBytes[owner] ?? 0) + Number(size);
@@ -61,7 +63,10 @@ export function measurement(executableBytes, records) {
         result.viewModelTypeBytes += Number(size);
       }
       if (generatedGeneric.test(name)) result.generatedGenericTypes++;
-    } else if (kind === "Methods" && viewModel.test(name)) result.viewModelMethodBytes += Number(size);
+    } else if (kind === "Methods") {
+      if (viewModel.test(name)) result.viewModelMethodBytes += Number(size);
+      if (viewModelBridge.test(name)) result.viewModelBridgeMethods++;
+    }
   }
   return result;
 }
@@ -81,6 +86,7 @@ export const metrics = {
   "aot/bridge/executable-bytes": { fixture: "views", value: (build, baseline) => build.executableBytes - baseline.executableBytes },
   "aot/bridge/view-model-types": { fixture: "views", value: build => build.viewModelTypes },
   "aot/bridge/generated-generic-types": { fixture: "views", value: build => build.generatedGenericTypes },
+  "aot/bridge/view-model-methods": { fixture: "views", value: build => build.viewModelBridgeMethods },
   "aot/executable-bytes": { fixture: "views", value: build => build.executableBytes },
   ...Object.fromEntries(frameworkSentinels.map(assembly => [`aot/framework/${assembly}`, { fixture: "views", value: owned(assembly) }])),
   ...Object.fromEntries(runicAssemblies.map(assembly => [`aot/assembly/${assembly}`, { fixture: "views", value: owned(assembly) }])),
@@ -127,6 +133,7 @@ export function perViewModel(builds) {
     ["`Generated.*<VM>` type records (#901's metric)", "generatedGenericTypes"],
     ["Type node bytes naming a fixture ViewModel", "viewModelTypeBytes"],
     ["Method node bytes naming a fixture ViewModel", "viewModelMethodBytes"],
+    ["Method records of a fixture ViewModel's Bridge", "viewModelBridgeMethods"],
   ];
   const slope = key => Math.round((builds[high][key] - builds[low][key]) / (high - low));
   const lines = [

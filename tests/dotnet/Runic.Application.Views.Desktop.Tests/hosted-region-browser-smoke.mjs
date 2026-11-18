@@ -48,10 +48,10 @@ const { outputFiles: [script] } = await build({
   target: "es2022",
 });
 writeFileSync(join(folder, "app.js"), script.text);
-copyFileSync(desktopViews, join(folder, "runic-desktop-views.js"));
+copyFileSync(desktopViews, join(folder, "runic-views.js"));
 writeFileSync(join(folder, "index.html"), `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Browser host</title>
-<script src="webui.js"></script><script src="runic-desktop-views.js"></script><script type="module" src="app.js"></script></head>
+<script src="webui.js"></script><script src="runic-views.js"></script><script type="module" src="app.js"></script></head>
 <body><button id="before">Before</button>
 <runic-hosted-region name="check" style="display:block;width:640px;height:240px"><p slot="fallback">No check yet.</p></runic-hosted-region>
 <button id="after">After</button></body></html>`);

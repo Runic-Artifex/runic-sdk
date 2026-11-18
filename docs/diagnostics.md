@@ -453,9 +453,9 @@ no Bridge. It is reported when an application references more than one host
 adapter (`Runic.Application.Views.Desktop` or `Runic.Application.Views.Wpf`, and
 `Runic.Application.Views.CsWebUi`) without `RunicApplicationHost` and a page it
 copies to `www/` loads `runic-views.js`, or when `RunicApplicationHost` names a
-host that the application does not reference. Pages that load
-`runic-desktop-views.js` or `runic-cswebui.js` directly choose their host at run
-time and report nothing; libraries and test projects report nothing either.
+host that the application does not reference. Pages that load the
+deprecated `runic-desktop-views.js` or `runic-cswebui.js` directly (removed in
+0.23) choose their host at run time and report nothing; libraries and test projects report nothing either.
 
 **Fix:** set `RunicApplicationHost` to `desktop` or `cswebui` in the project or
 on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,

@@ -21,72 +21,184 @@ using AsyncOptionalCommandInputCodec = global::Runic.Application.Views.Generated
 using CancelCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
 internal sealed class ToolkitTypedBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
-    // One getter per property, shared by its descriptors and its data subscription.
-    private static readonly global::System.Func<object, object?> TotalGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Total;
-    private static readonly global::System.Func<object, object?> LabelGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Label;
-    private static readonly global::System.Func<object, object?> OptionalDocumentIdGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).OptionalDocumentId;
-    private static readonly global::System.Func<object, object?> AsyncDocumentIdGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDocumentId;
-    private static readonly global::System.Func<object, object?> AsyncLabelGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncLabel;
-    private static readonly global::System.Func<object, object?> AsyncOptionalDocumentIdGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalDocumentId;
-    private static readonly global::System.Func<object, object?> CancelledCountGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelledCount;
     internal ToolkitTypedBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitTypedViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.ToolkitTypedViewModel), routePrefix ?? "toolkitTyped",
-        State,
-        [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Total", "total", TotalGetter, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Label", "label", LabelGetter, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("OptionalDocumentId", "optionalDocumentId", OptionalDocumentIdGetter, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncDocumentId", "asyncDocumentId", AsyncDocumentIdGetter, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncLabel", "asyncLabel", AsyncLabelGetter, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncOptionalDocumentId", "asyncOptionalDocumentId", AsyncOptionalDocumentIdGetter, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("CancelledCount", "cancelledCount", CancelledCountGetter, null),
-        ],
-        [
-        ],
-        [
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Apply", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).ApplyCommand) { ReadInput = input => ApplyCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ApplyCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest)argument!)), WireName = "apply" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Add", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AddCommand) { ReadInput = input => AddCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AddCommandInputCodec.Write(writer, (global::System.Int32)argument!)), WireName = "add" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Rename", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).RenameCommand) { ReadInput = input => RenameCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => RenameCommandInputCodec.Write(writer, (global::System.String?)argument!)), WireName = "rename" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Optional", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).OptionalCommand) { ReadInput = input => OptionalCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => OptionalCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest?)argument!)), WireName = "optional" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("AsyncDto", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDtoCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDtoCommand, token, argument, static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::Runic.Application.Testing.Tests.ToolkitCommandRequest>)command).ExecuteAsync((global::Runic.Application.Testing.Tests.ToolkitCommandRequest)value!)), ReadInput = input => AsyncDtoCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncDtoCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest)argument!)), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDtoCommand, changed), WireName = "asyncDto" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("AsyncInt", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncIntCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncIntCommand, token, argument, static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.Int32>)command).ExecuteAsync((global::System.Int32)value!)), ReadInput = input => AsyncIntCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncIntCommandInputCodec.Write(writer, (global::System.Int32)argument!)), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncIntCommand, changed), WireName = "asyncInt" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("AsyncString", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncStringCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncStringCommand, token, argument, static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String?>)command).ExecuteAsync((global::System.String?)value!)), ReadInput = input => AsyncStringCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncStringCommandInputCodec.Write(writer, (global::System.String?)argument!)), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncStringCommand, changed), WireName = "asyncString" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("AsyncOptional", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalCommand, token, argument, static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::Runic.Application.Testing.Tests.ToolkitCommandRequest?>)command).ExecuteAsync((global::Runic.Application.Testing.Tests.ToolkitCommandRequest?)value!)), ReadInput = input => AsyncOptionalCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncOptionalCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest?)argument!)), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalCommand, changed), WireName = "asyncOptional" },
-            new global::Runic.Application.Views.Generated.CommandDescriptor("Cancel", static vm => (object)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelCommand) { ExecuteAsync = static (vm, token, argument) => global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Execute(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelCommand, token, argument, static (command, value) => ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String>)command).ExecuteAsync((global::System.String)value!)), ReadInput = input => CancelCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => CancelCommandInputCodec.Write(writer, (global::System.String)argument!)), Subscribe = static (vm, changed) => new global::Runic.Application.Views.Generated.Bridges.RunicToolkitCommands.Running(((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelCommand, changed), WireName = "cancel" },
-        ], "<fingerprint>", content,
+        Table.State,
+        Table.Properties, Table.Checked, Table.Commands, "<fingerprint>", content,
         null,
-        dataSubscriptions: DataMetadata,
-        collections: [
-        ]
-        )
+        dataSubscriptions: Table.Data, collections: Table.Collections)
     {
     }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
-        [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("total", TotalGetter, propertyName: "Total"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("label", LabelGetter, propertyName: "Label"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("optionalDocumentId", OptionalDocumentIdGetter, propertyName: "OptionalDocumentId"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncDocumentId", AsyncDocumentIdGetter, propertyName: "AsyncDocumentId"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncLabel", AsyncLabelGetter, propertyName: "AsyncLabel"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncOptionalDocumentId", AsyncOptionalDocumentIdGetter, propertyName: "AsyncOptionalDocumentId"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("cancelledCount", CancelledCountGetter, propertyName: "CancelledCount"),
-        ]
-    ;
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
-    [
-        new global::Runic.Application.Views.Generated.BridgeStateMember("total", static (writer, vm) => TotalValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Total)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("label", static (writer, vm) => LabelValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Label)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("optionalDocumentId", static (writer, vm) => OptionalDocumentIdValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).OptionalDocumentId)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("asyncDocumentId", static (writer, vm) => AsyncDocumentIdValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDocumentId)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("asyncLabel", static (writer, vm) => AsyncLabelValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncLabel)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("asyncOptionalDocumentId", static (writer, vm) => AsyncOptionalDocumentIdValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalDocumentId)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("cancelledCount", static (writer, vm) => CancelledCountValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelledCount)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isAsyncDtoExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDtoCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isAsyncIntExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncIntCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isAsyncStringExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncStringCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isAsyncOptionalExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalCommand).IsRunning)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember("isCancelExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelCommand).IsRunning)),
-    ]
-    ;
+    // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
+    private static readonly RunicBridgeTable Table = new(new Members(),
+        """
+        P Total total 0 -
+        P Label label 1 T
+        P OptionalDocumentId optionalDocumentId 2 T
+        P AsyncDocumentId asyncDocumentId 3 T
+        P AsyncLabel asyncLabel 4 T
+        P AsyncOptionalDocumentId asyncOptionalDocumentId 5 T
+        P CancelledCount cancelledCount 6 -
+        K Apply apply 0 AI - -
+        K Add add 1 AI - -
+        K Rename rename 2 AI - -
+        K Optional optional 3 AI - -
+        K AsyncDto asyncDto 4 AEIU - -
+        K AsyncInt asyncInt 5 AEIU - -
+        K AsyncString asyncString 6 AEIU - -
+        K AsyncOptional asyncOptional 7 AEIU - -
+        K Cancel cancel 8 AEIU - -
+        D 0 - total Total - 0
+        D 1 - label Label - 1
+        D 2 - optionalDocumentId OptionalDocumentId - 2
+        D 3 - asyncDocumentId AsyncDocumentId - 3
+        D 4 - asyncLabel AsyncLabel - 4
+        D 5 - asyncOptionalDocumentId AsyncOptionalDocumentId - 5
+        D 6 - cancelledCount CancelledCount - 6
+        S total 0
+        S label 1
+        S optionalDocumentId 2
+        S asyncDocumentId 3
+        S asyncLabel 4
+        S asyncOptionalDocumentId 5
+        S cancelledCount 6
+        S isAsyncDtoExecuting 7
+        S isAsyncIntExecuting 8
+        S isAsyncStringExecuting 9
+        S isAsyncOptionalExecuting 10
+        S isCancelExecuting 11
+        """u8);
+
+    private sealed class Members : RunicBridgeMembers
+    {
+        public override object? Get(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.Total;
+                case 1: return vm.Label;
+                case 2: return vm.OptionalDocumentId;
+                case 3: return vm.AsyncDocumentId;
+                case 4: return vm.AsyncLabel;
+                case 5: return vm.AsyncOptionalDocumentId;
+                case 6: return vm.CancelledCount;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override void WriteState(object model, int id, global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Views.WindowContentSession? session)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)model;
+            switch (id)
+            {
+                case 0: TotalValueCodec.Write(writer, vm.Total); return;
+                case 1: LabelValueCodec.Write(writer, vm.Label); return;
+                case 2: OptionalDocumentIdValueCodec.Write(writer, vm.OptionalDocumentId); return;
+                case 3: AsyncDocumentIdValueCodec.Write(writer, vm.AsyncDocumentId); return;
+                case 4: AsyncLabelValueCodec.Write(writer, vm.AsyncLabel); return;
+                case 5: AsyncOptionalDocumentIdValueCodec.Write(writer, vm.AsyncOptionalDocumentId); return;
+                case 6: CancelledCountValueCodec.Write(writer, vm.CancelledCount); return;
+                case 7: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.AsyncDtoCommand).IsRunning); return;
+                case 8: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.AsyncIntCommand).IsRunning); return;
+                case 9: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.AsyncStringCommand).IsRunning); return;
+                case 10: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.AsyncOptionalCommand).IsRunning); return;
+                case 11: writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.CancelCommand).IsRunning); return;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object Command(object model, int id)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)model;
+            switch (id)
+            {
+                case 0: return vm.ApplyCommand;
+                case 1: return vm.AddCommand;
+                case 2: return vm.RenameCommand;
+                case 3: return vm.OptionalCommand;
+                case 4: return vm.AsyncDtoCommand;
+                case 5: return vm.AsyncIntCommand;
+                case 6: return vm.AsyncStringCommand;
+                case 7: return vm.AsyncOptionalCommand;
+                case 8: return vm.CancelCommand;
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task Execute(object model, int id, global::System.Threading.CancellationToken token, object? argument)
+        {
+            switch (id)
+            {
+                case 4: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 5: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 6: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 7: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+                case 8: return RunicToolkitCommands.Execute(this, id, model, token, argument);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.Threading.Tasks.Task Start(int id, object command, object? argument)
+        {
+            switch (id)
+            {
+                case 4: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::Runic.Application.Testing.Tests.ToolkitCommandRequest>)command).ExecuteAsync((global::Runic.Application.Testing.Tests.ToolkitCommandRequest)argument!);
+                case 5: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.Int32>)command).ExecuteAsync((global::System.Int32)argument!);
+                case 6: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String?>)command).ExecuteAsync((global::System.String?)argument!);
+                case 7: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::Runic.Application.Testing.Tests.ToolkitCommandRequest?>)command).ExecuteAsync((global::Runic.Application.Testing.Tests.ToolkitCommandRequest?)argument!);
+                case 8: return ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String>)command).ExecuteAsync((global::System.String)argument!);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override object? ReadInput(int id, global::System.Text.Json.JsonElement input)
+        {
+            switch (id)
+            {
+                case 0: return ApplyCommandInputCodec.Read(input);
+                case 1: return AddCommandInputCodec.Read(input);
+                case 2: return RenameCommandInputCodec.Read(input);
+                case 3: return OptionalCommandInputCodec.Read(input);
+                case 4: return AsyncDtoCommandInputCodec.Read(input);
+                case 5: return AsyncIntCommandInputCodec.Read(input);
+                case 6: return AsyncStringCommandInputCodec.Read(input);
+                case 7: return AsyncOptionalCommandInputCodec.Read(input);
+                case 8: return CancelCommandInputCodec.Read(input);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override string EncodeArgument(int id, object? argument)
+        {
+            switch (id)
+            {
+                case 0: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ApplyCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest)argument!));
+                case 1: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AddCommandInputCodec.Write(writer, (global::System.Int32)argument!));
+                case 2: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => RenameCommandInputCodec.Write(writer, (global::System.String?)argument!));
+                case 3: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => OptionalCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest?)argument!));
+                case 4: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncDtoCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest)argument!));
+                case 5: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncIntCommandInputCodec.Write(writer, (global::System.Int32)argument!));
+                case 6: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncStringCommandInputCodec.Write(writer, (global::System.String?)argument!));
+                case 7: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => AsyncOptionalCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest?)argument!));
+                case 8: return global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => CancelCommandInputCodec.Write(writer, (global::System.String)argument!));
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+
+        public override global::System.IDisposable Subscribe(object model, int id, global::System.Action changed)
+        {
+            var vm = (global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)model;
+            switch (id)
+            {
+                case 4: return new RunicToolkitCommands.Running(vm.AsyncDtoCommand, changed);
+                case 5: return new RunicToolkitCommands.Running(vm.AsyncIntCommand, changed);
+                case 6: return new RunicToolkitCommands.Running(vm.AsyncStringCommand, changed);
+                case 7: return new RunicToolkitCommands.Running(vm.AsyncOptionalCommand, changed);
+                case 8: return new RunicToolkitCommands.Running(vm.CancelCommand, changed);
+            }
+            throw new global::System.ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }
