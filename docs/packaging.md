@@ -39,6 +39,64 @@ that uses `Runic.Application.Views.Wpf` or `Runic.Navigation.Wpf`: the .NET SDK
 stops a trimmed WPF publish with `NETSDK1168`. Publish those framework-dependent,
 or self-contained without `PublishTrimmed`.
 
+### Publish for a runtime identifier
+
+Publish a Runic application for the runtime identifier of the machines that
+run it:
+
+```sh
+dotnet publish -c Release -r linux-x64 --self-contained false
+```
+
+Without `-r`, `dotnet publish` writes a portable framework-dependent folder.
+It runs on every operating system with the .NET runtime, so it carries the
+native libraries of every runtime identifier under `runtimes/`: the Runic
+Desktop native server for seven, the WebView2 loader for three, and CS-WebUI's
+native library for each runtime identifier it supports. Measured for
+the templates, that adds 6.1 MB to a Runic Desktop application and 1.6 MB to a
+CS-WebUI application, compared with a `linux-x64` publish. A portable folder is
+a valid choice when one folder must serve every OS; otherwise publish once per
+runtime identifier. `dotnet runic package` always publishes for one runtime
+identifier (the host's architecture unless you pass `--runtime`), and
+`dotnet runic size` requires one.
+
+<!-- TODO(FD1): once Runic's OS-specific platform assemblies ship only in their
+OS's runtime-identifier-specific publish, add what that saves per OS here. -->
+
+### Size and cost of each publish mode
+
+Each mode trades size for something else. The sizes below were measured on
+2026-11-17 on the 0.22 development line (.NET SDK 10.0.403, Release,
+`linux-x64` unless noted), for applications created with `dotnet new runic-app`
+from packages: the Runic Desktop template with its defaults (React, ReactiveUI,
+native server) and the CS-WebUI template (`--host cswebui`). They count every
+published file except PDBs, in MB of 1,000,000 bytes. They change with every
+release, with .NET and with your own code and frontend, so measure your own
+application ([below](#measuring-your-own-application)).
+
+| Mode | Desktop | CS-WebUI | Cost |
+| --- | ---: | ---: | --- |
+| Framework-dependent, `-r <rid>` | 13.2 | 6.1 | The machine needs the .NET runtime. `win-x64` and `osx-arm64` are within 0.5 MB of `linux-x64`. |
+| Framework-dependent, portable (no `-r`) | 19.3 | 7.7 | Every runtime identifier's native libraries ([above](#publish-for-a-runtime-identifier)). |
+| ReadyToRun (`-p:PublishReadyToRun=true`) | 26.4 | 12.4 | Doubles the folder: each assembly carries native code next to its IL. Faster startup ([below](#startup-readytorun-and-invariant-globalization)). |
+| Single-file (`-p:PublishSingleFile=true`) | 13.2 | 6.1 | One executable the size of the folder. The .NET SDK compresses a bundle only when it is self-contained, so framework-dependent single-file saves nothing. |
+| Self-contained, trimmed | 31.2 | 29.2 | No .NET runtime needed on the machine; about 26 MB of it is the trimmed .NET runtime. |
+| NativeAOT (`-p:PublishAot=true`) | 13.9 | 11.7 | No .NET runtime needed, fastest startup. The executable is 13.6 MB (Desktop) or 11.0 MB (CS-WebUI); the rest is the page and, for CS-WebUI, its native library. A build per OS on that OS. |
+
+The single-file sizes were measured with a workaround: in these measurements a
+Views application's single-file publish stopped with `NETSDK1191`.
+
+Template choices change the framework-dependent `linux-x64` size as well:
+
+| Choice | Desktop | Cost |
+| --- | ---: | --- |
+| `--desktop-server kestrel` | 11.7 | Smaller folder: no native server, and ASP.NET Core comes from the shared ASP.NET Core runtime, which the machine must have in addition to the .NET runtime. Its NativeAOT executable is 16.5 MB. |
+| `--linux-gtk 4` | 20.2 | The GirCore GTK 4 bindings add 6.8 MB and `Runic.Desktop.Gtk4` 0.2 MB. NativeAOT keeps about 1.5 MB of the bindings: the executable is 15.0 MB. |
+| `--view-models toolkit` | 11.1 | CommunityToolkit.Mvvm instead of the default ReactiveUI saves 2.1 MB on either host (CS-WebUI: 4.0 MB), almost all of it ReactiveUI's and Splat's assemblies. |
+
+<!-- TODO(FD1): add the Desktop sizes per OS after the OS-specific platform
+assemblies leave other OSes' runtime-identifier-specific publishes. -->
+
 ### Startup: ReadyToRun and invariant globalization
 
 A framework-dependent or self-contained application spends most of its startup
