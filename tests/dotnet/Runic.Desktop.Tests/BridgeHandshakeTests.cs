@@ -473,7 +473,7 @@ public sealed class BridgeHandshakeTests
 
         private static uint ExtractToken(string bridge)
         {
-            const string prefix = "const TOKEN = ";
+            const string prefix = "const TOKEN=";
             var start = bridge.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
             return uint.Parse(bridge[start..bridge.IndexOf(';', start)], NumberStyles.None, CultureInfo.InvariantCulture);
         }

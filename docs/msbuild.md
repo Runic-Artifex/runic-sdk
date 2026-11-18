@@ -110,6 +110,12 @@ See [Embed a Vite build](../packages/dotnet/Runic.Assets/README.md#embed-a-vite-
 | `RunicAssetsEmbeddedResourceName` | `Runic.Assets.StaticFiles` | The manifest resource name. |
 | `RunicAssetsPackerPath` | the packer in the package | The asset packer the build runs ([`RAS2003`](diagnostics.md#ras2003)). |
 
+## Runic.Application.Views.Desktop
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `RunicDesktopRegionHost` | `true` | `false` for an application whose pages declare no [hosted regions](hosted-regions.md): the host no longer follows its pages' regions, and a trimmed or NativeAOT build leaves the region host out. Guests can still show their windows in native windows. Applies to every build. |
+
 ## Runic.Desktop
 
 See [MSBuild properties](../packages/dotnet/Runic.Desktop/README.md#msbuild-properties).

@@ -169,6 +169,14 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // region/1: the regions this host's pages declare, which the guests' region windows show (RunicHostedRegion).
     internal Hosting.HostedRegionDirectory RegionDirectory { get; } = new();
 
+    internal const string RegionHostSwitch = "Runic.Application.Views.Desktop.RegionHost";
+
+    // Whether this host's pages can show guests' windows in their regions (region/1). An application whose pages declare
+    // no regions can turn it off with the RunicDesktopRegionHost MSBuild property, and a trimmed or NativeAOT build then
+    // drops the region host (runic-sdk#1109). Every caller tests it first.
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(RegionHostSwitch)]
+    internal static bool IsRegionHostSupported => !AppContext.TryGetSwitch(RegionHostSwitch, out var enabled) || enabled;
+
     /// <summary>
     /// Starts other Runic applications as guests and shows their Windows in native windows of this host (the Runic host
     /// protocol, <c>runic-host/1</c>, in window mode).
@@ -217,7 +225,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // Hosted mode's launch contract and handshake, before the application's body runs.
     private async Task StartGuestAsync()
     {
-        _guest = await Hosting.HostedGuest.StartAsync(_guestOptions!, Desktop, GuestLogger, Services.GetService<IRunicApplicationLocale>())
+        _guest = await _guestOptions!.StartGuestAsync(Desktop, GuestLogger, Services.GetService<IRunicApplicationLocale>())
             .ConfigureAwait(false);
     }
 
@@ -639,8 +647,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 // region/1: a browser host's pages show guests' windows in their regions too (host-protocol.md, Browser
                 // hosts), until the Window closes.
                 var servedTransport = transport;
-                _ = Hosting.DesktopHostedRegionPage.FollowServed(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
-                    surface.Url, servedTransport.ConnectionOrigin, owner.CloseStarted);
+                if (IsRegionHostSupported)
+                    _ = Hosting.DesktopHostedRegionPage.FollowServed(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
+                        surface.Url, servedTransport.ConnectionOrigin, owner.CloseStarted);
                 // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
                 // (S1; native-server.yml checks that serve-only startup does without it).
                 // One write, so another window's lines cannot come between the URL line older parsers read and the
@@ -672,8 +681,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             owner.SetPresentation(presentation);
             // region/1: the regions the Window's page declares (hosted-regions/1) can show guests' windows.
             var regionTransport = transport;
-            _ = Hosting.DesktopHostedRegionPage.Follow(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
-                presentation, surface.Url, regionTransport.ConnectionOrigin);
+            if (IsRegionHostSupported)
+                _ = Hosting.DesktopHostedRegionPage.Follow(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
+                    presentation, surface.Url, regionTransport.ConnectionOrigin);
             FollowLocaleDirection(content, presentation, (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             // A native close (the user, the window manager) starts the Window's close: it leaves IRunicWindowService.Windows.

@@ -37,8 +37,17 @@ internal static class PresentationServers
     internal static bool UseNativeServer =>
         AppContext.TryGetSwitch("Runic.Desktop.NativeServer", out var enabled) && enabled;
 
+    // RunicDesktopServer=None declares an executable that opens no Runic Desktop window: its build turns this switch off,
+    // so a trimmed or NativeAOT application keeps neither server, also when it references a server package (runic-sdk#1109).
+    [FeatureSwitchDefinition("Runic.Desktop.PresentationServer")]
+    internal static bool HasServer =>
+        !AppContext.TryGetSwitch("Runic.Desktop.PresentationServer", out var enabled) || enabled;
+
     internal static IPresentationServer Create(Action<IServiceCollection>? configureServices)
     {
+        if (!HasServer)
+            throw Unavailable("Runic Desktop has no presentation server: the application sets RunicDesktopServer to None, " +
+                "which declares that it opens no Runic Desktop window. Set it to Native or Kestrel, or remove it (docs/migration-1.0.md).");
         var server = UseNativeServer
             ? new NativePresentationServer(configureServices)
             : CreateKestrel(configureServices);
@@ -69,13 +78,13 @@ internal static class PresentationServers
         }
         if (type is null || Activator.CreateInstance(type) is not PresentationServerFactory factory)
         {
-            throw new DesktopException(
-                DesktopErrorCategory.Unavailable,
-                "presentation-server-unavailable",
+            throw Unavailable(
                 "Runic Desktop has no presentation server. Reference the Runic.Desktop.Kestrel package (ASP.NET Core Kestrel) " +
-                "or the Runic.Desktop.NativeServer package in the application (docs/migration-1.0.md).",
-                retryable: false);
+                "or the Runic.Desktop.NativeServer package in the application (docs/migration-1.0.md).");
         }
         return factory.Create(configureServices);
     }
+
+    private static DesktopException Unavailable(string message) =>
+        new(DesktopErrorCategory.Unavailable, "presentation-server-unavailable", message, retryable: false);
 }

@@ -252,6 +252,7 @@
         "eng/branding/desktop",
         "specs/desktop",
         "eng/verify-desktop-contract.mjs",
+        "eng/generate-page-scripts.mjs",
         "tests/fixtures/desktop-contract",
         "tests/fixtures/desktop/evidence",
         "tests/fixtures/desktop/samples",

@@ -1513,7 +1513,8 @@ again when the archive or the packer changes. Since 0.15.
 
 ## Runic Desktop build
 
-The `Runic.Desktop` build targets report these errors; `RUNICDESK001` comes from
+The `Runic.Desktop` build targets report these errors and the warning
+`RUNICDESK007`; `RUNICDESK001` comes from
 `Runic.Desktop.Kestrel`, `RUNICDESK005` and `RUNICDESK006` from
 `Runic.Desktop.NativeServer`.
 `RUNICDESK102`, the native server's experimental ID until 0.15.0, is retired
@@ -1585,6 +1586,20 @@ leaves the server to the application's own Rust static library, which links the
 **Fix:** set one of the three values, or remove the property for the default,
 `Static`. See
 [NativeAOT and an application's own Rust library](../packages/dotnet/Runic.Desktop.NativeServer/README.md#nativeaot-and-an-applications-own-rust-library).
+
+### RUNICDESK007
+
+A warning: `RunicDesktopServer` is `None`, but the project references
+`Runic.Desktop.Kestrel` or `Runic.Desktop.NativeServer`. `None` declares an
+executable that opens no Runic Desktop window, so it uses no presentation
+server: a trimmed or NativeAOT build keeps neither, and a window would fail with
+`presentation-server-unavailable`. Since 0.22; before, such an executable
+served its windows from Kestrel when it referenced it.
+
+**Fix:** remove `RunicDesktopServer` (or set it to `Native` or `Kestrel`) when
+the executable opens windows, or remove the server package when it does not. If
+the reference is intended, for example because a library brings it in, suppress
+the warning with `<NoWarn>$(NoWarn);RUNICDESK007</NoWarn>`.
 
 ## Navigation ReactiveUI build
 
