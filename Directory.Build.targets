@@ -17,4 +17,10 @@
   <!-- The experimental native Desktop server (X1) for an in-repository Desktop executable built with
        -p:RunicDesktopServer=Native; package consumers get it from Runic.Desktop.NativeServer instead. -->
   <Import Project="packages/dotnet/Runic.Desktop.NativeServer/build/Runic.Desktop.NativeServer.Repository.targets" Condition="'$(RunicImportDesktopTargets)' == 'true' and '$(RunicDesktopServer)' == 'Native'" />
+  <!-- Runic.Platform's targets, which every package that depends on Runic.Platform brings a consumer, for the
+       repository's executables: their RID-specific publishes leave out other operating systems' providers (FD1,
+       D072.9, sdk#1151) and generate privileged actions as a consumer's do. Projects that import it themselves keep
+       their own import. -->
+  <Import Project="packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets"
+          Condition="'$(_RunicPlatformTargetsImported)' != 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')" />
 </Project>

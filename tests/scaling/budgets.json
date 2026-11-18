@@ -335,14 +335,15 @@
     "fdd/folder-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 3722940,
-      "measured": [3649941, 3649941],
+      "limit": 3766148,
+      "measured": [3692301, 3692301],
       "margin": 0.02,
-      "note": "the linux-x64 framework-dependent publish (-r linux-x64 --self-contained false) of the CS-WebUI fixture (K = 0), without the XML docs, PDBs and BridgeCodegen files that only project-reference builds in this repository carry until FD5 (fdd-size-0.22.md §7.2); the limit is the measurement plus 2 %. files: the bytes per file at the last --update, which a failure compares with to name the files that grew",
+      "note": "the linux-x64 framework-dependent publish (-r linux-x64 --self-contained false) of the CS-WebUI fixture (K = 0), every file: a project-reference publish in this repository holds what a package consumer's does (FD5, fdd-size-0.22.md §7.2); the limit is the measurement plus 2 %. files: the bytes per file at the last --update, which a failure compares with to name the files that grew",
       "files": {
         "AotSize": 105904,
         "AotSize.deps.json": 7533,
         "AotSize.dll": 52736,
+        "AotSize.pdb": 42360,
         "AotSize.runtimeconfig.json": 396,
         "CommunityToolkit.Mvvm.dll": 146760,
         "CsWebUi.Native.dll": 24576,
@@ -371,14 +372,15 @@
     "fdd/desktop/folder-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 9546865,
-      "measured": [9359671, 9359671],
+      "limit": 7127731,
+      "measured": [6987971, 6987971],
       "margin": 0.02,
-      "note": "the linux-x64 framework-dependent publish of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0), without XML docs, PDBs and BridgeCodegen until FD5; the limit is the measurement plus 2 %. files: the bytes per file at the last --update",
+      "note": "the linux-x64 framework-dependent publish of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0), every file (FD5); the limit is the measurement plus 2 %. files: the bytes per file at the last --update",
       "files": {
         "AotSizeDesktop": 105904,
-        "AotSizeDesktop.deps.json": 10732,
+        "AotSizeDesktop.deps.json": 9816,
         "AotSizeDesktop.dll": 52736,
+        "AotSizeDesktop.pdb": 42784,
         "AotSizeDesktop.runtimeconfig.json": 445,
         "CommunityToolkit.Mvvm.dll": 146760,
         "Microsoft.Extensions.DependencyInjection.Abstractions.dll": 65832,
@@ -394,9 +396,7 @@
         "Runic.Platform.Linux.Gtk4.dll": 79360,
         "Runic.Platform.Linux.Portal.dll": 928256,
         "Runic.Platform.Linux.dll": 111616,
-        "Runic.Platform.MacOS.dll": 468480,
         "Runic.Platform.Runtime.dll": 320512,
-        "Runic.Platform.Windows.dll": 1945088,
         "Runic.Platform.dll": 306688,
         "Tmds.DBus.Protocol.dll": 233472,
         "www/runic-desktop-views.js": 5755,
@@ -408,13 +408,7 @@
       "sizes": [0, 0],
       "limit": 0,
       "measured": [0, 0],
-      "known": "project-reference publishes in this repository do not get FD1: the fixture carries Runic.Platform.Windows.dll (1,945,088 B) and Runic.Platform.MacOS.dll (468,480 B), which a package consumer's linux-x64 publish leaves out. They are exempt by name, so any other file of another OS fails",
-      "issue": "sdk#1151",
-      "exempt": [
-        "Runic.Platform.Windows.dll",
-        "Runic.Platform.MacOS.dll"
-      ],
-      "note": "bytes of the Desktop fixture's linux-x64 framework-dependent publish that belong to another operating system, as FD1 (D072.9) defines them: the Windows and macOS Runic.Platform providers, Mach-O or native PE libraries and runtimes/<other rid>/ (Runic.Desktop.Gtk4 is not counted, sdk#1150; it is Linux's anyway)"
+      "note": "bytes of the Desktop fixture's linux-x64 framework-dependent publish that belong to another operating system, as FD1 (D072.9) defines them: the Windows and macOS Runic.Platform providers, Mach-O or native PE libraries and runtimes/<other rid>/ (Runic.Desktop.Gtk4 is not counted, sdk#1150; it is Linux's anyway); FD1 covers the fixture's project references too (sdk#1151)"
     }
   }
 }

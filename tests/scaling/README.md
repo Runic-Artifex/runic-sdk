@@ -145,21 +145,23 @@ NativeAOT publishes. It lists every file of each folder with its category, as th
 and tools), and the job summary gets a table of the bytes per category. The metrics follow the `aot/` names, with the
 Desktop fixture's under `fdd/desktop/`:
 
-- `fdd/folder-bytes` and `fdd/desktop/folder-bytes` (`total`, 2 % margin): the folder's bytes without `*.xml`, PDBs
-  and `BridgeCodegen*`. Only project-reference builds in this repository carry those, never a package consumer's
-  publish, until FD5 keeps them out. `--update` also records the entry's `files`, the bytes of each counted file. A
-  failure compares the current files with those and names the ones that grew or are new, largest growth first.
+- `fdd/folder-bytes` and `fdd/desktop/folder-bytes` (`total`, 2 % margin): the bytes of every file in the folder.
+  The fixtures reach Runic through project references, and a project-reference publish here holds what a package
+  consumer's does (FD5): no `BridgeCodegen` apphost, `deps.json` or `runtimeconfig.json` (the codegen
+  `ProjectReference` in `Runic.Application.Views.targets` has `Private="false"`), and no referenced project's XML doc
+  or PDB (`Directory.Build.props`). The fixture's own PDB is published, as a consumer application's is. `--update`
+  also records the entry's `files`, the bytes of each file. A failure compares the current files with those and names
+  the ones that grew or are new, largest growth first, so an XML doc or PDB that comes back is named.
 - `fdd/other-os-bytes` and `fdd/desktop/other-os-bytes` (`total`, limit 0): the bytes of files that belong to another
   operating system, as FD1 (D072.9) defines them for a RID-specific publish. On linux-x64 these are the Windows and
   macOS `Runic.Platform` providers, files under `runtimes/<rid>/` of another runtime, Mach-O libraries and native PE
   images. `Runic.Desktop.Gtk4` is not counted as Linux-only, since FD1 still copies it everywhere
   ([#1150](https://github.com/Runic-Artifex/runic-sdk/issues/1150)). A failure names every such file.
 
-FD1 selects the assemblies to leave out by NuGet package, so a project-reference publish such as this fixture's still
-carries `Runic.Platform.Windows.dll` and `Runic.Platform.MacOS.dll`
-([#1151](https://github.com/Runic-Artifex/runic-sdk/issues/1151)). `fdd/desktop/other-os-bytes` is a known cost that
-lists them in `exempt`. Exempt files are reported but not counted, so any other file of another OS fails. The fix
-removes `exempt` and `known`. With `--keep`, the folders stay under `artifacts/scaling/aot-size/fdd-<fixture>/`, and
+FD1 also leaves out the other operating systems' providers that a publish reaches through project references, as
+the fixtures do: `Runic.Platform.targets` matches them by assembly name
+([#1151](https://github.com/Runic-Artifex/runic-sdk/issues/1151)), and the repository's `Directory.Build.targets`
+imports it into every executable, as NuGet does for a package consumer. With `--keep`, the folders stay under `artifacts/scaling/aot-size/fdd-<fixture>/`, and
 `results.json` has every file under `frameworkDependent`.
 
 ## Counters in the product

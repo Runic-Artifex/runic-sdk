@@ -8,5 +8,19 @@
          copied-out applications install missing frontend dependencies during
          their first build. -->
     <RunicApplicationFrontendInstallEnabled Condition="'$(RunicApplicationFrontendInstallEnabled)' == ''">false</RunicApplicationFrontendInstallEnabled>
+    <!-- FD5 (D072.19): a publish here copies what a package consumer's does. A package's XML docs and PDBs never reach
+         its consumer's publish, but a referenced project's do (ReferenceCopyLocalPaths), so they stay out of
+         publishes; the build output keeps them for IntelliSense and debugging. The project's own PDB is published as
+         a consumer's is. -->
+    <PublishReferencesDocumentationFiles Condition="'$(PublishReferencesDocumentationFiles)' == ''">false</PublishReferencesDocumentationFiles>
   </PropertyGroup>
+
+  <!-- The referenced projects' PDBs of FD5 above (Runic.Desktop and the other projects with portable PDBs; the rest
+       embed theirs), which the SDK has no property for. It runs only in a publish. -->
+  <Target Name="_RunicRepositoryPublishReferenceSymbols" AfterTargets="_ComputeResolvedCopyLocalPublishAssets">
+    <ItemGroup>
+      <_ResolvedCopyLocalPublishAssets Remove="@(ReferenceCopyLocalPaths)"
+                                       Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.pdb' and '%(ReferenceCopyLocalPaths.ReferenceSourceTarget)' == 'ProjectReference'" />
+    </ItemGroup>
+  </Target>
 </Project>
