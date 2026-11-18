@@ -35,8 +35,8 @@ internal abstract class MvvmCodegenConvention
     /// <summary>The library interaction <paramref name="property"/> exposes, or null.</summary>
     internal virtual MvvmInteraction? InspectInteraction(PropertyInfo property) => null;
 
-    /// <summary>Appends private helper types the bridge's commands of this library need.</summary>
-    internal virtual void AppendSupportTypes(StringBuilder cs, IEnumerable<GeneratedCommandPlan> plans) { }
+    /// <summary>Registers the shared helpers (<see cref="BridgeSupportFiles"/>) that a Bridge's commands of this library call.</summary>
+    internal virtual void UseSupportFiles(IEnumerable<GeneratedCommandPlan> plans) { }
 }
 
 /// <summary>A command recognised by an MVVM library convention.</summary>

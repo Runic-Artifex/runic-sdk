@@ -182,6 +182,7 @@ try
         var csharpOutputs = models.Select(entry => (Path: BridgeFileName(entry.Model), Owner: entry.Model.FullName!))
             .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
             .Append((Path: BridgeSharedCodecs.FileName, Owner: "the shared Bridge codecs"))
+            .Concat(BridgeSupportFiles.All.Select(file => (Path: file, Owner: "the shared Bridge command helpers")))
             .ToArray();
         var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
@@ -1277,7 +1278,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     InteractionCodeEmitter.AddCSharpCodecs(codecs, interactions);
     InteractionCodeEmitter.AddCSharpRequestCodecs(codecs, requests);
     foreach (var convention in MvvmCodegenConventions.All)
-        convention.AppendSupportTypes(cs, commandPlans.Values);
+        convention.UseSupportFiles(commandPlans.Values);
     // The state members in order (specs/application, "State and revisions"). Each writes its value; the runtime writes
     // the member names, and the revision and the checked fields' versions beside the state.
     var stateMembers = new List<(string Member, string Body)>();

@@ -150,7 +150,14 @@ internal sealed class DomainFailureCodegenTests
         // A Bridge's codecs are in the assembly's shared codecs file: pin the ones the set's Bridges use.
         var bridgeFiles = outputs.Where(output => output.Golden.EndsWith(".Bridge.g.cs", StringComparison.Ordinal)).Select(output => output.Actual).ToArray();
         if (bridgeFiles.Length > 0)
+        {
             outputs = [.. outputs, ("shared-codecs.txt", SharedCodecsOf(Path.Combine(project, "obj", $"{set}-shared-codecs.txt"), bridgeFiles))];
+            // And the generated command helpers that they call.
+            var bridgeText = string.Concat(bridgeFiles.Select(File.ReadAllText));
+            foreach (var (helper, file) in new[] { ("RunicToolkitCommands", "RunicShared.Toolkit.Bridge.g.cs"), ("RunicBridgeCommands", "RunicShared.Commands.Bridge.g.cs") })
+                if (bridgeText.Contains(helper, StringComparison.Ordinal))
+                    outputs = [.. outputs, (file, Path.Combine(Path.GetDirectoryName(bridgeFiles[0])!, file))];
+        }
         foreach (var (golden, actualPath) in outputs)
         {
             // A .golden suffix keeps the files out of the C# and TypeScript builds.

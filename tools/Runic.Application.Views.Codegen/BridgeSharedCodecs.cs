@@ -59,6 +59,7 @@ internal static class BridgeSharedCodecs
             GeneratedFile.WriteIfChanged(path, Resolve(content, index => $"{ClassName}.{Codecs[index].Name}"));
         Pending.Clear();
         GeneratedFile.WriteIfChanged(Path.Combine(directory, FileName), SharedFile());
+        BridgeSupportFiles.WriteAll(directory);
     }
 
     private static string Token(int index) => Mark + index.ToString(CultureInfo.InvariantCulture) + Mark;
