@@ -96,7 +96,7 @@ try {
   if (!realHost) await page.route(`${origin}/**`, async route => {
     const path = decodeURIComponent(new URL(route.request().url()).pathname);
     // The CS-WebUI scripts would install their own Bridge over the mock.
-    if (/^\/(?:webui|runic-cswebui|runic-dev-reload)\.js$/.test(path)) return route.fulfill({ contentType: "text/javascript", body: "" });
+    if (/^\/(?:webui|runic-views|runic-dev-reload)\.js$/.test(path)) return route.fulfill({ contentType: "text/javascript", body: "" });
     const file = normalize(join(root, path === "/" ? "index.html" : path));
     if (!file.startsWith(normalize(root) + sep)) return route.fulfill({ status: 404, body: "" });
     try { return route.fulfill({ contentType: types[extname(file)] ?? "application/octet-stream", body: await readFile(file) }); }

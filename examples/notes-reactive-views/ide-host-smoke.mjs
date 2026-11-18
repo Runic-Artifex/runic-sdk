@@ -58,7 +58,7 @@ async function verify(framework, stopWithSignal = false) {
     }, 90_000).catch(error => {
       throw new Error(`${error.message}\nHost output:\n${output.slice(-16_384)}`, { cause: error });
     });
-    for (const url of [frontend, new URL("/runic-cswebui.js", frontend)]) {
+    for (const url of [frontend, new URL("/runic-views.js", frontend)]) {
       const ready = await respondsWithin(url);
       if (!ready.ok) throw new Error(`Frontend did not become ready at ${url}: ${JSON.stringify(ready)}\nHost output:\n${output.slice(-16_384)}`);
     }

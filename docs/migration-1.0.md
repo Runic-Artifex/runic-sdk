@@ -116,7 +116,10 @@ the release notes, which give the full detail and the pull requests:
    From 0.22, also remove every `RUNICDESK104` (side panel) and `RUNICDESK105`
    (close drain) suppression, and import `onBridgeDraining` from
    `@runic-artifex/views` instead of `@runic-artifex/views/experimental`, where
-   it is deprecated in 0.22 and removed in 0.23.
+   it is deprecated in 0.22 and removed in 0.23. From 0.22, also load
+   `runic-views.js` in pages that load `runic-desktop-views.js` or
+   `runic-cswebui.js`: that copy logs a console warning in 0.22, and 0.23 removes
+   it; a project that references more than one host sets `RunicApplicationHost`.
    What is experimental now, hosted applications (`RUNICDESK103`), from 0.18
    the npm packages' new `./experimental` entries for hosted regions,
    from 0.20 `runicComponentMount` in `@runic-artifex/angular/experimental`, and

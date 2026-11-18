@@ -326,7 +326,8 @@ runs on Runic Desktop, whose package copies its own client as `runic-views.js`.
 A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 `desktop`); see
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
-Pages that load `runic-cswebui.js` keep working. The script adapts
+Pages that load `runic-cswebui.js` keep working in 0.22 but log a console
+warning: that copy is deprecated and removed in 0.23. The script adapts
 `window.webui` to the generated client's transport contract, `__runicBridge`.
 Load it right after `webui.js`: it then observes WebUI's connection events
 through `webui.setEventCallback` and passes every event on to the callback the
