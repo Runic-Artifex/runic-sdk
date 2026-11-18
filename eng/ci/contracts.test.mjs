@@ -439,10 +439,25 @@ test('dependency caches restore everywhere and save only on main', () => {
   assert.deepEqual(save.with, shared);
   assert.deepEqual(restore.with, { ...shared, 'lookup-only': '${{ inputs.lookup-only }}' });
   assert.deepEqual(saveNow.with, { path: '${{ inputs.path }}', key: '${{ inputs.key }}', enableCrossOsArchive: '${{ inputs.enable-cross-os-archive }}' });
-  const apt = yaml('.github/actions/apt-install/action.yml').runs.steps.filter(step => step.uses === './.github/actions/dependency-cache');
+  const steps = yaml('.github/actions/apt-install/action.yml').runs.steps;
+  const apt = steps.filter(step => step.uses === './.github/actions/dependency-cache');
   assert.deepEqual(apt.map(step => [step.with['defer-save'], step.with['save-now']]), [['true', undefined], [undefined, 'true']]);
   assert.equal(apt[0].with.key, apt[1].with.key);
-  assert.equal(apt[1].if, "steps.cache.outputs.cache-hit != 'true' && steps.install.outputs.archives != '0'");
+  // #1131: the key ends with the resolved archive versions, resolved after apt-get update and before the restore, so
+  // a new package version gets its own entry; the same image's entry, then any image's, restores the unchanged archives.
+  const prefix = '${{ steps.apt.outputs.prefix }}', image = '${{ steps.apt.outputs.image }}';
+  assert.equal(apt[0].with.key, `${prefix}${image}-\${{ steps.resolve.outputs.versions || 'unresolved' }}`);
+  assert.equal(apt[0].with['restore-keys'], `${prefix}${image}-\n${prefix}\n`);
+  const order = ['resolve', 'cache', 'install'].map(id => steps.findIndex(step => step.id === id));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.ok(order[0] > 0);
+  assert.match(steps[order[0]].run, /eng\/ci\/apt-install\.sh --resolve \$\{options\[@\]\+"\$\{options\[@\]\}"\} \$PACKAGES\)\n/);
+  assert.equal(steps[order[2]].env.APT_UPDATED, "${{ steps.resolve.outputs.versions != '' }}");
+  // Saved right after the install, not after an exact hit, an install with nothing to save or unresolved versions.
+  assert.equal(steps.indexOf(apt[1]), order[2] + 1);
+  assert.equal(apt[1].if, "steps.cache.outputs.cache-hit != 'true' && steps.install.outputs.archives != '0' && steps.resolve.outputs.versions != ''");
+  // Superseded archives stay out of an entry.
+  assert.match(readFileSync(resolve(root, 'eng/ci/apt-install.sh'), 'utf8'), /\nif \[ -n "\$\{APT_ARCHIVES:-\}" \]; then "\$\{apt\[@\]\}" autoclean; fi\n/);
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {
