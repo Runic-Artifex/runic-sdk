@@ -352,7 +352,8 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
     OperatingSystem.IsWindows() and the like, and calls another operating system's provider only from methods that run
     on it, so the missing assemblies are never loaded.
 
-    It applies to framework-dependent and untrimmed self-contained publishes, with or without ReadyToRun. A build,
+    It applies to framework-dependent and untrimmed self-contained publishes, with or without ReadyToRun or
+    PublishSingleFile. A build,
     dotnet run and a publish without a RuntimeIdentifier (portable) keep every assembly, as do trimmed and NativeAOT
     publishes (and so dotnet runic package, which publishes with NativeAOT), whose trimmer already removes the code
     that the running operating system cannot reach. An
@@ -394,5 +395,17 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
     <PropertyGroup>
       <_UseBuildDependencyFile>false</_UseBuildDependencyFile>
     </PropertyGroup>
+  </Target>
+
+  <!-- GeneratePublishDependencyFile is incremental and keeps the deps.json it wrote while its inputs hash is unchanged.
+       The assemblies left out are part of that hash, so a publish that leaves out others (a different RID, or
+       RunicPublishAllPlatformAssemblies changed) writes it again instead of reusing one that lists missing files. -->
+  <Target Name="_RunicPublishPlatformDependencyFileInputs" BeforeTargets="_GeneratePublishDependencyFileInputCache">
+    <PropertyGroup>
+      <_RunicPlatformAssembliesLeftOut>@(_RunicOtherPlatformAsset->'%(NuGetPackageId)', ',')</_RunicPlatformAssembliesLeftOut>
+    </PropertyGroup>
+    <ItemGroup>
+      <_GeneratePublishDependencyFilePropertyInputsCacheToHash Include="RunicPlatformAssembliesLeftOut=$(_RunicPlatformAssembliesLeftOut)" />
+    </ItemGroup>
   </Target>
 </Project>

@@ -2,14 +2,15 @@
   operating system's platform code.** This applies to `dotnet publish -r <rid>` for a
   Windows (`win-*`), macOS (`osx-*`) or Linux (`linux-*`) RuntimeIdentifier,
   framework-dependent (the default) or self-contained without trimming, with or without
-  ReadyToRun. Such a publish leaves out the other operating systems' `Runic.Platform`
+  ReadyToRun, and as a single file. Such a publish leaves out the other operating systems' `Runic.Platform`
   providers: `Runic.Platform.Windows` outside Windows, `Runic.Platform.MacOS` outside
   macOS, and `Runic.Platform.Linux`, `.Linux.Portal`, `.Linux.DBus`, `.Linux.Gtk4`,
   `.Linux.Polkit` with the Linux-only `Tmds.DBus.Protocol` and GirCore GTK 4 bindings
   outside Linux. Its `deps.json` leaves them out too. The Desktop template's
   framework-dependent publish loses 2.4 MB on linux-x64 (13,089,260 to 10,674,346
-  bytes), 1.9 MB on win-x64 (13,014,138 to 11,063,439 bytes) and 3.4 MB on osx-arm64,
-  and 4.1 MB with ReadyToRun on linux-x64 (26,229,892 to 22,107,458 bytes); a GTK 4
+  bytes), 1.9 MB on win-x64 (13,014,138 to 11,063,439 bytes), 3.4 MB on osx-arm64,
+  4.1 MB with ReadyToRun on linux-x64 (26,229,892 to 22,107,458 bytes) and 2.4 MB as a
+  single file on linux-x64 (11,621,833 to 9,206,817 bytes); a GTK 4
   application also leaves its 6.8 MB of GirCore bindings out on Windows and macOS.
 
   **Unchanged:** `dotnet build`, `dotnet run` and the debugger, a publish without
