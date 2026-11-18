@@ -13,6 +13,22 @@ internal sealed class FieldPathsTests
         new(model, (transport, content, vm) => new PathInvoiceBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "pathInvoice", ViewLocator = new TestViewLocator() });
 
+    // The generated clients of members with field paths (field-paths/1): the fieldPath and rowFields descriptors, and the
+    // imports they need, in the order earlier generators wrote them. Set RUNIC_UPDATE_GOLDEN=1 to rewrite them after an
+    // intended change.
+    [Test]
+    public void FieldPathClientsMatchTheGoldenFiles()
+    {
+        var project = Path.Combine(DomainFailureCodegenTests.FindWorkspaceRoot(), "tests", "dotnet", "Runic.Application.Testing.Tests");
+        var generated = Path.Combine(project, "obj", "bridge-frontend", "generated");
+        DomainFailureCodegenTests.CompareGolden(project, "field-paths",
+        [
+            ("pathInvoice.ts", Path.Combine(generated, "pathInvoice.ts")),
+            ("pathInvoice.contract.d.ts", Path.Combine(generated, "pathInvoice.contract.d.ts")),
+            ("pathRows.ts", Path.Combine(generated, "pathRows.ts")),
+        ]);
+    }
+
     [Test]
     public async Task ACellWriteRunsTheRowEditorAndReportsTheCellAsync()
     {
