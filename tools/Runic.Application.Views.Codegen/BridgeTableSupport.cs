@@ -408,7 +408,20 @@ internal static class BridgeTableSupport
 
                 private static bool Has(string flags, char flag) => flags.Contains(flag);
 
-                private static int Id(string field) => int.Parse(field, global::System.Globalization.CultureInfo.InvariantCulture);
+                // Decimal digits, read without int.Parse: any format provider, even NumberFormatInfo.InvariantInfo,
+                // initializes CultureInfo, which loads ICU, and the first window reads its table before its page is
+                // served (S1: no ICU on the startup path).
+                private static int Id(string field)
+                {
+                    if (field.Length == 0) throw new global::System.FormatException("An empty Bridge table id.");
+                    var id = 0;
+                    foreach (var digit in field)
+                    {
+                        if (digit is < '0' or > '9') throw new global::System.FormatException($"Bridge table id '{field}' is not a number.");
+                        id = checked(id * 10 + (digit - '0'));
+                    }
+                    return id;
+                }
 
                 internal static string Unescape(string field)
                 {

@@ -1230,6 +1230,31 @@ jobs:
           dotnet publish tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/dbus-aot
           dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests
           dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
+      # S1 (#1159): the NativeAOT Desktop example on the native server. Its startup path is the Views runtime, the
+      # generated Bridges and the Desktop host as much as the server, so this leg, which every such change plans, runs
+      # it rather than native-server.yml, which runs only for the server's paths. The static library comes from
+      # native-libraries.yml's cache, only restored here, or is built when the native server changed.
+      - name: Restore the native server's linux-x64 library
+        if: matrix.rid == 'linux-x64'
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/linux-x64
+          key: runic-server-${{ hashFiles('native/**', 'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml') }}-linux-x64
+          defer-save: "true"
+          enable-cross-os-archive: "true"
+      # NativeAOT links the library statically: the published executable is the whole application.
+      - name: Publish the Desktop example with NativeAOT on the native server and check its startup
+        if: matrix.rid == 'linux-x64'
+        timeout-minutes: 10
+        run: |
+          test -e artifacts/native/runic-server/linux-x64/librunic_server.a || eng/native/build-runic-server.sh linux-x64
+          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 \
+            -p:RunicDesktopServer=Native -p:PublishAot=true -o artifacts/native-server-aot
+          test ! -e artifacts/native-server-aot/librunic_server.so
+          # The host loads neither ICU nor OpenSSL before its page is served. LANG=C, because the console's charset
+          # lookup for a UTF-8 locale loads ICU in any .NET program that writes to it, as serve-only does.
+          LANG=C LC_ALL=C node tests/benchmarks/native-server/startup.mjs artifacts/native-server-aot/FirstWindowDesktop 5 | tee "$RUNNER_TEMP/startup.json"
+          node -e 'const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (r.icu || r.openssl) { console.error("ICU " + r.icu + ", OpenSSL " + r.openssl + " loaded by the first served page"); process.exit(1); }' "$RUNNER_TEMP/startup.json"
       # Outside the next check's own limit, which a slow mirror would otherwise use up.
       - name: Install GNOME Keyring
         if: runner.os == 'Linux'
