@@ -366,9 +366,12 @@
   </PropertyGroup>
 
   <!-- Include the source tool in the restore graph so a first IDE build can
-       compile it without a separate manual restore. It is not an app reference. -->
+       compile it without a separate manual restore. It is not an app reference: the build runs it from its own
+       output, and Private="false" keeps its apphost, deps.json and runtimeconfig.json (which ReferenceOutputAssembly
+       does not cover for an executable) out of the application's build and publish output, as for a package
+       consumer (FD5, D072.19). -->
   <ItemGroup Condition="Exists('$(_RunicBridgeCodegenProject)') and '$(RunicApplicationFrontendBootstrap)' != 'true'">
-    <ProjectReference Include="$(_RunicBridgeCodegenProject)" ReferenceOutputAssembly="false"
+    <ProjectReference Include="$(_RunicBridgeCodegenProject)" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishReadyToRun;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 

@@ -187,3 +187,87 @@ ${ids.map(id => `    [MethodImpl(MethodImplOptions.NoInlining)] public static st
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+// sdk#1151: the same selection for an application inside this repository, which reaches the providers through
+// ProjectReference items (ReferenceCopyLocalPaths, matched by assembly name) instead of packages.
+test("a RID-specific publish leaves other operating systems' platform projects out", { timeout: 600000 }, () => {
+  const directory = mkdtempSync(join(tmpdir(), "runic-platform-project-publish-"));
+  const xml = value => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+  const dotnet = (...args) => {
+    const result = spawnSync("dotnet", [...args, "--disable-build-servers", "-p:UseSharedCompilation=false", "-nologo"],
+      { cwd: directory, encoding: "utf8", timeout: 240000 });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return result.stdout;
+  };
+  const projects = {
+    "Runic.Platform.Windows": "windows", "Runic.Platform.MacOS": "macos", "Runic.Platform.Linux.Portal": "linux",
+    "Shared.Library": "any", "Runic.Desktop.Gtk4": "any",
+  };
+  const type = id => id.replace(/[^A-Za-z0-9]/g, "_");
+  try {
+    writeFileSync(join(directory, "Directory.Build.props"), '<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><GenerateDocumentationFile>true</GenerateDocumentationFile><DebugType>portable</DebugType></PropertyGroup></Project>');
+    writeFileSync(join(directory, "Directory.Build.targets"), `<Project><Import Project="${xml(resolve("packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets"))}" Condition="'$(OutputType)' == 'Exe'" /></Project>`);
+    for (const id of Object.keys(projects)) {
+      mkdirSync(join(directory, "src", id), { recursive: true });
+      writeFileSync(join(directory, "src", id, `${id}.csproj`), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><AssemblyName>${id}</AssemblyName></PropertyGroup></Project>`);
+      writeFileSync(join(directory, "src", id, "Probe.cs"), `/// <summary>Probe.</summary>\npublic sealed class ${type(id)} { /// <summary>Name.</summary>\npublic static string Name => "${id}"; }`);
+    }
+    mkdirSync(join(directory, "app"));
+    writeFileSync(join(directory, "app", "App.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><UseAppHost>false</UseAppHost></PropertyGroup><ItemGroup>${Object.keys(projects).map(id => `<ProjectReference Include="../src/${id}/${id}.csproj" />`).join("")}</ItemGroup></Project>`);
+    const probe = { windows: "OperatingSystem.IsWindows()", macos: "OperatingSystem.IsMacOS()", linux: "OperatingSystem.IsLinux()" };
+    const ids = Object.keys(projects).filter(id => projects[id] !== "any");
+    writeFileSync(join(directory, "app", "Program.cs"), `using System.Runtime.CompilerServices;
+Console.WriteLine(Shared_Library.Name);
+Console.WriteLine(Runic_Desktop_Gtk4.Name);
+${ids.map(id => `if (${probe[projects[id]]}) Console.WriteLine(Probes.${type(id)}());`).join("\n")}
+static class Probes
+{
+${ids.map(id => `    [MethodImpl(MethodImplOptions.NoInlining)] public static string ${type(id)}() => global::${type(id)}.Name;`).join("\n")}
+}
+`);
+    const all = Object.keys(projects).sort();
+    const only = os => all.filter(id => projects[id] === "any" || projects[id] === os);
+    const shipped = (rid, ...args) => {
+      const output = join(directory, "out", `${rid ?? "portable"}${args.length ? "-optout" : ""}`);
+      dotnet("publish", "app", "-c", "Release", "-o", output, ...(rid ? ["-r", rid, "--self-contained", "false"] : []), ...args);
+      const deps = JSON.parse(readFileSync(join(output, "App.deps.json"), "utf8"));
+      const listed = Object.values(deps.targets).flatMap(Object.values).flatMap(entry => Object.keys(entry.runtime ?? {}))
+        .map(path => basename(path, ".dll")).filter(id => id !== "App").sort();
+      const files = all.filter(id => existsSync(join(output, `${id}.dll`)));
+      assert.deepEqual(listed, files, `${output}: deps.json`);
+      // A provider left out leaves its PDB and XML doc behind too.
+      for (const id of all.filter(id => !files.includes(id)))
+        for (const extension of [".pdb", ".xml"]) assert.ok(!existsSync(join(output, id + extension)), `${output}: ${id}${extension}`);
+      return { output, files };
+    };
+    const linux = shipped("linux-x64");
+    assert.deepEqual(linux.files, only("linux"));
+    assert.deepEqual(shipped("win-x64").files, only("windows"));
+    assert.deepEqual(shipped("osx-arm64").files, only("macos"));
+    assert.deepEqual(shipped(undefined).files, all);
+    assert.deepEqual(shipped("linux-x64", "-p:RunicPublishAllPlatformAssemblies=true").files, all);
+    dotnet("build", "app", "-c", "Release", "-r", "linux-x64", "--self-contained", "false");
+    const built = join(directory, "app", "bin", "Release", "net10.0", "linux-x64");
+    assert.deepEqual(all.filter(id => existsSync(join(built, `${id}.dll`))), all);
+    if (process.platform === "linux" && process.arch === "x64") {
+      const linuxOutput = ["Shared.Library", "Runic.Desktop.Gtk4", "Runic.Platform.Linux.Portal"];
+      const run = spawnSync("dotnet", [join(linux.output, "App.dll")], { encoding: "utf8", timeout: 60000 });
+      assert.equal(run.status, 0, run.stdout + run.stderr);
+      assert.deepEqual(run.stdout.trim().split(/\r?\n/), linuxOutput);
+      for (const [index, optOut] of [false, true, false].entries()) {
+        const output = join(directory, "out", `single-file-${index}`);
+        dotnet("publish", "app", "-c", "Release", "-r", "linux-x64", "--self-contained", "false", "-p:PublishSingleFile=true",
+          "-p:UseAppHost=true", "-p:EnableSingleFileAnalyzer=false", ...(optOut ? ["-p:RunicPublishAllPlatformAssemblies=true"] : []), "-o", output);
+        const { entries, deps } = singleFileBundle(join(output, "App"));
+        const bundled = entries.filter(name => name.endsWith(".dll")).map(name => basename(name, ".dll")).sort();
+        const listed = Object.values(deps.targets).flatMap(Object.values).flatMap(entry => Object.keys(entry.runtime ?? {}))
+          .map(path => basename(path, ".dll")).sort();
+        assert.deepEqual(bundled, listed, `single-file ${index}: the bundle and its deps.json`);
+        assert.deepEqual(bundled.filter(id => id !== "App"), optOut ? all : only("linux"), `single-file ${index}`);
+        const started = spawnSync(join(output, "App"), [], { encoding: "utf8", timeout: 60000 });
+        assert.equal(started.status, 0, started.stdout + started.stderr);
+        assert.deepEqual(started.stdout.trim().split(/\r?\n/), linuxOutput);
+      }
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});

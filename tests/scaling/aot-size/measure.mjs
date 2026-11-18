@@ -94,20 +94,16 @@ export const metrics = {
   "aot/desktop/executable-bytes": { fixture: "desktop", value: build => build.executableBytes },
   ...Object.fromEntries(frameworkSentinels.map(assembly => [`aot/desktop/framework/${assembly}`, { fixture: "desktop", value: owned(assembly) }])),
   "aot/views-translations/executable-bytes": { fixture: "views-translations", value: build => build.executableBytes },
-  // Framework-dependent (publish "fdd"): the files each metric counts, and their bytes are its value. The folder without
-  // the files that only repository builds carry, and the files that belong to another operating system (FD1, D072.9)
-  // except those the entry exempts by name until an issue is fixed.
-  "fdd/folder-bytes": { fixture: "views", publish: "fdd", files: build => countedFiles(build.files) },
-  "fdd/other-os-bytes": { fixture: "views", publish: "fdd", files: (build, entry) => exemptFiles(otherOsFiles(build.files), entry).counted },
-  "fdd/desktop/folder-bytes": { fixture: "desktop", publish: "fdd", files: build => countedFiles(build.files) },
-  "fdd/desktop/other-os-bytes": { fixture: "desktop", publish: "fdd", files: (build, entry) => exemptFiles(otherOsFiles(build.files), entry).counted },
+  // Framework-dependent (publish "fdd"): the files each metric counts, and their bytes are its value. The whole folder,
+  // which is what a package consumer's publish holds (FD5, D072.19), and the files that belong to another operating
+  // system (FD1, D072.9; for project references too, sdk#1151).
+  "fdd/folder-bytes": { fixture: "views", publish: "fdd", files: build => build.files },
+  "fdd/other-os-bytes": { fixture: "views", publish: "fdd", files: build => otherOsFiles(build.files) },
+  "fdd/desktop/folder-bytes": { fixture: "desktop", publish: "fdd", files: build => build.files },
+  "fdd/desktop/other-os-bytes": { fixture: "desktop", publish: "fdd", files: build => otherOsFiles(build.files) },
 };
 
 // The framework-dependent publish (FDD-6, fdd-size-0.22.md §7.2), from attribute.py and offos.py of that research.
-// Files that only a project-reference build inside this repository carries, never a package consumer's publish, until
-// FD5 keeps them out: the XML docs, the Views codegen host (BridgeCodegen, its deps.json and runtimeconfig) and PDBs.
-export const repositoryOnly = path => /\.(xml|pdb|dbg)$/i.test(path) || /(^|\/)BridgeCodegen[^/]*$/.test(path);
-
 // A file's category, as attribute.py has them; files: [{ path, bytes, native }], path relative with "/".
 export function category(path, assembly, native = false) {
   const name = path.split("/").at(-1);
@@ -144,14 +140,7 @@ export function fileOs(file) {
   return null;
 }
 export const otherOsFiles = (files, os = ridOs(rid)) => files.filter(file => { const owner = fileOs(file); return owner !== null && owner !== os; });
-export const countedFiles = files => files.filter(file => !repositoryOnly(file.path));
-export const folderBytes = files => countedFiles(files).reduce((sum, file) => sum + file.bytes, 0);
-// An entry's "exempt" names files (paths in the publish) that its "known" cost and "issue" explain: they are listed,
-// not counted.
-export function exemptFiles(files, entry = {}) {
-  const exempt = new Set(entry.exempt ?? []);
-  return { counted: files.filter(file => !exempt.has(file.path)), exempt: files.filter(file => exempt.has(file.path)) };
-}
+export const folderBytes = files => files.reduce((sum, file) => sum + file.bytes, 0);
 
 // A native image's format from its first bytes: "pe" for a PE without a CLI header (not a managed assembly), "elf" or
 // "macho", otherwise null.
@@ -257,7 +246,7 @@ export function perViewModel(builds) {
   return { markdown: `${lines.join("\n")}\n`, slopes: Object.fromEntries(rows.map(([, key]) => [key, slope(key)])) };
 }
 
-// The framework-dependent publishes' bytes per category (attribute.py's), the repository-only files apart.
+// The framework-dependent publishes' bytes per category (attribute.py's).
 export function frameworkDependentTable(builds) {
   const names = Object.keys(builds);
   if (!names.length) return "";
@@ -267,8 +256,8 @@ export function frameworkDependentTable(builds) {
     "### Framework-dependent publishes", "",
     `| Category | ${names.join(" | ")} |`, `| --- | ${names.map(() => "---:").join(" | ")} |`,
     ...categories.map(category => `| ${category} | ${names.map(name => sum(name, file => file.category === category)).join(" | ")} |`),
-    `| **counted** (without XML docs, PDBs and BridgeCodegen) | ${names.map(name => sum(name, file => !repositoryOnly(file.path))).join(" | ")} |`,
-    `| another OS (exempt files included) | ${names.map(name => sum(name, file => otherOsFiles([file]).length > 0)).join(" | ")} |`,
+    `| **total** | ${names.map(name => sum(name, () => true)).join(" | ")} |`,
+    `| another OS | ${names.map(name => sum(name, file => otherOsFiles([file]).length > 0)).join(" | ")} |`,
     "", `${rid}, Release, \`--self-contained false\`, K = 0; publish seconds: ${names.map(name => `${name} ${builds[name].publishSeconds}`).join(", ")}.`,
   ];
   return `${lines.join("\n")}\n`;
@@ -325,7 +314,7 @@ function publishFrameworkDependent(name, keep) {
   const files = folderFiles(directory).map(file => ({ ...file, category: category(file.path, assembly, file.native !== null) }));
   if (!keep) rmSync(directory, { recursive: true, force: true });
   const build = { files, publishSeconds: Math.round(milliseconds / 100) / 10 };
-  console.log(`  ${folderBytes(files)} bytes without repository-only files, ${folderBytes(otherOsFiles(files))} of another OS (${build.publishSeconds} s)`);
+  console.log(`  ${folderBytes(files)} bytes, ${folderBytes(otherOsFiles(files))} of another OS (${build.publishSeconds} s)`);
   return build;
 }
 

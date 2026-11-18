@@ -29,12 +29,20 @@
 # still to fetch. The install then runs without network access. A stopped attempt's
 # apt-get or dpkg is killed and its locks released before the next one.
 #
-# Usage: apt-install.sh [--no-install-recommends] <package>...
+# Usage: apt-install.sh [--resolve] [--no-install-recommends] <package>...
 # APT_ARCHIVES, if set, is the directory for downloaded .deb files, so a cache can
 # restore and save them (.github/actions/apt-install). APT_ETC (default /etc/apt)
 # lets eng/ci/apt-install.test.mjs run the script against a stubbed apt-get and curl.
+#
+# --resolve only runs apt-get update and prints a 16-character hash of the archive
+# file names (name_version_arch.deb) the packages need from a cold archive cache, or
+# nothing when apt cannot tell; the action puts it in its cache key (#1131), so a new
+# package version gets a new entry. A later install with APT_UPDATED=true reuses
+# those indexes and skips its first apt-get update.
 set -euo pipefail
 dir=$(cd "$(dirname "$0")" && pwd)
+resolve=false
+if [ "${1:-}" = --resolve ]; then resolve=true; shift; fi
 options=()
 if [ "${1:-}" = --no-install-recommends ]; then options=(--no-install-recommends); shift; fi
 packages=("$@")
@@ -291,6 +299,26 @@ failure_summary() {
   esac
 }
 
+# The archive names come from an empty directory, so archives restored or downloaded
+# earlier in the job (another call of the action) do not change the hash.
+if [ "$resolve" = true ]; then
+  if ! "$dir/retry.sh" 1 120 "${apt[@]}" update >&2; then
+    echo "::warning::apt-get update failed; the package versions are unresolved" >&2
+    exit 0
+  fi
+  mkdir -p "$originals/empty/partial"
+  if ! "$dir/retry.sh" 1 120 sudo DEBIAN_FRONTEND=noninteractive apt-get -o "Dir::Cache::Archives=$originals/empty/" \
+    install --yes --download-only --print-uris -qq ${options[@]+"${options[@]}"} "${packages[@]}" >"$originals/uris"; then
+    echo "::warning::apt-get could not list the archives; the package versions are unresolved" >&2
+    exit 0
+  fi
+  names=$(awk -F"'" 'NF >= 3 { split($3, f, " "); print f[1] }' "$originals/uris" | sort -u)
+  hash=$(printf '%s\n' "$names" | sha256sum | cut -c1-16)
+  echo "Package versions $hash: $(grep -c . <<<"$names" || true) archives, $(megabytes "$(awk -F"'" 'NF >= 3 { split($3, f, " "); s += f[2] } END { printf "%d\n", s }' "$originals/uris")") not on the image" >&2
+  echo "$hash"
+  exit 0
+fi
+
 echo "Ubuntu mirrors: $(mirrors); package archives: $archives ($(find "$archives" -maxdepth 1 -name '*.deb' | wc -l) cached)"
 init_mirrors
 if [ -n "$mode" ]; then
@@ -307,7 +335,8 @@ for ((attempt = 1; attempt <= max_attempts; attempt++)); do
   begun=$SECONDS
   stopped='' fetched=0 need=''
   : >"$log"
-  if "$dir/retry.sh" 1 120 "${apt[@]}" update 2>&1 | tee -a "$log"; then
+  # The action's resolve step has just updated the indexes for the first attempt.
+  if { [ "$attempt" = 1 ] && [ "${APT_UPDATED:-}" = true ]; } || "$dir/retry.sh" 1 120 "${apt[@]}" update 2>&1 | tee -a "$log"; then
     need=$(needed_bytes)
     # Once, before the first download: order the mirrors by a measured sample.
     if [ "$probed" = false ] && [ -n "$mode" ] && [ "${need:-0}" -gt 0 ] && [ "${#hosts[@]}" -gt 1 ]; then

@@ -46,11 +46,19 @@ internal sealed partial class CodegenDiagnosticsTests
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
             ArgumentList = { generator, "--list-diagnostics" },
         })!;
-        var output = process.StandardOutput.ReadToEndAsync();
-        var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
-        var list = await output.ConfigureAwait(false);
-        Require(process.ExitCode == 0, $"--list-diagnostics failed: {await error.ConfigureAwait(false)}");
+        string list;
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
+            list = await output.ConfigureAwait(false);
+            Require(process.ExitCode == 0, $"--list-diagnostics failed: {await error.ConfigureAwait(false)}");
+        }
+        finally
+        {
+            await StopProcessTreeAsync(process).ConfigureAwait(false);
+        }
         var committed = File.ReadAllText(Path.Combine(root, "docs", "runicbridge-diagnostics.json")).ReplaceLineEndings("\n");
         Require(list == committed, "docs/runicbridge-diagnostics.json is stale. Run: dotnet run --project "
             + "tools/Runic.Application.Views.Codegen -- --list-diagnostics docs/runicbridge-diagnostics.json\n" + list);

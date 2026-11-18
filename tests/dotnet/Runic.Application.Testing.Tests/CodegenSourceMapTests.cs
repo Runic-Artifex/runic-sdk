@@ -259,10 +259,17 @@ internal sealed partial class CodegenDiagnosticsTests
         process.StartInfo.Environment["RUNIC_BRIDGE_CODEGEN_CACHE"] = cache ? "1" : "0";
         process.StartInfo.Environment.Remove("RUNIC_BRIDGE_CODEGEN_FORCE");
         process.Start();
-        var output = process.StandardOutput.ReadToEndAsync();
-        var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
-        return (process.ExitCode, await output.ConfigureAwait(false) + await error.ConfigureAwait(false));
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
+            return (process.ExitCode, await output.ConfigureAwait(false) + await error.ConfigureAwait(false));
+        }
+        finally
+        {
+            await StopProcessTreeAsync(process).ConfigureAwait(false);
+        }
     }
 
     private static bool At(JsonElement entry, string file, int line, int? column) =>

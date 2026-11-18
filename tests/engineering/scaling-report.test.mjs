@@ -76,10 +76,9 @@ test("the managed report and the NativeAOT size budgets each take their own entr
   expect(Object.keys(suiteCases(budgets, "aot-size")).sort()).toEqual(Object.keys(metrics).sort());
   for (const [name, entry] of Object.entries(suiteCases(budgets, "aot-size"))) {
     expect(entry.limit, name).toBeNumber();
-    // #901 is fixed (A1-b): no aot/ entry is a known cost any more. The one fdd/ known cost exempts the files of
-    // sdk#1151 by name.
-    if (name === "fdd/desktop/other-os-bytes") expect(entry.issue).toBe("sdk#1151");
-    else expect(entry.known, name).toBeUndefined();
+    // #901 is fixed (A1-b) and sdk#1151 too: no aot/ or fdd/ entry is a known cost, and none exempts a file.
+    expect(entry.known, name).toBeUndefined();
+    expect(entry.exempt, name).toBeUndefined();
   }
   // FDD-6 (fdd-size-0.22.md §7.2): no file of another OS in a linux-x64 framework-dependent publish, and each folder
   // at its measurement plus 2 % with the bytes per file that name a regression.
@@ -87,7 +86,6 @@ test("the managed report and the NativeAOT size budgets each take their own entr
     expect(budgets[name].limit, name).toBe(0);
     expect(budgets[name].margin, name).toBeUndefined();
   }
-  expect(budgets["fdd/desktop/other-os-bytes"].exempt).toEqual(["Runic.Platform.Windows.dll", "Runic.Platform.MacOS.dll"]);
   for (const name of ["fdd/folder-bytes", "fdd/desktop/folder-bytes"]) {
     const entry = budgets[name];
     expect(entry.class, name).toBe("total");
@@ -198,11 +196,11 @@ test("the framework-dependent publish's files are attributed as attribute.py doe
   expect(category("libwebui-2.so", "AotSize", true)).toBe("native");
   expect(category("Microsoft.Extensions.DependencyInjection.dll", "AotSize")).toBe("ms-extensions");
   expect(category("Tmds.DBus.Protocol.dll", "AotSize")).toBe("third-party");
-  // XML docs, PDBs and BridgeCodegen appear only in project-reference publishes (until FD5): not counted.
+  // FD5 keeps the XML docs, referenced projects' PDBs and BridgeCodegen out of project-reference publishes, so every
+  // file counts, as in a package consumer's publish; one that comes back makes the folder grow.
   expect(folderBytes([
-    { path: "AotSize.dll", bytes: 10 }, { path: "Runic.Views.xml", bytes: 100 }, { path: "AotSize.pdb", bytes: 1000 },
-    { path: "BridgeCodegen", bytes: 10000 }, { path: "BridgeCodegen.runtimeconfig.json", bytes: 20000 }, { path: "www/a.js", bytes: 5 },
-  ])).toBe(15);
+    { path: "AotSize.dll", bytes: 10 }, { path: "Runic.Views.xml", bytes: 100 }, { path: "AotSize.pdb", bytes: 1000 }, { path: "www/a.js", bytes: 5 },
+  ])).toBe(1115);
 });
 
 test("a linux-x64 framework-dependent publish counts the files that FD1 assigns to another OS", () => {
@@ -235,21 +233,17 @@ test("a framework-dependent metric that fails names the files behind it", () => 
   const failed = frameworkDependentCheck("fdd/desktop/other-os-bytes", otherOs, metrics["fdd/desktop/other-os-bytes"].files(build, otherOs));
   expect(failed.result.status).toBe("failed");
   expect(failed.failure).toBe("fdd/desktop/other-os-bytes is 2105088 at 0, over its limit 0. Files of another OS: Runic.Platform.Windows.dll (1945088 B), runtimes/win-x64/native/WebView2Loader.dll (160000 B).");
-  // The files that sdk#1151 explains are exempt by name; any other still fails.
-  const exempt = { ...otherOs, exempt: ["Runic.Platform.Windows.dll"] };
-  const loader = frameworkDependentCheck("fdd/desktop/other-os-bytes", exempt, metrics["fdd/desktop/other-os-bytes"].files(build, exempt));
-  expect(loader.failure).toContain("is 160000 at 0, over its limit 0. Files of another OS: runtimes/win-x64/native/WebView2Loader.dll (160000 B).");
   const none = frameworkDependentCheck("fdd/other-os-bytes", otherOs, []);
   expect(none.result.status).toBe("ok");
   expect(none.result.files).toBeUndefined();
   // A folder over its limit names the files that grew against the recorded bytes per file, new ones included, largest
-  // growth first; the XML doc is not counted.
+  // growth first: an XML doc that a publish carries again is named too.
   const folder = { class: "total", sizes: [0, 0], limit: 3600000, margin: 0.02, files: { "Runic.Platform.Windows.dll": 1945088, "Runic.Desktop.dll": 1500000 } };
   const grown = frameworkDependentCheck("fdd/desktop/folder-bytes", folder, metrics["fdd/desktop/folder-bytes"].files(build, folder));
-  expect(grown.result.values).toEqual([3705088, 3705088]);
-  expect(grown.failure).toBe("fdd/desktop/folder-bytes is 3705088 at 0, over its limit 3600000. Files that grew: runtimes/win-x64/native/WebView2Loader.dll new, 160000 B, Runic.Desktop.dll 1500000 → 1600000 B (+100000).");
-  expect(grown.result.files["Runic.Views.xml"]).toBeUndefined();
-  expect(frameworkDependentCheck("fdd/desktop/folder-bytes", { ...folder, limit: 3800000 }, metrics["fdd/desktop/folder-bytes"].files(build, folder)).result.status).toBe("ok");
+  expect(grown.result.values).toEqual([4705087, 4705087]);
+  expect(grown.failure).toBe("fdd/desktop/folder-bytes is 4705087 at 0, over its limit 3600000. Files that grew: Runic.Views.xml new, 999999 B, runtimes/win-x64/native/WebView2Loader.dll new, 160000 B, Runic.Desktop.dll 1500000 → 1600000 B (+100000).");
+  expect(grown.result.files["Runic.Views.xml"]).toBe(999999);
+  expect(frameworkDependentCheck("fdd/desktop/folder-bytes", { ...folder, limit: 4800000 }, metrics["fdd/desktop/folder-bytes"].files(build, folder)).result.status).toBe("ok");
   // --update records instead of failing.
   expect(frameworkDependentCheck("fdd/desktop/folder-bytes", folder, metrics["fdd/desktop/folder-bytes"].files(build, folder), true).failure).toBeNull();
 });

@@ -467,7 +467,8 @@ stubbed `sudo`, `apt-get` and `curl`. It covers:
 - a stalled mirror;
 - plain sources;
 - `ports.ubuntu.com`;
-- the budget.
+- the budget;
+- `--resolve`'s hash of the package versions, and the install reusing its indexes.
 
 Every workflow step installs through `.github/actions/apt-install` (the native job's
 WebView prerequisites, GNOME Keyring and gio, the Desktop template runtimes, Orca,
@@ -477,10 +478,23 @@ on a direct call of the script. The action caches the downloaded `.deb` archives
 the install (`defer-save`, then `save-now`) rather than at the end of the job, so a later
 failure in the job no longer discards a slow download; other branches only restore. It
 does not save after an exact hit or when every package was already on the image. The key
-is `apt-<Ubuntu release>-<arch>-<hash of the package list>[-norecommends]-<runner image version>`;
-a new runner image restores the previous image's archives by prefix, and apt downloads
-only the versions that changed. `apt-get autoclean` removes archives the current indexes
-no longer offer before the cache is saved. `--no-install-recommends` as the script's first
+is `apt-<Ubuntu release>-<arch>-<hash of the package list>[-norecommends]-<runner image version>-<package versions>`.
+
+The last part is a 16-character hash of the archive file names (`name_version_arch.deb`)
+the packages need (#1131). Without it, an entry was never saved again once its key
+existed, so a newly published package version (webkitgtk 2.52.6 and mesa in November
+2026, 50–125 MB per job) was downloaded on every run until the runner image changed. The
+action's first step, `apt-install.sh --resolve`, runs `apt-get update` and lists the
+archives with `apt-get install --download-only --print-uris` against an empty archive
+directory, so archives restored earlier in the job do not change the hash. The cache is
+restored after it; the install's first attempt reuses those indexes (`APT_UPDATED`)
+instead of updating again, so the extra cost is the listing. A new package version
+therefore gets a new entry. The restore falls back to the same image's latest entry, then
+to any image's, and apt downloads only the versions that changed. When the versions
+cannot be resolved (`apt-get update` fails), the key ends in `unresolved`, the
+install updates the indexes itself and nothing is saved. `apt-get autoclean` removes
+archives the current indexes no longer offer before the cache is saved, so each entry
+holds one package-version set and superseded archives do not accumulate. `--no-install-recommends` as the script's first
 argument, or `install-recommends: "false"` for the action, leaves out recommended packages.
 
 No workflow step runs `apt-get` directly. `.github/actions/install-browser` does not use

@@ -1,7 +1,8 @@
 name: Install Ubuntu packages
 description: >-
   Install Ubuntu packages with eng/ci/apt-install.sh, reusing the downloaded .deb archives
-  from a dependency cache keyed by Ubuntu release, architecture, package list and runner image.
+  from a dependency cache keyed by Ubuntu release, architecture, package list, runner image and
+  the resolved package versions.
   On main the archives are saved as soon as the packages are installed, so a later failure in
   the job does not discard a slow download.
 inputs:
@@ -34,19 +35,38 @@ runs:
           echo "prefix=apt-$ID-$VERSION_ID-$RUNNER_ARCH-$list-"
           echo "image=${ImageVersion:-local}"
         } >> "$GITHUB_OUTPUT"
+    # #1131: apt-get update before the restore, so the key names the archive versions the
+    # packages need; a new package version gets a new entry instead of being downloaded on
+    # every run. The install reuses these indexes. Unresolved versions are not saved.
+    - name: Resolve the package versions
+      id: resolve
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        RECOMMENDS: ${{ inputs.install-recommends }}
+      run: |
+        options=()
+        if [ "$RECOMMENDS" = false ]; then options=(--no-install-recommends); fi
+        # shellcheck disable=SC2086 # one package per word
+        versions=$(eng/ci/apt-install.sh --resolve ${options[@]+"${options[@]}"} $PACKAGES)
+        echo "versions=$versions" >> "$GITHUB_OUTPUT"
     # The cache holds the archives only: apt's lock and its partial downloads are root's.
+    # An entry for the same image, then any image, restores the archives that did not change.
     - uses: ./.github/actions/dependency-cache
       id: cache
       with:
         path: /var/cache/runic-apt/*.deb
-        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}
-        restore-keys: ${{ steps.apt.outputs.prefix }}
+        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}-${{ steps.resolve.outputs.versions || 'unresolved' }}
+        restore-keys: |
+          ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}-
+          ${{ steps.apt.outputs.prefix }}
         defer-save: "true"
     - name: Install ${{ inputs.packages }}
       id: install
       shell: bash
       env:
         APT_ARCHIVES: ${{ steps.apt.outputs.archives }}
+        APT_UPDATED: ${{ steps.resolve.outputs.versions != '' }}
         PACKAGES: ${{ inputs.packages }}
         RECOMMENDS: ${{ inputs.install-recommends }}
       run: |
@@ -56,11 +76,11 @@ runs:
         eng/ci/apt-install.sh ${options[@]+"${options[@]}"} $PACKAGES
         echo "archives=$(find "$APT_ARCHIVES" -maxdepth 1 -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
     # Saved right after the install rather than at the end of the job (main only, by the
-    # dependency cache). An exact hit already holds this key, and a job whose packages were
-    # all on the image has nothing to save.
+    # dependency cache). An exact hit already holds this key, a job whose packages were
+    # all on the image has nothing to save, and unresolved versions have no key of their own.
     - uses: ./.github/actions/dependency-cache
-      if: steps.cache.outputs.cache-hit != 'true' && steps.install.outputs.archives != '0'
+      if: steps.cache.outputs.cache-hit != 'true' && steps.install.outputs.archives != '0' && steps.resolve.outputs.versions != ''
       with:
         path: /var/cache/runic-apt/*.deb
-        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}
+        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}-${{ steps.resolve.outputs.versions || 'unresolved' }}
         save-now: "true"

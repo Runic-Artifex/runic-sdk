@@ -35,6 +35,9 @@
     so their evaluation sees the final values.
   -->
   <PropertyGroup>
+    <!-- The repository's Directory.Build.targets imports this file into its executables, except those that import it
+         themselves. -->
+    <_RunicPlatformTargetsImported>true</_RunicPlatformTargetsImported>
     <RunicPrivilegedActionsClassName Condition="'$(RunicPrivilegedActionsClassName)' == ''">PrivilegedActions</RunicPrivilegedActionsClassName>
     <RunicPrivilegedActionsNamespace Condition="'$(RunicPrivilegedActionsNamespace)' == ''">$(RootNamespace)</RunicPrivilegedActionsNamespace>
     <!-- Property names a platform package generates in another part of the partial class; an action's Name cannot use them. -->
@@ -388,10 +391,48 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
     </ItemGroup>
   </Target>
 
+  <!-- The same selection for project references (sdk#1151), which the one above does not see: an application built
+       inside the runic-sdk repository reaches the Runic.Platform providers through ProjectReference items, whose files
+       (the assembly, its PDB and XML doc) are ReferenceCopyLocalPaths items. They are matched by assembly name, the
+       providers' package IDs. The build output keeps them; only the publish leaves them out, below.
+       ResolveAssemblyReferences runs after ResolvePackageAssets, so the selection above has run. -->
+  <Target Name="_RunicSelectPublishPlatformReferences" AfterTargets="ResolveAssemblyReferences"
+          Condition="'$(_RunicPublishPlatformPackages)' != ''">
+    <ItemGroup>
+      <_RunicOtherPlatformReference Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.ReferenceSourceTarget)' == 'ProjectReference' and $(_RunicPublishPlatformPackages.Contains(';%(ReferenceCopyLocalPaths.Filename);'))" />
+      <_RunicOtherPlatformReferencePath Include="@(ReferencePath)" Condition="'%(ReferencePath.ReferenceSourceTarget)' == 'ProjectReference' and $(_RunicPublishPlatformPackages.Contains(';%(ReferencePath.Filename);'))" />
+      <_RunicOtherPlatformDependencyPath Include="@(ReferenceDependencyPaths)" Condition="'%(ReferenceDependencyPaths.ReferenceSourceTarget)' == 'ProjectReference' and $(_RunicPublishPlatformPackages.Contains(';%(ReferenceDependencyPaths.Filename);'))" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_RunicRemovePublishPlatformReferences" AfterTargets="_ComputeResolvedCopyLocalPublishAssets"
+          Condition="'@(_RunicOtherPlatformReference)' != ''">
+    <ItemGroup>
+      <_ResolvedCopyLocalPublishAssets Remove="@(_RunicOtherPlatformReference)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The publish's own deps.json is written from ReferencePath and ReferenceDependencyPaths, which list the project
+       references' assemblies; they are left out while it is written, and restored after it. -->
+  <Target Name="_RunicHidePublishPlatformReferences" BeforeTargets="GeneratePublishDependencyFile"
+          Condition="'@(_RunicOtherPlatformReferencePath)@(_RunicOtherPlatformDependencyPath)' != ''">
+    <ItemGroup>
+      <ReferencePath Remove="@(_RunicOtherPlatformReferencePath)" />
+      <ReferenceDependencyPaths Remove="@(_RunicOtherPlatformDependencyPath)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="_RunicRestorePublishPlatformReferences" AfterTargets="GeneratePublishDependencyFile"
+          Condition="'@(_RunicOtherPlatformReferencePath)@(_RunicOtherPlatformDependencyPath)' != ''">
+    <ItemGroup>
+      <ReferencePath Include="@(_RunicOtherPlatformReferencePath)" />
+      <ReferenceDependencyPaths Include="@(_RunicOtherPlatformDependencyPath)" />
+    </ItemGroup>
+  </Target>
+
   <!-- The build's deps.json lists every assembly, and the host refuses to start when one it lists is missing, so a
        publish that leaves any out writes its own deps.json, from the assets it copies (as for Publish="false"). -->
   <Target Name="_RunicPublishPlatformDependencyFile" AfterTargets="_ComputeUseBuildDependencyFile"
-          Condition="'@(_RunicOtherPlatformAsset)' != ''">
+          Condition="'@(_RunicOtherPlatformAsset)' != '' or '@(_RunicOtherPlatformReference)' != ''">
     <PropertyGroup>
       <_UseBuildDependencyFile>false</_UseBuildDependencyFile>
     </PropertyGroup>
@@ -402,7 +443,7 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
        RunicPublishAllPlatformAssemblies changed) writes it again instead of reusing one that lists missing files. -->
   <Target Name="_RunicPublishPlatformDependencyFileInputs" BeforeTargets="_GeneratePublishDependencyFileInputCache">
     <PropertyGroup>
-      <_RunicPlatformAssembliesLeftOut>@(_RunicOtherPlatformAsset->'%(NuGetPackageId)', ',')</_RunicPlatformAssembliesLeftOut>
+      <_RunicPlatformAssembliesLeftOut>@(_RunicOtherPlatformAsset->'%(NuGetPackageId)', ',');@(_RunicOtherPlatformReference->'%(Filename)%(Extension)', ',')</_RunicPlatformAssembliesLeftOut>
     </PropertyGroup>
     <ItemGroup>
       <_GeneratePublishDependencyFilePropertyInputsCacheToHash Include="RunicPlatformAssembliesLeftOut=$(_RunicPlatformAssembliesLeftOut)" />
