@@ -484,11 +484,23 @@ public sealed class BridgeInteractionRouter : IDisposable
     {
         if (targets.Count == 0) return;
         var dispatcher = BridgeDispatcher.For(_transport);
-        foreach (var group in targets.Where(target => target.ConnectionKey is not null).GroupBy(target => target.Route, StringComparer.Ordinal))
+        // The targets with a connection by route, routes in the order of their first target.
+        List<List<ViewRequestTarget>> groups = [];
+        Dictionary<string, List<ViewRequestTarget>> byRoute = new(StringComparer.Ordinal);
+        foreach (var target in targets)
+        {
+            if (target.ConnectionKey is null) continue;
+            if (!byRoute.TryGetValue(target.Route, out var group))
+            {
+                byRoute.Add(target.Route, group = []);
+                groups.Add(group);
+            }
+            group.Add(target);
+        }
+        foreach (var routeTargets in groups)
         {
             // A released route has no state to show the request with.
-            if (dispatcher.FindRoute(group.Key) is not IBridgeViewRequestRoute route) continue;
-            var routeTargets = group.ToArray();
+            if (dispatcher.FindRoute(routeTargets[0].Route) is not IBridgeViewRequestRoute route) continue;
             route.PublishForViewRequest(revision =>
             {
                 if (revision is not { } published) return;
@@ -1015,12 +1027,36 @@ public sealed class BridgeInteractionRouter : IDisposable
     private sealed class ViewRequestRegistration(BridgeInteractionRouter owner, DefinitionKey key) : IDisposable
     { private BridgeInteractionRouter? _owner = owner; public void Dispose() => Interlocked.Exchange(ref _owner, null)?.RemoveViewRequest(key); }
     // A NextMounted request kept for the next presentation that registers it on one of the routes of Keys.
-    private sealed record KeptViewRequest(HashSet<DefinitionKey> Keys, string Name, string Contract, string InputJson,
-        string? ClientKey, string? ConnectionKey);
-    private sealed record UnattachedViewRequest(object? Input, long Sequence, string Route, string? ClientKey,
-        string? ConnectionKey, bool WindowScope);
-    private sealed record ViewRequestTarget(string Route, string PresentationId, string? ConnectionKey, string Name,
-        string Contract, string InputJson);
+    private sealed class KeptViewRequest(HashSet<DefinitionKey> keys, string name, string contract,
+        string inputJson, string? clientKey, string? connectionKey)
+    {
+        public HashSet<DefinitionKey> Keys { get; } = keys;
+        public string Name { get; } = name;
+        public string Contract { get; } = contract;
+        public string InputJson { get; } = inputJson;
+        public string? ClientKey { get; } = clientKey;
+        public string? ConnectionKey { get; } = connectionKey;
+    }
+    private sealed class UnattachedViewRequest(object? input, long sequence, string route,
+        string? clientKey, string? connectionKey, bool windowScope)
+    {
+        public object? Input { get; } = input;
+        public long Sequence { get; } = sequence;
+        public string Route { get; } = route;
+        public string? ClientKey { get; } = clientKey;
+        public string? ConnectionKey { get; } = connectionKey;
+        public bool WindowScope { get; } = windowScope;
+    }
+    private sealed class ViewRequestTarget(string route, string presentationId, string? connectionKey,
+        string name, string contract, string inputJson)
+    {
+        public string Route { get; } = route;
+        public string PresentationId { get; } = presentationId;
+        public string? ConnectionKey { get; } = connectionKey;
+        public string Name { get; } = name;
+        public string Contract { get; } = contract;
+        public string InputJson { get; } = inputJson;
+    }
     private sealed class Presentation(string route, string id, string? clientKey, string? connectionKey)
     {
         public string Route { get; } = route;
@@ -1067,8 +1103,19 @@ public sealed class BridgeInteractionRouter : IDisposable
             Interlocked.Exchange(ref _timeout, null)?.Dispose();
         }
     }
-    private sealed record Receipt(string RequestId, string Route, string PresentationId, long OwnerEpoch, string Name, string Contract, string? ConnectionKey, string? ClientKey, string ReplySignature)
+    private sealed class Receipt(string requestId, string route, string presentationId, long ownerEpoch,
+        string name, string contract, string? connectionKey, string? clientKey, string replySignature)
     {
+        public string RequestId { get; } = requestId;
+        public string Route { get; } = route;
+        public string PresentationId { get; } = presentationId;
+        public long OwnerEpoch { get; } = ownerEpoch;
+        public string Name { get; } = name;
+        public string Contract { get; } = contract;
+        public string? ConnectionKey { get; } = connectionKey;
+        public string? ClientKey { get; } = clientKey;
+        public string ReplySignature { get; } = replySignature;
+
         public Receipt(PendingRequest request, InteractionReply reply) : this(request.RequestId, request.Key.Route,
             request.PresentationId, request.OwnerEpoch, request.Key.Name, request.Key.Contract,
             request.ConnectionKey, request.ClientKey, Signature(reply)) { }
@@ -1084,7 +1131,11 @@ public sealed class BridgeInteractionRouter : IDisposable
     }
 
     private sealed record DefinitionKey(string Route, string Name, string Contract);
-    private sealed record HandlerIdentity(string Name, string Contract);
+    private sealed class HandlerIdentity(string name, string contract)
+    {
+        public string Name { get; } = name;
+        public string Contract { get; } = contract;
+    }
     private sealed record InteractionReply(string Kind, string RequestId, string Route, string PresentationId, long OwnerEpoch, string Name, string Contract, JsonElement? Output)
     {
         public string OutputSignature { get; init; } = "";

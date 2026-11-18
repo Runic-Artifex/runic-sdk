@@ -865,13 +865,12 @@ public sealed class WindowContentSession : IDisposable
     public void ReleaseConnection(string connectionKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionKey);
-        ContentAttachment[] attachments;
+        List<ContentAttachment> attachments;
         RootPresentations[] rootMounts;
         lock (_gate)
         {
             if (_disposed) return;
-            attachments = _activeEntries.Select(entry => entry.Attachment)
-                .OfType<ContentAttachment>().Concat(_dormantAttachments).ToArray();
+            attachments = AttachmentsLocked();
             rootMounts = [.. _rootPresentations.Values];
         }
         _interactions.ReleaseConnection(connectionKey);
@@ -903,10 +902,11 @@ public sealed class WindowContentSession : IDisposable
             if (!_entries.TryGetValue(viewModel, out var variants)) return;
             _entries.Remove(viewModel);
             forgetFields = viewModel is INotifyPropertyChanged;
-            foreach (var (owner, properties) in _slots.ToArray())
+            // Dictionary.Remove does not invalidate an enumeration of the same dictionary.
+            foreach (var (owner, properties) in _slots)
             {
-                foreach (var property in properties.Where(pair => variants.ContainsValue(pair.Value))
-                    .Select(pair => pair.Key).ToArray()) properties.Remove(property);
+                foreach (var (property, entry) in properties)
+                    if (variants.ContainsValue(entry)) properties.Remove(property);
                 if (properties.Count == 0) _slots.Remove(owner);
             }
             foreach (var entry in variants.Values)
@@ -930,7 +930,7 @@ public sealed class WindowContentSession : IDisposable
         // its routes are still bound, or a stale reference stays callable.
         lock (_gate)
         {
-            while (!_disposed && forgotten.Any(entry => entry.Detaching && !IsDetachingOnCurrentFlow(entry)))
+            while (!_disposed && forgotten.Exists(entry => entry.Detaching && !IsDetachingOnCurrentFlow(entry)))
                 Monitor.Wait(_gate);
         }
         // Do not hold the session gate while the provider detaches its
@@ -988,7 +988,7 @@ public sealed class WindowContentSession : IDisposable
                 foreach (var (owner, properties) in _slots)
                 {
                     if (owners.Contains(owner) || ReferenceEquals(owner, viewModel)) continue;
-                    if (properties.Values.Any(entry => variants.ContainsValue(entry)) && owners.Add(owner)) pending.Push(owner);
+                    if (PresentsAny(properties, variants) && owners.Add(owner)) pending.Push(owner);
                 }
             }
             return owners.Count == 0 ? [] : [.. owners];
@@ -998,7 +998,7 @@ public sealed class WindowContentSession : IDisposable
     /// <summary>Detaches all presented content, removes the window's routes and releases its model-context leases.</summary>
     public void Dispose()
     {
-        IDisposable[] attachments;
+        List<ContentAttachment> attachments;
         RootPresentations[] rootMounts;
         IDisposable[] links;
         // field-flush/1: no departure waits for this window's pages any more, nor for a flush already in progress.
@@ -1012,8 +1012,7 @@ public sealed class WindowContentSession : IDisposable
             if (_rootNavigation is { } rootNavigation) links = [rootNavigation, .. links];
             _rootNavigation = null;
             _disposalLinks.Clear();
-            attachments = _activeEntries.Select(entry => entry.Attachment).OfType<IDisposable>()
-                .Concat(_dormantAttachments).ToArray();
+            attachments = AttachmentsLocked();
             _activeEntries.Clear();
             _dormantAttachments.Clear();
             _entries = new();
@@ -1252,8 +1251,29 @@ public sealed class WindowContentSession : IDisposable
 
     private bool IsExecutingOnModelContext() => ModelContext?.IsExecuting == true;
 
-    private bool IsPresented(Entry entry) =>
-        _slots.Values.Any(properties => properties.Values.Any(value => ReferenceEquals(value, entry)));
+    private bool IsPresented(Entry entry)
+    {
+        foreach (var properties in _slots.Values)
+            if (properties.ContainsValue(entry)) return true;
+        return false;
+    }
+
+    private static bool PresentsAny(Dictionary<string, Entry> properties, Dictionary<string, Entry> variants)
+    {
+        foreach (var entry in properties.Values)
+            if (variants.ContainsValue(entry)) return true;
+        return false;
+    }
+
+    // The active entries' attachments, then the dormant ones. The gate is held.
+    private List<ContentAttachment> AttachmentsLocked()
+    {
+        List<ContentAttachment> attachments = [];
+        foreach (var entry in _activeEntries)
+            if (entry.Attachment is { } attachment) attachments.Add(attachment);
+        attachments.AddRange(_dormantAttachments);
+        return attachments;
+    }
 
     private void ClaimView(IRunicView view)
     {
@@ -1303,7 +1323,11 @@ public sealed class WindowContentSession : IDisposable
         }
     }
 
-    private sealed record DetachmentFrame(Entry Entry, DetachmentFrame? Previous);
+    private sealed class DetachmentFrame(Entry entry, DetachmentFrame? previous)
+    {
+        public Entry Entry { get; } = entry;
+        public DetachmentFrame? Previous { get; } = previous;
+    }
 
     private void RemoveRootPresentations(RootPresentations presentations)
     {
@@ -1701,7 +1725,11 @@ public sealed class WindowContentSession : IDisposable
             string Reason,
             IDisposable? Inner);
 
-        private sealed record MountOwner(string? ClientKey, string? ConnectionKey);
+        private sealed class MountOwner(string? clientKey, string? connectionKey)
+        {
+            public string? ClientKey { get; } = clientKey;
+            public string? ConnectionKey { get; } = connectionKey;
+        }
 
         // The route of a dormant attachment: close requests reach its presentations; every other request answers
         // released.
