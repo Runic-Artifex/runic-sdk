@@ -111,8 +111,10 @@ export function check(name, entry, values, updating = false) {
     if (large > upper) failure = `${name} grows faster than ${growth}: ${small} at ${sizes[0]}, ${large} at ${sizes[1]} (at most ${Math.round(upper * 100) / 100}).`;
     else if (factor > 1 && large < 0.5 * factor * small * (1 - margin)) notes.push(`grows slower than ${growth}`);
   }
+  // The limit is recorded from one measurement (plus the margin), so a metric with section-alignment noise may sit one
+  // alignment step above it on another build of the same code: the limit allows the same noise as the growth check.
   if (!failure && limit === undefined) failure = `${name} has no limit in budgets.json; run bun tests/scaling/aot-size/measure.mjs --update.`;
-  else if (!failure && large > limit) failure = `${name} is ${large} at ${sizes[1]}, over its limit ${limit}.`;
+  else if (!failure && large > limit + noise) failure = `${name} is ${large} at ${sizes[1]}, over its limit ${limit}${noise ? ` (+ ${noise} noise)` : ""}.`;
   else if (limit !== undefined && large < improvementShare * limit) notes.push(`below ${improvementShare * 100} % of its limit ${limit}`);
   const status = updating ? "recorded" : failure ? "failed" : notes.length ? "improved" : "ok";
   return {

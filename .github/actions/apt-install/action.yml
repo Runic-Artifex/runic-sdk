@@ -2,6 +2,8 @@ name: Install Ubuntu packages
 description: >-
   Install Ubuntu packages with eng/ci/apt-install.sh, reusing the downloaded .deb archives
   from a dependency cache keyed by Ubuntu release, architecture, package list and runner image.
+  On main the archives are saved as soon as the packages are installed, so a later failure in
+  the job does not discard a slow download.
 inputs:
   packages:
     description: Package names, separated by spaces
@@ -34,11 +36,14 @@ runs:
         } >> "$GITHUB_OUTPUT"
     # The cache holds the archives only: apt's lock and its partial downloads are root's.
     - uses: ./.github/actions/dependency-cache
+      id: cache
       with:
         path: /var/cache/runic-apt/*.deb
         key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}
         restore-keys: ${{ steps.apt.outputs.prefix }}
+        defer-save: "true"
     - name: Install ${{ inputs.packages }}
+      id: install
       shell: bash
       env:
         APT_ARCHIVES: ${{ steps.apt.outputs.archives }}
@@ -49,3 +54,13 @@ runs:
         if [ "$RECOMMENDS" = false ]; then options=(--no-install-recommends); fi
         # shellcheck disable=SC2086 # one package per word
         eng/ci/apt-install.sh ${options[@]+"${options[@]}"} $PACKAGES
+        echo "archives=$(find "$APT_ARCHIVES" -maxdepth 1 -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
+    # Saved right after the install rather than at the end of the job (main only, by the
+    # dependency cache). An exact hit already holds this key, and a job whose packages were
+    # all on the image has nothing to save.
+    - uses: ./.github/actions/dependency-cache
+      if: steps.cache.outputs.cache-hit != 'true' && steps.install.outputs.archives != '0'
+      with:
+        path: /var/cache/runic-apt/*.deb
+        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}
+        save-now: "true"

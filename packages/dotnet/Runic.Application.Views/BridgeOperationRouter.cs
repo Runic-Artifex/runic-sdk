@@ -379,7 +379,7 @@ internal readonly record struct BridgeOperationIdentity(string Contract, string 
 // small, while binding that identity to the command member and canonical input
 // at admission. Reusing a request ID for different work is a protocol error,
 // not a second idempotency namespace.
-internal readonly record struct BridgeOperationRequest(
+internal sealed record BridgeOperationRequest(
     BridgeOperationIdentity Identity,
     string Member,
     string InputDigest)
