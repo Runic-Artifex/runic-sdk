@@ -8,13 +8,39 @@ internal sealed class BridgeTableBuilder(string modelType)
 {
     private readonly List<string> _records = [];
 
+    // Inside DevelopmentOnly: the records are marked (their kind ends in ?) and the arms guarded.
+    private bool _developmentOnly;
+
     /// <summary>The ViewModel's C# type, which <c>vm</c> has in the arms.</summary>
     internal string ModelType => modelType;
+
+    /// <summary>
+    /// Until disposed, records and arms belong to a development-only member (<c>[RunicDevelopmentOnly]</c>, D072.13)
+    /// when <paramref name="developmentOnly"/> is true: the reader skips such a record, or makes its command unavailable,
+    /// when <c>RunicDevelopmentOnly.IsSupported</c> is off, and each arm first tests it, so that a trimmed or NativeAOT
+    /// publish, in which it is a constant, removes the arm's code and what only that code reaches.
+    /// </summary>
+    internal IDisposable DevelopmentOnly(bool developmentOnly)
+    {
+        var previous = _developmentOnly;
+        _developmentOnly |= developmentOnly;
+        return new Scope(() => _developmentOnly = previous);
+    }
+
+    private sealed class Scope(Action end) : IDisposable
+    {
+        public void Dispose() => end();
+    }
     private readonly Dictionary<string, List<(int Id, string Code)>> _arms = new(StringComparer.Ordinal);
 
     /// <summary>Adds a record; each field is escaped (<see cref="BridgeTableSupport.Field"/>).</summary>
-    internal void Record(params string[] fields) =>
-        _records.Add(string.Join(' ', fields.Select(BridgeTableSupport.Field)));
+    internal void Record(params string[] fields)
+    {
+        var escaped = fields.Select(BridgeTableSupport.Field).ToArray();
+        // A development-only record: its kind is followed by ?.
+        if (_developmentOnly) escaped[0] += "?";
+        _records.Add(string.Join(' ', escaped));
+    }
 
     /// <summary>An arm that returns <paramref name="expression"/>, awaited in an async operation.</summary>
     internal void Return(string operation, int id, string expression) =>
@@ -27,6 +53,7 @@ internal sealed class BridgeTableBuilder(string modelType)
     internal void Arm(string operation, int id, string code)
     {
         BridgeTableSupport.Find(operation);
+        if (_developmentOnly) code = $"if (!{BridgeTableSupport.IsSupported}) break;\n{code}";
         if (!_arms.TryGetValue(operation, out var arms)) _arms.Add(operation, arms = []);
         if (arms.Any(arm => arm.Id == id)) throw new InvalidOperationException($"{modelType}: two {operation} arms for id {id}.");
         arms.Add((id, code));

@@ -227,6 +227,12 @@ internal static class BridgeCommandSources
         command.GetCustomAttribute<RunicPresentationScopedAttribute>(true) is not null
         || SourceMethod(model, command)?.GetCustomAttribute<RunicPresentationScopedAttribute>(true) is not null;
 
+    // Whether a command is development-only (RunicDevelopmentOnlyAttribute): on the property or on its source method.
+    [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]
+    internal static bool IsDevelopmentOnly(Type model, PropertyInfo command) =>
+        command.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null
+        || SourceMethod(model, command)?.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null;
+
     // The methods named name that the ViewModel declares or inherits, most derived first, without the base
     // definitions of overrides.
     [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]

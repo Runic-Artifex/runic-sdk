@@ -1,0 +1,65 @@
+    // global::Runic.Application.Testing.Tests.DevelopmentTrace
+    internal static class DevelopmentTraceToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DevelopmentTrace value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("id"); RunicBridgeCodecs.Int32.Write(writer, value.Id);
+            writer.WritePropertyName("text"); RunicBridgeCodecs.String.Write(writer, value.Text);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.DevelopmentTrace Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.DevelopmentTrace is only written to the page.");
+        }
+    }
+
+    // global::System.Int32
+    internal static class Int32
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
+        {
+            writer.WriteNumberValue(value);
+        }
+
+        internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
+        }
+    }
+
+    // global::System.Collections.ObjectModel.ObservableCollection<global::Runic.Application.Testing.Tests.DevelopmentTrace>
+    internal static class ObservableCollectionOfDevelopmentTraceToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Collections.ObjectModel.ObservableCollection<global::Runic.Application.Testing.Tests.DevelopmentTrace> value)
+        {
+            writer.WriteStartArray();
+            foreach (var item in value) RunicBridgeCodecs.DevelopmentTraceToPage.Write(writer, item);
+            writer.WriteEndArray();
+        }
+
+        internal static global::System.Collections.ObjectModel.ObservableCollection<global::Runic.Application.Testing.Tests.DevelopmentTrace> Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Array) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an array.");
+            var items = new global::System.Collections.Generic.List<global::Runic.Application.Testing.Tests.DevelopmentTrace>(element.GetArrayLength());
+            foreach (var item in element.EnumerateArray()) items.Add(RunicBridgeCodecs.DevelopmentTraceToPage.Read(item));
+            return new global::System.Collections.ObjectModel.ObservableCollection<global::Runic.Application.Testing.Tests.DevelopmentTrace>(items);
+        }
+
+        internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => RunicBridgeCodecs.DevelopmentTraceToPage.Write(writer, (global::Runic.Application.Testing.Tests.DevelopmentTrace)value!);
+    }
+
+    // global::System.String
+    internal static class String
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }

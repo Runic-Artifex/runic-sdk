@@ -98,6 +98,7 @@ and severities are open.
 | [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator; the analyzer while you type | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator; the analyzer while you type | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
 | [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator; the analyzer while you type | A region collection's select or close client method collides with another client member |
+| [`RUNICBRIDGE072`](#runicbridge072) | Warning | Generator | A `[RunicDevelopmentOnly]` declaration on an interaction or view request has no effect |
 
 ### Errors and warnings while you type
 
@@ -948,6 +949,18 @@ method can collide.
 **Fix:** rename the region collection property or the other member, such as a
 `SelectDocuments` command beside a `Documents` region collection. See
 [Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
+
+### RUNICBRIDGE072
+
+A warning from the Bridge generator (since 0.22). `[RunicDevelopmentOnly]` is on
+a `ViewQuestion<TInput, TOutput>`, `ViewRequest<T>` or ReactiveUI interaction
+member. Only a ViewModel, a state property or a command can be
+development-only: a trimmed or NativeAOT publish leaves those out. The
+declaration has no effect, and the member stays in every publish.
+
+**Fix:** mark the whole ViewModel when the interaction belongs to a development
+tool, or remove the attribute. See
+[Development-only views and members](packaging.md#development-only-views-and-members).
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

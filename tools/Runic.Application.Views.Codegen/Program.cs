@@ -271,6 +271,13 @@ finally
 
 // A set… member exists because its C# property has a public setter, which is
 // what any MVVM View may write; name the setter the call runs.
+// D072.13: the TSDoc of development-only members ([RunicDevelopmentOnly]), which a trimmed or NativeAOT publish leaves out.
+const string DevelopmentOnlyStateNote = "Development-only (`[RunicDevelopmentOnly]`): absent in a trimmed or NativeAOT publish, which leaves it out.";
+const string DevelopmentOnlyCallNote = "Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish leaves the member out and rejects the call.";
+const string DevelopmentOnlyCommandNote = "Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish rejects it with a `BridgeError` of kind `rejected` and reason `unavailable`.";
+
+static string WithNote(string? documentation, string note) => string.IsNullOrWhiteSpace(documentation) ? note : documentation + "\n\n" + note;
+
 static string SetterDocumentation(PropertyInfo property)
 {
     var setter = $"Calls the public C# setter of `{property.DeclaringType!.Name.Split('`')[0]}.{property.Name}`.";
@@ -290,6 +297,13 @@ static string ViewFileName(Type view) => $"{view.FullName}.View.g.cs";
 const string BridgeNamespace = "Runic.Application.Views.Generated.Bridges";
 
 static string BridgeTypeName(Type model, string shortName) => $"global::{BridgeNamespace}.{shortName}Bridge";
+
+// D072.12: the construction of a development-only ViewModel's Bridge ([RunicDevelopmentOnly] on the ViewModel). A trimmed
+// or NativeAOT publish turns RunicDevelopmentOnly.IsSupported off, a constant there, so the Bridge and what only it
+// reaches are removed, and opening or presenting the ViewModel throws with its name.
+static string ConstructBridge(Type model, string construction) =>
+    model.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is null ? construction
+        : $"({BridgeTableSupport.IsSupported} ? {construction} : throw global::Runic.Application.Views.RunicDevelopmentOnly.Removed(typeof(global::{model.FullName})))";
 
 static void AppendNamespace(StringBuilder source, string? ns)
 {
@@ -560,9 +574,9 @@ static void GenerateViewPartial(string path, Type view, Type model, string short
     cs.AppendLine("    internal global::System.IDisposable AttachRunicBridge(");
     cs.AppendLine("        global::Runic.Application.Views.IBridgeTransport transport, string route,");
     cs.AppendLine("        global::Runic.Application.Views.WindowContentSession content) =>");
-    cs.AppendLine($"        new {BridgeTypeName(model, shortName)}(transport,");
-    cs.AppendLine($"            DataContext ?? throw new global::System.InvalidOperationException(\"{view.Name} has no DataContext.\"),");
-    cs.AppendLine("            route, content);");
+    cs.AppendLine("        " + ConstructBridge(model, $"new {BridgeTypeName(model, shortName)}(transport,\n"
+        + $"            DataContext ?? throw new global::System.InvalidOperationException(\"{view.Name} has no DataContext.\"),\n"
+        + "            route, content)") + ";");
     cs.AppendLine("}");
     WriteIfChanged(path, cs.ToString());
 }
@@ -609,10 +623,10 @@ static void GenerateCompositionRegistration(string path, string compositionType,
         if (!contentRequired.Contains(model))
         {
             cs.AppendLine($"        services.AddScoped<global::System.Func<global::Runic.Application.Views.IBridgeTransport, {modelType}, global::System.IDisposable>>(");
-            cs.AppendLine($"            _ => (transport, vm) => new {bridgeType}(transport, vm));");
+            cs.AppendLine($"            _ => (transport, vm) => {ConstructBridge(model, $"new {bridgeType}(transport, vm)")});");
         }
         cs.AppendLine($"        services.AddScoped<global::System.Func<global::Runic.Application.Views.IBridgeTransport, global::Runic.Application.Views.WindowContentSession, {modelType}, global::System.IDisposable>>(");
-        cs.AppendLine($"            _ => (transport, content, vm) => new {bridgeType}(transport, vm, content: content));");
+        cs.AppendLine($"            _ => (transport, content, vm) => {ConstructBridge(model, $"new {bridgeType}(transport, vm, content: content)")});");
     }
     cs.AppendLine("        return services;");
     cs.AppendLine("    }");
@@ -1048,6 +1062,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         && getter.GetBaseDefinition() == baseGetter.GetBaseDefinition() && getter != baseGetter);
     ApplyOperationRetirement(model, commands, commandPlans);
     ApplyOperationClose(model, commands, commandPlans);
+    // D072.13: a development-only state property or command ([RunicDevelopmentOnly]) is left out of a trimmed or NativeAOT
+    // publish; its table records and arms are marked, and the client describes it as possibly absent or unavailable.
+    // RUNICBRIDGE072 where the attribute has no effect: an interaction or view request has no such form.
+    bool DevelopmentOnly(PropertyInfo member) => commandPlans.ContainsKey(member)
+        ? BridgeCommandSources.IsDevelopmentOnly(model, member)
+        : member.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null;
+    foreach (var member in interactions.Select(plan => plan.Property).Concat(requests.Select(plan => plan.Property)))
+        if (member.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null)
+            Diagnostics.Warn(BridgeDiagnosticCodes.DevelopmentOnly,
+                $"{model.Name}.{member.Name}: RunicDevelopmentOnly applies to a ViewModel, a state property or a command, not to an interaction or view request; it has no effect here. Mark the ViewModel instead.", member);
     // Commands scoped to their presentation (presentation-epoch/1), by wire member: the client sends them with the
     // epoch of the state its presentation received.
     // RUNICBRIDGE034: like RunicCommandKey, RunicPresentationScoped belongs to a bridged command or its [RelayCommand]
@@ -1163,6 +1187,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // P records: every property, in order.
     foreach (var property in properties)
     {
+        using var developmentOnly = table.DevelopmentOnly(DevelopmentOnly(property));
         var id = propertyIds[property];
         var flags = new StringBuilder();
         // A setter reads the request's value with the member's codec. Observed members have none.
@@ -1211,6 +1236,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // C records: checked writes. A text setter of a text member that is not checked shares the SetValue arm.
     foreach (var property in checkedProperties)
     {
+        using var developmentOnly = table.DevelopmentOnly(DevelopmentOnly(property));
         var id = propertyIds[property];
         var type = valueProperties[property].RootCSharpType();
         table.Return("ReadValue", id, $"{property.Name}ValueCodec.Read(element)");
@@ -1222,13 +1248,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     foreach (var property in textMembers.Where(property => property.SetMethod?.IsPublic == true && !checkedProperties.Contains(property)
         && !textFields.Contains(property)))
+    {
+        using var developmentOnly = table.DevelopmentOnly(DevelopmentOnly(property));
         table.Do("SetValue", propertyIds[property], $"vm.{property.Name} = (string)value!");
+    }
     // K records: the commands, in order.
     for (var index = 0; index < commands.Length; index++)
+    {
+        using var developmentOnly = table.DevelopmentOnly(DevelopmentOnly(commands[index]));
         commandPlans[commands[index]].Describe(table, index, commands[index]);
+    }
     // L records: keyed collections.
     foreach (var (property, key) in incrementalCollections)
     {
+        using var developmentOnly = table.DevelopmentOnly(DevelopmentOnly(property));
         // Protocol 4: a frame is one publication unit with the collection's indexed changes and every member that
         // changed with them, validation included, so a ViewModel with validation publishes frames too.
         var id = propertyIds[property];
@@ -1250,7 +1283,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     // D records: the data members. A selection is observed through its descriptor; its members are not data.
     BridgeDataSubscriptionEmitter.AppendTable(table, valueProperties.Where(entry => !selectionSlots.Contains(entry.Key))
-        .Select(entry => (entry.Key, propertyIds[entry.Key], entry.Value)));
+        .Select(entry => (entry.Key, propertyIds[entry.Key], entry.Value)), DevelopmentOnly);
     if (presented)
     {
         // Interactions and view requests: their factories take typed delegates, so they stay code, created once per
@@ -1298,6 +1331,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // The state members in order (specs/application, "State and revisions"). Each writes its value; the runtime writes
     // the member names, and the revision and the checked fields' versions beside the state.
     var stateMembers = new List<(string Member, string Body)>();
+    // The state members of development-only properties and commands, by wire name.
+    var developmentOnlyState = new HashSet<string>(properties.Where(DevelopmentOnly)
+        .SelectMany(property => new[] { WireName(property), WireName(property) + "Errors" }), StringComparer.Ordinal);
     foreach (var property in properties)
     {
         var jsonName = WireName(property);
@@ -1330,9 +1366,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 writer.AppendLine($"        case {pageType} page:");
                 writer.AppendLine("        {");
                 if (selectedView is not null)
-                    writer.AppendLine($"            var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                    writer.AppendLine($"            var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => {ConstructBridge(pageModel, $"new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content)")}{contractArgument}));");
                 else
-                    writer.AppendLine($"            var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                    writer.AppendLine($"            var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => {ConstructBridge(pageModel, $"new {bridgeType}(transport, current, route, content)")});");
                 writer.AppendLine("            writer.WriteStartObject();");
                 writer.AppendLine("            writer.WriteString(\"kind\", reference.Kind);");
                 writer.AppendLine("            writer.WriteString(\"id\", reference.Id);");
@@ -1383,9 +1419,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 writer.AppendLine($"        case {pageType} page:");
                 writer.AppendLine("        {");
                 if (selectedView is not null)
-                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => {ConstructBridge(pageModel, $"new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content)")}{contractArgument}));");
                 else
-                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => {ConstructBridge(pageModel, $"new {bridgeType}(transport, current, route, content)")});");
                 writer.AppendLine("            active.Add(reference.Id);");
                 writer.AppendLine("            writer.WriteStartObject();");
                 writer.AppendLine("            writer.WriteString(\"kind\", reference.Kind);");
@@ -1437,9 +1473,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 writer.AppendLine($"        case {pageType} page:");
                 writer.AppendLine("        {");
                 if (selectedView is not null)
-                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => {ConstructBridge(pageModel, $"new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content)")}{contractArgument}));");
                 else
-                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => {ConstructBridge(pageModel, $"new {bridgeType}(transport, current, route, content)")});");
                 writer.AppendLine("            active.Add(reference.Id);");
                 writer.AppendLine("            writer.WriteStartObject();");
                 writer.AppendLine("            writer.WriteString(\"kind\", reference.Kind);");
@@ -1493,6 +1529,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             : plan.HasArgument ? [] : [MvvmCommand.CanExecute(command, name)];
         foreach (var (member, value) in members)
         {
+            if (DevelopmentOnly(command)) developmentOnlyState.Add(member);
             stateMembers.Add((member, $"writer.WriteBooleanValue({value})"));
             BridgeSourceMap.RecordCommandState(model, member, command);
         }
@@ -1502,6 +1539,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     for (var slot = 0; slot < stateMembers.Count; slot++)
     {
         var (member, writer) = stateMembers[slot];
+        using var developmentOnly = table.DevelopmentOnly(developmentOnlyState.Contains(member));
         table.Record("S", member, Id(slot));
         if (!writer.Contains('\n')) table.Do("WriteState", slot, writer);
         else table.Arm("WriteState", slot, (writer.Contains("content", StringComparison.Ordinal) ? "var content = session!;\n" : "") + writer.TrimEnd('\n') + "\nreturn;");
@@ -1592,31 +1630,37 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var stateDocumentation = XmlDocumentation.Summary(property);
         if (valueProperties.TryGetValue(property, out var documentedGraph))
             stateDocumentation = BridgeTypeGraph.WithTypeScriptNote(stateDocumentation, documentedGraph.Root);
+        // D072.13: a development-only member is optional in every configuration, because a publish may leave it out.
+        var optional = DevelopmentOnly(property) ? "?" : "";
+        if (DevelopmentOnly(property)) stateDocumentation = WithNote(stateDocumentation, DevelopmentOnlyStateNote);
         XmlDocumentation.Append(dts, "  ", stateDocumentation);
-        dts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property)))}");
-        if (hasErrors) dts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property) + "Errors"))}");
+        dts.AppendLine($"  readonly {TsPropertyName(WireName(property))}{optional}: {propertyType};{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property)))}");
+        if (hasErrors) dts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}{optional}: readonly string[];{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property) + "Errors"))}");
         var referencedPages = contentProperties.GetValueOrDefault(property) ?? regionCollections.GetValueOrDefault(property)
             ?? contentCollections.GetValueOrDefault(property) ?? [];
-        Shared(property, "state", "state", $"readonly {TsPropertyName(WireName(property))}: {propertyType};", stateDocumentation,
+        Shared(property, "state", "state", $"readonly {TsPropertyName(WireName(property))}{optional}: {propertyType};", stateDocumentation,
             imports: [.. referencedPages.Select(page => (LowerFirst(page.Name),
                 $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))]);
         if (hasErrors)
-            Shared(property, "state-errors", "state", $"readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];", optional: true);
+            Shared(property, "state-errors", "state", $"readonly {TsPropertyName(WireName(property) + "Errors")}{optional}: readonly string[];", optional: true);
     }
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
+        var optional = DevelopmentOnly(command) ? "?" : "";
         if (!plan.HasArgument)
         {
             var canState = $"can{command.Name[..^"Command".Length]}";
-            dts.AppendLine($"  readonly {canState}: boolean;{Mapped(BridgeSourceMap.CommandState, canState, canState)}");
-            Shared(command, "can-state", "state", $"readonly can{command.Name[..^"Command".Length]}: boolean;");
+            if (DevelopmentOnly(command)) XmlDocumentation.Append(dts, "  ", DevelopmentOnlyStateNote);
+            dts.AppendLine($"  readonly {canState}{optional}: boolean;{Mapped(BridgeSourceMap.CommandState, canState, canState)}");
+            Shared(command, "can-state", "state", $"readonly can{command.Name[..^"Command".Length]}{optional}: boolean;");
         }
         if (plan.HasExecutionState)
         {
             var executingState = $"is{command.Name[..^"Command".Length]}Executing";
-            dts.AppendLine($"  readonly {executingState}: boolean;{Mapped(BridgeSourceMap.CommandState, executingState, executingState)}");
-            Shared(command, "executing-state", "state", $"readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
+            if (DevelopmentOnly(command)) XmlDocumentation.Append(dts, "  ", DevelopmentOnlyStateNote);
+            dts.AppendLine($"  readonly {executingState}{optional}: boolean;{Mapped(BridgeSourceMap.CommandState, executingState, executingState)}");
+            Shared(command, "executing-state", "state", $"readonly is{command.Name[..^"Command".Length]}Executing{optional}: boolean;");
         }
     }
     dts.AppendLine("}");
@@ -1666,14 +1710,15 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         Shared(property, "upload", "client", UploadDeclaration, UploadDocumentation);
     foreach (var property in properties.Where(PageSettable))
     {
-        XmlDocumentation.Append(dts, "  ", SetterDocumentation(property));
+        XmlDocumentation.Append(dts, "  ", DevelopmentOnly(property) ? WithNote(SetterDocumentation(property), DevelopmentOnlyCallNote) : SetterDocumentation(property));
         dts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;{Mapped(BridgeSourceMap.Setter, WireName(property), $"set{property.Name}")}");
         Shared(property, "setter", "client", $"set{property.Name}(value: {TsPropertyType(property)}): Promise<{SharedClients.Owner}State>;");
     }
     foreach (var property in checkedProperties)
     {
-        XmlDocumentation.Append(dts, "  ", XmlDocumentation.Summary(property)
-            ?? $"Writes `{property.ReflectedType?.Name}.{property.Name}` with an acknowledged field write, which reports whether .NET committed it.");
+        var writeDocumentation = XmlDocumentation.Summary(property)
+            ?? $"Writes `{property.ReflectedType?.Name}.{property.Name}` with an acknowledged field write, which reports whether .NET committed it.";
+        XmlDocumentation.Append(dts, "  ", DevelopmentOnly(property) ? WithNote(writeDocumentation, DevelopmentOnlyCallNote) : writeDocumentation);
         dts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: {Ref("FieldWriteOptions")}<{TsPropertyType(property)}>): Promise<{Ref("FieldWriteReceipt")}<{TsPropertyType(property)}>>;{Mapped(BridgeSourceMap.Setter, WireName(property), $"write{property.Name}")}");
     }
     if (needsCheckedWriter)
@@ -1696,6 +1741,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         // A RunicCommandKey command (#472) sends the key; .NET resolves it to the command's parameter.
         var unresolved = plan.Key is null ? null
             : $"Rejects with a `BridgeError` of kind `rejected` and reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.";
+        if (DevelopmentOnly(command)) unresolved = WithNote(unresolved, DevelopmentOnlyCommandNote);
         XmlDocumentation.Append(dts, "  ", unresolved is null ? documentation
             : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved);
         var reply = plan.FailureGraph is { } declaredFailure
@@ -1709,6 +1755,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             comparable: $"{LowerFirst(command.Name[..^"Command".Length])}({comparableInput}): Promise<{reply}>;");
         var availabilityDocumentation = plan.Key is null ? null
             : $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.";
+        if (DevelopmentOnly(command) && plan.HasArgument)
+            availabilityDocumentation = WithNote(availabilityDocumentation, "Development-only (`[RunicDevelopmentOnly]`): false in a trimmed or NativeAOT publish, which leaves the command out.");
         XmlDocumentation.Append(dts, "  ", availabilityDocumentation);
         if (plan.HasArgument)
         {
@@ -1736,6 +1784,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         dts.AppendLine($"   * the default is a random id. A start with a request id that .NET already admitted returns that operation.");
         if (plan.Key is not null)
             dts.AppendLine($"   * A new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.");
+        if (DevelopmentOnly(command))
+            dts.AppendLine($"   * Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish rejects it with reason `unavailable`.");
         dts.AppendLine($"   */");
         dts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;{Mapped(BridgeSourceMap.Command, LowerFirst(operationName), $"start{operationName}")}");
         dts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
@@ -1823,6 +1873,15 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var name = command.Name[..^"Command".Length];
         if (!plan.HasArgument) memberDecoders.Add(($"can{name}", "bridgeWire.boolean(wire)"));
         if (plan.HasExecutionState) memberDecoders.Add(($"is{name}Executing", "bridgeWire.boolean(wire)"));
+    }
+    // D072.13: a development-only member may be absent from the state.
+    foreach (var index in Enumerable.Range(0, memberDecoders.Count)
+        .Where(index => developmentOnlyState.Contains(memberDecoders[index].Member)).ToArray())
+    {
+        var (member, decoder) = memberDecoders[index];
+        memberDecoders[index] = (member, blockDecoders.Contains(member)
+            ? $"{{ if (wire === undefined) return undefined; {decoder[2..]}"
+            : $"wire === undefined ? undefined : {BridgeTypeGraph.ArrowBody(decoder)}");
     }
     if (hasContent)
     {
@@ -1952,6 +2011,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
     ts.AppendLine("  });");
     ts.AppendLine("}");
+    // The field descriptors ({View}Fields). A development-only member (D072.13) has none: a publish may leave it out,
+    // and a field binds a member that the state always has.
+    var fieldProperties = checkedProperties.Where(property => !DevelopmentOnly(property)).ToArray();
+    var rowFieldPaths = rowPaths.Where(entry => entry.Value.Count > 0 && !DevelopmentOnly(entry.Key)).ToArray();
     AppendFieldDescriptors();
 
     var body = ts.ToString();
@@ -1964,8 +2027,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     publicImports.Add("type " + Import("BridgeConnectOptions"));
     publicImports.Add("type " + Import("ViewClient"));
     if (sharedClients.Count > 0) publicImports.Add("type " + Import("sharedPageReferences"));
-    if (needsCheckedWriter || hasFieldPaths) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt"), "type " + Import("BridgeField")]);
-    if (rowPaths.Values.Any(leaves => leaves.Count > 0)) publicImports.Add("type " + Import("BridgeRowFields"));
+    if (needsCheckedWriter || hasFieldPaths) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt")]);
+    if (fieldProperties.Length > 0 || rowFieldPaths.Length > 0) publicImports.Add("type " + Import("BridgeField"));
+    if (rowFieldPaths.Length > 0) publicImports.Add("type " + Import("BridgeRowFields"));
     if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type " + Import("BridgeOutcome"));
     if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type " + Import("BridgeOperation"));
     if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
@@ -1985,9 +2049,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
     if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
     if (regionCollections.Count > 0) runtimeImports.Add(Import("regionCollection"));
-    if (hasValidation && needsCheckedWriter) { runtimeImports.Add(Import("fieldErrors")); runtimeImports.Add(Import("fieldValidating")); }
-    if (hasFieldPaths) { runtimeImports.Add(Import("fieldPath")); runtimeImports.Add("type " + Import("BridgeFieldWriteRequest")); }
-    if (rowPaths.Values.Any(leaves => leaves.Count > 0)) runtimeImports.Add(Import("rowFields"));
+    if (hasValidation && fieldProperties.Length > 0) { runtimeImports.Add(Import("fieldErrors")); runtimeImports.Add(Import("fieldValidating")); }
+    if (hasFieldPaths) runtimeImports.Add("type " + Import("BridgeFieldWriteRequest"));
+    if (fieldProperties.Any(nestedPaths.ContainsKey) || rowFieldPaths.Length > 0) runtimeImports.Add(Import("fieldPath"));
+    if (rowFieldPaths.Length > 0) runtimeImports.Add(Import("rowFields"));
     if (usesUploads) runtimeImports.Add(Import("upload"));
     // <view>.ts imports what its own code uses and re-exports the contract's types, so imports from it keep working;
     // the contract imports what its declarations use.
@@ -2119,18 +2184,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // createFieldController bind an input to. Every such member is a checked field, so each has its checked write.
     void AppendFieldDescriptors()
     {
-        if (checkedProperties.Length == 0 && rowPaths.Count == 0) return;
+        if (fieldProperties.Length == 0 && rowFieldPaths.Length == 0) return;
         ts.AppendLine();
         XmlDocumentation.Append(ts, "", $"Descriptors of the {shortName} ViewModel's settable members, for `useField`, `injectField` and\n`createFieldController`."
             + (hasFieldPaths ? "\nFields below a member (`address.street`) and the cells of editable rows (`lines.at(key).quantity`) are\nchecked fields too (field-paths/1)." : ""));
         ts.AppendLine($"export const {shortName}Fields: {{");
-        foreach (var property in checkedProperties)
+        foreach (var property in fieldProperties)
             ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeField")}<{clientName}, {shortName}State, {TsPropertyType(property)}>"
                 + (nestedPaths.TryGetValue(property, out var nested) ? " & " + LeafTypes(nested, []) : "") + ";");
-        foreach (var (property, leaves) in rowPaths.Where(entry => entry.Value.Count > 0))
+        foreach (var (property, leaves) in rowFieldPaths)
             ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeRowFields")}<{LeafTypes(leaves, [])}>;");
         ts.AppendLine("} = {");
-        foreach (var property in checkedProperties)
+        foreach (var property in fieldProperties)
         {
             var wire = WireName(property);
             var name = JsonSerializer.Serialize(wire);
@@ -2152,7 +2217,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     ts.AppendLine("    " + line);
             ts.AppendLine("  },");
         }
-        foreach (var (property, leaves) in rowPaths.Where(entry => entry.Value.Count > 0))
+        foreach (var (property, leaves) in rowFieldPaths)
         {
             var wire = WireName(property);
             var graph = valueProperties[property];
@@ -2753,6 +2818,8 @@ static class BridgeDiagnosticCodes
     internal const string RegionCollection = "RUNICBRIDGE070";
     /// <summary>A region collection's generated select or close method collides with another client member.</summary>
     internal const string RegionCollectionName = "RUNICBRIDGE071";
+    /// <summary>A [RunicDevelopmentOnly] declaration has no effect: it is on an interaction or view request.</summary>
+    internal const string DevelopmentOnly = "RUNICBRIDGE072";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2806,6 +2873,7 @@ static class BridgeDiagnosticCodes
         (Blob, "error", "A RunicBlob is read from the page: a command input, an interaction result or a checked field"),
         (RegionCollection, "error", "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"),
         (RegionCollectionName, "error", "A region collection's select or close client method collides with another client member"),
+        (DevelopmentOnly, "warning", "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

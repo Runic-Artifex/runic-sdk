@@ -122,6 +122,11 @@ export interface DataShapeText {
   readonly text: string;
 }
 
+export interface DevelopmentTrace {
+  readonly id: number;
+  readonly text: string;
+}
+
 /** A documented item. */
 export interface DocumentedItem {
   /** The item's `title`. */

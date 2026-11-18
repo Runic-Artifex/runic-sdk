@@ -42,6 +42,9 @@ test("defineCollections names keyed collections and text fields, and validates t
   both.validate("title", 7);
   assert.throws(() => both.validate("rows", [{ id: 1, label: "one" }, { id: 1, label: "again" }]), /unique/);
   assert.throws(() => both.validate("rows", {}), /not an array/);
+  // A development-only collection or text field that a publish left out is absent ([RunicDevelopmentOnly]).
+  both.validate("rows", undefined);
+  defineCollections({ log: defineText() }).validate("log", undefined);
   assert.throws(() => defineCollections({ log: defineText() }).validate("log", null), /not a string/);
   assert.throws(() => both.apply("rows", [], { field: "rows", kind: "text", length: 0, trim: 0, text: "x" }, false), /text change/);
   assert.equal(both.apply("log", "abc", { field: "log", kind: "text", length: 3, trim: 1, text: "d" }, false), "bcd");

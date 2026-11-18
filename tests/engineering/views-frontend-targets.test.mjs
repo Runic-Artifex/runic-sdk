@@ -485,6 +485,28 @@ test("only a trimmed or NativeAOT publish turns the development server fallback 
   }
 });
 
+// Development-only views and members (D072.12/D072.13): like the fallback above, only a trimmed or NativeAOT publish
+// turns them off, and RunicDevelopmentOnlyViews=true keeps them in every publish.
+test("only a trimmed or NativeAOT publish leaves development-only views out, unless RunicDevelopmentOnlyViews is true", () => {
+  const developmentOnly = (app, publish) => {
+    const result = spawnSync("dotnet", ["msbuild", join(app.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+      ...(publish ? ["-t:PrepareForILLink"] : []), "-getItem:RuntimeHostConfigurationOption"], { cwd: app.project, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return (JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [])
+      .filter(option => option.Identity === "Runic.Application.Views.DevelopmentOnlyViews")
+      .map(option => ({ value: option.Value, trim: option.Trim }));
+  };
+  for (const [index, property] of ["", "<PublishAot>true</PublishAot>", "<PublishTrimmed>true</PublishTrimmed>"].entries()) {
+    const app = fixture(`development-only-${index}`, { name: "app", private: true },
+      `  <PropertyGroup>${property}</PropertyGroup>\n  <Target Name="PrepareForILLink" />`);
+    assert.deepEqual(developmentOnly(app, false), [], `A build left development-only views out (${property || "no property"}).`);
+    assert.deepEqual(developmentOnly(app, true), [{ value: "false", trim: "true" }], property);
+  }
+  const kept = fixture("development-only-kept", { name: "app", private: true },
+    "  <PropertyGroup><PublishAot>true</PublishAot><RunicDevelopmentOnlyViews>true</RunicDevelopmentOnlyViews></PropertyGroup>\n  <Target Name=\"PrepareForILLink\" />");
+  assert.deepEqual(developmentOnly(kept, true), [], "RunicDevelopmentOnlyViews=true did not keep them in a publish.");
+});
+
 const builds = result => result.commands.filter(command => command === "build").length;
 const lastHost = ({ project }) => readFileSync(join(project, "host.log"), "utf8").trim().split("\n").at(-1);
 const files = root => existsSync(root)

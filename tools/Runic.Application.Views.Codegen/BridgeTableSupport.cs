@@ -18,6 +18,9 @@ internal static class BridgeTableSupport
     internal const string MembersClass = "RunicBridgeMembers";
     internal const string TableClass = "RunicBridgeTable";
 
+    /// <summary>Whether development-only views and members are in this application (D072.12, D072.13).</summary>
+    internal const string IsSupported = "global::Runic.Application.Views.RunicDevelopmentOnly.IsSupported";
+
     private const string Json = "global::System.Text.Json.JsonElement";
     private const string Writer = "global::System.Text.Json.Utf8JsonWriter";
     private const string Generated = "global::Runic.Application.Views.Generated";
@@ -159,7 +162,46 @@ internal static class BridgeTableSupport
             //                                Y a dictionary (Enumerate, EnumerateValidation), T path-transparent, V validation
             //                                property (ValidationProperty)
             // Ids index the properties (P, C, L, D's property), state members (S), commands (K) and data members (D's id).
+            // A record whose kind ends in ? (P?, K?, ...) is a development-only member's ([RunicDevelopmentOnly]): without
+            // RunicDevelopmentOnly.IsSupported, which a trimmed or NativeAOT publish turns off, its members and state are
+            // absent and its command is unavailable.
             internal sealed class RunicBridgeTable
+            {
+                private readonly RunicBridgeMembers _members;
+                private readonly global::System.Collections.Generic.List<string[]> _records = [];
+                private RunicBridgeDescriptors? _withDevelopmentOnly;
+                private RunicBridgeDescriptors? _withoutDevelopmentOnly;
+
+                internal RunicBridgeTable(RunicBridgeMembers members, global::System.ReadOnlySpan<byte> table)
+                {
+                    _members = members;
+                    foreach (var line in global::System.Text.Encoding.UTF8.GetString(table).Split('\n', global::System.StringSplitOptions.RemoveEmptyEntries | global::System.StringSplitOptions.TrimEntries))
+                    {
+                        var f = line.Split(' ');
+                        for (var index = 0; index < f.Length; index++) f[index] = RunicBridgeDescriptors.Unescape(f[index]);
+                        _records.Add(f);
+                    }
+                }
+
+                // The descriptors with the development-only members or without them, created on first use. A publish's
+                // switch is a constant, so it creates one set; a process that sets the switch before it opens a window
+                // gets the matching set.
+                private RunicBridgeDescriptors Current => global::Runic.Application.Views.RunicDevelopmentOnly.IsSupported
+                    ? _withDevelopmentOnly ??= new(_members, _records, developmentOnly: true)
+                    : _withoutDevelopmentOnly ??= new(_members, _records, developmentOnly: false);
+
+                internal global::Runic.Application.Views.Generated.PropertyDescriptor[] Properties => Current.Properties;
+                internal global::Runic.Application.Views.Generated.CheckedPropertyDescriptor[] Checked => Current.Checked;
+                internal global::Runic.Application.Views.Generated.CommandDescriptor[] Commands => Current.Commands;
+                internal global::Runic.Application.Views.Generated.BridgeCollectionDescriptor[] Collections => Current.Collections;
+                internal global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] Data => Current.Data;
+                internal global::Runic.Application.Views.Generated.BridgeStateMember[] State => Current.State;
+                internal global::Runic.Application.Views.Generated.BridgeStateMember[] CreateState(global::Runic.Application.Views.WindowContentSession? session) =>
+                    Current.CreateState(session);
+            }
+
+            // One ViewModel's descriptors, with or without its development-only members.
+            internal sealed class RunicBridgeDescriptors
             {
                 private static readonly global::System.Func<global::Runic.Application.Views.Generated.BridgeOperationStream> CreateStream =
                     static () => new global::Runic.Application.Views.Generated.BridgeOperationStream();
@@ -168,11 +210,14 @@ internal static class BridgeTableSupport
                     static value => (global::System.Collections.IEnumerable)value;
                 private static readonly global::System.Func<object, global::System.Collections.Generic.IEnumerable<global::Runic.Application.Views.Generated.BridgeValidationChild>> EnumerateListValidation =
                     static value => global::Runic.Application.Views.Generated.BridgeValidation.EnumerateIndexed((global::System.Collections.IEnumerable)value);
+                // A development-only command that this publish leaves out.
+                private static readonly object RemovedCommand = new();
 
                 private readonly RunicBridgeMembers _members;
                 private readonly global::System.Collections.Generic.List<(string Name, int Id)> _state = [];
 
-                internal RunicBridgeTable(RunicBridgeMembers members, global::System.ReadOnlySpan<byte> table)
+                internal RunicBridgeDescriptors(RunicBridgeMembers members, global::System.Collections.Generic.IReadOnlyList<string[]> records,
+                    bool developmentOnly)
                 {
                     _members = members;
                     var properties = new global::System.Collections.Generic.List<global::Runic.Application.Views.Generated.PropertyDescriptor>();
@@ -183,10 +228,18 @@ internal static class BridgeTableSupport
                     // One slot per property and per command, shared by its records.
                     var propertySlots = new global::System.Collections.Generic.Dictionary<int, RunicBridgeSlot>();
                     var commandSlots = new global::System.Collections.Generic.Dictionary<int, RunicBridgeSlot>();
-                    foreach (var line in global::System.Text.Encoding.UTF8.GetString(table).Split('\n', global::System.StringSplitOptions.RemoveEmptyEntries | global::System.StringSplitOptions.TrimEntries))
+                    foreach (var record in records)
                     {
-                        var f = line.Split(' ');
-                        for (var index = 0; index < f.Length; index++) f[index] = Unescape(f[index]);
+                        var f = (string[])record.Clone();
+                        if (f[0].EndsWith('?'))
+                        {
+                            f[0] = f[0][..^1];
+                            if (!developmentOnly)
+                            {
+                                if (f[0] == "K") commands.Add(Unavailable(f));
+                                continue;
+                            }
+                        }
                         switch (f[0])
                         {
                             case "P":
@@ -262,7 +315,7 @@ internal static class BridgeTableSupport
                                 data.Add(f);
                                 break;
                             default:
-                                throw new global::System.FormatException($"Unknown Bridge table record '{line}'.");
+                                throw new global::System.FormatException($"Unknown Bridge table record '{string.Join(' ', f)}'.");
                         }
                     }
                     Properties = [.. properties];
@@ -314,6 +367,39 @@ internal static class BridgeTableSupport
                     return members.Count == 0 ? null : [.. members];
                 }
 
+                // A development-only command that this publish left out: it keeps its name and shape, so that every call
+                // reaches the runtime's availability check, which rejects it as unavailable. Nothing of the command runs.
+                private static global::Runic.Application.Views.Generated.CommandDescriptor Unavailable(string[] f)
+                {
+                    var flags = f[4];
+                    global::System.Threading.Tasks.Task<global::Runic.Application.Views.Generated.BridgeOperationResult> Never() =>
+                        global::System.Threading.Tasks.Task.FromException<global::Runic.Application.Views.Generated.BridgeOperationResult>(
+                            new global::System.InvalidOperationException($"{f[1]} is development-only and left out of this publish."));
+                    return new(f[1], static _ => RemovedCommand)
+                    {
+                        WireName = f[2],
+                        CanExecute = static (_, _) => false,
+                        ExecuteAsync = Has(flags, 'E') ? (_, _, _) => Never() : null,
+                        ExecuteResultAsync = Has(flags, 'R') ? (_, _, _) => Never() : null,
+                        CreateStream = Has(flags, 'M') ? CreateStream : null,
+                        ExecuteStreamAsync = Has(flags, 'M') ? (_, _, _, _) => Never() : null,
+                        ReadInput = Has(flags, 'I') ? static _ => null : null,
+                        EncodeArgument = Has(flags, 'A') ? static _ => "null" : null,
+                        Subscribe = Has(flags, 'U') ? static (_, _) => NoSubscription.Instance : null,
+                        ObserveFailures = Has(flags, 'O') ? static (_, _) => NoSubscription.Instance : null,
+                        ResolveArgument = Has(flags, 'K') ? static (_, key) => key : null,
+                        ResolveArgumentAsync = Has(flags, 'Y') ? static (_, key, _) => global::System.Threading.Tasks.ValueTask.FromResult(key) : null,
+                        Retirement = f[5] == "-" ? default : (global::Runic.Application.Views.RunicOperationRetirement)Id(f[5]),
+                        Close = f[6] == "-" ? default : (global::Runic.Application.Views.RunicOperationClose)Id(f[6]),
+                    };
+                }
+
+                private sealed class NoSubscription : global::System.IDisposable
+                {
+                    internal static readonly NoSubscription Instance = new();
+                    public void Dispose() { }
+                }
+
                 private RunicBridgeSlot Slot(global::System.Collections.Generic.Dictionary<int, RunicBridgeSlot> slots, int id)
                 {
                     if (!slots.TryGetValue(id, out var slot)) slots.Add(id, slot = new(_members, id));
@@ -324,7 +410,7 @@ internal static class BridgeTableSupport
 
                 private static int Id(string field) => int.Parse(field, global::System.Globalization.CultureInfo.InvariantCulture);
 
-                private static string Unescape(string field)
+                internal static string Unescape(string field)
                 {
                     if (!field.Contains('\\')) return field;
                     var result = new global::System.Text.StringBuilder(field.Length);
