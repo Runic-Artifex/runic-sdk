@@ -1,8 +1,8 @@
 // The scaling suite's report (tests/scaling/README.md): turns artifacts/scaling/results.json into a Markdown table of
 // every metric, with the known costs, the improvements and every budget that changed against a base revision.
 //   bun tests/scaling/report.mjs [--base <revision>] [--require-all]
-// It reports the managed suite. The NativeAOT size budgets (aot/…) are a suite of their own, which
-// aot-size/measure.mjs measures and reports with the same functions.
+// It reports the managed suite. The size budgets (NativeAOT aot/… and framework-dependent fdd/…) are a suite of their
+// own, which aot-size/measure.mjs measures and reports with the same functions.
 // --base compares tests/scaling/budgets.json with that revision's (fetched when the checkout does not have it).
 // --require-all fails when a budget entry has no result, so that an entry without a case is found. The report goes to
 // standard output and, in GitHub Actions, to the job summary.
@@ -15,9 +15,10 @@ const root = resolve(fileURLToPath(import.meta.url), "../../..");
 export const budgetsPath = "tests/scaling/budgets.json";
 export const resultsPath = resolve(root, "artifacts/scaling/results.json");
 
-// The suites that share budgets.json: the NativeAOT size budgets are named aot/…, the managed suite's are the others.
+// The suites that share budgets.json: the size budgets are named aot/… (NativeAOT) and fdd/… (framework-dependent),
+// the managed suite's are the others.
 export const suites = ["managed", "aot-size"];
-export const suiteOf = name => name.startsWith("aot/") ? "aot-size" : "managed";
+export const suiteOf = name => /^(aot|fdd)\//.test(name) ? "aot-size" : "managed";
 export const suiteCases = (cases, suite) => Object.fromEntries(Object.entries(cases).filter(([name]) => suiteOf(name) === suite));
 
 const cell = value => value === undefined || value === null ? "" : String(value).replaceAll("|", "\\|");
