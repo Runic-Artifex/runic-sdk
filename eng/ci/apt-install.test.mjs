@@ -1,6 +1,7 @@
-// eng/ci/apt-install.sh against a stubbed sudo and apt-get (eng/ci/README.md, "Ubuntu packages"): a slow mirror that
-// keeps delivering finishes, a stalled one is stopped and the next attempt prefers another official mirror, and the
-// download budget bounds the whole phase. Nothing here runs the real apt-get or sudo.
+// eng/ci/apt-install.sh against a stubbed sudo, apt-get and curl (eng/ci/README.md, "Ubuntu packages"): the probe
+// orders the mirrors by measured rate, an attempt below the rate floor or without progress moves to the next mirror, a
+// slow last mirror that keeps delivering finishes, and the download budget bounds the whole phase. Nothing here runs
+// the real apt-get, sudo or curl.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,6 +11,27 @@ import { resolve } from 'node:path';
 import { root } from '../run.mjs';
 
 const stubs = {
+  // The probe: answers a ranged GET at the host's rate in FAKE_PROBES ("host=bytes-per-second" or "host=fail"; an
+  // unlisted host fails), stopping at --max-time as curl does.
+  curl: `#!/usr/bin/env bash
+range= limit= url=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --range) range=$2; shift 2 ;;
+    --max-time) limit=$2; shift 2 ;;
+    --output|--write-out) shift 2 ;;
+    -*) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+host=\${url#*://}; host=\${host%%/*}
+echo "$host" >>"$FAKE_STATE/probes"
+rate=fail
+for entry in $FAKE_PROBES; do if [ "\${entry%%=*}" = "$host" ]; then rate=\${entry#*=}; fi; done
+if [ "$rate" = fail ]; then printf '000 0 0.000000'; exit 7; fi
+awk -v size=$(( \${range#*-} - \${range%-*} + 1 )) -v rate="$rate" -v limit="$limit" 'BEGIN {
+  t = size / rate; if (t > limit) { printf "206 %d %f", rate * limit, limit; exit 28 } printf "206 %d %f", size, t }'
+`,
   sudo: '#!/usr/bin/env bash\nexec env "$@"\n',
   dpkg: '#!/usr/bin/env bash\nexit 0\n',
   // Signals only the stubbed apt-get of this test.
@@ -88,6 +110,7 @@ const run = (setup, env) => {
       status: result.status, output: result.stdout + result.stderr,
       list: read(resolve(etc, 'apt-mirrors.txt')), sources: read(resolve(etc, 'sources.list.d/ubuntu.sources')),
       mirrors: read(resolve(state, 'mirrors')).trim().split('\n'),
+      probes: read(resolve(state, 'probes')).trim().split('\n').filter(Boolean),
       size: (() => { try { return statSync(archive).size; } catch { return 0; } })(),
     };
   } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -102,44 +125,96 @@ const mirrorList = etc => {
 const plainSources = etc => writeFileSync(resolve(etc, 'sources.list.d/ubuntu.sources'),
   'Types: deb\nURIs: http://us-east-2.ec2.archive.ubuntu.com/ubuntu/\nSuites: noble noble-updates\n\nTypes: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\n');
 
-test('apt-install keeps a slow mirror that makes progress beyond the stall window', { skip: process.platform === 'win32' }, () => {
-  // 150 kB at 25 kB/s takes 6 seconds, twice the stall window.
-  const result = run(mirrorList, { FAKE_SIZE: '150000', FAKE_RATES: 'us-east-2.ec2.archive.ubuntu.com=25000', APT_DOWNLOAD_SECONDS: '60' });
+const linux = { skip: process.platform === 'win32' };
+const us = 'us-east-2.ec2.archive.ubuntu.com';
+const azure = 'azure.archive.ubuntu.com';
+
+// #1129: the EC2 mirror delivered about 100 kB/s while the Azure one delivered 3-8 MB/s; the probe picks the fast one.
+test('apt-install probes the mirrors and downloads from the fastest', linux, () => {
+  const result = run(mirrorList, {
+    FAKE_SIZE: '300000', FAKE_PROBES: `${us}=100000 ${azure}=5000000 archive.ubuntu.com=3000000`,
+    FAKE_RATES: `${us}=20000 ${azure}=400000 archive.ubuntu.com=400000`, APT_DOWNLOAD_SECONDS: '60',
+  });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(result.size, 300000);
+  // One probe per candidate: the runner's three mirrors and the added Azure mirror.
+  assert.deepEqual(result.probes.sort(), ['archive.ubuntu.com', azure, 'security.ubuntu.com', us]);
+  assert.match(result.output, /Mirror probe \(0\.3 MB of pkg\.deb\): us-east-2\.ec2\.archive\.ubuntu\.com 100 kB\/s, archive\.ubuntu\.com 3000 kB\/s, security\.ubuntu\.com failed, azure\.archive\.ubuntu\.com 5000 kB\/s/);
+  assert.equal(result.list, `http://${azure}/ubuntu/\tpriority:1\nhttp://archive.ubuntu.com/ubuntu/\tpriority:2\nhttp://${us}/ubuntu/\tpriority:3\nhttp://security.ubuntu.com/ubuntu/\tpriority:4\n`);
+  assert.match(result.output, /Attempt 1 of up to 5 via azure\.archive\.ubuntu\.com,archive\.ubuntu\.com,us-east-2\.ec2\.archive\.ubuntu\.com,security\.ubuntu\.com: 0\.3 MB to fetch/);
+  assert.match(result.output, /Downloaded 0\.3 MB in \d+s \(\d+ kB\/s\) via azure/);
+  assert.doesNotMatch(result.output, /::warning::/);
+});
+
+test('apt-install moves on from a mirror below the rate floor and resumes on the next', linux, () => {
+  // The EC2 mirror answers the probe fast but serves the download at 20 kB/s, below the 100 kB/s floor.
+  const result = run(mirrorList, {
+    FAKE_SIZE: '300000', FAKE_PROBES: `${us}=5000000 ${azure}=1000000`,
+    FAKE_RATES: `${us}=20000 ${azure}=400000`, APT_DOWNLOAD_SECONDS: '60', APT_RATE_FLOOR: '100000', APT_RATE_WINDOW: '2',
+  });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(result.size, 300000);
+  assert.match(result.output, /Attempt 1 of up to 5 via us-east-2/);
+  assert.match(result.output, /::warning::\d+ kB\/s after \d+s is below the floor of 100 kB\/s; stopping apt-get to try the next mirror/);
+  assert.match(result.output, /failed on attempt 1 via us-east-2[^:]*: fetched 0\.\d MB in \d+s \(\d+ kB\/s\), 0\.\d MB still to fetch/);
+  // The probe-failed official hosts stay behind the slow but working EC2 mirror.
+  assert.match(result.output, /Next attempt prefers azure\.archive\.ubuntu\.com: azure\.archive\.ubuntu\.com,us-east-2\.ec2\.archive\.ubuntu\.com,archive\.ubuntu\.com,security\.ubuntu\.com/);
+  assert.match(result.output, /Downloaded 0\.\d MB in \d+s \(\d+ kB\/s\) via azure/);
+  assert.deepEqual([...new Set(result.mirrors)], [us, azure]);
+});
+
+test('apt-install keeps a slow last mirror that makes progress beyond the stall window', linux, () => {
+  // No probe answers, so no mirror is known to be faster and the rate floor stays off. 150 kB at 25 kB/s takes 6
+  // seconds, twice the stall window.
+  const result = run(mirrorList, { FAKE_SIZE: '150000', FAKE_RATES: `${us}=25000`, APT_DOWNLOAD_SECONDS: '60', APT_RATE_WINDOW: '2' });
   assert.equal(result.status, 0, result.output);
   assert.equal(result.size, 150000);
-  assert.match(result.output, /Attempt 1 of up to 5 via us-east-2\.ec2\.archive\.ubuntu\.com,archive\.ubuntu\.com,security\.ubuntu\.com: 0\.1 MB to fetch/);
+  assert.match(result.output, /Mirror probe \(0\.1 MB of pkg\.deb\): (\S+ failed(, )?){4}/);
+  assert.match(result.output, /Attempt 1 of up to 5 via us-east-2\.ec2\.archive\.ubuntu\.com,archive\.ubuntu\.com,security\.ubuntu\.com,azure\.archive\.ubuntu\.com: 0\.1 MB to fetch/);
   assert.match(result.output, /Downloaded 0\.1 MB in \d+s \(\d+ kB\/s\) via us-east-2/);
   assert.doesNotMatch(result.output, /::warning::/);
 });
 
-test('apt-install stops a stalled mirror and the next attempt prefers another official mirror', { skip: process.platform === 'win32' }, () => {
+test('apt-install stops a stalled mirror and the next attempt prefers another official mirror', linux, () => {
   const result = run(mirrorList, {
-    FAKE_SIZE: '100000', FAKE_RATES: 'us-east-2.ec2.archive.ubuntu.com=stall archive.ubuntu.com=200000', APT_DOWNLOAD_SECONDS: '60',
+    FAKE_SIZE: '100000', FAKE_RATES: `${us}=stall archive.ubuntu.com=200000`, APT_DOWNLOAD_SECONDS: '60',
   });
   assert.equal(result.status, 0, result.output);
   assert.equal(result.size, 100000);
   assert.match(result.output, /::warning::No download progress for 3s; stopping apt-get/);
   assert.match(result.output, /failed on attempt 1 via us-east-2[^:]*: fetched 0\.0 MB in \d+s \(\d+ kB\/s\), 0\.1 MB still to fetch/);
-  assert.match(result.output, /Next attempt prefers archive\.ubuntu\.com: archive\.ubuntu\.com,security\.ubuntu\.com,us-east-2\.ec2\.archive\.ubuntu\.com/);
-  assert.equal(result.list, 'http://archive.ubuntu.com/ubuntu/\tpriority:1\nhttp://security.ubuntu.com/ubuntu/\tpriority:2\nhttp://us-east-2.ec2.archive.ubuntu.com/ubuntu/\tpriority:3\n');
+  assert.match(result.output, /Next attempt prefers archive\.ubuntu\.com: archive\.ubuntu\.com,security\.ubuntu\.com,azure\.archive\.ubuntu\.com,us-east-2\.ec2\.archive\.ubuntu\.com/);
+  assert.equal(result.list, `http://archive.ubuntu.com/ubuntu/\tpriority:1\nhttp://security.ubuntu.com/ubuntu/\tpriority:2\nhttp://${azure}/ubuntu/\tpriority:3\nhttp://${us}/ubuntu/\tpriority:4\n`);
   // The second attempt resumed the 1000 bytes the stalled one left in partial/.
   assert.match(result.output, /Attempt 2 of up to 5 via archive\.ubuntu\.com[^:]*: 0\.1 MB to fetch/);
   assert.match(result.output, /Downloaded 0\.1 MB in \d+s \(\d+ kB\/s\) via archive\.ubuntu\.com/);
 });
 
-test('apt-install rotates the archive host of plain sources and keeps the security pocket', { skip: process.platform === 'win32' }, () => {
+test('apt-install moves the archive host of plain sources and keeps the security pocket', linux, () => {
   const result = run(plainSources, {
-    FAKE_SIZE: '50000', FAKE_RATES: 'us-east-2.ec2.archive.ubuntu.com=stall archive.ubuntu.com=stall security.ubuntu.com=200000', APT_DOWNLOAD_SECONDS: '60',
+    FAKE_SIZE: '50000', FAKE_PROBES: `${us}=3000000 ${azure}=2000000 archive.ubuntu.com=1000000`,
+    FAKE_RATES: `${us}=stall ${azure}=stall archive.ubuntu.com=200000`, APT_DOWNLOAD_SECONDS: '60',
   });
   assert.equal(result.status, 0, result.output);
-  assert.deepEqual([...new Set(result.mirrors)], ['us-east-2.ec2.archive.ubuntu.com', 'archive.ubuntu.com', 'security.ubuntu.com']);
+  // Only the archive host is a candidate in plain sources, plus the two added ones.
+  assert.deepEqual(result.probes.sort(), ['archive.ubuntu.com', azure, us]);
+  assert.deepEqual([...new Set(result.mirrors)], [us, azure, 'archive.ubuntu.com']);
   assert.equal(result.sources,
-    'Types: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble noble-updates\n\nTypes: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\n');
+    'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu/\nSuites: noble noble-updates\n\nTypes: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\n');
 });
 
-test('apt-install fails within the download budget and says how far it got', { skip: process.platform === 'win32' }, () => {
+test('apt-install skips the probe and the rate floor for ports.ubuntu.com', linux, () => {
+  const ports = etc => writeFileSync(resolve(etc, 'sources.list.d/ubuntu.sources'), 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: noble\n');
+  const result = run(ports, { FAKE_SIZE: '60000', FAKE_RATES: 'ports.ubuntu.com=20000', APT_DOWNLOAD_SECONDS: '60', APT_RATE_WINDOW: '1' });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.probes, []);
+  assert.match(result.output, /no alternative mirror/);
+  assert.match(result.output, /Downloaded 0\.1 MB in \d+s \(\d+ kB\/s\) via ports\.ubuntu\.com/);
+});
+
+test('apt-install fails within the download budget and says how far it got', linux, () => {
   // 10 kB/s never stalls, but 1 MB needs 100 seconds; the budget is 6.
-  const result = run(mirrorList, { FAKE_SIZE: '1000000', FAKE_RATES: 'us-east-2.ec2.archive.ubuntu.com=10000', APT_DOWNLOAD_SECONDS: '6' });
+  const result = run(mirrorList, { FAKE_SIZE: '1000000', FAKE_RATES: `${us}=10000`, APT_DOWNLOAD_SECONDS: '6' });
   assert.equal(result.status, 1, result.output);
   assert.equal(result.size, 0);
   assert.match(result.output, /::warning::The download budget of 6s is used up; stopping apt-get/);

@@ -2,30 +2,37 @@
 # Installs Ubuntu packages on a CI runner without letting a slow or stalled mirror
 # hold the job (eng/ci/README.md, "Ubuntu packages").
 #
-# Downloading and installing are separate phases. The download is bounded by
-# progress, not by a fixed time per attempt: an attempt is stopped only when the
-# package archives (the finished .deb files and apt's partial/ downloads) have not
-# grown for APT_STALL_SECONDS (60), and all attempts together share a budget of
-# APT_DOWNLOAD_SECONDS (1200). A slow mirror that keeps delivering therefore
-# finishes (140 kB/s fetches the Orca set's 113 MB in about 14 minutes), while a
-# stalled one fails over within a minute. Downloads resume across attempts.
+# Downloading and installing are separate phases. The x64 runners' mirror list
+# (/etc/apt/apt-mirrors.txt) starts with an Azure or an EC2 mirror depending on the
+# runner image, and either can crawl: in November 2026 the EC2 mirror delivered
+# about 100 kB/s while the Azure one delivered 3-8 MB/s (#1129). Neither is assumed
+# slow. Instead, before the first download the script measures each candidate
+# mirror with a ranged GET (APT_PROBE_BYTES, 2 MB) of the largest archive to fetch,
+# in parallel and at most APT_PROBE_SECONDS (8) each, and orders the mirrors by that
+# rate. The candidates are the runner's own Ubuntu mirrors plus
+# azure.archive.ubuntu.com and archive.ubuntu.com; only *.ubuntu.com hosts are used.
 #
-# After a failed attempt the next one puts a different official Ubuntu mirror
-# first: the runner's mirror list (/etc/apt/apt-mirrors.txt) is rotated with
-# explicit priorities, or the archive host in plain sources is replaced by the next
-# of the original host, archive.ubuntu.com and security.ubuntu.com. Only
-# *.ubuntu.com hosts are used; all are signed by the same Ubuntu archive key, and
-# apt still verifies the signed indexes and every package's hash, including cached
-# .deb files before it uses them. The arm64 runners' ports.ubuntu.com has no
-# alternative, so they only retry. Each attempt logs the bytes it fetched, its
-# average rate and the bytes still to fetch. The install then runs without network
-# access. A stopped attempt's apt-get or dpkg is killed and its locks released
-# before the next one.
+# The download is bounded by progress, not by a fixed time per attempt. An attempt
+# is stopped when the package archives (the finished .deb files and apt's partial/
+# downloads) have not grown for APT_STALL_SECONDS (60), or, while an untried mirror
+# is left, when its average rate after APT_RATE_WINDOW seconds (45) is below
+# APT_RATE_FLOOR bytes per second (1000000). All attempts share a budget of
+# APT_DOWNLOAD_SECONDS (1200), so a slow last mirror that keeps delivering still
+# finishes. The next attempt puts the fastest untried mirror first (the mirror
+# list rewritten with explicit priorities, or the archive host of plain sources
+# replaced), and resumes the downloads. The arm64 runners' ports.ubuntu.com has no
+# alternative, so they skip the probe and the rate floor and only retry.
+#
+# All mirrors are signed by the same Ubuntu archive key; apt still verifies the
+# signed indexes and every package's hash, including cached .deb files before it
+# uses them. Each attempt logs the bytes it fetched, its average rate and the bytes
+# still to fetch. The install then runs without network access. A stopped attempt's
+# apt-get or dpkg is killed and its locks released before the next one.
 #
 # Usage: apt-install.sh [--no-install-recommends] <package>...
 # APT_ARCHIVES, if set, is the directory for downloaded .deb files, so a cache can
 # restore and save them (.github/actions/apt-install). APT_ETC (default /etc/apt)
-# lets eng/ci/contracts.test.mjs run the script against a stubbed apt-get.
+# lets eng/ci/apt-install.test.mjs run the script against a stubbed apt-get and curl.
 set -euo pipefail
 dir=$(cd "$(dirname "$0")" && pwd)
 options=()
@@ -37,6 +44,10 @@ mirror_list=$etc/apt-mirrors.txt
 stall=${APT_STALL_SECONDS:-60}
 budget=${APT_DOWNLOAD_SECONDS:-1200}
 poll=${APT_POLL_SECONDS:-2}
+rate_floor=${APT_RATE_FLOOR:-1000000}
+rate_window=${APT_RATE_WINDOW:-45}
+probe_bytes=${APT_PROBE_BYTES:-2000000}
+probe_seconds=${APT_PROBE_SECONDS:-8}
 tab=$'\t'
 max_attempts=5
 log=$(mktemp)
@@ -79,54 +90,108 @@ mirrors() {
   fi | sed -E 's#^[a-z+]+://##; s#/.*##' | awk '!seen[$0]++' | paste -sd, -
 }
 
-# Puts mirror number $1 (counting from 0, wrapping around) of the official Ubuntu
-# mirrors first. Returns 1 when there is no other mirror to put first.
-prefer_mirror() {
-  local turn=$1 entries=() hosts=() entry host uri tags count i file original chosen
+# The mirrors the script chooses from: mode is "list" (the sources name the mirror
+# list), "plain" (the sources name an archive host directly) or empty (no
+# alternative, such as ports.ubuntu.com). hosts holds the candidates; speed holds
+# each one's last measured rate in bytes per second; tried is 1 for a host whose
+# probe failed and 2 for one an attempt has used.
+mode=''
+original=''
+hosts=()
+declare -A speed=() tried=()
+
+add_host() {
+  if [[ $1 == *.ubuntu.com ]] && [[ " ${hosts[*]} " != *" $1 "* ]]; then hosts+=("$1"); fi
+}
+
+init_mirrors() {
+  local host file
   if uses_mirror_list; then
-    if [ ! -f "$originals/apt-mirrors.txt" ]; then cp "$mirror_list" "$originals/apt-mirrors.txt"; fi
-    # The list's mirrors in apt's order, then the official archive hosts it lacks.
-    while IFS= read -r entry; do
-      uri=${entry%%[[:space:]]*}
-      host=$(sed -E 's#^[a-z+]+://##; s#/.*##' <<<"$uri")
-      if [[ $host != *ubuntu.com ]] || [[ " ${hosts[*]} " == *" $host "* ]]; then continue; fi
-      hosts+=("$host")
-      entries+=("$entry")
-    done < <(awk '/^[[:space:]]*[a-z+]+:\/\// { p = 1e9; for (i = 2; i <= NF; i++) if ($i ~ /^priority:/) p = substr($i, 10) + 0; printf "%012d %06d %s\n", p, NR, $0 }' "$originals/apt-mirrors.txt" \
-      | sort | cut -d' ' -f3-)
-    for host in archive.ubuntu.com security.ubuntu.com; do
-      if [[ " ${hosts[*]} " != *" $host "* ]]; then hosts+=("$host"); entries+=("http://$host/ubuntu/"); fi
-    done
-    count=${#entries[@]}
-    if [ "$count" -lt 2 ]; then return 1; fi
-    for ((i = 0; i < count; i++)); do
-      entry=${entries[(i + turn) % count]}
+    mode=list
+    cp "$mirror_list" "$originals/apt-mirrors.txt"
+    while IFS= read -r host; do add_host "$host"; done < <(mirrors | tr ',' '\n')
+  else
+    original=$(mirrors | tr ',' '\n' | grep -E '(^|\.)archive\.ubuntu\.com$' | head -n 1 || true)
+    if [ -z "$original" ]; then return 0; fi
+    mode=plain
+    while IFS= read -r file; do
+      if grep -qF "://$original/" "$file"; then mkdir -p "$originals/files$(dirname "$file")"; cp "$file" "$originals/files$file"; fi
+    done < <(source_files)
+    add_host "$original"
+  fi
+  add_host azure.archive.ubuntu.com
+  add_host archive.ubuntu.com
+}
+
+# The candidates in the order the next attempt uses: untried mirrors before tried
+# ones, each group fastest first. Among equally fast (rate 0) tried ones a failed
+# probe comes before a stalled attempt; remaining ties keep the runner's order.
+ordered_hosts() {
+  local i host state
+  for i in "${!hosts[@]}"; do
+    host=${hosts[i]}
+    state=${tried[$host]:-0}
+    printf '%d %015d %d %03d %s\n' "$((state > 0))" $((999999999999999 - ${speed[$host]:-0})) "$state" "$i" "$host"
+  done | sort | awk '{print $5}'
+}
+
+untried_left() {
+  local host count=0
+  for host in "${hosts[@]}"; do if [ -z "${tried[$host]:-}" ]; then count=$((count + 1)); fi; done
+  [ "$count" -gt 1 ]
+}
+
+# Writes the ordered candidates to the mirror list (with explicit priorities, which
+# apt otherwise draws at random), or puts the first one in the plain sources.
+apply_order() {
+  local order host entry uri tags i=0 file
+  mapfile -t order < <(ordered_hosts)
+  if [ "$mode" = list ]; then
+    for host in "${order[@]}"; do
+      entry=$(awk -v h="$host" '/^[[:space:]]*[a-z+]+:\/\// { u = $1; sub(/^[a-z+]+:\/\//, "", u); sub(/\/.*/, "", u); if (u == h) { print; exit } }' "$originals/apt-mirrors.txt")
+      entry=${entry:-http://$host/ubuntu/}
       uri=${entry%%[[:space:]]*}
       tags=$(tr -s ' \t' '\n' <<<"${entry#"$uri"}" | grep -v -e '^$' -e '^priority:' | paste -sd'\t' - || true)
-      printf '%s\tpriority:%d%s\n' "$uri" "$((i + 1))" "${tags:+$tab$tags}"
+      i=$((i + 1))
+      printf '%s\tpriority:%d%s\n' "$uri" "$i" "${tags:+$tab$tags}"
     done | sudo tee "$mirror_list.runic" >/dev/null
     sudo mv "$mirror_list.runic" "$mirror_list"
-  else
-    # Plain sources: the archive host of the original sources (an EC2 or Azure mirror,
-    # a country mirror or archive.ubuntu.com) and the two official hosts.
-    original=$(cat "$originals/host" 2>/dev/null || true)
-    if [ -z "$original" ]; then
-      original=$(mirrors | tr ',' '\n' | grep -E '(^|\.)archive\.ubuntu\.com$' | head -n 1 || true)
-      if [ -z "$original" ]; then return 1; fi
-      echo "$original" >"$originals/host"
-      while IFS= read -r file; do
-        if grep -qF "://$original/" "$file"; then mkdir -p "$originals/files$(dirname "$file")"; cp "$file" "$originals/files$file"; fi
-      done < <(source_files)
-    fi
-    hosts=("$original")
-    for host in archive.ubuntu.com security.ubuntu.com; do
-      if [ "$host" != "$original" ]; then hosts+=("$host"); fi
-    done
-    chosen=${hosts[turn % ${#hosts[@]}]}
+  elif [ "$mode" = plain ]; then
     while IFS= read -r file; do
-      sed "s#://${original//./\\.}/#://$chosen/#g" "$file" | sudo tee "${file#"$originals/files"}" >/dev/null
+      sed "s#://${original//./\\.}/#://${order[0]}/#g" "$file" | sudo tee "${file#"$originals/files"}" >/dev/null
     done < <(find "$originals/files" -type f)
   fi
+}
+
+# Measures each candidate with a ranged GET of the largest archive to fetch, all at
+# once, and records the rates. A host that fails, or delivers nothing in time, gets 0
+# and goes last.
+probe_mirrors() {
+  local path size host code bytes seconds table=() pids=()
+  read -r path size < <(awk -F"'" 'NF >= 3 { split($3, f, " "); u = $2; if (sub(/^.*\/pool\//, "pool/", u) && f[2] + 0 > best) { best = f[2] + 0; p = u } } END { if (p != "") print p, best }' "$originals/uris") || true
+  if [ -z "${path:-}" ]; then
+    echo "Mirror probe skipped: apt listed no archive under pool/ to sample"
+    return 0
+  fi
+  for host in "${hosts[@]}"; do
+    curl --silent --output /dev/null --range "0-$((probe_bytes - 1))" --max-time "$probe_seconds" \
+      --write-out '%{http_code} %{size_download} %{time_total}' "http://$host/ubuntu/$path" >"$originals/probe-$host" 2>/dev/null &
+    pids+=("$!")
+  done
+  wait "${pids[@]}" 2>/dev/null || true
+  for host in "${hosts[@]}"; do
+    read -r code bytes seconds <"$originals/probe-$host" || true
+    if [[ ${code:-} =~ ^20[06]$ ]] && [ "${bytes:-0}" -gt 0 ]; then
+      speed[$host]=$(awk -v b="$bytes" -v s="$seconds" 'BEGIN { if (s < 0.001) s = 0.001; printf "%d\n", b / s }')
+      table+=("$host $(rate "${speed[$host]}" 1)")
+    else
+      # Counted as tried, so it goes last and does not hold the rate floor open.
+      speed[$host]=0 tried[$host]=1
+      table+=("$host failed")
+    fi
+    code='' bytes='' seconds=''
+  done
+  echo "Mirror probe ($(megabytes "$((size < probe_bytes ? size : probe_bytes))") of ${path##*/}): $(printf '%s, ' "${table[@]}" | sed 's/, $//')"
 }
 
 # Bytes of package archives on disk: finished .deb files and apt's partial downloads,
@@ -140,8 +205,10 @@ archive_bytes() {
 # partial downloads already hold. Empty when apt cannot tell.
 needed_bytes() {
   local listed partial
-  listed=$("$dir/retry.sh" 1 120 "${apt[@]}" install --yes --download-only --print-uris -qq ${options[@]+"${options[@]}"} "${packages[@]}" 2>/dev/null \
-    | awk -F"'" 'NF >= 3 { split($3, f, " "); s += f[2] } END { printf "%d\n", s }') || return 0
+  : >"$originals/uris"
+  "$dir/retry.sh" 1 120 "${apt[@]}" install --yes --download-only --print-uris -qq ${options[@]+"${options[@]}"} "${packages[@]}" \
+    >"$originals/uris" 2>/dev/null || return 0
+  listed=$(awk -F"'" 'NF >= 3 { split($3, f, " "); s += f[2] } END { printf "%d\n", s }' "$originals/uris")
   partial=$(sudo find "$archives/partial" -maxdepth 1 -type f -printf '%s\n' 2>/dev/null | awk '{ s += $1 } END { printf "%d\n", s }')
   echo $((listed > partial ? listed - partial : 0))
 }
@@ -168,9 +235,10 @@ stop_download() {
 }
 
 # Runs apt-get --download-only while it makes progress, until the download budget
-# ends at second $1. Sets fetched (bytes) and stopped ("", stalled or budget).
+# ends at second $1; with $2 = true, also while its average rate stays above the
+# floor. Sets fetched (bytes) and stopped ("", stalled, slow or budget).
 download() {
-  local deadline=$1 pid status=0 start bytes last changed reported
+  local deadline=$1 floor=$2 pid status=0 start bytes last changed reported started=$SECONDS
   start=$(archive_bytes)
   last=$start changed=$SECONDS reported=$SECONDS fetched=0 stopped=''
   "${apt[@]}" install --yes --download-only ${options[@]+"${options[@]}"} "${packages[@]}" > >(tee -a "$log") 2>&1 &
@@ -187,6 +255,12 @@ download() {
     if ((SECONDS - changed >= stall)); then
       stopped=stalled
       echo "::warning::No download progress for ${stall}s; stopping apt-get"
+      stop_download "$pid"
+      break
+    fi
+    if [ "$floor" = true ] && ((SECONDS - started >= rate_window && last - start < rate_floor * (SECONDS - started))); then
+      stopped=slow
+      echo "::warning::$(rate $((last - start)) $((SECONDS - started))) after $((SECONDS - started))s is below the floor of $(rate "$rate_floor" 1); stopping apt-get to try the next mirror"
       stop_download "$pid"
       break
     fi
@@ -211,42 +285,68 @@ failure_summary() {
   errors=$(grep -E '^(Err:|E: |W: Failed to fetch)' "$log" | head -n 3 | paste -sd';' - || true)
   case "$stopped" in
     stalled) echo "no progress for ${stall}s while fetching $(grep -E '^Get:' "$log" | tail -n 1 | sed -E 's/^Get:[0-9]+ //')${errors:+; $errors}" ;;
+    slow) echo "below the rate floor while fetching $(grep -E '^Get:' "$log" | tail -n 1 | sed -E 's/^Get:[0-9]+ //')${errors:+; $errors}" ;;
     budget) echo "download budget used up while fetching $(grep -E '^Get:' "$log" | tail -n 1 | sed -E 's/^Get:[0-9]+ //')${errors:+; $errors}" ;;
     *) echo "${errors:-apt-get failed without an error line}" ;;
   esac
 }
 
 echo "Ubuntu mirrors: $(mirrors); package archives: $archives ($(find "$archives" -maxdepth 1 -name '*.deb' | wc -l) cached)"
-echo "Download limits: stopped after ${stall}s without progress, ${budget}s for all attempts"
+init_mirrors
+if [ -n "$mode" ]; then
+  echo "Download limits: stopped after ${stall}s without progress or below $(rate "$rate_floor" 1) after ${rate_window}s while another mirror is left, ${budget}s for all attempts; candidates: ${hosts[*]}"
+else
+  echo "Download limits: stopped after ${stall}s without progress, ${budget}s for all attempts; no alternative mirror"
+fi
 failures=()
 downloaded=false
 deadline=$((SECONDS + budget))
 total=0
+probed=false
 for ((attempt = 1; attempt <= max_attempts; attempt++)); do
-  used=$(mirrors)
   begun=$SECONDS
-  stopped='' fetched=0
+  stopped='' fetched=0 need=''
   : >"$log"
   if "$dir/retry.sh" 1 120 "${apt[@]}" update 2>&1 | tee -a "$log"; then
     need=$(needed_bytes)
-    echo "Attempt $attempt of up to $max_attempts via $used: ${need:+$(megabytes "$need") to fetch, }$((deadline - SECONDS))s of the download budget left"
-    if download "$deadline"; then
-      downloaded=true
-      total=$((total + fetched))
-      echo "Downloaded $(megabytes "$fetched") in $((SECONDS - begun))s ($(rate "$fetched" $((SECONDS - begun)))) via $used"
-      break
+    # Once, before the first download: order the mirrors by a measured sample.
+    if [ "$probed" = false ] && [ -n "$mode" ] && [ "${need:-0}" -gt 0 ] && [ "${#hosts[@]}" -gt 1 ]; then
+      probed=true
+      first=$(mirrors | cut -d, -f1)
+      probe_mirrors
+      apply_order
+      # Plain sources index by host, so a new host needs its indexes.
+      if [ "$mode" = plain ] && [ "$(mirrors | cut -d, -f1)" != "$first" ]; then
+        "$dir/retry.sh" 1 120 "${apt[@]}" update 2>&1 | tee -a "$log" || true
+      fi
     fi
+  fi
+  used=$(mirrors)
+  current=${used%%,*}
+  echo "Attempt $attempt of up to $max_attempts via $used: ${need:+$(megabytes "$need") to fetch, }$((deadline - SECONDS))s of the download budget left"
+  floor=false
+  if [ -n "$mode" ] && untried_left; then floor=true; fi
+  if download "$deadline" "$floor"; then
+    downloaded=true
+    total=$((total + fetched))
+    echo "Downloaded $(megabytes "$fetched") in $((SECONDS - begun))s ($(rate "$fetched" $((SECONDS - begun)))) via $used"
+    break
   fi
   total=$((total + fetched))
   left=
-  if [ -n "${need:-}" ]; then left=$((need > fetched ? need - fetched : 0)); fi
+  if [ -n "$need" ]; then left=$((need > fetched ? need - fetched : 0)); fi
   summary="fetched $(megabytes "$fetched") in $((SECONDS - begun))s ($(rate "$fetched" $((SECONDS - begun))))${left:+, $(megabytes "$left") still to fetch}"
   failures+=("attempt $attempt via $used: $summary; $(failure_summary)")
   echo "::warning::Downloading ${packages[*]} failed on attempt $attempt via $used: $summary"
   "$dir/retry.sh" 1 120 bash -c "$cleanup" || true
-  need=
   if ((deadline - SECONDS < stall)); then break; fi
-  if prefer_mirror "$attempt"; then echo "Next attempt prefers $(mirrors | cut -d, -f1): $(mirrors)"; fi
+  if [ -n "$mode" ] && [ -n "$current" ]; then
+    tried[$current]=2
+    # A slow mirror keeps its measured rate; a stalled or failed one goes last.
+    if [ "$stopped" = slow ]; then speed[$current]=$((fetched / (SECONDS - begun > 0 ? SECONDS - begun : 1))); else speed[$current]=0; fi
+    apply_order
+    echo "Next attempt prefers $(mirrors | cut -d, -f1): $(mirrors)"
+  fi
 done
 if [ "$downloaded" != true ]; then
   echo "::error title=Ubuntu packages could not be downloaded::${packages[*]} could not be downloaded within ${budget}s ($(megabytes "$total") fetched). $(printf '%s. ' "${failures[@]}")"
