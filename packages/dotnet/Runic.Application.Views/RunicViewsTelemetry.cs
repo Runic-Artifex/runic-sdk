@@ -515,26 +515,9 @@ internal static partial class ViewsLog
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace
-// output, so a failure stays visible to a debugger or trace listener.
-internal sealed class TraceFallbackLogger : ILogger
+// output, so a failure stays visible to a debugger or trace listener. Runic.Navigation's
+// logger does the writing, so an application compiles one Log<TState> for both packages.
+internal static class TraceFallbackLogger
 {
-    internal static readonly TraceFallbackLogger Instance = new();
-
-    private TraceFallbackLogger()
-    {
-    }
-
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning && logLevel != LogLevel.None;
-
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-        Func<TState, Exception?, string> formatter)
-    {
-        if (!IsEnabled(logLevel)) return;
-        var message = formatter(state, exception);
-        if (exception is not null) message = $"{message} {exception}";
-        if (logLevel >= LogLevel.Error) Trace.TraceError(message);
-        else Trace.TraceWarning(message);
-    }
+    internal static readonly ILogger Instance = Runic.Navigation.TraceFallbackLogger.Instance;
 }

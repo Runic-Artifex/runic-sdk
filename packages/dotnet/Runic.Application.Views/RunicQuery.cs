@@ -39,9 +39,10 @@ public sealed class RunicQuery : IEquatable<RunicQuery>
     /// <exception cref="ArgumentException">A field name is empty or too long, or there are too many keys or filters.</exception>
     public RunicQuery(IEnumerable<RunicSortKey>? sort = null, IEnumerable<RunicFilter>? filters = null)
     {
-        var keys = sort?.ToArray() ?? [];
+        // A List, not ToArray: RunicSortKey is a struct, and ToArray over it compiles its own array builder.
+        var keys = sort is null ? new List<RunicSortKey>() : new List<RunicSortKey>(sort);
         var all = filters?.ToArray() ?? [];
-        if (keys.Length > MaximumSortKeys) throw new ArgumentException($"A query has at most {MaximumSortKeys} sort keys.", nameof(sort));
+        if (keys.Count > MaximumSortKeys) throw new ArgumentException($"A query has at most {MaximumSortKeys} sort keys.", nameof(sort));
         if (all.Length > MaximumFilters) throw new ArgumentException($"A query has at most {MaximumFilters} filters.", nameof(filters));
         foreach (var key in keys) CheckField(key.Field, nameof(sort));
         if (Array.IndexOf(all, null) >= 0) throw new ArgumentException("A query filter is null.", nameof(filters));

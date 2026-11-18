@@ -2,7 +2,9 @@ name: Restore a dependency cache
 description: >-
   Restore a dependency cache, and save it at the end of the job only on main. Pull requests
   and other branches restore without saving, so their entries cannot evict main's caches
-  from the repository's cache quota.
+  from the repository's cache quota. A caller that saves as soon as its files are ready
+  restores with defer-save and later calls the action again with save-now, which also
+  saves only on main.
 inputs:
   path:
     description: Files and directories to cache, as for actions/cache
@@ -16,6 +18,12 @@ inputs:
   lookup-only:
     description: "true: only check whether the key exists (cache-hit), without downloading or saving"
     default: "false"
+  defer-save:
+    description: "true: only restore, also on main; a later call with save-now saves"
+    default: "false"
+  save-now:
+    description: "true: save the files now (on main only), without restoring"
+    default: "false"
   enable-cross-os-archive:
     description: "true: an entry saved on one operating system restores on another (the native server's libraries)"
     default: "false"
@@ -28,7 +36,7 @@ runs:
   steps:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: save
-      if: github.ref == 'refs/heads/main' && inputs.lookup-only != 'true'
+      if: github.ref == 'refs/heads/main' && inputs.lookup-only != 'true' && inputs.defer-save != 'true' && inputs.save-now != 'true'
       with:
         path: ${{ inputs.path }}
         key: ${{ inputs.key }}
@@ -36,10 +44,16 @@ runs:
         enableCrossOsArchive: ${{ inputs.enable-cross-os-archive }}
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: restore
-      if: github.ref != 'refs/heads/main' || inputs.lookup-only == 'true'
+      if: inputs.save-now != 'true' && (github.ref != 'refs/heads/main' || inputs.lookup-only == 'true' || inputs.defer-save == 'true')
       with:
         path: ${{ inputs.path }}
         key: ${{ inputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
         enableCrossOsArchive: ${{ inputs.enable-cross-os-archive }}
         lookup-only: ${{ inputs.lookup-only }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.ref == 'refs/heads/main' && inputs.save-now == 'true'
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        enableCrossOsArchive: ${{ inputs.enable-cross-os-archive }}

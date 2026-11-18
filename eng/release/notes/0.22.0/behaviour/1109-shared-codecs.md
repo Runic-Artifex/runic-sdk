@@ -5,6 +5,6 @@
   codecs with `using` aliases (`using TitleValueCodec = …RunicBridgeCodecs.String;`). Each property also has one
   getter, shared by its descriptors and its data subscription. In a research fixture with a realistic ViewModel
   shape a ViewModel costs 43.1 KB instead of 56.3 KB on linux-x64 (−23 %); in the scaling suite's `aot-size` fixture
-  21.3 KB instead of 25.0 KB. Only the generated C# in `obj/` changes: the generated TypeScript clients, their source
+  20.8 KB instead of 25.5 KB. Only the generated C# in `obj/` changes: the generated TypeScript clients, their source
   map and the wire protocol are byte-identical, and code from an earlier generator keeps working with this runtime.
   Part of #1109.
