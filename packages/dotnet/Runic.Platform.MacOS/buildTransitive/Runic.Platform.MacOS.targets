@@ -185,9 +185,12 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
         s.Append("#nullable enable\n");
         if (!string.IsNullOrEmpty(Namespace)) s.Append("namespace ").Append(Namespace).Append(";\n");
         s.Append("\ninternal static partial class ").Append(ClassName).Append("\n{\n");
+        // Created on first use, not by the class's static constructor: PrivilegedActions.All runs on every operating
+        // system, and a RID-specific publish for Windows or Linux has no Runic.Platform.MacOS (D072.9).
+        s.Append("    private static global::Runic.Platform.MacOS.MacPrivilegedDaemonDefinition? __runicMacOSDaemon;\n\n");
         s.Append("    /// <summary>The macOS launch daemon <c>").Append(Escape(Label)).Append("</c> and the authorization right of every action.</summary>\n");
         s.Append("    [global::System.CodeDom.Compiler.GeneratedCode(\"Runic.Platform.MacOS\", \"1\")]\n");
-        s.Append("    public static global::Runic.Platform.MacOS.MacPrivilegedDaemonDefinition MacOSDaemon { get; } = new(\n");
+        s.Append("    public static global::Runic.Platform.MacOS.MacPrivilegedDaemonDefinition MacOSDaemon => __runicMacOSDaemon ??= new global::Runic.Platform.MacOS.MacPrivilegedDaemonDefinition(\n");
         s.Append("        ").Append(Literal(Label)).Append(", ").Append(Literal(TeamIdentifier)).Append(", ")
          .Append(Literal(BundleIdentifier)).Append(", ").Append(Literal(DaemonIdentifier)).Append(",\n");
         s.Append("        new global::Runic.Platform.MacOS.MacPrivilegedRight[]\n        {\n");
