@@ -131,10 +131,11 @@ internal sealed class CdpClient : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            page?.Session.ReplyDropped(method);
             return;
         }
         await SendAsync(reply).ConfigureAwait(false);
-        page?.Session.Replied();
+        page?.Session.Replied(method);
     }
 
     private async Task<JsonObject> HandleBrowserAsync(string method, JsonObject p, CancellationToken cancellationToken)

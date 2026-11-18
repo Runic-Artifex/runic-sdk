@@ -361,7 +361,11 @@ internal sealed partial class ToolTests
         await session.HandleAsync("Debugger.resume", []);
         await Task.Delay(50);
         Equal(1, Emitted(webKit, "Debugger.paused"));
-        session.Replied();
+        // Not after the reply to another command that went out first (#1108).
+        session.Replied("Runtime.evaluate");
+        await Task.Delay(50);
+        Equal(1, Emitted(webKit, "Debugger.paused"));
+        session.Replied("Debugger.resume");
         await Until(() => Emitted(webKit, "Debugger.paused") == 2);
         Equal("3", LastPaused(webKit)["data"]!["scriptId"]!.GetValue<string>());
         Equal("b.js.map", LastPaused(webKit)["data"]!["sourceMapURL"]!.GetValue<string>());
@@ -541,11 +545,73 @@ internal sealed partial class ToolTests
         await events;
     }
 
+    [Test, DisplayName("the reply to a resume, step, pause or navigation reaches the debugger before the events WebKit sends after it (#1108)")]
+    public async Task RepliesComeBeforeTheEventsTheyCause()
+    {
+        var webKit = new FakeWebKit();
+        CdpPageSession session = webKit.Session();
+        Task events = session.RunAsync(CancellationToken.None);
+        const string Paused = """{"reason":"other","callFrames":[]}""";
+
+        // WebKit answers Debugger.resume, then reports that it resumed and the next pause. js-debug gets them only after
+        // the reply: one that came before it would be lost, and the page would stay stopped (#1108).
+        foreach (string command in (string[])["Debugger.resume", "Debugger.stepOver", "Debugger.stepInto", "Debugger.stepOut"])
+        {
+            int resumed = Emitted(webKit, "Debugger.resumed"), paused = Emitted(webKit, "Debugger.paused");
+            await session.HandleAsync(command, []);
+            Equal(command, webKit.Sent[^1].Method);
+            // An event of another kind is not held.
+            session.Post("Debugger.scriptParsed", Json($$"""{"scriptId":"{{command}}","url":"http://h/{{command}}.js"}"""));
+            await Until(() => Parsed(webKit, command));
+            session.Post("Debugger.resumed", []);
+            session.Post("Debugger.paused", Json(Paused));
+            await Task.Delay(100);
+            Equal((resumed, paused), (Emitted(webKit, "Debugger.resumed"), Emitted(webKit, "Debugger.paused")));
+            session.Replied(command);
+            await Until(() => Emitted(webKit, "Debugger.paused") == paused + 1);
+            Equal(resumed + 1, Emitted(webKit, "Debugger.resumed"));
+            lock (webKit.Emitted) Equal("Debugger.resumed", webKit.Emitted[^2].Method);
+        }
+
+        // Debugger.pause: the pause it asked for comes after its reply.
+        await session.HandleAsync("Debugger.pause", []);
+        session.Post("Debugger.paused", Json(Paused));
+        await Task.Delay(100);
+        Equal(4, Emitted(webKit, "Debugger.paused"));
+        session.Replied("Debugger.pause");
+        await Until(() => Emitted(webKit, "Debugger.paused") == 5);
+
+        // A navigation's reply comes before every event of the new document.
+        await session.HandleAsync("Page.reload", []);
+        session.Post("Debugger.scriptParsed", Json("""{"scriptId":"after-reload","url":"http://h/after-reload.js"}"""));
+        await Task.Delay(100);
+        False(Parsed(webKit, "after-reload"), "an event passed the reload's reply");
+        session.Replied("Page.reload");
+        await Until(() => Parsed(webKit, "after-reload"));
+
+        // A command that gets no reply (the debugger left) holds nothing; neither does a session that ends.
+        await session.HandleAsync("Debugger.resume", []);
+        session.ReplyDropped("Debugger.resume");
+        session.Post("Debugger.paused", Json(Paused));
+        await Until(() => Emitted(webKit, "Debugger.paused") == 6);
+        await session.HandleAsync("Debugger.resume", []);
+        session.Post("Debugger.paused", Json(Paused));
+        session.Complete();
+        await events.WaitAsync(TimeSpan.FromSeconds(5));
+        Equal(7, Emitted(webKit, "Debugger.paused"));
+    }
+
     // js-debug's Debugger.resume, and its reply.
     private static async Task ResumeAsync(CdpPageSession session)
     {
         await session.HandleAsync("Debugger.resume", []);
-        session.Replied();
+        session.Replied("Debugger.resume");
+    }
+
+    // Whether the debugger got the script with this ID.
+    private static bool Parsed(FakeWebKit webKit, string scriptId)
+    {
+        lock (webKit.Emitted) return webKit.Emitted.Any(sent => sent.Method == "Debugger.scriptParsed" && sent.Parameters["scriptId"]?.GetValue<string>() == scriptId);
     }
 
     private static int Emitted(FakeWebKit webKit, string method)
@@ -610,6 +676,47 @@ internal sealed partial class ToolTests
         await session.HandleAsync("Debugger.getScriptSource", Json("""{"scriptId":"r1.40"}"""));
         Equal("40", restarted.Sent[^1].Parameters["scriptId"]!.GetValue<string>());
         Equal(CdpException.InvalidParams, (await ThrowsAsync<CdpException>(() => session.HandleAsync("Debugger.getScriptSource", Json("""{"scriptId":"40"}""")))).Code);
+    }
+
+    [Test, DisplayName("on a restarted Window's page, the debugger's commands wait until its breakpoints are set again (#1108)")]
+    public async Task CommandsWaitForTheRestartedWindowsBreakpoints()
+    {
+        var webKit = new FakeWebKit
+        {
+            Answer = static (method, parameters) => method == "Debugger.setBreakpointByUrl"
+                ? new JsonObject { ["breakpointId"] = CdpPageSession.UrlBreakpointId(parameters), ["locations"] = new JsonArray() }
+                : [],
+        };
+        CdpPageSession session = webKit.Session();
+        await session.HandleAsync("Debugger.enable", []);
+        await session.HandleAsync("Debugger.setBreakpointByUrl", Json("""{"url":"http://h/App.tsx","lineNumber":68,"columnNumber":13}"""));
+        session.Suspend();
+
+        // The restarted page answers the breakpoint late, as a loaded WebKit does.
+        var sent = new List<string>();
+        var breakpoint = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<JsonObject> Restarted(string method, JsonObject? parameters, CancellationToken cancellationToken)
+        {
+            lock (sent) sent.Add(method);
+            return method == "Debugger.setBreakpointByUrl" ? breakpoint.Task : Task.FromResult(new JsonObject());
+        }
+        Task resumed = session.ResumeAsync(Restarted, WebKitProtocol.Unknown);
+        // The scenario's click: it reaches the page only once the breakpoint is set there.
+        Task<JsonObject> click = session.HandleAsync("Runtime.evaluate", Json("""{"expression":"click()"}"""));
+        await Task.Delay(100);
+        False(click.IsCompleted, "the click was answered before the breakpoint was set");
+        lock (sent) False(sent.Contains("Runtime.evaluate"), "the click reached the page before the breakpoint");
+        breakpoint.SetResult(Json("""{"breakpointId":"http://h/App.tsx:68:13","locations":[]}"""));
+        await resumed;
+        await click;
+        lock (sent) True(sent.IndexOf("Debugger.setBreakpointByUrl") < sent.IndexOf("Runtime.evaluate"), "the breakpoint came first");
+
+        // A Window that goes away again while the session is set up holds no command.
+        session.Suspend();
+        var never = new TaskCompletionSource<JsonObject>();
+        _ = session.ResumeAsync((_, _, _) => never.Task, WebKitProtocol.Unknown);
+        session.Suspend();
+        Equal(CdpException.ServerError, (await ThrowsAsync<CdpException>(() => session.HandleAsync("Runtime.evaluate", Json("""{"expression":"1"}""")))).Code);
     }
 
     [Test, DisplayName("dev opens WebKit's inspector server and the CDP adapter on Linux, and honours the developer's choice")]

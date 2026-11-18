@@ -67,7 +67,7 @@ process.on("unhandledRejection", error => { log(`FAIL setup: ${error?.stack ?? e
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 class Dap {
-  constructor(name) { this.name = name; this.seq = 1; this.pending = new Map(); this.waiters = []; this.buf = Buffer.alloc(0); this.handlers = {}; this.outputs = []; this.breakpointEvents = []; }
+  constructor(name) { this.name = name; this.seq = 1; this.pending = new Map(); this.waiters = []; this.buf = Buffer.alloc(0); this.handlers = {}; this.outputs = []; this.breakpointEvents = []; this.stopped = null; }
   connectOnce() { return new Promise((res, rej) => { this.sock = net.connect(dapPort, "127.0.0.1", res); this.sock.once("error", rej); this.sock.on("data", d => { this.buf = Buffer.concat([this.buf, d]); this.drain(); }); }); }
   // js-debug's server takes a moment to listen, longer on a loaded machine: connect once it does.
   async connect() {
@@ -85,12 +85,19 @@ class Dap {
       else if (m.type === "event") {
         if (m.event === "output") this.outputs.push(m.body);
         if (m.event === "breakpoint") this.breakpointEvents.push(m.body.breakpoint);
+        // Whether js-debug reports the page stopped: for a wait's failure message.
+        if (m.event === "stopped") this.stopped = m.body;
+        if (m.event === "continued") this.stopped = null;
         for (const w of [...this.waiters]) if (w.event === m.event && w.pred(m.body)) { this.waiters.splice(this.waiters.indexOf(w), 1); w.res(m.body); }
       } else if (m.type === "request") this.handlers[m.command]?.(m);
     }
   }
   write(o) { const s = JSON.stringify(o); this.sock.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`); }
-  send(command, args = {}) { const m = { seq: this.seq++, type: "request", command, arguments: args }; this.write(m); return new Promise(res => this.pending.set(m.seq, res)); }
+  send(command, args = {}) {
+    // A debugger does not get a continued event for its own continue or step.
+    if (["continue", "next", "stepIn", "stepOut"].includes(command)) this.stopped = null;
+    const m = { seq: this.seq++, type: "request", command, arguments: args }; this.write(m); return new Promise(res => this.pending.set(m.seq, res));
+  }
   reply(req, body = {}) { this.write({ seq: this.seq++, type: "response", request_seq: req.seq, command: req.command, success: true, body }); }
   wait(event, pred = () => true, ms = 15000) {
     return new Promise((res, rej) => { const w = { event, pred, res }; this.waiters.push(w); setTimeout(() => { const i = this.waiters.indexOf(w); if (i >= 0) { this.waiters.splice(i, 1); rej(new Error(`no ${event} in ${ms} ms`)); } }, ms); });
@@ -180,9 +187,23 @@ async function until(expression, what, ms = 120000) {
   for (const deadline = Date.now() + ms; ;) {
     const result = await c.send("evaluate", { expression: `Boolean(${expression})`, context: "repl" });
     if (result.success && result.body.result === "true") return;
-    if (Date.now() > deadline) throw new Error(`${what}: not within ${ms / 1000} s`);
+    if (Date.now() > deadline) throw new Error(`${what}: not within ${ms / 1000} s${await pageState()}`);
     await sleep(250);
   }
+}
+// The page's state for a wait that failed. A page whose load never finishes can be stopped in the debugger with nothing
+// to resume it: js-debug lost the pause when the adapter sent it before the reply to js-debug's resume (#1108).
+async function pageState() {
+  const answer = await Promise.race([
+    c.send("evaluate", { expression: "document.readyState", context: "repl" }),
+    sleep(5000).then(() => null),
+  ]);
+  const readyState = answer?.success && answer.body?.result
+    ? answer.body.result.replace(/^['"]|['"]$/g, "")
+    : `unknown: ${answer ? answer.message ?? "no result" : "no answer in 5 s"}`;
+  const stopped = current.stopped ? `; js-debug reports it stopped (${current.stopped.reason})` : "";
+  const hint = readyState === "complete" ? "" : "; a page that does not finish loading may be stopped in the debugger with nothing resuming it";
+  return ` (document.readyState ${readyState}${stopped}${hint})`;
 }
 // Saves a file as editors do, by renaming a complete copy over it: a development server that reads the file while a
 // plain write has truncated it gets an empty module (Vite: "Could not Fast Refresh (export removed)").
@@ -336,6 +357,7 @@ const scenarios = {
     const late = `${directory}/late.ts`;
     // Without the import that an interrupted run may have left.
     const imported = `\nimport "./webkit-cdp-batch/entry";\n`;
+    let failed = false;
     const original = fs.readFileSync(main, "utf8").replaceAll(imported, "");
     fs.rmSync(directory, { recursive: true, force: true });
     fs.mkdirSync(directory);
@@ -389,12 +411,23 @@ const scenarios = {
       const [again, againDetail] = await load("reload", () => c.send("evaluate", { expression: `setTimeout(() => location.reload(), 50), "ok"`, context: "repl" }));
       await setBps([], late, { verify: false });
       return [first && again, `${count} + ${tail + 3} modules; expected ${breakLine} and logpoint ${logLine}; ${firstDetail}; ${againDetail}`];
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
+      // The page loads again without the modules, and once more after their files are gone: the next scenario starts
+      // then. A page that does not is this scenario's failure, not a wait the next one inherits (#1108); the failure that
+      // ended the scenario comes first.
       saveAtomically(main, original);
-      await until(`!globalThis.__webkitCdpMany && ${counterReady}`, "the page without the late module", 300000).catch(() => null);
-      // Vite reloads the page again for the deleted modules: the next scenario starts once it has.
+      let cleanup = null;
+      try {
+        await until(`!globalThis.__webkitCdpMany && ${counterReady}`, "after the scenario, the page without the late module", 120000);
+      } catch (error) {
+        cleanup = error;
+      }
       fs.rmSync(directory, { recursive: true, force: true });
-      await settled("the page after the late module's files were deleted", 300000).catch(() => null);
+      if (!cleanup) await settled("after the scenario, the page once the late module's files were deleted", 120000).catch(error => { cleanup = error; });
+      if (cleanup && !failed) throw cleanup;
     }
   },
   async "window-restart"() {
