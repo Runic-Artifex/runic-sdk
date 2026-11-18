@@ -42,7 +42,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal("<h1>first</h1>", await client.GetStringAsync(firstUrl));
         Assert.Equal("<h1>second</h1>", await client.GetStringAsync(secondUrl));
         Assert.Contains(
-            "const BASE_PATH = \"/first\";",
+            "const BASE_PATH=\"/first\";",
             await client.GetStringAsync(new Uri(firstUrl, "webui.js")),
             StringComparison.Ordinal);
 
@@ -280,7 +280,7 @@ public sealed class ContentAndLifecycleTests
             Assert.Equal("physical", await client.GetStringAsync("/physical.txt"));
 
             var bridge = await client.GetStringAsync("/webui.js");
-            Assert.Contains("Object.defineProperty(globalThis, \"webui\"", bridge, StringComparison.Ordinal);
+            Assert.Contains("Object.defineProperty(globalThis,\"webui\"", bridge, StringComparison.Ordinal);
             Assert.DoesNotContain("/webui.js", requested);
         }
         finally
@@ -702,7 +702,7 @@ public sealed class ContentAndLifecycleTests
 
     private static string ExtractSessionCredential(string bridge)
     {
-        const string prefix = "const SESSION_CREDENTIAL = \"";
+        const string prefix = "const SESSION_CREDENTIAL=\"";
         var start = bridge.IndexOf(prefix, StringComparison.Ordinal);
         Assert.True(start >= 0);
         start += prefix.Length;
@@ -736,7 +736,7 @@ public sealed class ContentAndLifecycleTests
         using var handler = new HttpClientHandler { CookieContainer = cookies };
         using var client = new HttpClient(handler) { BaseAddress = url };
         var bridge = await client.GetStringAsync("/webui.js", cancellationToken);
-        const string prefix = "const TOKEN = ";
+        const string prefix = "const TOKEN=";
         var start = bridge.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
         var end = bridge.IndexOf(';', start);
         return uint.Parse(bridge[start..end], NumberStyles.None, CultureInfo.InvariantCulture);

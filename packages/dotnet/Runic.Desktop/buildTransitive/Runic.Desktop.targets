@@ -15,6 +15,9 @@
     <!-- A trimming feature switch: a trimmed or NativeAOT application keeps one server and drops the other. -->
     <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="true" Trim="true" Condition="'$(RunicDesktopServer)' == 'Native'" />
     <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="false" Trim="true" Condition="'$(RunicDesktopServer)' == 'Kestrel'" />
+    <!-- None: no server at all, also when a server package is referenced (a window fails with
+         presentation-server-unavailable, as without one). The executable's declaration, so it applies to every build. -->
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.PresentationServer" Value="false" Trim="true" Condition="'$(RunicDesktopServer)' == 'None'" />
   </ItemGroup>
   <!-- A CS-WebUI window's Development DevTools Protocol endpoint (WebUiRemoteDebugging, D070.7) is for untrimmed
        development builds such as dotnet runic dev's: a trimmed or NativeAOT publish turns it off, so the trimmer removes
@@ -40,6 +43,10 @@
     <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
            Condition="'$(RunicDesktopServer)' == 'Native' and '$(_RunicDesktopNativeServerReferenced)' != 'true'"
            Text="RunicDesktopServer is Native, but the project does not reference Runic.Desktop.NativeServer." />
+    <!-- None keeps neither server (Runic.Desktop.PresentationServer=false), so a referenced server package is unused. -->
+    <Warning Code="RUNICDESK007" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk007"
+             Condition="'$(RunicDesktopServer)' == 'None' and ('$(_RunicDesktopKestrelReferenced)' == 'true' or '$(_RunicDesktopNativeServerReferenced)' == 'true')"
+             Text="RunicDesktopServer is None, but the project references a presentation server package (Runic.Desktop.Kestrel or Runic.Desktop.NativeServer). None uses no server: the package is unused, and a Runic Desktop window would fail with presentation-server-unavailable. Remove RunicDesktopServer to use the referenced server, or remove the package." />
   </Target>
   <Target Name="RunicDesktopLinkWebView2Loader" AfterTargets="ResolvePackageAssets"
           Condition="'$(PublishAot)' == 'true' and ('$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64')">

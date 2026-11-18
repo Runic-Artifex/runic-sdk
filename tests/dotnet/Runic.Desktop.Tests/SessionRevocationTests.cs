@@ -257,7 +257,7 @@ public sealed class SessionRevocationTests
         using var client = new HttpClient();
         var bridge = await client.GetStringAsync(new Uri(surfaceUrl, "webui.js"), cancellationToken);
         var token = ReadToken(bridge);
-        const string credentialPrefix = "const SESSION_CREDENTIAL = \"";
+        const string credentialPrefix = "const SESSION_CREDENTIAL=\"";
         var credentialStart = bridge.IndexOf(credentialPrefix, StringComparison.Ordinal) + credentialPrefix.Length;
         var credential = bridge[credentialStart..bridge.IndexOf('"', credentialStart)];
         var socket = new ClientWebSocket();
@@ -286,7 +286,7 @@ public sealed class SessionRevocationTests
 
     private static uint ReadToken(string bridge)
     {
-        const string prefix = "const TOKEN = ";
+        const string prefix = "const TOKEN=";
         var start = bridge.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
         return uint.Parse(bridge[start..bridge.IndexOf(';', start)], NumberStyles.None, CultureInfo.InvariantCulture);
     }

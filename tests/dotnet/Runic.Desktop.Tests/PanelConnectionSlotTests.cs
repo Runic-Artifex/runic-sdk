@@ -187,8 +187,8 @@ public sealed class PanelConnectionSlotTests
     {
         using var http = Http();
         var script = await http.GetStringAsync(new Uri(surface, "webui.js"));
-        var token = uint.Parse(Regex.Match(script, @"const TOKEN = (\d+);").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-        var credential = Regex.Match(script, "const SESSION_CREDENTIAL = \"([A-Za-z0-9_-]+)\";").Groups[1].Value;
+        var token = uint.Parse(Regex.Match(script, @"const TOKEN=(\d+);").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        var credential = Regex.Match(script, "const SESSION_CREDENTIAL=\"([A-Za-z0-9_-]+)\";").Groups[1].Value;
         Assert.Matches("^[A-Za-z0-9_-]{43}$", credential);
         return (token, credential);
     }

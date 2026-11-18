@@ -251,10 +251,10 @@
     "aot/executable-bytes": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 8059012,
-      "measured": [7764752, 7900992],
+      "limit": 7749732,
+      "measured": [7461536, 7597776],
       "margin": 0.02,
-      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %. 10,706,240 B at K = 0 before the loopback server replaced HttpListener (#1111); 7,676,736 B at K = 0 before #1109's generated table reader and command runners (about 25 KB once per bridged assembly, which the 9 ViewModels repay)"
+      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %. 10,706,240 B at K = 0 before the loopback server replaced HttpListener (#1111). Since #1109 (D072.15) the fixture has every member kind of the descriptor table; with the narrower fixture before it, 7,506,528 B at K = 0 and 7,740,048 B at K = 9"
     },
     "aot/framework/System.Net.Http": {
       "class": "total",
@@ -273,24 +273,24 @@
     "aot/assembly/Runic.Application.Views": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 597998,
-      "measured": [569542, 569521],
+      "limit": 569699,
+      "measured": [542591, 542570],
       "margin": 0.05,
       "note": "mstat bytes owned by Runic.Application.Views (the Views runtime and the generated Bridge support): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
     "aot/assembly/Runic.Navigation": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 204320,
-      "measured": [194590, 194590],
+      "limit": 186119,
+      "measured": [177256, 177256],
       "margin": 0.05,
       "note": "mstat bytes owned by Runic.Navigation (routing, pages and the navigation host): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
     "aot/assembly/Runic.Application.Views.CsWebUi": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 138209,
-      "measured": [131627, 131627],
+      "limit": 138232,
+      "measured": [131649, 131649],
       "margin": 0.05,
       "note": "mstat bytes owned by Runic.Application.Views.CsWebUi (the CS-WebUI host adapter and, since #1111, its own loopback HTTP server: 103,608 B before): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
@@ -305,8 +305,8 @@
     "aot/desktop/executable-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 11660290,
-      "measured": [11431656, 11431656],
+      "limit": 10811584,
+      "measured": [10599592, 10599592],
       "margin": 0.02,
       "note": "the whole linux-x64 executable of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0); the limit is the measurement plus 2 %. 14,559,552 B before the remote-debugging switch (#1112) and the manifest read without HttpClient (#1113)"
     },
@@ -327,8 +327,8 @@
     "aot/views-translations/executable-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 8714105,
-      "measured": [8543240, 8543240],
+      "limit": 8498730,
+      "measured": [8332088, 8332088],
       "margin": 0.02,
       "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. 8,898,760 B with Translations 0.13 (main CI run 44179860685); Translations 0.14's compressed catalogs and message table took it to 8,543,240 B (SDK-5)"
     }

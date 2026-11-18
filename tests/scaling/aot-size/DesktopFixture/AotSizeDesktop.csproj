@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The Runic.Desktop host fixture of the NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size"): the
        CS-WebUI fixture's shell and ViewModels (K = 0) on Runic.Application.Views.Desktop. RunicDesktopServer=None and no
-       server package: aot/desktop/* measure the host without a presentation server (a referenced Kestrel would be
-       linked even with None). Only published, never run. -->
+       server package: aot/desktop/* measure the host without a presentation server (None keeps neither server, also
+       with one referenced). Only published, never run. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -12,6 +12,9 @@
     <RootNamespace>AotSize</RootNamespace>
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <RunicDesktopServer>None</RunicDesktopServer>
+    <!-- The repository's Directory.Build.targets marks every Desktop executable as referencing Runic.Desktop.Kestrel;
+         this one references no server, so the None-with-a-server warning does not apply. -->
+    <NoWarn>$(NoWarn);RUNICDESK007</NoWarn>
     <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
     <RunicApplicationFrontendGeneratedDirectory>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicApplicationFrontendGeneratedDirectory>
     <AotSizeModelsDirectory Condition="'$(AotSizeModelsDirectory)' == ''">$(MSBuildThisFileDirectory)../../../../artifacts/scaling/aot-size/models</AotSizeModelsDirectory>

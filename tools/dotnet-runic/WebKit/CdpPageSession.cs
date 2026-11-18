@@ -518,6 +518,10 @@ internal sealed partial class CdpPageSession
                     _instrumentation = false;
                     if (Interlocked.Exchange(ref _instrumentationBreakpointId, null) is { } set && !_suspended)
                     {
+                        // Recorded as removed before WebKit is told: WebKit can still report a stop there that it sent
+                        // before it read the removal, and that stop is then nobody's, so WebKit continues (BreakpointsAt
+                        // skips removed breakpoints) instead of the debugger getting a breakpoint it never set (#1139).
+                        lock (_stateGate) _removedBreakpoints[set] = null;
                         try
                         {
                             await Wip("Debugger.removeBreakpoint", new() { ["breakpointId"] = set }, cancellationToken).ConfigureAwait(false);
@@ -977,6 +981,7 @@ internal sealed partial class CdpPageSession
             _instrumentationBreakpointId = result["breakpointId"]?.GetValue<string>();
             lock (_stateGate)
             {
+                if (_instrumentationBreakpointId is { } id) _removedBreakpoints.Remove(id);
                 foreach (JsonObject location in result["locations"]?.AsArray().OfType<JsonObject>() ?? [])
                     _instrumentationLocations[location["scriptId"]?.GetValue<string>() ?? ""] = LocationKey(location);
             }
@@ -984,6 +989,7 @@ internal sealed partial class CdpPageSession
         catch (CdpException error) when (error.Message.Contains("already exists", StringComparison.Ordinal))
         {
             _instrumentationBreakpointId = $"/{InstrumentationUrlRegex}/:0:0";
+            lock (_stateGate) _removedBreakpoints.Remove(_instrumentationBreakpointId);
         }
     }
 

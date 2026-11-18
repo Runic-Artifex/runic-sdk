@@ -37,8 +37,8 @@ sealed class DesktopWireClient : IDisposable
         var surface = new { Url = surfaceUrl };
         using var http = cookies is null ? new HttpClient() : new HttpClient(new HttpClientHandler { CookieContainer = cookies });
         var bootstrap = await http.GetStringAsync(new Uri(surface.Url, "webui.js"), cancellationToken);
-        var token = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
-        credential ??= Between(bootstrap, "const SESSION_CREDENTIAL = \"", "\"");
+        var token = uint.Parse(Between(bootstrap, "const TOKEN=", ";"), System.Globalization.CultureInfo.InvariantCulture);
+        credential ??= Between(bootstrap, "const SESSION_CREDENTIAL=\"", "\"");
         var socket = new ClientWebSocket();
         try
         {
@@ -75,7 +75,7 @@ sealed class DesktopWireClient : IDisposable
         var token = location[(location.IndexOf("#runic-frame=", StringComparison.Ordinal) + "#runic-frame=".Length)..];
         var frame = new Uri(frameLaunch, "../");
         var bootstrap = await http.GetStringAsync(new Uri(frame, "webui.js"), cancellationToken);
-        var check = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
+        var check = uint.Parse(Between(bootstrap, "const TOKEN=", ";"), System.Globalization.CultureInfo.InvariantCulture);
         var address = new UriBuilder(frame) { Scheme = "ws", Path = $"{frame.AbsolutePath}_webui_ws_connect" }.Uri;
         // A page of an earlier attachment can hold the surface's only connection a moment after its close reached the
         // client, until the surface has released it: the upgrade is then refused with 403, and the page's Bridge

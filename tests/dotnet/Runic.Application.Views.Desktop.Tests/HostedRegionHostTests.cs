@@ -18,6 +18,14 @@ internal sealed class HostedRegionHostTests
             ValueTask.FromResult(request.CanEmbed ? RunicHostedWindowDecision.Embed(region) : RunicHostedWindowDecision.Refuse("Region mode only."));
     }
 
+    // RunicDesktopRegionHost=false turns the region host off (build/Runic.Application.Views.Desktop.targets); by default,
+    // as in this build, it is on.
+    [Test]
+    public void TheRegionHostIsOnByDefault()
+    {
+        if (!RunicDesktopHost.IsRegionHostSupported) throw new InvalidOperationException("The region host is off in a default build.");
+    }
+
     [Test, NotInParallel(Order = 50)]
     public async Task EmbedsTheGuestsWindowInARegionAndAttachesItAgainByName()
     {

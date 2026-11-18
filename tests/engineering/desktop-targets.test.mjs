@@ -89,7 +89,7 @@ test("a trimmed or NativeAOT publish turns the WebUI remote-debugging switch off
 // for WebUiRemoteDebugging above.
 const viewsDesktopTargets = resolve(root, "packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets");
 
-function developmentAssetsSwitch(name, properties, { publish = false } = {}) {
+function viewsDesktopSwitches(name, properties, { publish = false } = {}) {
   const folder = join(directory, name);
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "App.proj"), `<Project>
@@ -103,10 +103,25 @@ ${properties}
   const result = spawnSync("dotnet", ["msbuild", join(folder, "App.proj"), "-getItem:RuntimeHostConfigurationOption",
     ...(publish ? ["-t:PrepareForILLink"] : []), "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  const items = JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
-  return items.filter(item => item.Identity === "Runic.Application.Views.Desktop.DevelopmentAssets")
+  return JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
+}
+
+function developmentAssetsSwitch(name, properties, options) {
+  return viewsDesktopSwitches(name, properties, options).filter(item => item.Identity === "Runic.Application.Views.Desktop.DevelopmentAssets")
     .map(item => ({ value: item.Value, trim: item.Trim }));
 }
+
+// RunicDesktopRegionHost=false (runic-sdk#1109): the application's pages declare no hosted regions; its choice, so the
+// switch applies to every build. The default keeps the region host.
+test("RunicDesktopRegionHost=false turns the region host off in every build", () => {
+  const regionHost = (name, properties, options) => viewsDesktopSwitches(name, properties, options)
+    .filter(item => item.Identity === "Runic.Application.Views.Desktop.RegionHost").map(item => ({ value: item.Value, trim: item.Trim }));
+  assert.deepEqual(regionHost("region-default", ""), []);
+  assert.deepEqual(regionHost("region-true", "<RunicDesktopRegionHost>true</RunicDesktopRegionHost>"), []);
+  assert.deepEqual(regionHost("region-off", "<RunicDesktopRegionHost>false</RunicDesktopRegionHost>"), [{ value: "false", trim: "true" }]);
+  assert.deepEqual(regionHost("region-off-publish", "<RunicDesktopRegionHost>false</RunicDesktopRegionHost>", { publish: true }),
+    [{ value: "false", trim: "true" }]);
+});
 
 test("a build keeps the development assets, also with PublishAot or PublishTrimmed in the project", () => {
   publishProperties.forEach((properties, index) =>
@@ -162,6 +177,24 @@ test("the referenced server package selects the server and writes the trimmable 
   assert.deepEqual(switches("none", "", []), { server: "", native: [], minimal: false });
 });
 
+// RunicDesktopServer=None declares an executable that opens no window (runic-sdk#1109): Runic.Desktop.PresentationServer
+// is off in every build, so a trimmed or NativeAOT one keeps neither server, also with a server package referenced.
+function presentationServerSwitch(name, properties, servers) {
+  const result = spawnSync("dotnet", ["msbuild", project(name, properties, servers), "-getItem:RuntimeHostConfigurationOption",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const items = JSON.parse(result.stdout).Items.RuntimeHostConfigurationOption ?? [];
+  return items.filter(item => item.Identity === "Runic.Desktop.PresentationServer").map(item => ({ value: item.Value, trim: item.Trim }));
+}
+
+test("RunicDesktopServer=None turns the presentation server off, also with a server package", () => {
+  assert.deepEqual(presentationServerSwitch("server-none", "<RunicDesktopServer>None</RunicDesktopServer>", []), [{ value: "false", trim: "true" }]);
+  assert.deepEqual(presentationServerSwitch("server-none-kestrel", "<RunicDesktopServer>None</RunicDesktopServer>", ["kestrel"]),
+    [{ value: "false", trim: "true" }]);
+  assert.deepEqual(presentationServerSwitch("server-kestrel", "", ["kestrel"]), []);
+  assert.deepEqual(presentationServerSwitch("server-native", "", ["native"]), []);
+});
+
 function validateServer(name, properties, servers) {
   return spawnSync("dotnet", ["msbuild", project(name, properties, servers), "-t:_RunicDesktopValidateServer", "-nologo",
     "-noAutoResponse", "-nodeReuse:false", "-v:m", "-tl:off"], { encoding: "utf8" });
@@ -177,6 +210,26 @@ test("an executable without a server package fails with RUNICDESK004", () => {
     const accepted = validateServer(name, properties, []);
     assert.equal(accepted.status, 0, `${name}: ${accepted.stdout}`);
   }
+});
+
+// RunicDesktopServer=None keeps neither server (runic-sdk#1109), so a referenced server package is unused: RUNICDESK007
+// warns, and NoWarn suppresses it. Without a server package, None is quiet.
+test("RunicDesktopServer=None with a server package warns with RUNICDESK007", () => {
+  const none = "<OutputType>Exe</OutputType><RunicDesktopServer>None</RunicDesktopServer>";
+  for (const servers of [["kestrel"], ["native"], ["kestrel", "native"]]) {
+    const result = validateServer(`none-with-${servers.join("-")}`, none, servers);
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /warning RUNICDESK007: RunicDesktopServer is None, but the project references a presentation server package/);
+  }
+  const quiet = validateServer("none-without-server", none, []);
+  assert.equal(quiet.status, 0, quiet.stdout);
+  assert.doesNotMatch(quiet.stdout, /RUNICDESK007/);
+  // The fixture is not an SDK project: it maps NoWarn to MSBuildWarningsAsMessages as Microsoft.Common.CurrentVersion.targets does.
+  const suppressed = validateServer("none-suppressed",
+    `${none}<NoWarn>$(NoWarn);RUNICDESK007</NoWarn><MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);$(NoWarn)</MSBuildWarningsAsMessages>`,
+    ["kestrel"]);
+  assert.equal(suppressed.status, 0, suppressed.stdout);
+  assert.doesNotMatch(suppressed.stdout, /warning RUNICDESK007/);
 });
 
 test("a server whose package is missing fails with RUNICDESK004, an unknown one with RUNICDESK003", () => {
