@@ -1,0 +1,213 @@
+    // global::System.Boolean
+    internal static class Boolean
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
+        {
+            writer.WriteBooleanValue(value);
+        }
+
+        internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element)
+        {
+            return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.CodegenPoint
+    internal static class CodegenPointToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.CodegenPoint value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("x"); RunicBridgeCodecs.Int32.Write(writer, value.X);
+            writer.WritePropertyName("y"); RunicBridgeCodecs.Int32.Write(writer, value.Y);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.CodegenPoint Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.CodegenPoint is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.DocumentedItem
+    internal static class DocumentedItemToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedItem value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("title"); RunicBridgeCodecs.String.Write(writer, value.Title);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.DocumentedItem Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.DocumentedItem is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.DocumentedLayout
+    internal static class DocumentedLayout
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedLayout value)
+        {
+            switch (value)
+            {
+                case global::Runic.Application.Testing.Tests.DocumentedLayout.List: writer.WriteStringValue("List"); break;
+                case global::Runic.Application.Testing.Tests.DocumentedLayout.Grid: writer.WriteStringValue("Grid"); break;
+                default: throw new global::System.ArgumentOutOfRangeException(nameof(value), "A bridge enum value must be declared.");
+            }
+        }
+
+        internal static global::Runic.Application.Testing.Tests.DocumentedLayout Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element) switch
+            {
+                "List" => global::Runic.Application.Testing.Tests.DocumentedLayout.List,
+                "Grid" => global::Runic.Application.Testing.Tests.DocumentedLayout.Grid,
+                _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge enum name."),
+            };
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.GeneratedInteractionRequest
+    internal static class GeneratedInteractionRequestToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.GeneratedInteractionRequest value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("title"); RunicBridgeCodecs.String.Write(writer, value.Title);
+            writer.WritePropertyName("attempt"); RunicBridgeCodecs.Int32.Write(writer, value.Attempt);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.GeneratedInteractionRequest Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.GeneratedInteractionRequest is only written to the page.");
+        }
+    }
+
+    // global::System.Int32
+    internal static class Int32
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
+        {
+            writer.WriteNumberValue(value);
+        }
+
+        internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
+        }
+    }
+
+    // global::System.String?
+    internal static class NullableString
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
+        {
+            if (value is null) { writer.WriteNullValue(); return; }
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String? Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ToolkitCommandRequest?
+    internal static class NullableToolkitCommandRequest
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest? value)
+        {
+            if (value is null) { writer.WriteNullValue(); return; }
+            writer.WriteStartObject();
+            writer.WritePropertyName("documentId"); RunicBridgeCodecs.String.Write(writer, value.DocumentId);
+            writer.WritePropertyName("delta"); RunicBridgeCodecs.Int32.Write(writer, value.Delta);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ToolkitCommandRequest? Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
+            if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+            var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+            var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "delta");
+            return new global::Runic.Application.Testing.Tests.ToolkitCommandRequest(RunicBridgeCodecs.String.Read(value_0), RunicBridgeCodecs.Int32.Read(value_1));
+        }
+    }
+
+    // global::System.String
+    internal static class String
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ToolkitCommandRequest
+    internal static class ToolkitCommandRequest
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("documentId"); RunicBridgeCodecs.String.Write(writer, value.DocumentId);
+            writer.WritePropertyName("delta"); RunicBridgeCodecs.Int32.Write(writer, value.Delta);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ToolkitCommandRequest Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+            var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+            var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "delta");
+            return new global::Runic.Application.Testing.Tests.ToolkitCommandRequest(RunicBridgeCodecs.String.Read(value_0), RunicBridgeCodecs.Int32.Read(value_1));
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.TypedSaveRequest
+    internal static class TypedSaveRequest
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.TypedSaveRequest value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("documentId"); RunicBridgeCodecs.String.Write(writer, value.DocumentId);
+            writer.WritePropertyName("content"); RunicBridgeCodecs.String.Write(writer, value.Content);
+            writer.WritePropertyName("expectedVersion"); RunicBridgeCodecs.Int32.Write(writer, value.ExpectedVersion);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.TypedSaveRequest Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+            var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+            var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+            var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
+            return new global::Runic.Application.Testing.Tests.TypedSaveRequest(RunicBridgeCodecs.String.Read(value_0), RunicBridgeCodecs.String.Read(value_1), RunicBridgeCodecs.Int32.Read(value_2));
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.TypedSaveResult
+    internal static class TypedSaveResultToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.TypedSaveResult value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("documentId"); RunicBridgeCodecs.String.Write(writer, value.DocumentId);
+            writer.WritePropertyName("savedVersion"); RunicBridgeCodecs.Int32.Write(writer, value.SavedVersion);
+            writer.WritePropertyName("contentLength"); RunicBridgeCodecs.Int32.Write(writer, value.ContentLength);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.TypedSaveResult Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.TypedSaveResult is only written to the page.");
+        }
+    }

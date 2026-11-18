@@ -2,13 +2,20 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using LastValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using LockCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.UInt64;
+using OpenCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.UInt64;
+using SelectCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
 internal sealed class KeyedToolkitBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> LastGetter = static vm => ((global::Runic.Application.Testing.Tests.KeyedToolkitViewModel)vm).Last;
     internal KeyedToolkitBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedToolkitViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.KeyedToolkitViewModel), routePrefix ?? "keyedToolkit",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Last", "last", static vm => ((global::Runic.Application.Testing.Tests.KeyedToolkitViewModel)vm).Last, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Last", "last", LastGetter, null) { TextMember = true },
         ],
         [
         ],
@@ -27,77 +34,9 @@ internal sealed class KeyedToolkitBridge : global::Runic.Application.Views.Gener
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("last", static owner => ((global::Runic.Application.Testing.Tests.KeyedToolkitViewModel)owner).Last, propertyName: "Last"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("last", LastGetter, propertyName: "Last"),
         ]
     ;
-private static class LastValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class LockCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value) => Write0(writer, value);
-    internal static global::System.UInt64 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, value);
-    }
-
-    private static global::System.UInt64 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);
-    }
-
-}
-
-private static class OpenCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value) => Write0(writer, value);
-    internal static global::System.UInt64 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, value);
-    }
-
-    private static global::System.UInt64 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);
-    }
-
-}
-
-private static class SelectCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
     private sealed class ToolkitRunningSubscription : global::System.IDisposable
     {
         private readonly global::System.ComponentModel.INotifyPropertyChanged _command;

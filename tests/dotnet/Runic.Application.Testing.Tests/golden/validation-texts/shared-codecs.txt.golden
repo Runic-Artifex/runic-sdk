@@ -1,0 +1,155 @@
+    // global::System.Boolean
+    internal static class Boolean
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
+        {
+            writer.WriteBooleanValue(value);
+        }
+
+        internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element)
+        {
+            return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
+        }
+    }
+
+    // global::System.Decimal
+    internal static class Decimal
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Decimal value)
+        {
+            global::Runic.Application.Views.Generated.BridgeWire.WriteDecimal(writer, value);
+        }
+
+        internal static global::System.Decimal Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadDecimal(element);
+        }
+    }
+
+    // global::System.Double
+    internal static class Double
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Double value)
+        {
+            global::Runic.Application.Views.Generated.BridgeWire.WriteFiniteNumber(writer, value);
+        }
+
+        internal static global::System.Double Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadDouble(element);
+        }
+    }
+
+    // global::System.Int32
+    internal static class Int32
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
+        {
+            writer.WriteNumberValue(value);
+        }
+
+        internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ValidationTextShape?
+    internal static class NullableValidationTextShapeToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextShape? value)
+        {
+            if (value is null) { writer.WriteNullValue(); return; }
+            writer.WriteStartObject();
+            switch (value)
+            {
+                case global::Runic.Application.Testing.Tests.ValidationTextCircle item1:
+                    writer.WriteString("$case", "circle");
+                    writer.WritePropertyName("radius"); RunicBridgeCodecs.Int32.Write(writer, item1.Radius);
+                    writer.WritePropertyName("hasErrors"); RunicBridgeCodecs.Boolean.Write(writer, item1.HasErrors);
+                    break;
+                case global::Runic.Application.Testing.Tests.ValidationTextSquare item4:
+                    writer.WriteString("$case", "square");
+                    writer.WritePropertyName("side"); RunicBridgeCodecs.Int32.Write(writer, item4.Side);
+                    break;
+                default: throw new global::System.NotSupportedException("The value is not a declared bridge-union case.");
+            }
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ValidationTextShape? Read(global::System.Text.Json.JsonElement element)
+        {
+            if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
+            var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
+            return discriminator switch
+            {
+                "circle" => RunicBridgeCodecs.ValidationTextCircleToPage.Read(element),
+                "square" => RunicBridgeCodecs.ValidationTextSquareToPage.Read(element),
+                _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
+            };
+        }
+    }
+
+    // global::System.String
+    internal static class String
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ValidationTextCircle
+    internal static class ValidationTextCircleToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextCircle value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("radius"); RunicBridgeCodecs.Int32.Write(writer, value.Radius);
+            writer.WritePropertyName("hasErrors"); RunicBridgeCodecs.Boolean.Write(writer, value.HasErrors);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ValidationTextCircle Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ValidationTextCircle is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ValidationTextDetails
+    internal static class ValidationTextDetailsToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextDetails value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("code"); RunicBridgeCodecs.String.Write(writer, value.Code);
+            writer.WritePropertyName("hasErrors"); RunicBridgeCodecs.Boolean.Write(writer, value.HasErrors);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ValidationTextDetails Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ValidationTextDetails is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.ValidationTextSquare
+    internal static class ValidationTextSquareToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ValidationTextSquare value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("side"); RunicBridgeCodecs.Int32.Write(writer, value.Side);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.ValidationTextSquare Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.ValidationTextSquare is only written to the page.");
+        }
+    }

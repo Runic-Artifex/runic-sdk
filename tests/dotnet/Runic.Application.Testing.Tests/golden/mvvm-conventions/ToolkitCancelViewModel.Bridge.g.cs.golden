@@ -2,14 +2,21 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using CancelledCountValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using ExportInputValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using ExportCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
 internal sealed class ToolkitCancelBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> CancelledCountGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).CancelledCount;
+    private static readonly global::System.Func<object, object?> ExportInputGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportInput;
     internal ToolkitCancelBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitCancelViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.ToolkitCancelViewModel), routePrefix ?? "toolkitCancel",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("CancelledCount", "cancelledCount", static vm => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).CancelledCount, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("ExportInput", "exportInput", static vm => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)vm).ExportInput, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("CancelledCount", "cancelledCount", CancelledCountGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("ExportInput", "exportInput", ExportInputGetter, null) { TextMember = true },
         ],
         [
         ],
@@ -31,63 +38,10 @@ internal sealed class ToolkitCancelBridge : global::Runic.Application.Views.Gene
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("cancelledCount", static owner => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)owner).CancelledCount, propertyName: "CancelledCount"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("exportInput", static owner => ((global::Runic.Application.Testing.Tests.ToolkitCancelViewModel)owner).ExportInput, propertyName: "ExportInput"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("cancelledCount", CancelledCountGetter, propertyName: "CancelledCount"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("exportInput", ExportInputGetter, propertyName: "ExportInput"),
         ]
     ;
-private static class CancelledCountValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class ExportInputValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ExportCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
     private sealed class ToolkitRunningSubscription : global::System.IDisposable
     {
         private readonly global::System.ComponentModel.INotifyPropertyChanged _command;

@@ -2,20 +2,33 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using LayoutValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.DocumentedLayout;
+using ItemValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.DocumentedItemToPage;
+using IsDirtyValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
+using CornerValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.CodegenPointToPage;
+using NoteValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using ChangeLayoutCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.DocumentedLayout;
 internal sealed class DocumentedBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> LayoutGetter = static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Layout;
+    private static readonly global::System.Func<object, object?> ItemGetter = static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Item;
+    private static readonly global::System.Func<object, object?> IsDirtyGetter = static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).IsDirty;
+    private static readonly global::System.Func<object, object?> CornerGetter = static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Corner;
+    private static readonly global::System.Func<object, object?> NoteGetter = static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note;
     internal DocumentedBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.DocumentedViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.DocumentedViewModel), routePrefix ?? "documented",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Layout", "layout", static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Layout, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Item", "item", static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Item, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("IsDirty", "isDirty", static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).IsDirty, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Corner", "corner", static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Corner, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Note", "note", static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note, static (vm, value) => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note = NoteValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Layout", "layout", LayoutGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Item", "item", ItemGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("IsDirty", "isDirty", IsDirtyGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Corner", "corner", CornerGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Note", "note", NoteGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note = NoteValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note = value },
         ],
         [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Note", "note", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note, static (vm, value) => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note = (global::System.String)value!, readValue: static element => NoteValueCodec.Read(element), writeValue: static (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Note", "note", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, NoteGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Note = (global::System.String)value!, readValue: static element => NoteValueCodec.Read(element), writeValue: static (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
             new global::Runic.Application.Views.Generated.CommandDescriptor("ChangeLayout", static vm => (object)((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).ChangeLayoutCommand) { ReadInput = input => ChangeLayoutCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ChangeLayoutCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.DocumentedLayout)argument!)), WireName = "changeLayout" },
@@ -30,170 +43,13 @@ internal sealed class DocumentedBridge : global::Runic.Application.Views.Generat
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("layout", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Layout, propertyName: "Layout"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("item", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Item, propertyName: "Item"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("isDirty", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).IsDirty, propertyName: "IsDirty"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("corner", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Corner, propertyName: "Corner"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("note", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Note, propertyName: "Note"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("layout", LayoutGetter, propertyName: "Layout"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("item", ItemGetter, propertyName: "Item"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("isDirty", IsDirtyGetter, propertyName: "IsDirty"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("corner", CornerGetter, propertyName: "Corner"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("note", NoteGetter, propertyName: "Note"),
         ]
     ;
-private static class LayoutValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedLayout value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.DocumentedLayout Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedLayout value)
-    {
-        switch (value)
-        {
-            case global::Runic.Application.Testing.Tests.DocumentedLayout.List: writer.WriteStringValue("List"); break;
-            case global::Runic.Application.Testing.Tests.DocumentedLayout.Grid: writer.WriteStringValue("Grid"); break;
-            default: throw new global::System.ArgumentOutOfRangeException(nameof(value), "A bridge enum value must be declared.");
-        }
-    }
-
-    private static global::Runic.Application.Testing.Tests.DocumentedLayout Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element) switch
-        {
-            "List" => global::Runic.Application.Testing.Tests.DocumentedLayout.List,
-            "Grid" => global::Runic.Application.Testing.Tests.DocumentedLayout.Grid,
-            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge enum name."),
-        };
-    }
-
-}
-
-private static class ItemValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedItem value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.DocumentedItem Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedItem value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("title"); Write1(writer, value.Title);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.DocumentedItem Read0(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.DocumentedItem is only written to the page.");
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class IsDirtyValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
-    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
-private static class CornerValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.CodegenPoint value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.CodegenPoint Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.CodegenPoint value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("x"); Write1(writer, value.X);
-        writer.WritePropertyName("y"); Write2(writer, value.Y);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.CodegenPoint Read0(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.CodegenPoint is only written to the page.");
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class NoteValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ChangeLayoutCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedLayout value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.DocumentedLayout Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.DocumentedLayout value)
-    {
-        switch (value)
-        {
-            case global::Runic.Application.Testing.Tests.DocumentedLayout.List: writer.WriteStringValue("List"); break;
-            case global::Runic.Application.Testing.Tests.DocumentedLayout.Grid: writer.WriteStringValue("Grid"); break;
-            default: throw new global::System.ArgumentOutOfRangeException(nameof(value), "A bridge enum value must be declared.");
-        }
-    }
-
-    private static global::Runic.Application.Testing.Tests.DocumentedLayout Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element) switch
-        {
-            "List" => global::Runic.Application.Testing.Tests.DocumentedLayout.List,
-            "Grid" => global::Runic.Application.Testing.Tests.DocumentedLayout.Grid,
-            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge enum name."),
-        };
-    }
-
-}
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("layout", static (writer, vm) => LayoutValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.DocumentedViewModel)vm).Layout)),

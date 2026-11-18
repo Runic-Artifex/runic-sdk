@@ -147,6 +147,10 @@ internal sealed class DomainFailureCodegenTests
     internal static void CompareGolden(string project, string set, (string Golden, string Actual)[] outputs)
     {
         var update = Environment.GetEnvironmentVariable("RUNIC_UPDATE_GOLDEN") == "1";
+        // A Bridge's codecs are in the assembly's shared codecs file: pin the ones the set's Bridges use.
+        var bridgeFiles = outputs.Where(output => output.Golden.EndsWith(".Bridge.g.cs", StringComparison.Ordinal)).Select(output => output.Actual).ToArray();
+        if (bridgeFiles.Length > 0)
+            outputs = [.. outputs, ("shared-codecs.txt", SharedCodecsOf(Path.Combine(project, "obj", $"{set}-shared-codecs.txt"), bridgeFiles))];
         foreach (var (golden, actualPath) in outputs)
         {
             // A .golden suffix keeps the files out of the C# and TypeScript builds.
@@ -164,6 +168,32 @@ internal sealed class DomainFailureCodegenTests
             Require(File.Exists(goldenPath) && File.ReadAllText(goldenPath).ReplaceLineEndings("\n") == actual,
                 $"{golden} differs from the generated {actualPath}. Review the change and run with RUNIC_UPDATE_GOLDEN=1.");
         }
+    }
+
+    private const string SharedCodecsFile = "RunicShared.Codecs.Bridge.g.cs";
+
+    // The shared codec classes (BridgeSharedCodecs) that the Bridges name, and those they call in turn, in file order,
+    // written to the extract path. Unlike the whole file, it does not change when an unrelated fixture adds a codec.
+    private static string SharedCodecsOf(string extract, string[] bridgeFiles)
+    {
+        var reference = new System.Text.RegularExpressions.Regex(@"RunicBridgeCodecs\.(@?[A-Za-z_][A-Za-z0-9_]*)");
+        // Each class is its type comment, its declaration and its body, up to the closing brace at the class's indent.
+        var classes = new List<(string Name, string Text)>();
+        var lines = File.ReadAllLines(Path.Combine(Path.GetDirectoryName(bridgeFiles[0])!, SharedCodecsFile));
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (!lines[index].StartsWith("    internal static class ", StringComparison.Ordinal)) continue;
+            var end = Array.IndexOf(lines, "    }", index);
+            classes.Add((lines[index]["    internal static class ".Length..], string.Join('\n', lines[(index - 1)..(end + 1)])));
+        }
+        var byName = classes.ToDictionary(entry => entry.Name, entry => entry.Text, StringComparer.Ordinal);
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>(bridgeFiles.SelectMany(path => reference.Matches(File.ReadAllText(path)).Select(match => match.Groups[1].Value)));
+        while (pending.TryPop(out var name))
+            if (used.Add(name))
+                foreach (var match in reference.Matches(byName[name]).Cast<System.Text.RegularExpressions.Match>()) pending.Push(match.Groups[1].Value);
+        File.WriteAllText(extract, string.Join("\n\n", classes.Where(entry => used.Contains(entry.Name)).Select(entry => entry.Text)) + "\n");
+        return extract;
     }
 
     // The fingerprint the generated bridge was constructed with.

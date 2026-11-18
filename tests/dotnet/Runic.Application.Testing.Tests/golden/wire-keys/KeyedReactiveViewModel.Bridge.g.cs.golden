@@ -2,17 +2,29 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using EnabledValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
+using LastValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using DeleteCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.UInt64;
+using ArchiveCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.UInt64;
+using RenameCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.UInt64;
+using RenameCommandResultCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using ExportCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.UInt64;
+using ExportCommandResultCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
 internal sealed class KeyedReactiveBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> EnabledGetter = static vm => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled;
+    private static readonly global::System.Func<object, object?> LastGetter = static vm => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Last;
     internal KeyedReactiveBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedReactiveViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.KeyedReactiveViewModel), routePrefix ?? "keyedReactive",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Enabled", "enabled", static vm => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled, static (vm, value) => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled = EnabledValueCodec.Read(value)),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Last", "last", static vm => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Last, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Enabled", "enabled", EnabledGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled = EnabledValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Last", "last", LastGetter, null) { TextMember = true },
         ],
         [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Enabled", "enabled", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled, static (vm, value) => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled = (global::System.Boolean)value!, readValue: static element => EnabledValueCodec.Read(element), writeValue: static (writer, value) => EnabledValueCodec.Write(writer, (global::System.Boolean)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Enabled", "enabled", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, EnabledGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled = (global::System.Boolean)value!, readValue: static element => EnabledValueCodec.Read(element), writeValue: static (writer, value) => EnabledValueCodec.Write(writer, (global::System.Boolean)value!)),
         ],
         [
             new global::Runic.Application.Views.Generated.CommandDescriptor("Delete", static vm => (object)((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).DeleteCommand) { ExecuteResultAsync = static async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.KeyedItem, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).DeleteCommand, (global::Runic.Application.Testing.Tests.KeyedItem)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, ReadInput = input => DeleteCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => DeleteCommandInputCodec.Write(writer, (global::System.UInt64)argument!)), CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.KeyedItem, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).DeleteCommand, (global::Runic.Application.Testing.Tests.KeyedItem)argument!), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.KeyedItem, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).DeleteCommand, changed), WireName = "delete", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.KeyedItem, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).DeleteCommand, logger, "KeyedReactiveViewModel.DeleteCommand"), ResolveArgument = static (vm, key) => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).FindItem((global::System.UInt64)key!) },
@@ -30,146 +42,10 @@ internal sealed class KeyedReactiveBridge : global::Runic.Application.Views.Gene
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("enabled", static owner => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)owner).Enabled, propertyName: "Enabled"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("last", static owner => ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)owner).Last, propertyName: "Last"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("enabled", EnabledGetter, propertyName: "Enabled"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("last", LastGetter, propertyName: "Last"),
         ]
     ;
-private static class EnabledValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
-    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
-    {
-        writer.WriteBooleanValue(value);
-    }
-
-    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
-    {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
-    }
-
-}
-
-private static class LastValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class DeleteCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value) => Write0(writer, value);
-    internal static global::System.UInt64 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, value);
-    }
-
-    private static global::System.UInt64 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);
-    }
-
-}
-
-private static class ArchiveCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value) => Write0(writer, value);
-    internal static global::System.UInt64 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, value);
-    }
-
-    private static global::System.UInt64 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);
-    }
-
-}
-
-private static class RenameCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value) => Write0(writer, value);
-    internal static global::System.UInt64 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, value);
-    }
-
-    private static global::System.UInt64 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);
-    }
-
-}
-
-private static class RenameCommandResultCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ExportCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value) => Write0(writer, value);
-    internal static global::System.UInt64 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.UInt64 value)
-    {
-        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, value);
-    }
-
-    private static global::System.UInt64 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);
-    }
-
-}
-
-private static class ExportCommandResultCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("enabled", static (writer, vm) => EnabledValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.KeyedReactiveViewModel)vm).Enabled)),

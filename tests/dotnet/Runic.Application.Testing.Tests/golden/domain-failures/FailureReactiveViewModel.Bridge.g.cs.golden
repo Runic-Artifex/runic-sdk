@@ -2,16 +2,24 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using TitleValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
+using SaveCommandResultCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using SaveCommandFailureCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NoteSaveFailureToPage;
+using ImportCommandResultCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using ImportCommandFailureCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NoteSaveFailureToPage;
 internal sealed class FailureReactiveBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> TitleGetter = static vm => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title;
     internal FailureReactiveBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureReactiveViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.FailureReactiveViewModel), routePrefix ?? "failureReactive",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", static vm => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = value },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Title", "title", TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = value },
         ],
         [
-            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, TitleGetter, static (vm, value) => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title = (global::System.String)value!, readValue: static element => TitleValueCodec.Read(element), writeValue: static (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
             new global::Runic.Application.Views.Generated.CommandDescriptor("Save", static vm => (object)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand) { ExecuteResultAsync = static async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }, CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null, WireName = "save", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).SaveCommand, logger, "FailureReactiveViewModel.SaveCommand") },
@@ -27,196 +35,9 @@ internal sealed class FailureReactiveBridge : global::Runic.Application.Views.Ge
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", static owner => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)owner).Title, propertyName: "Title"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", TitleGetter, propertyName: "Title"),
         ]
     ;
-private static class TitleValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class SaveCommandResultCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class SaveCommandFailureCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.NoteSaveFailure Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value)
-    {
-        writer.WriteStartObject();
-        switch (value)
-        {
-            case global::Runic.Application.Testing.Tests.NoteTitleRequired item1:
-                writer.WriteString("$case", "titleRequired");
-                break;
-            case global::Runic.Application.Testing.Tests.NoteTitleTaken item2:
-                writer.WriteString("$case", "titleTaken");
-                writer.WritePropertyName("existingTitle"); Write3(writer, item2.ExistingTitle);
-                break;
-            default: throw new global::System.NotSupportedException("The value is not a declared bridge-union case.");
-        }
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.NoteSaveFailure Read0(global::System.Text.Json.JsonElement element)
-    {
-        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
-        return discriminator switch
-        {
-            "titleRequired" => Read1(element),
-            "titleTaken" => Read2(element),
-            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
-        };
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleRequired value)
-    {
-        writer.WriteStartObject();
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.NoteTitleRequired Read1(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleRequired is only written to the page.");
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleTaken value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("existingTitle"); Write3(writer, value.ExistingTitle);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.NoteTitleTaken Read2(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleTaken is only written to the page.");
-    }
-
-    private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read3(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class ImportCommandResultCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class ImportCommandFailureCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.NoteSaveFailure Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value)
-    {
-        writer.WriteStartObject();
-        switch (value)
-        {
-            case global::Runic.Application.Testing.Tests.NoteTitleRequired item1:
-                writer.WriteString("$case", "titleRequired");
-                break;
-            case global::Runic.Application.Testing.Tests.NoteTitleTaken item2:
-                writer.WriteString("$case", "titleTaken");
-                writer.WritePropertyName("existingTitle"); Write3(writer, item2.ExistingTitle);
-                break;
-            default: throw new global::System.NotSupportedException("The value is not a declared bridge-union case.");
-        }
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.NoteSaveFailure Read0(global::System.Text.Json.JsonElement element)
-    {
-        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
-        return discriminator switch
-        {
-            "titleRequired" => Read1(element),
-            "titleTaken" => Read2(element),
-            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
-        };
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleRequired value)
-    {
-        writer.WriteStartObject();
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.NoteTitleRequired Read1(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleRequired is only written to the page.");
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleTaken value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("existingTitle"); Write3(writer, value.ExistingTitle);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.NoteTitleTaken Read2(global::System.Text.Json.JsonElement element)
-    {
-        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleTaken is only written to the page.");
-    }
-
-    private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read3(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
     private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
         new global::Runic.Application.Views.Generated.BridgeStateMember("title", static (writer, vm) => TitleValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)vm).Title)),

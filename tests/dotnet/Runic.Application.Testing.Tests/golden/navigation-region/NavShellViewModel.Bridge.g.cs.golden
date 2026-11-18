@@ -6,11 +6,13 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.Generated
 {
     private readonly global::Runic.Application.Views.WindowContentSession _content;
     private readonly global::Runic.Application.Testing.Tests.NavShellViewModel _owner;
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> MainGetter = static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main;
     internal NavShellBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.NavShellViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.NavShellViewModel), routePrefix ?? "navShell",
         CreateState(content),
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Main", "main", static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main?.Current, null, static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Main", "main", static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main?.Current, null, MainGetter),
         ],
         [
         ],

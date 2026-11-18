@@ -1,0 +1,131 @@
+    // global::System.Int32
+    internal static class Int32
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
+        {
+            writer.WriteNumberValue(value);
+        }
+
+        internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.NotePublishBlock
+    internal static class NotePublishBlock
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NotePublishBlock value)
+        {
+            switch (value)
+            {
+                case global::Runic.Application.Testing.Tests.NotePublishBlock.Locked: writer.WriteStringValue("Locked"); break;
+                case global::Runic.Application.Testing.Tests.NotePublishBlock.Archived: writer.WriteStringValue("Archived"); break;
+                default: throw new global::System.ArgumentOutOfRangeException(nameof(value), "A bridge enum value must be declared.");
+            }
+        }
+
+        internal static global::Runic.Application.Testing.Tests.NotePublishBlock Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element) switch
+            {
+                "Locked" => global::Runic.Application.Testing.Tests.NotePublishBlock.Locked,
+                "Archived" => global::Runic.Application.Testing.Tests.NotePublishBlock.Archived,
+                _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge enum name."),
+            };
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.NoteQuotaExceeded
+    internal static class NoteQuotaExceededToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteQuotaExceeded value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("limit"); RunicBridgeCodecs.Int32.Write(writer, value.Limit);
+            writer.WritePropertyName("requested"); RunicBridgeCodecs.Int32.Write(writer, value.Requested);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.NoteQuotaExceeded Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteQuotaExceeded is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.NoteSaveFailure
+    internal static class NoteSaveFailureToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value)
+        {
+            writer.WriteStartObject();
+            switch (value)
+            {
+                case global::Runic.Application.Testing.Tests.NoteTitleRequired item1:
+                    writer.WriteString("$case", "titleRequired");
+                    break;
+                case global::Runic.Application.Testing.Tests.NoteTitleTaken item2:
+                    writer.WriteString("$case", "titleTaken");
+                    writer.WritePropertyName("existingTitle"); RunicBridgeCodecs.String.Write(writer, item2.ExistingTitle);
+                    break;
+                default: throw new global::System.NotSupportedException("The value is not a declared bridge-union case.");
+            }
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.NoteSaveFailure Read(global::System.Text.Json.JsonElement element)
+        {
+            var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
+            return discriminator switch
+            {
+                "titleRequired" => RunicBridgeCodecs.NoteTitleRequiredToPage.Read(element),
+                "titleTaken" => RunicBridgeCodecs.NoteTitleTakenToPage.Read(element),
+                _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
+            };
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.NoteTitleRequired
+    internal static class NoteTitleRequiredToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleRequired value)
+        {
+            writer.WriteStartObject();
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.NoteTitleRequired Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleRequired is only written to the page.");
+        }
+    }
+
+    // global::Runic.Application.Testing.Tests.NoteTitleTaken
+    internal static class NoteTitleTakenToPage
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleTaken value)
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("existingTitle"); RunicBridgeCodecs.String.Write(writer, value.ExistingTitle);
+            writer.WriteEndObject();
+        }
+
+        internal static global::Runic.Application.Testing.Tests.NoteTitleTaken Read(global::System.Text.Json.JsonElement element)
+        {
+            throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleTaken is only written to the page.");
+        }
+    }
+
+    // global::System.String
+    internal static class String
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }

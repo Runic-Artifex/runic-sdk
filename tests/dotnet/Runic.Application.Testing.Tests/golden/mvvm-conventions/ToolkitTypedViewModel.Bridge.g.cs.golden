@@ -2,19 +2,44 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
+// This Bridge's codecs: each is the assembly's shared codec of its type, in RunicShared.Codecs.Bridge.g.cs.
+using TotalValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using LabelValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using OptionalDocumentIdValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using AsyncDocumentIdValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using AsyncLabelValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using AsyncOptionalDocumentIdValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using CancelledCountValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using ApplyCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.ToolkitCommandRequest;
+using AddCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using RenameCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using OptionalCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableToolkitCommandRequest;
+using AsyncDtoCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.ToolkitCommandRequest;
+using AsyncIntCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
+using AsyncStringCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableString;
+using AsyncOptionalCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.NullableToolkitCommandRequest;
+using CancelCommandInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.String;
 internal sealed class ToolkitTypedBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
+    // One getter per property, shared by its descriptors and its data subscription.
+    private static readonly global::System.Func<object, object?> TotalGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Total;
+    private static readonly global::System.Func<object, object?> LabelGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Label;
+    private static readonly global::System.Func<object, object?> OptionalDocumentIdGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).OptionalDocumentId;
+    private static readonly global::System.Func<object, object?> AsyncDocumentIdGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDocumentId;
+    private static readonly global::System.Func<object, object?> AsyncLabelGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncLabel;
+    private static readonly global::System.Func<object, object?> AsyncOptionalDocumentIdGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalDocumentId;
+    private static readonly global::System.Func<object, object?> CancelledCountGetter = static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelledCount;
     internal ToolkitTypedBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitTypedViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, typeof(global::Runic.Application.Testing.Tests.ToolkitTypedViewModel), routePrefix ?? "toolkitTyped",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Total", "total", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Total, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("Label", "label", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).Label, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("OptionalDocumentId", "optionalDocumentId", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).OptionalDocumentId, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncDocumentId", "asyncDocumentId", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncDocumentId, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncLabel", "asyncLabel", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncLabel, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncOptionalDocumentId", "asyncOptionalDocumentId", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).AsyncOptionalDocumentId, null) { TextMember = true },
-            new global::Runic.Application.Views.Generated.PropertyDescriptor("CancelledCount", "cancelledCount", static vm => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)vm).CancelledCount, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Total", "total", TotalGetter, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Label", "label", LabelGetter, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("OptionalDocumentId", "optionalDocumentId", OptionalDocumentIdGetter, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncDocumentId", "asyncDocumentId", AsyncDocumentIdGetter, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncLabel", "asyncLabel", AsyncLabelGetter, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("AsyncOptionalDocumentId", "asyncOptionalDocumentId", AsyncOptionalDocumentIdGetter, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("CancelledCount", "cancelledCount", CancelledCountGetter, null),
         ],
         [
         ],
@@ -39,409 +64,15 @@ internal sealed class ToolkitTypedBridge : global::Runic.Application.Views.Gener
 
     private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("total", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).Total, propertyName: "Total"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("label", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).Label, propertyName: "Label"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("optionalDocumentId", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).OptionalDocumentId, propertyName: "OptionalDocumentId"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncDocumentId", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).AsyncDocumentId, propertyName: "AsyncDocumentId"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncLabel", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).AsyncLabel, propertyName: "AsyncLabel"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncOptionalDocumentId", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).AsyncOptionalDocumentId, propertyName: "AsyncOptionalDocumentId"),
-            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("cancelledCount", static owner => ((global::Runic.Application.Testing.Tests.ToolkitTypedViewModel)owner).CancelledCount, propertyName: "CancelledCount"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("total", TotalGetter, propertyName: "Total"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("label", LabelGetter, propertyName: "Label"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("optionalDocumentId", OptionalDocumentIdGetter, propertyName: "OptionalDocumentId"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncDocumentId", AsyncDocumentIdGetter, propertyName: "AsyncDocumentId"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncLabel", AsyncLabelGetter, propertyName: "AsyncLabel"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("asyncOptionalDocumentId", AsyncOptionalDocumentIdGetter, propertyName: "AsyncOptionalDocumentId"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("cancelledCount", CancelledCountGetter, propertyName: "CancelledCount"),
         ]
     ;
-private static class TotalValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class LabelValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class OptionalDocumentIdValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class AsyncDocumentIdValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class AsyncLabelValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class AsyncOptionalDocumentIdValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class CancelledCountValueCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class ApplyCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ToolkitCommandRequest Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("documentId"); Write1(writer, value.DocumentId);
-        writer.WritePropertyName("delta"); Write2(writer, value.Delta);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ToolkitCommandRequest Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "delta");
-        return new global::Runic.Application.Testing.Tests.ToolkitCommandRequest(Read1(value_0), Read2(value_1));
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class AddCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class RenameCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class OptionalCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest? value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ToolkitCommandRequest? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStartObject();
-        writer.WritePropertyName("documentId"); Write1(writer, value.DocumentId);
-        writer.WritePropertyName("delta"); Write2(writer, value.Delta);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ToolkitCommandRequest? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "delta");
-        return new global::Runic.Application.Testing.Tests.ToolkitCommandRequest(Read1(value_0), Read2(value_1));
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class AsyncDtoCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ToolkitCommandRequest Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest value)
-    {
-        writer.WriteStartObject();
-        writer.WritePropertyName("documentId"); Write1(writer, value.DocumentId);
-        writer.WritePropertyName("delta"); Write2(writer, value.Delta);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ToolkitCommandRequest Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "delta");
-        return new global::Runic.Application.Testing.Tests.ToolkitCommandRequest(Read1(value_0), Read2(value_1));
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class AsyncIntCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
-    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class AsyncStringCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value) => Write0(writer, value);
-    internal static global::System.String? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
-private static class AsyncOptionalCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest? value) => Write0(writer, value);
-    internal static global::Runic.Application.Testing.Tests.ToolkitCommandRequest? Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCommandRequest? value)
-    {
-        if (value is null) { writer.WriteNullValue(); return; }
-        writer.WriteStartObject();
-        writer.WritePropertyName("documentId"); Write1(writer, value.DocumentId);
-        writer.WritePropertyName("delta"); Write2(writer, value.Delta);
-        writer.WriteEndObject();
-    }
-
-    private static global::Runic.Application.Testing.Tests.ToolkitCommandRequest? Read0(global::System.Text.Json.JsonElement element)
-    {
-        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) return default!;
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "delta");
-        return new global::Runic.Application.Testing.Tests.ToolkitCommandRequest(Read1(value_0), Read2(value_1));
-    }
-
-    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read1(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
-    {
-        writer.WriteNumberValue(value);
-    }
-
-    private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
-    }
-
-}
-
-private static class CancelCommandInputCodec
-{
-    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value) => Write0(writer, value);
-    internal static global::System.String Read(global::System.Text.Json.JsonElement element) => Read0(element);
-
-    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
-    {
-        writer.WriteStringValue(value);
-    }
-
-    private static global::System.String Read0(global::System.Text.Json.JsonElement element)
-    {
-        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
-    }
-
-}
-
     private sealed class ToolkitRunningSubscription : global::System.IDisposable
     {
         private readonly global::System.ComponentModel.INotifyPropertyChanged _command;
