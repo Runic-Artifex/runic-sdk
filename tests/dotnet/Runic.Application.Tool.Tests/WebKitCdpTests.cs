@@ -425,6 +425,38 @@ internal sealed partial class ToolTests
         await events.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
+    [Test, DisplayName("a stop at the instrumentation breakpoint that WebKit reports after the debugger removed it continues (#1139)")]
+    public async Task StopAtRemovedInstrumentationBreakpointContinues()
+    {
+        var webKit = new FakeWebKit
+        {
+            Answer = static (method, _) => method == "Debugger.setBreakpointByUrl" ? Json("""{"breakpointId":"/^/:0:0","locations":[]}""") : [],
+        };
+        CdpPageSession session = webKit.Session();
+        await session.HandleAsync("Debugger.setInstrumentationBreakpoint", Json("""{"instrumentation":"beforeScriptWithSourceMapExecution"}"""));
+        Task events = session.RunAsync(CancellationToken.None);
+        // A script without a source map, as a late __devtools/embedded.js. WebKit stops at the instrumentation breakpoint
+        // where it starts, but reports the stop only after the debugger removed that breakpoint.
+        session.Post("Debugger.scriptParsed", Json("""{"scriptId":"9","url":"http://h/__devtools/embedded.js"}"""));
+        await session.HandleAsync("Debugger.removeBreakpoint", Json("""{"breakpointId":"instrumentation:beforeScriptWithSourceMapExecution"}"""));
+        session.Post("Debugger.paused", Json("""{"reason":"Breakpoint","data":{"breakpointId":"/^/:0:0"},"callFrames":[{"callFrameId":"f","location":{"scriptId":"9","lineNumber":0,"columnNumber":0}}]}"""));
+        // No stop for the debugger, which never set that breakpoint: WebKit continues.
+        await Until(() => webKit.Sent.Any(static sent => sent.Method == "Debugger.resume"));
+        session.Post("Debugger.resumed", []);
+        await Task.Delay(100);
+        Equal(0, Emitted(webKit, "Debugger.paused"));
+        Equal(0, Emitted(webKit, "Debugger.resumed"));
+
+        // Set again, the instrumentation breakpoint stops for its pauses as before.
+        await session.HandleAsync("Debugger.setInstrumentationBreakpoint", Json("""{"instrumentation":"beforeScriptWithSourceMapExecution"}"""));
+        session.Post("Debugger.scriptParsed", Json("""{"scriptId":"10","url":"http://h/a.js","sourceMapURL":"a.js.map"}"""));
+        session.Post("Debugger.paused", Json("""{"reason":"Breakpoint","data":{"breakpointId":"/^/:0:0"},"callFrames":[{"callFrameId":"f","location":{"scriptId":"10","lineNumber":0,"columnNumber":0}}]}"""));
+        await Until(() => Emitted(webKit, "Debugger.paused") == 1);
+        Equal(("instrumentation", "10"), (LastPaused(webKit)["reason"]!.GetValue<string>(), LastPaused(webKit)["data"]!["scriptId"]!.GetValue<string>()));
+        session.Complete();
+        await events;
+    }
+
     [Test, DisplayName("the debugger's breakpoints at the start of a script still hit where the instrumentation breakpoint stops")]
     public async Task BreakpointsAtAnInstrumentationStopHit()
     {
