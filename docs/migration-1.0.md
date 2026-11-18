@@ -103,6 +103,13 @@ the release notes, which give the full detail and the pull requests:
   [Selection paths, Angular text locale and field types](../eng/release/notes/0.21.0.md#selection-paths-angular-text-locale-and-field-types-1064),
   [Fixes](../eng/release/notes/0.21.0.md#fixes),
   [Known issues](../eng/release/notes/0.21.0.md#known-issues)
+- 0.22.0: [Upgrading from 0.21](../eng/release/notes/0.22.0.md#upgrading-from-021),
+  [Behaviour and output changes](../eng/release/notes/0.22.0.md#behaviour-and-output-changes),
+  [Development-only views and members](../eng/release/notes/0.22.0.md#development-only-views-and-members-1109),
+  [The side panel and the close drain are stable](../eng/release/notes/0.22.0.md#the-side-panel-and-the-close-drain-are-stable),
+  [CS-WebUI pages in a JavaScript debugger](../eng/release/notes/0.22.0.md#cs-webui-pages-in-a-javascript-debugger),
+  [Runic DevKit](../eng/release/notes/0.22.0.md#runic-devkit-the-runicapplication-capability-and-the-templates-vsconfig),
+  [Fixes](../eng/release/notes/0.22.0.md#fixes)
 
 ## Before you start
 
@@ -1597,3 +1604,59 @@ the side panel ([`RUNICDESK104`](experimental.md#RUNICDESK104)) and the close dr
 The host protocol's wire tokens are unchanged.
 
 Details: 0.21.0 [Experimental features and how to opt in](../eng/release/notes/0.21.0.md#experimental-features-and-how-to-opt-in).
+
+## From 0.21 to 0.22
+
+0.22.0 makes published applications smaller and adds Visual Studio debugging through Runic DevKit. It deprecates two
+things for removal in 0.23 and graduates the side panel and the close drain. Update every Runic NuGet and npm package
+to 0.22.0 together and rebuild, so that the generated clients and Bridges are regenerated. The Views protocol and the
+generated TypeScript are unchanged, so a 0.21 page and a 0.22 host connect. An application that uses Runic Translations
+moves every Translations package, NuGet and npm, to 0.14.0. Runic Command Line stays at 0.13.0. Update Runic's editor
+extensions to 0.22.0 too.
+
+### Deprecated in 0.22, removed in 0.23
+
+| 0.21 | 0.22 |
+| --- | --- |
+| A page loads the host-named copy of the Views client, `runic-desktop-views.js` (Runic Desktop) or `runic-cswebui.js` (CS-WebUI) | Load `runic-views.js` (`<script src="runic-views.js"></script>` after `webui.js`), as the templates already do. The host-named copy still works in 0.22 but logs one console warning; 0.23 removes it. A project that references more than one host, such as Runic Desktop and CS-WebUI, sets `RunicApplicationHost` (`desktop` or `cswebui`), or the build copies no `runic-views.js` (`RUNICBRIDGE019`). Rename a copy of your own under the old name to `runic-views.js` |
+| `import { onBridgeDraining } from "@runic-artifex/views/experimental"` | `import { onBridgeDraining } from "@runic-artifex/views"`. The `./experimental` re-export still works in 0.22, marked `@deprecated`; 0.23 removes it |
+
+Details: 0.22.0 [Upgrading from 0.21](../eng/release/notes/0.22.0.md#upgrading-from-021).
+
+### Graduated
+
+The side panel ([`RUNICDESK104`](experimental.md#retired)) and the close drain ([`RUNICDESK105`](experimental.md#retired))
+are stable, and their API is unchanged since 0.21. Remove `RUNICDESK104` and `RUNICDESK105` from `<NoWarn>` and their
+`#pragma warning disable`/`restore` lines; a leftover suppression is harmless.
+
+Details: 0.22.0 [The side panel and the close drain are stable](../eng/release/notes/0.22.0.md#the-side-panel-and-the-close-drain-are-stable).
+
+### Behaviour
+
+| 0.21 | 0.22 |
+| --- | --- |
+| `Runic.Application.Views.Translations` required Runic Translations `[0.13.0, 0.14.0)` | It requires `[0.14.0, 0.15.0)`: move every Translations package, NuGet and npm, to 0.14.0, and keep `Runic.Translations` and `Runic.Translations.Build` at the same version, since the 0.14 catalog needs the 0.14 runtime. `dotnet runic doctor` checks for 0.14.0 ([Translations 0.14.0 notes](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.14.0/eng/release/notes/0.14.0.md#upgrading-from-013)) |
+| `dotnet publish -r <rid>` of a Runic Desktop application (framework-dependent, or self-contained without trimming) shipped every operating system's `Runic.Platform` assemblies | It ships only its own operating system's. Code of your own that calls another operating system's `Runic.Platform` API from a method that also runs on this one, even behind `OperatingSystem.IsWindows()`, now throws `FileNotFoundException`: move the call into a method of its own (`[MethodImpl(MethodImplOptions.NoInlining)]`), or set `<RunicPublishAllPlatformAssemblies>true</RunicPublishAllPlatformAssemblies>`. Builds, `dotnet run`, publishes without `-r`, trimmed and NativeAOT publishes and every `dotnet runic package` output are unchanged |
+| `RunicDesktopServer=None` in a project that also referenced `Runic.Desktop.Kestrel` still served windows through Kestrel | `None` turns the presentation server off, as documented: a trimmed or NativeAOT build keeps neither server, and a window fails with `presentation-server-unavailable`. Build warning [`RUNICDESK007`](diagnostics.md#runicdesk007) reports the combination; remove `RunicDesktopServer` to use the referenced server |
+| `RunicAssetsDist` and `AssetArchive.Write*` stored each path's content separately | A frontend with identical files stores them once (archive schema `runic.assets.archive/2`). An archive packed with 0.22 needs Runic.Assets 0.22 to read it: update an application that embeds such an archive through `RunicAssetsEmbeddedArchive` with an older Runic.Assets. Archives without duplicate content are unchanged |
+| On Linux and macOS, a CS-WebUI window served blobs and uploads through `HttpListener` | Through Runic's own loopback HTTP/1.1 server, with the same URLs and checks. It answers `400` to ambiguous body framing, bare CR or LF line ends, dot segments and repeated `Host`, `Origin` or upload headers, and limits request heads, connections and idle time ([security guide](security.md)). Windows keeps http.sys |
+| `vite dev` source maps named `sources` relative to the module | `runic()` makes them absolute file paths, so Visual Studio's JavaScript debugger binds breakpoints in `Frontend/src`. A tool of your own that reads the development server's source maps accepts absolute paths. `vite build` output is unchanged |
+| `dotnet runic doctor`'s `compatibility-set` check failed on packages outside the train whose IDs start with `Runic` | It checks exactly the train's packages, and warns when a Runic Command Line or Runic Translations package is older than the train's version or of another minor version. `package-manager` accepts npm 11.12.1 or later with a warning |
+| Generated Bridges created their descriptors per instance, one codec class per member | Each assembly gets `RunicShared.*.Bridge.g.cs` files with shared codecs, command runners and a descriptor table reader. Only the generated C# in `obj/` changes. `ToolkitCommandInspector.DescriptorFor` keeps its signature, but the Runic generator no longer calls it |
+
+Details: 0.22.0 [Behaviour and output changes](../eng/release/notes/0.22.0.md#behaviour-and-output-changes).
+
+### Templates
+
+Nothing has to change: applications created from the 0.21 template keep working. These rows bring one up to the 0.22
+template:
+
+| 0.21 | 0.22 |
+| --- | --- |
+| Runic Desktop: a `<Project> (WebView2 script debugging)` launch profile in `Properties/launchSettings.json` | Removed: it does not work in Visual Studio 2026. Delete the entry with `"jsWebView2Debugging": true` and use Debug the Window of [Runic DevKit for Visual Studio](https://github.com/Runic-Artifex/runic-editors/blob/main/visualstudio/README.md) ([Visual Studio](debugging.md#visual-studio)) |
+| No `.vsconfig` | A `.vsconfig` naming the .NET desktop development workload and JavaScript diagnostics, which Visual Studio offers to install; copy it from a new project into the directory of your solution |
+| CS-WebUI: no JavaScript debugging launch profile | A `(CS-WebUI script debugging)` launch profile that opens the Chromium debugging port 9225 in Development ([CS-WebUI pages in a JavaScript debugger](debugging.md#cs-webui-pages-in-a-javascript-debugger)) |
+| `.vscode/extensions.json` recommends `runic-artifex.runic` | `runic-artifex.runic-devkit`, the VS Code extension's new ID |
+| Angular CLI build: `@angular/build` and `@angular/cli` 22.2.4 with a `vite` override (and for pnpm a `pnpm-workspace.yaml`) | 22.2.7 without the override: `@angular/build` now depends on Vite 8.3.5. After moving to `@angular/build` 22.2.5 or later, remove the `vite` override from `package.json`, and for pnpm from `pnpm-workspace.yaml`. `--angular-build vite` projects are unchanged |
+
+Details: 0.22.0 [Upgrading from 0.21](../eng/release/notes/0.22.0.md#upgrading-from-021).
