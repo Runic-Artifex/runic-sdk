@@ -39,6 +39,70 @@ that uses `Runic.Application.Views.Wpf` or `Runic.Navigation.Wpf`: the .NET SDK
 stops a trimmed WPF publish with `NETSDK1168`. Publish those framework-dependent,
 or self-contained without `PublishTrimmed`.
 
+### Publish for a runtime identifier
+
+Publish a Runic application for the runtime identifier of the machines that
+run it:
+
+```sh
+dotnet publish -c Release -r linux-x64 --self-contained false
+```
+
+Since 0.22 such a publish, framework-dependent or self-contained without
+trimming, also with ReadyToRun or single-file, ships only its own operating
+system's `Runic.Platform` assemblies, and the Linux-only libraries (the GirCore
+GTK 4 bindings and `Tmds.DBus.Protocol`) only for Linux. Code that calls
+another operating system's `Runic.Platform` API directly, from a method that
+also runs on this one, then gets `FileNotFoundException` instead of the
+platform guard. `RunicPublishAllPlatformAssemblies=true` keeps every operating
+system's assemblies
+([MSBuild](msbuild.md#runicplatform-and-the-privileged-action-packages)).
+
+Without `-r`, `dotnet publish` writes a portable framework-dependent folder.
+It runs on every operating system with the .NET runtime, so it carries every
+operating system's `Runic.Platform` assemblies and the native libraries of
+every runtime identifier under `runtimes/`: the Runic Desktop native server for
+seven, the WebView2 loader for three, and CS-WebUI's native library for each
+runtime identifier it supports. Measured for the templates, that adds 8.5 MB to
+a Runic Desktop application (6.1 MB of native libraries and 2.4 MB of other
+operating systems' assemblies) and 1.6 MB to a CS-WebUI application, compared
+with a `linux-x64` publish. A portable folder is a valid choice when one folder
+must serve every OS; otherwise publish once per runtime identifier.
+`dotnet runic package` always publishes for one runtime identifier (the host's
+architecture unless you pass `--runtime`), and `dotnet runic size` requires
+one.
+
+### Size and cost of each publish mode
+
+Each mode trades size for something else. The sizes below were measured on
+2026-11-18 on runic-sdk `main` at 2a2aee3f, the 0.22 development line (.NET SDK
+10.0.403, Release, `linux-x64` unless noted; `win-x64` and `osx-arm64`
+cross-published from Linux), for applications created with
+`dotnet new runic-app` from packages: the Runic Desktop template with its
+defaults (React, ReactiveUI, native server) and the CS-WebUI template
+(`--host cswebui`). They count every published file except PDBs, in MB of
+1,000,000 bytes. They change with every release, with .NET and with your own
+code and frontend, so measure your own application
+([below](#measuring-your-own-application)).
+
+| Mode | Desktop | CS-WebUI | Cost |
+| --- | ---: | ---: | --- |
+| Framework-dependent, `-r <rid>` | 10.7 | 6.1 | The machine needs the .NET runtime. `win-x64`: 11.1 and 6.5; `osx-arm64`: 9.4 and 6.1. |
+| Framework-dependent, portable (no `-r`) | 19.2 | 7.7 | Every operating system's assemblies and every runtime identifier's native libraries ([above](#publish-for-a-runtime-identifier)). |
+| ReadyToRun (`-p:PublishReadyToRun=true`) | 22.1 | 12.5 | Doubles the folder: each assembly carries native code next to its IL. Faster startup ([below](#startup-readytorun-and-invariant-globalization)). |
+| Single-file (`-p:PublishSingleFile=true`) | 10.7 | 6.1 | One executable the size of the folder. The .NET SDK compresses a bundle only when it is self-contained, so framework-dependent single-file saves nothing. |
+| Self-contained, trimmed | 30.8 | 27.5 | No .NET runtime needed on the machine; about 25 MB of it is the trimmed .NET runtime. |
+| NativeAOT (`-p:PublishAot=true`) | 12.7 | 8.4 | No .NET runtime needed, fastest startup. The executable is 12.4 MB (Desktop) or 7.7 MB (CS-WebUI); the rest is the page and, for CS-WebUI, its native library. A build per OS on that OS. |
+
+Template choices change the framework-dependent `linux-x64` size of the
+Desktop template as well:
+
+| Choice | Desktop | Cost |
+| --- | ---: | --- |
+| `--desktop-server kestrel` | 9.2 | Smaller folder: no native server, and ASP.NET Core and `Microsoft.Extensions.*` come from the shared ASP.NET Core runtime, which the machine must have in addition to the .NET runtime. Its NativeAOT executable is 15.5 MB. |
+| `--linux-gtk 4` | 17.7 | The GirCore GTK 4 bindings add 6.8 MB and `Runic.Desktop.Gtk4` 0.2 MB. Windows and macOS publishes leave the bindings out (`win-x64`: 11.3). NativeAOT keeps about 1.5 MB of them: the executable is 13.9 MB. |
+| `--view-models toolkit` | 8.6 | CommunityToolkit.Mvvm instead of the default ReactiveUI saves 2.1 MB on either host (CS-WebUI: 4.0 MB), almost all of it ReactiveUI's and Splat's assemblies. |
+
 ### Startup: ReadyToRun and invariant globalization
 
 A framework-dependent or self-contained application spends most of its startup
