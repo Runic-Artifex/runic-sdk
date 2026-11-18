@@ -29,7 +29,10 @@ internal enum NavigationResultDismissal
 
 // Marks a Back that returns from a result entry: it may leave the region empty, and
 // CompleteAsync stages the value that the commit turn accepts.
-internal sealed record NavigationReturn(NavigationStagedResult? Result);
+internal sealed class NavigationReturn(NavigationStagedResult? result)
+{
+    public NavigationStagedResult? Result { get; } = result;
+}
 
 // The non-generic side of a PushForResult request. The source is completed only
 // outside the gate, after the state became terminal.

@@ -242,8 +242,12 @@ public static class RunicWindowServiceExtensions
 }
 
 // What one open hands to the Window's scope besides the options: its parameter, its key and its result.
-internal sealed record RunicWindowOpenRequest(object? Parameter, object? Key, RunicWindowResultSlot? Result)
+internal sealed class RunicWindowOpenRequest(object? parameter, object? key, RunicWindowResultSlot? result)
 {
+    public object? Parameter { get; } = parameter;
+    public object? Key { get; } = key;
+    public RunicWindowResultSlot? Result { get; } = result;
+
     internal static RunicWindowOpenRequest Plain { get; } = new(null, null, null);
 }
 

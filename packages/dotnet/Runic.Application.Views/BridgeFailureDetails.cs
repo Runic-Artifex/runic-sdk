@@ -47,4 +47,9 @@ internal static class BridgeFailureDetails
 }
 
 /// <summary>Development-only exception detail of a failed Bridge reply.</summary>
-internal sealed record BridgeFailureDetail(string Type, string Message, string Stack);
+internal sealed class BridgeFailureDetail(string type, string message, string stack)
+{
+    public string Type { get; } = type;
+    public string Message { get; } = message;
+    public string Stack { get; } = stack;
+}

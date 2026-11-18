@@ -162,7 +162,9 @@ internal sealed class BridgeFieldWriteRegistryProvider : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            entries = _models.Values.SelectMany(value => value.Fields.Values).ToArray();
+            List<Entry> all = [];
+            foreach (var model in _models.Values) all.AddRange(model.Fields.Values);
+            entries = [.. all];
             _models.Clear();
         }
         foreach (var entry in entries) entry.Dispose();

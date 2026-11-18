@@ -185,12 +185,22 @@ internal sealed class BridgeFieldPathTracker
         public long[] Changed { get; } = new long[hashes.Length];
     }
 
-    private sealed record RetainedReceipt(string Identity, BridgeFieldPathReceipt Receipt, int Bytes);
+    private sealed class RetainedReceipt(string identity, BridgeFieldPathReceipt receipt, int bytes)
+    {
+        public string Identity { get; } = identity;
+        public BridgeFieldPathReceipt Receipt { get; } = receipt;
+        public int Bytes { get; } = bytes;
+    }
 }
 
 // The receipt of a path write. Value is the canonical JSON text of the value at the path (snapshot or incoming).
-internal sealed record BridgeFieldPathReceipt(string Kind, string? Value, long Version, string? Message)
+internal sealed class BridgeFieldPathReceipt(string kind, string? value, long version, string? message)
 {
+    public string Kind { get; } = kind;
+    public string? Value { get; } = value;
+    public long Version { get; } = version;
+    public string? Message { get; } = message;
+
     internal void Write(Utf8JsonWriter writer)
     {
         writer.WritePropertyName("receipt");
