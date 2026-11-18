@@ -135,7 +135,7 @@ See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#dec
 | `RunicPrivilegedActionsClassName` | property | `PrivilegedActions` | The generated class. |
 | `RunicPrivilegedActionsNamespace` | property | `$(RootNamespace)` | Its namespace. |
 | `RunicPrivilegedActionsReservedNames` | property (read-only) | `All`, `MacOSDaemon`, `WindowsElevation` | Names an action cannot have. |
-| `RunicPublishAllPlatformAssemblies` | property | `false` | `true` makes a publish for a Windows, macOS or Linux RuntimeIdentifier keep every operating system's `Runic.Platform` providers and Linux-only libraries. By default it ships only its own (since 0.22): code that calls another operating system's provider from a method that also runs on this one gets `FileNotFoundException`. Builds, publishes without a RuntimeIdentifier, trimmed and NativeAOT publishes always keep them. |
+| `RunicPublishAllPlatformAssemblies` | property | `false` | `true` keeps every operating system's `Runic.Platform` providers and Linux-only libraries in a `dotnet publish -r` for a Windows, macOS or Linux RuntimeIdentifier. By default (since 0.22) such a publish, framework-dependent or self-contained without trimming, with or without ReadyToRun, ships only its own operating system's, and code that calls another operating system's provider from a method that also runs on this one gets `FileNotFoundException`. Builds, `dotnet run`, publishes without `-r`, trimmed and NativeAOT publishes, and so every `dotnet runic package` output (NativeAOT), are not affected. |
 
 [Runic.Platform.Linux.Polkit](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md#declare-actions):
 

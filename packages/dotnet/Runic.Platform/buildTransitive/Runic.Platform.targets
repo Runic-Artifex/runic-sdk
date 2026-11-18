@@ -352,8 +352,10 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
     OperatingSystem.IsWindows() and the like, and calls another operating system's provider only from methods that run
     on it, so the missing assemblies are never loaded.
 
-    A build, dotnet run and a publish without a RuntimeIdentifier (portable) keep every assembly, as do trimmed and
-    NativeAOT publishes, whose trimmer already removes the code that the running operating system cannot reach. An
+    It applies to framework-dependent and untrimmed self-contained publishes, with or without ReadyToRun. A build,
+    dotnet run and a publish without a RuntimeIdentifier (portable) keep every assembly, as do trimmed and NativeAOT
+    publishes (and so dotnet runic package, which publishes with NativeAOT), whose trimmer already removes the code
+    that the running operating system cannot reach. An
     application that calls another operating system's Runic.Platform API from a method that runs on this one (the JIT
     loads every assembly a method uses when it compiles the method, even behind an OperatingSystem check) sets
     RunicPublishAllPlatformAssemblies to true; without it, such a call throws FileNotFoundException in a RID-specific
