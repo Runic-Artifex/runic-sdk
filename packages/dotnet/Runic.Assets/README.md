@@ -237,9 +237,15 @@ single byte ranges directly from this metadata. `AssetArchive.Read` and `ReadAsy
 be bounded with `AssetArchiveReadOptions` when input is not trusted; `ReadEmbedded` applies the same limits to the
 manifest and the ZIP directory and leaves the digests to the build (see above).
 
+Files with the same content are stored once: the archive holds one ZIP entry per
+distinct content, and the manifest's other paths name it in `contentPath`
+(schema `runic.assets.archive/2`, since 0.22). Each path keeps its own media type
+and cache mode; lengths, digests and entity tags are those of the content. An
+archive without duplicate content is still written as `runic.assets.archive/1`.
 `AssetArchive.Inspect` returns an archive's schema version, its manifest and the
-SHA-256 digest of the canonical manifest bytes. Readers accept only the current
-`runic.assets.archive/1` schema and reject incompatible archive versions.
+SHA-256 digest of the canonical manifest bytes. Readers accept
+`runic.assets.archive/1` and `/2` and reject other archive versions; readers
+before 0.22 accept only `/1`. See the [archive specification](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/assets/archive-v1.md).
 
 For application integration, consume `IAssetSource.Manifest` directly
 for asset identity, SHA-256, entity tags, and cache metadata. Do not recreate a

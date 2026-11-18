@@ -180,8 +180,8 @@ importers:
         specifier: 0.21.0
         version: 0.21.0(@vitejs/devtools@0.7.6)(vite@8.3.4)
       '@runic-artifex/vite-plugin-runic-translations':
-        specifier: 0.13.0
-        version: 0.13.0(vite@8.3.4)
+        specifier: 0.14.0
+        version: 0.14.0(vite@8.3.4)
       '@vitejs/devtools':
         specifier: 0.7.6
         version: 0.7.6(@devframes/json-render@1.3.5(@devframes/hub@1.3.5(@devframes/agentic@1.3.5)(crossws@0.4.17(srvx@1.0.8))(devframe@1.3.5))(devframe@1.3.5))(crossws@0.4.17(srvx@1.0.8))(srvx@1.0.8)(vite@8.3.4)
@@ -480,8 +480,8 @@ packages:
   '@runic-artifex/views@0.21.0':
     resolution: {integrity: sha512-OII31VU6uj7biBmOsRJXH5mOzhWpI9kOfb3BEXuCY+qTaI0MncR8KrpU+DimU38Bi2FHQglj+lMzTLv7z5C3jA==}
 
-  '@runic-artifex/vite-plugin-runic-translations@0.13.0':
-    resolution: {integrity: sha512-arGRVQJwJwuznnXMOQwtf4SN6uovDBjT/JEi/Ie3Kn27ld33OMyk/38u2C5c3NYjL4dY6NnTeB5JG3eqKQvNVw==}
+  '@runic-artifex/vite-plugin-runic-translations@0.14.0':
+    resolution: {integrity: sha512-14yVHSEaj9cz35Ffv4bz1UAKGn3J6OOeYhiJPkSsKr/iJfneMXJAhbCLoSq2uNjPNEQqip9mvgc8b0taizZ8+g==}
     engines: {node: ^24.18.0 || ^26.0.0}
     peerDependencies:
       vite: '>=8.3.3 <9'
@@ -1306,7 +1306,7 @@ snapshots:
 
   '@runic-artifex/views@0.21.0': {}
 
-  '@runic-artifex/vite-plugin-runic-translations@0.13.0(vite@8.3.4)':
+  '@runic-artifex/vite-plugin-runic-translations@0.14.0(vite@8.3.4)':
     optionalDependencies:
       vite: 8.3.4(@types/node@26.6.6)(@vitejs/devtools@0.7.6)
 

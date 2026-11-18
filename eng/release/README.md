@@ -622,7 +622,7 @@ of the same major without changes by its author. That includes:
 - **Versioned JSON contracts** (`runic.create/2`, `runic.application.tool.dev/1`,
   `runic.application.tool.size/1`, `runic.application.tool.doctor/1`,
   `runic.application.tool.package/1`,
-  `runic.size/2`, `runic.assets/1`, `runic.assets.archive/1`,
+  `runic.size/2`, `runic.assets/1`, `runic.assets.archive/1` and `/2`,
   `runic.assets.pack-result/1`; support envelopes belong to
   [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/eng/release/README.md#versioning-and-support-from-10)):
   removing, renaming or retyping a field, changing property casing, or changing
@@ -712,7 +712,7 @@ Third-party packages:
   | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.9, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
   | `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) | `[10.10.0, 11)` | `Runic.Application.Testing` |
   | `effect` (npm) | `^4.0.1` | `@runic-artifex/views-effect` |
-  | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.13.0, 0.14.0-0.0)` | `Runic.Application.Views.Translations` |
+  | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.14.0, 0.15.0-0.0)` | `Runic.Application.Views.Translations` |
 
 - Runic Translations releases on its own timeline. Before its 1.0 a minor release
   may break, so `Runic.Application.Views.Translations` is bounded to the
