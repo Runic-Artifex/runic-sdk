@@ -832,7 +832,7 @@ internal sealed class BridgeBlobs : IDisposable
         }
     }
 
-    internal readonly record struct Holder(object Route, string? Slot);
+    internal sealed record Holder(object Route, string? Slot);
 
     internal sealed class BlobEntry(string token, RunicBlob blob)
     {

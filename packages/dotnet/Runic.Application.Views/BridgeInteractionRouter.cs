@@ -1083,7 +1083,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         private static string Signature(InteractionReply reply) => reply.Kind + ":" + reply.OutputSignature;
     }
 
-    private readonly record struct DefinitionKey(string Route, string Name, string Contract);
+    private sealed record DefinitionKey(string Route, string Name, string Contract);
     private sealed record HandlerIdentity(string Name, string Contract);
     private sealed record InteractionReply(string Kind, string RequestId, string Route, string PresentationId, long OwnerEpoch, string Name, string Contract, JsonElement? Output)
     {

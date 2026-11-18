@@ -446,22 +446,18 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelHookSched
             "A posted model turn was dropped because its context was disposed."), dropped: true);
     }
 
-    private sealed class InvokeWorkItem : IWorkItem
+    // The work of InvokeAsync: exactly one of Execute, cancellation and rejection completes it. The subclasses hold only
+    // what depends on the result type, so each InvokeAsync<T> instantiation adds little native code.
+    private abstract class InvokeWork : IWorkItem
     {
-        private readonly Action _turn;
         private readonly CancellationTokenRegistration _cancellationRegistration;
-        private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _state;
 
-        public InvokeWorkItem(Action turn, CancellationToken cancellationToken)
-        {
-            _turn = turn;
+        // The subclasses' field initializers run before this constructor, so a canceled token can complete the work here.
+        protected InvokeWork(CancellationToken cancellationToken) =>
             _cancellationRegistration = cancellationToken.CanBeCanceled
-                ? cancellationToken.Register(static state => ((InvokeWorkItem)state!).Cancel(), this)
+                ? cancellationToken.Register(static state => ((InvokeWork)state!).Cancel(), this)
                 : default;
-        }
-
-        public Task Completion => _completion.Task;
 
         public void Execute(ExecutionContext? baselineExecutionContext)
         {
@@ -472,12 +468,11 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelHookSched
             }
             try
             {
-                _turn();
-                _completion.TrySetResult();
+                Run();
             }
             catch (Exception error)
             {
-                _completion.TrySetException(error);
+                Fail(error);
             }
             finally
             {
@@ -488,15 +483,40 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelHookSched
         public void RejectDisposed()
         {
             if (Interlocked.CompareExchange(ref _state, 1, 0) == 0)
-                _completion.TrySetException(new ObjectDisposedException(nameof(RunicModelContext)));
+                Fail(new ObjectDisposedException(nameof(RunicModelContext)));
             _cancellationRegistration.Dispose();
         }
 
         private void Cancel()
         {
             if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
-            _completion.TrySetCanceled();
+            Canceled();
         }
+
+        // Runs the turn and completes the work with its result.
+        protected abstract void Run();
+
+        protected abstract void Fail(Exception error);
+
+        protected abstract void Canceled();
+    }
+
+    private sealed class InvokeWorkItem(Action turn, CancellationToken cancellationToken) : InvokeWork(cancellationToken)
+    {
+        private readonly Action _turn = turn;
+        private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Completion => _completion.Task;
+
+        protected override void Run()
+        {
+            _turn();
+            _completion.TrySetResult();
+        }
+
+        protected override void Fail(Exception error) => _completion.TrySetException(error);
+
+        protected override void Canceled() => _completion.TrySetCanceled();
     }
 
     // A navigator hook: its synchronous part runs as this turn, under the turn's SynchronizationContext, so its awaits
@@ -569,55 +589,17 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelHookSched
         }
     }
 
-    private sealed class InvokeWorkItem<T> : IWorkItem
+    private sealed class InvokeWorkItem<T>(Func<T> turn, CancellationToken cancellationToken) : InvokeWork(cancellationToken)
     {
-        private readonly Func<T> _turn;
-        private readonly CancellationTokenRegistration _cancellationRegistration;
+        private readonly Func<T> _turn = turn;
         private readonly TaskCompletionSource<T> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _state;
-
-        public InvokeWorkItem(Func<T> turn, CancellationToken cancellationToken)
-        {
-            _turn = turn;
-            _cancellationRegistration = cancellationToken.CanBeCanceled
-                ? cancellationToken.Register(static state => ((InvokeWorkItem<T>)state!).Cancel(), this)
-                : default;
-        }
 
         public Task<T> Completion => _completion.Task;
 
-        public void Execute(ExecutionContext? baselineExecutionContext)
-        {
-            if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
-            {
-                _cancellationRegistration.Dispose();
-                return;
-            }
-            try
-            {
-                _completion.TrySetResult(_turn());
-            }
-            catch (Exception error)
-            {
-                _completion.TrySetException(error);
-            }
-            finally
-            {
-                _cancellationRegistration.Dispose();
-            }
-        }
+        protected override void Run() => _completion.TrySetResult(_turn());
 
-        public void RejectDisposed()
-        {
-            if (Interlocked.CompareExchange(ref _state, 1, 0) == 0)
-                _completion.TrySetException(new ObjectDisposedException(nameof(RunicModelContext)));
-            _cancellationRegistration.Dispose();
-        }
+        protected override void Fail(Exception error) => _completion.TrySetException(error);
 
-        private void Cancel()
-        {
-            if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
-            _completion.TrySetCanceled();
-        }
+        protected override void Canceled() => _completion.TrySetCanceled();
     }
 }
