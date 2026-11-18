@@ -2050,8 +2050,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
     if (regionCollections.Count > 0) runtimeImports.Add(Import("regionCollection"));
     if (hasValidation && fieldProperties.Length > 0) { runtimeImports.Add(Import("fieldErrors")); runtimeImports.Add(Import("fieldValidating")); }
-    if (hasFieldPaths) runtimeImports.Add("type " + Import("BridgeFieldWriteRequest"));
+    // In this order, so that a client without development-only members imports as before.
     if (fieldProperties.Any(nestedPaths.ContainsKey) || rowFieldPaths.Length > 0) runtimeImports.Add(Import("fieldPath"));
+    if (hasFieldPaths) runtimeImports.Add("type " + Import("BridgeFieldWriteRequest"));
     if (rowFieldPaths.Length > 0) runtimeImports.Add(Import("rowFields"));
     if (usesUploads) runtimeImports.Add(Import("upload"));
     // <view>.ts imports what its own code uses and re-exports the contract's types, so imports from it keep working;
