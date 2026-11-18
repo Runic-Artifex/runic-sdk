@@ -342,4 +342,55 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
       <FileWrites Include="$(_RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
     </ItemGroup>
   </Target>
+
+  <!--
+    Other operating systems' platform assemblies (D072.9). A publish for a RuntimeIdentifier of Windows (win-*), macOS
+    (osx-*) or Linux (linux-*) copies only that operating system's Runic.Platform providers: Runic.Platform.Windows on
+    Windows, Runic.Platform.MacOS on macOS, and Runic.Platform.Linux, .Linux.Portal, .Linux.DBus, .Linux.Gtk4 and
+    .Linux.Polkit on Linux, with the Linux-only libraries they and Runic.Desktop.Gtk4 bring (Tmds.DBus.Protocol and the
+    GirCore GTK 4 bindings). The publish's deps.json leaves them out too. Runic selects a provider with
+    OperatingSystem.IsWindows() and the like, and calls another operating system's provider only from methods that run
+    on it, so the missing assemblies are never loaded.
+
+    A build, dotnet run and a publish without a RuntimeIdentifier (portable) keep every assembly, as do trimmed and
+    NativeAOT publishes, whose trimmer already removes the code that the running operating system cannot reach. An
+    application that calls another operating system's Runic.Platform API from a method that runs on this one (the JIT
+    loads every assembly a method uses when it compiles the method, even behind an OperatingSystem check) sets
+    RunicPublishAllPlatformAssemblies to true; without it, such a call throws FileNotFoundException in a RID-specific
+    publish.
+  -->
+  <PropertyGroup>
+    <RunicPublishAllPlatformAssemblies Condition="'$(RunicPublishAllPlatformAssemblies)' == ''">false</RunicPublishAllPlatformAssemblies>
+    <_RunicLinuxPlatformPackages>Runic.Platform.Linux;Runic.Platform.Linux.Portal;Runic.Platform.Linux.DBus;Runic.Platform.Linux.Gtk4;Runic.Platform.Linux.Polkit;Tmds.DBus.Protocol</_RunicLinuxPlatformPackages>
+  </PropertyGroup>
+
+  <!-- After ResolvePackageAssets, so the copy-local items that ResolveLockFileCopyLocalFiles derives from them carry the
+       metadata; CopyToPublishDirectory affects only the publish, never the build output. -->
+  <Target Name="_RunicSelectPublishPlatformAssemblies" AfterTargets="ResolvePackageAssets"
+          Condition="'$(RuntimeIdentifier)' != '' and '$(RunicPublishAllPlatformAssemblies)' != 'true' and '$(PublishAot)' != 'true' and '$(PublishTrimmed)' != 'true'">
+    <PropertyGroup>
+      <_RunicPublishPlatformPackages Condition="$(RuntimeIdentifier.StartsWith('win'))">;Runic.Platform.MacOS;$(_RunicLinuxPlatformPackages);</_RunicPublishPlatformPackages>
+      <_RunicPublishPlatformPackages Condition="$(RuntimeIdentifier.StartsWith('osx'))">;Runic.Platform.Windows;$(_RunicLinuxPlatformPackages);</_RunicPublishPlatformPackages>
+      <_RunicPublishPlatformPackages Condition="$(RuntimeIdentifier.StartsWith('linux'))">;Runic.Platform.Windows;Runic.Platform.MacOS;</_RunicPublishPlatformPackages>
+      <_RunicPublishPlatformLinuxOnly Condition="$(RuntimeIdentifier.StartsWith('win')) or $(RuntimeIdentifier.StartsWith('osx'))">true</_RunicPublishPlatformLinuxOnly>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicPublishPlatformPackages)' != ''">
+      <RuntimeCopyLocalItems Condition="$(_RunicPublishPlatformPackages.Contains(';%(RuntimeCopyLocalItems.NuGetPackageId);')) or ('$(_RunicPublishPlatformLinuxOnly)' == 'true' and $([System.String]::Copy('%(RuntimeCopyLocalItems.NuGetPackageId)').StartsWith('GirCore.')))">
+        <CopyToPublishDirectory>false</CopyToPublishDirectory>
+      </RuntimeCopyLocalItems>
+      <ResourceCopyLocalItems Condition="$(_RunicPublishPlatformPackages.Contains(';%(ResourceCopyLocalItems.NuGetPackageId);')) or ('$(_RunicPublishPlatformLinuxOnly)' == 'true' and $([System.String]::Copy('%(ResourceCopyLocalItems.NuGetPackageId)').StartsWith('GirCore.')))">
+        <CopyToPublishDirectory>false</CopyToPublishDirectory>
+      </ResourceCopyLocalItems>
+      <_RunicOtherPlatformAsset Include="@(RuntimeCopyLocalItems)" Condition="'%(RuntimeCopyLocalItems.CopyToPublishDirectory)' == 'false'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The build's deps.json lists every assembly, and the host refuses to start when one it lists is missing, so a
+       publish that leaves any out writes its own deps.json, from the assets it copies (as for Publish="false"). -->
+  <Target Name="_RunicPublishPlatformDependencyFile" AfterTargets="_ComputeUseBuildDependencyFile"
+          Condition="'@(_RunicOtherPlatformAsset)' != ''">
+    <PropertyGroup>
+      <_UseBuildDependencyFile>false</_UseBuildDependencyFile>
+    </PropertyGroup>
+  </Target>
 </Project>

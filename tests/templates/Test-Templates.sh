@@ -769,6 +769,16 @@ verify_template() {
       --output "$output/publish" > "$output/publish.log"
     test -f "$output/publish/www/settings.html"
     cmp "$output/publish/www/$host_client" "$output/publish/www/runic-views.js"
+    check_published_files "$output/publish" "$host" portable
+    # D072.9: a publish for this machine's RuntimeIdentifier ships only its operating system's Runic.Platform providers.
+    # Once per framework lane, with the template's defaults (the Runic Desktop host).
+    local rid
+    rid="$(host_runtime_identifier)"
+    if [[ "$defaults" == defaults && -n "$rid" ]]; then
+      dotnet publish "$output/$project_name.csproj" --configuration Release --runtime "$rid" --self-contained false \
+        --output "$output/publish-$rid" > "$output/publish-$rid.log"
+      check_published_files "$output/publish-$rid" "$host" "$rid"
+    fi
   fi
   # Every frontend, the Angular CLI's and Vite's (angular-vite) included, bundles the production build of
   # @runic-artifex/views (README, "Development build"): its development tools, the Bridge-call channel with its async
@@ -847,6 +857,61 @@ verify_template() {
   fi
   printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" \
     "${restore:+|restore}" "${translations:+|translations}"
+}
+
+# The RuntimeIdentifier of this machine, or nothing on a platform Runic does not target.
+host_runtime_identifier() {
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) echo linux-x64 ;;
+    Linux-aarch64) echo linux-arm64 ;;
+    Darwin-arm64) echo osx-arm64 ;;
+  esac
+}
+
+# What a package consumer's publish carries (fdd-size-0.22 §7.3): no XML documentation, no Bridge code generator and no
+# source generator or compiler. Runic.Platform.Windows and Runic.Platform.MacOS come with the Runic Desktop host only,
+# and a RID-specific publish keeps only its own operating system's (D072.9): the Linux providers and their Linux-only
+# libraries leave a Windows or macOS publish, and the publish's deps.json lists no assembly it left out.
+check_published_files() {
+  local directory="$1"
+  local host="$2"
+  local rid="$3"
+  local unexpected
+  unexpected="$(cd "$directory" && find . -type f \( -name '*.xml' -o -name 'BridgeCodegen*' -o -name '*.Generator*.dll' \
+    -o -name '*.Compiler*.dll' \) | sort)"
+  if [[ -n "$unexpected" ]]; then
+    echo "The $host publish ($rid) contains documentation or build tools:" >&2
+    echo "$unexpected" >&2
+    exit 1
+  fi
+  local name expected present
+  for name in Windows MacOS; do
+    expected=false
+    if [[ "$host" == desktop* ]]; then
+      case "$name:$rid" in
+        *:portable | Windows:win-* | MacOS:osx-*) expected=true ;;
+      esac
+    fi
+    present=false
+    [[ -f "$directory/Runic.Platform.$name.dll" ]] && present=true
+    if [[ "$present" != "$expected" ]]; then
+      echo "The $host publish ($rid) $([[ "$present" == true ]] && echo contains || echo lacks) Runic.Platform.$name.dll." >&2
+      exit 1
+    fi
+  done
+  if [[ "$rid" == win-* || "$rid" == osx-* ]] &&
+    find "$directory" -maxdepth 1 \( -name 'Runic.Platform.Linux*.dll' -o -name 'Tmds.DBus.Protocol.dll' \) | grep .; then
+    echo "The $host publish ($rid) contains Linux-only assemblies." >&2
+    exit 1
+  fi
+  local deps listed
+  deps="$(find "$directory" -maxdepth 1 -name '*.deps.json' | head -n 1)"
+  for listed in $(grep -oE '"[A-Za-z0-9.-]+\.dll"' "$deps" | tr -d '"' | sort -u); do
+    if [[ "$listed" == Runic.* || "$listed" == Tmds.* ]] && [[ ! -f "$directory/$listed" ]]; then
+      echo "The $host publish ($rid) lists $listed in $(basename "$deps") without the file." >&2
+      exit 1
+    fi
+  done
 }
 
 # Runs the generated test project as its README documents. The tests build the

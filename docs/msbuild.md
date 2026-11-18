@@ -135,6 +135,7 @@ See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#dec
 | `RunicPrivilegedActionsClassName` | property | `PrivilegedActions` | The generated class. |
 | `RunicPrivilegedActionsNamespace` | property | `$(RootNamespace)` | Its namespace. |
 | `RunicPrivilegedActionsReservedNames` | property (read-only) | `All`, `MacOSDaemon`, `WindowsElevation` | Names an action cannot have. |
+| `RunicPublishAllPlatformAssemblies` | property | `false` | `true` makes a publish for a Windows, macOS or Linux RuntimeIdentifier keep every operating system's `Runic.Platform` providers and Linux-only libraries. By default it ships only its own (since 0.22): code that calls another operating system's provider from a method that also runs on this one gets `FileNotFoundException`. Builds, publishes without a RuntimeIdentifier, trimmed and NativeAOT publishes always keep them. |
 
 [Runic.Platform.Linux.Polkit](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md#declare-actions):
 

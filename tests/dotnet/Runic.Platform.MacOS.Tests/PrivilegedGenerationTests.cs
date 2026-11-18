@@ -50,7 +50,8 @@ internal sealed class PrivilegedGenerationTests
 
         var source = File.ReadAllText(project.MacSource);
         Check(source.Contains("namespace Example.App;", StringComparison.Ordinal) && source.Contains("internal static partial class PrivilegedActions", StringComparison.Ordinal), "a part of the shared class");
-        Check(source.Contains("MacOSDaemon { get; } = new(", StringComparison.Ordinal), "MacOSDaemon");
+        // Created on first use: PrivilegedActions.All must not load Runic.Platform.MacOS on Windows and Linux (D072.9).
+        Check(source.Contains("MacOSDaemon => __runicMacOSDaemon ??= new global::Runic.Platform.MacOS.MacPrivilegedDaemonDefinition(", StringComparison.Ordinal), "MacOSDaemon");
         Check(source.Contains("\"org.example.app.privileged\", \"ABCDE12345\", \"org.example.app\", \"org.example.app.privileged\"", StringComparison.Ordinal), source);
         Check(source.Contains("new(\"org.example.app.activate\", \"Authentication is required to activate <the system> & reboot.\"),", StringComparison.Ordinal), "message");
         Check(source.Contains("{ Program = \"Contents/MacOS/helper\", ProgramIdentifier = \"org.example.app.helper\" }", StringComparison.Ordinal), "MacProgram and MacProgramIdentifier");
