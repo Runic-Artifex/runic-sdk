@@ -11,7 +11,7 @@ export default defineConfig({
     apply: "serve" as const,
     transformIndexHtml: () => [{ tag: "script", attrs: { type: "module", src: "/src/dev-reload.ts" } }],
   }] : [])],
-  publicDir: fileURLToPath(new URL("../../../packages/dotnet/Runic.Application.Views.CsWebUi/www", import.meta.url)),
+  publicDir: fileURLToPath(new URL("../Frontend/public", import.meta.url)),
   build: { outDir: "dist" },
   server: {
     host: "127.0.0.1",

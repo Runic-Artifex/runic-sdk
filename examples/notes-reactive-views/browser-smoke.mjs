@@ -46,7 +46,7 @@ try {
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const { request, snapshot, command: runCommand } = viewsProbe(evaluate);
   // WebUI sends a click event for each element with an id it has not marked.
-  // Runic does not use them, so runic-cswebui.js marks the elements first.
+  // Runic does not use them, so runic-views.js marks the elements first.
   const expectClickEventsSuppressed = async moment => {
     const unmarked = await query('Array.from(document.querySelectorAll("[id]:not([data-webui_click_is_set])"), element => element.id)');
     if (unmarked.length !== 0)
