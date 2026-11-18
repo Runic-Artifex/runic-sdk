@@ -149,7 +149,7 @@ internal sealed partial class CodegenDiagnosticsTests
     // tsserver, as VS Code and Visual Studio run it, follows the map from a command, a setter and a state member to their
     // C# lines, and Go to Type Definition on the client to the ViewModel class.
     [Test]
-    public async Task TsServerGoesFromTheClientToTheViewModelsCSharpAsync()
+    public async Task TsServerGoesFromTheClientToTheViewModelsCSharpAsync(CancellationToken cancellationToken)
     {
         var temporaryRoot = DeclarationMapRoot();
         try
@@ -183,7 +183,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 At("client.snapshot.total", "total", "definition"),
                 At("const client", "client", "typeDefinition"),
                 At("const client", "connectLink", "definition"),
-            ]).ConfigureAwait(false);
+            ], cancellationToken).ConfigureAwait(false);
             var fixture = File.ReadAllLines(Path.Combine(directory, "Fixture.cs"));
             var fixturePath = Path.GetFullPath(Path.Combine(directory, "Fixture.cs"));
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -349,8 +349,10 @@ internal sealed partial class CodegenDiagnosticsTests
         return values;
     }
 
-    // Runs TsServerDefinitions.mjs: the definitions tsserver returns at each "line:offset:command".
-    private static async Task<string[][]> TsServerAsync(string root, string file, IEnumerable<string> positions)
+    // Runs TsServerDefinitions.mjs: the definitions tsserver returns at each "line:offset:command". Bun and its tsserver
+    // child are stopped on every path, a timeout or a cancelled run included, so neither outlives the test (#1125).
+    private static async Task<string[][]> TsServerAsync(string root, string file, IEnumerable<string> positions,
+        CancellationToken cancellationToken)
     {
         using var process = new System.Diagnostics.Process
         {
@@ -363,11 +365,27 @@ internal sealed partial class CodegenDiagnosticsTests
                      Path.Combine(root, "node_modules", "typescript", "lib", "tsserver.js"), file }.Concat(positions))
             process.StartInfo.ArgumentList.Add(argument);
         process.Start();
-        var output = process.StandardOutput.ReadToEndAsync();
-        var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
-        var text = await output.ConfigureAwait(false);
-        Require(process.ExitCode == 0, $"tsserver failed ({process.ExitCode}):\n{text}\n{await error.ConfigureAwait(false)}");
-        return JsonSerializer.Deserialize<string[][]>(text.Trim())!;
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+            var error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            await process.WaitForExitAsync(cancellationToken).WaitScaledAsync(GeneratorTimeout, cancellationToken).ConfigureAwait(false);
+            var text = await output.ConfigureAwait(false);
+            Require(process.ExitCode == 0, $"tsserver failed ({process.ExitCode}):\n{text}\n{await error.ConfigureAwait(false)}");
+            return JsonSerializer.Deserialize<string[][]>(text.Trim())!;
+        }
+        finally
+        {
+            await StopProcessTreeAsync(process).ConfigureAwait(false);
+        }
+    }
+
+    // Kills a child that is still running, with every process it started, and waits for it to exit, so it no longer
+    // holds files in the checkout or uses CPU. A child that already exited is left as it is.
+    private static async Task StopProcessTreeAsync(System.Diagnostics.Process process)
+    {
+        try { process.Kill(entireProcessTree: true); }
+        catch (InvalidOperationException) { } // It exited on its own.
+        await process.WaitForExitAsync(CancellationToken.None).WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
     }
 }
