@@ -85,6 +85,12 @@ public sealed record RunicGuestOptions
 
     internal Stream OpenInput() => _input();
 
+    // RunicDesktopHost starts hosted mode through its options: ILC keeps an instance method only for a type the
+    // application constructs, so an application that never creates guest options does not keep the guest in a NativeAOT
+    // build (runic-sdk#1109).
+    internal Task<Hosting.HostedGuest> StartGuestAsync(Runic.Desktop.DesktopHost desktop, Microsoft.Extensions.Logging.ILogger logger,
+        IRunicApplicationLocale? locale) => Hosting.HostedGuest.StartAsync(this, desktop, logger, locale);
+
     internal TextWriter Output => _output();
 
     /// <summary>

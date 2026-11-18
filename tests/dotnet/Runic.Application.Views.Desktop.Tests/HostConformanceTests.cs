@@ -180,7 +180,7 @@ internal sealed class HostConformanceTests
                     status = (int)response.StatusCode;
                     // The frame surface's bootstrap carries no credential: the page offers its frame token.
                     if (status == 200)
-                        Check(!(await response.Content.ReadAsStringAsync()).Contains("const SESSION_CREDENTIAL = \"", StringComparison.Ordinal),
+                        Check(!(await response.Content.ReadAsStringAsync()).Contains("const SESSION_CREDENTIAL=\"", StringComparison.Ordinal),
                             "The frame surface's bootstrap carries the session credential.");
                     break;
                 }
@@ -280,7 +280,7 @@ internal sealed class HostConformanceTests
             using var http = new HttpClient();
             using var bootstrap = await http.GetAsync(new Uri(surface, "webui.js"));
             if (!bootstrap.IsSuccessStatusCode) return ((int)bootstrap.StatusCode, null);
-            var check = uint.Parse(Regex.Match(await bootstrap.Content.ReadAsStringAsync(), @"const TOKEN = (\d+);").Groups[1].Value,
+            var check = uint.Parse(Regex.Match(await bootstrap.Content.ReadAsStringAsync(), @"const TOKEN=(\d+);").Groups[1].Value,
                 System.Globalization.CultureInfo.InvariantCulture);
             var client = new TcpClient(surface.HostNameType == UriHostNameType.IPv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork);
             try

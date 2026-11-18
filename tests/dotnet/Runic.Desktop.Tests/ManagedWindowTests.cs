@@ -33,12 +33,12 @@ public sealed class ManagedWindowTests
         Assert.Equal("<h1>managed</h1>", await client.GetStringAsync("/"));
 
         var bridge = await client.GetStringAsync("/webui.js");
-        Assert.Contains("Object.defineProperty(globalThis, \"webui\"", bridge, StringComparison.Ordinal);
+        Assert.Contains("Object.defineProperty(globalThis,\"webui\"", bridge, StringComparison.Ordinal);
         Assert.Contains("/_webui_ws_connect", bridge, StringComparison.Ordinal);
-        Assert.Contains($"const PORT = {url.Port};", bridge, StringComparison.Ordinal);
+        Assert.Contains($"const PORT={url.Port};", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("__TOKEN__", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("__PORT__", bridge, StringComparison.Ordinal);
-        Assert.Contains($"const VIEWS_PUSH = \"{Runic.Desktop.Internal.WebUiBridge.ViewsPushFunction}\";", bridge, StringComparison.Ordinal);
+        Assert.Contains($"const VIEWS_PUSH=\"{Runic.Desktop.Internal.WebUiBridge.ViewsPushFunction}\";", bridge, StringComparison.Ordinal);
     }
 
     [Test]
@@ -566,7 +566,7 @@ public sealed class ManagedWindowTests
 
     private static uint ExtractToken(string bridge)
     {
-        const string prefix = "const TOKEN = ";
+        const string prefix = "const TOKEN=";
         var start = bridge.IndexOf(prefix, StringComparison.Ordinal);
         Assert.True(start >= 0);
         start += prefix.Length;

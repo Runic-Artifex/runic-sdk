@@ -8,6 +8,11 @@ namespace Runic.Desktop.Tests;
 // native server with -p:RunicDesktopServer=Native (.github/workflows/native-server.yml).
 public sealed class NativeServerTests
 {
+    // RunicDesktopServer=None turns the presentation server off (buildTransitive/Runic.Desktop.targets); this test build
+    // sets no server switch, so it has one.
+    [Test]
+    public void APresentationServerIsAvailableByDefault() => Assert.True(Runic.Desktop.Internal.PresentationServers.HasServer);
+
     [Test]
     [Arguments("/", "/", "")]
     [Arguments("/a%20b/c.html?x=1&y=%20", "/a b/c.html", "?x=1&y=%20")]

@@ -135,7 +135,7 @@ public sealed class DesktopApiTests
         Assert.Contains("product: \"Runic Desktop\"", script, StringComparison.Ordinal);
         Assert.Contains("profile: \"webui-compat/52f9e75\"", script, StringComparison.Ordinal);
         Assert.Contains("sessionCredential:", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("Object.defineProperty(globalThis, \"webui\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Object.defineProperty(globalThis,\"webui\"", script, StringComparison.Ordinal);
     }
 
     [Test]
@@ -157,8 +157,8 @@ public sealed class DesktopApiTests
             });
         using var client = new HttpClient();
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
-        var token = ExtractUnsigned(bridge, "const TOKEN = ");
-        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
+        var token = ExtractUnsigned(bridge, "const TOKEN=");
+        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL=\"");
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
@@ -197,8 +197,8 @@ public sealed class DesktopApiTests
         var registration = surface.RegisterCapability("page.unmount", handler);
         using var client = new HttpClient();
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
-        var token = ExtractUnsigned(bridge, "const TOKEN = ");
-        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
+        var token = ExtractUnsigned(bridge, "const TOKEN=");
+        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL=\"");
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var socket = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
         ushort id = 0;
@@ -268,8 +268,8 @@ public sealed class DesktopApiTests
         });
         using var client = new HttpClient();
         var bootstrap = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
-        var token = ExtractUnsigned(bootstrap, "const TOKEN = ");
-        var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL = \"");
+        var token = ExtractUnsigned(bootstrap, "const TOKEN=");
+        var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL=\"");
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var first = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
         using var second = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
@@ -1440,8 +1440,8 @@ public sealed class DesktopApiTests
         await using var surface = await host.CreateSurfaceAsync();
         using var client = new HttpClient();
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
-        var token = ExtractUnsigned(bridge, "const TOKEN = ");
-        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
+        var token = ExtractUnsigned(bridge, "const TOKEN=");
+        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL=\"");
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var socket = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
         async Task<ushort> ReceiveScriptAsync(string script)
@@ -1643,8 +1643,8 @@ public sealed class DesktopApiTests
         await using var surface = await host.CreateSurfaceAsync();
         using var client = new HttpClient();
         var fetched = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
-        var token = ExtractUnsigned(fetched, "const TOKEN = ");
-        var credential = ExtractQuoted(fetched, "const SESSION_CREDENTIAL = \"");
+        var token = ExtractUnsigned(fetched, "const TOKEN=");
+        var credential = ExtractQuoted(fetched, "const SESSION_CREDENTIAL=\"");
 
         await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded }))
         {
@@ -1684,8 +1684,8 @@ public sealed class DesktopApiTests
         });
         using var client = new HttpClient();
         var bootstrap = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
-        var token = ExtractUnsigned(bootstrap, "const TOKEN = ");
-        var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL = \"");
+        var token = ExtractUnsigned(bootstrap, "const TOKEN=");
+        var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL=\"");
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
