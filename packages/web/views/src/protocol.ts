@@ -30,6 +30,11 @@ export const queryCollectionsFeature = "query-collections/1";
 export const fieldFlushFeature = "field-flush/1";
 /** `field-paths/1` (specs/application/README.md, "Field paths"): a checked write names a path below its member. */
 export const fieldPathsFeature = "field-paths/1";
+/**
+ * `open-ended-interactions/1` (specs/application/README.md, "Interactions"): an `interaction` push without `expiresAt`
+ * has no deadline; its handler runs until it answers or the producer cancels the request.
+ */
+export const openEndedInteractionsFeature = "open-ended-interactions/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -58,7 +63,8 @@ export type Push =
   | Message & { readonly kind: "failure"; readonly route: string; readonly revision: number; readonly error: ReplyError }
   | Message & { readonly kind: "operation"; readonly route: string; readonly member: string; readonly operation: string; readonly contract: string; readonly status: Message }
   | Message & { readonly kind: "interaction"; readonly route: string; readonly presentation: string; readonly requestId: string; readonly ownerEpoch: number;
-    readonly name: string; readonly contract: string; readonly expiresAt: string; readonly input: unknown }
+    /** Absent, with open-ended-interactions/1, for a request without a deadline. */
+    readonly name: string; readonly contract: string; readonly expiresAt?: string; readonly input: unknown }
   | Message & { readonly kind: "interaction-cancelled"; readonly route: string; readonly presentation: string; readonly requestId: string;
     readonly ownerEpoch: number; readonly message?: string }
   | Message & { readonly kind: "menu-bar"; readonly route: string; readonly state: Message }
@@ -298,7 +304,8 @@ export function readPush(text: unknown): PushReading {
       break;
     case "interaction":
       if (!isString(push["presentation"]) || !isString(push["requestId"]) || !isSafe(push["ownerEpoch"]) || !isString(push["name"])
-        || !isString(push["contract"]) || !isString(push["expiresAt"]) || !offsetDateTime.test(push["expiresAt"]) || !has(push, "input"))
+        || !isString(push["contract"]) || push["expiresAt"] !== undefined && (!isString(push["expiresAt"]) || !offsetDateTime.test(push["expiresAt"]))
+        || !has(push, "input"))
         return invalid("The interaction push is invalid.");
       break;
     case "interaction-cancelled":

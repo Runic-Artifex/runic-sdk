@@ -7,6 +7,10 @@ export interface GeneratedInteractionState {
   readonly acceptedCount: number;
   readonly canAsk: boolean;
   readonly isAskExecuting: boolean;
+  readonly canAskWithoutDeadline: boolean;
+  readonly isAskWithoutDeadlineExecuting: boolean;
+  readonly canAskSlowly: boolean;
+  readonly isAskSlowlyExecuting: boolean;
 }
 
 export type GeneratedInteractionInteractionContext = BridgeInteractionContext;
@@ -14,14 +18,24 @@ export interface GeneratedInteractionInteractions {
   readonly confirm: {
     handle(handler: (input: GeneratedInteractionRequest, context: GeneratedInteractionInteractionContext) => boolean | Promise<boolean>): () => void;
   };
+  readonly confirmWithoutDeadline: {
+    handle(handler: (input: GeneratedInteractionRequest, context: GeneratedInteractionInteractionContext) => boolean | Promise<boolean>): () => void;
+  };
+  readonly confirmSlowly: {
+    handle(handler: (input: GeneratedInteractionRequest, context: GeneratedInteractionInteractionContext) => boolean | Promise<boolean>): () => void;
+  };
 }
 
 export interface GeneratedInteractionAskOperation extends BridgeOperation<void> {}
+export interface GeneratedInteractionAskWithoutDeadlineOperation extends BridgeOperation<void> {}
+export interface GeneratedInteractionAskSlowlyOperation extends BridgeOperation<void> {}
 
 /** A connected GeneratedInteraction ViewModel. Dispose it when its presentation ends. */
 export interface GeneratedInteractionClient extends ViewClient<GeneratedInteractionState> {
   readonly interactions: GeneratedInteractionInteractions;
   ask(): Promise<GeneratedInteractionState>;
+  askWithoutDeadline(): Promise<GeneratedInteractionState>;
+  askSlowly(): Promise<GeneratedInteractionState>;
   /**
    * Starts `Ask` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
    * the default is a random id. A start with a request id that .NET already admitted returns that operation.
@@ -29,6 +43,20 @@ export interface GeneratedInteractionClient extends ViewClient<GeneratedInteract
   startAsk(options?: BridgeOperationStartOptions): Promise<GeneratedInteractionAskOperation>;
   /** Returns the `Ask` operation started with `requestId`, for example after the page reloaded. */
   recoverAsk(requestId: string): Promise<GeneratedInteractionAskOperation>;
+  /**
+   * Starts `AskWithoutDeadline` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startAskWithoutDeadline(options?: BridgeOperationStartOptions): Promise<GeneratedInteractionAskWithoutDeadlineOperation>;
+  /** Returns the `AskWithoutDeadline` operation started with `requestId`, for example after the page reloaded. */
+  recoverAskWithoutDeadline(requestId: string): Promise<GeneratedInteractionAskWithoutDeadlineOperation>;
+  /**
+   * Starts `AskSlowly` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startAskSlowly(options?: BridgeOperationStartOptions): Promise<GeneratedInteractionAskSlowlyOperation>;
+  /** Returns the `AskSlowly` operation started with `requestId`, for example after the page reloaded. */
+  recoverAskSlowly(requestId: string): Promise<GeneratedInteractionAskSlowlyOperation>;
 }
 
 export interface GeneratedInteractionPageReference {

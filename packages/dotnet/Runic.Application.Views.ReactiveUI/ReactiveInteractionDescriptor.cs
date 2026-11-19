@@ -36,7 +36,15 @@ public static class ReactiveInteractionDescriptor
     /// <param name="getInteraction">Reads the interaction from the model.</param>
     /// <param name="encodeInput">Encodes interaction input for the browser.</param>
     /// <param name="decodeOutput">Decodes the browser's answer.</param>
-    /// <param name="timeout">How long the browser may take to answer; at most ten minutes.</param>
+    /// <param name="timeout">
+    /// How long the browser may take to answer: by default two minutes, at most 24 hours, or
+    /// <see cref="Timeout.InfiniteTimeSpan"/> for no deadline. The Bridge generator passes the property's
+    /// <see cref="RunicInteractionTimeoutAttribute"/>. When it passes, <c>Interaction.Handle</c> throws
+    /// <see cref="RunicInteractionTimeoutException"/>.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="timeout"/> is not positive or exceeds 24 hours, and is not <see cref="Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
     public static BridgeInteractionDescriptor Create<TInput, TOutput>(
         string name,
         string contract,
@@ -50,8 +58,11 @@ public static class ReactiveInteractionDescriptor
         ArgumentNullException.ThrowIfNull(getInteraction);
         ArgumentNullException.ThrowIfNull(encodeInput);
         ArgumentNullException.ThrowIfNull(decodeOutput);
-        if (timeout is { } value && (value <= TimeSpan.Zero || value > TimeSpan.FromMinutes(10)))
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Interaction timeouts must be between zero and ten minutes.");
+        // As Runic.Application.Views checks it (InteractionLifetime), whose internals this assembly cannot see.
+        if (timeout is { } value && value != Timeout.InfiniteTimeSpan
+            && (value <= TimeSpan.Zero || value > TimeSpan.FromMilliseconds(RunicInteractionTimeoutAttribute.MaximumMilliseconds)))
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout,
+                "An interaction timeout must be positive and at most 24 hours, or Timeout.InfiniteTimeSpan for none.");
         return new Descriptor<TInput, TOutput>(name, contract, getInteraction, encodeInput, decodeOutput, timeout);
     }
 

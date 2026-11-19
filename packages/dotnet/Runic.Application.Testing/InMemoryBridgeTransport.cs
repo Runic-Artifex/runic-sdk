@@ -344,6 +344,9 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 // hosted-regions/1: a test page may declare hosted regions; a connection that declares none receives no push
                 // of the feature.
                 writer.WriteStringValue("hosted-regions/1");
+                // open-ended-interactions/1: an interaction without a deadline arrives without expiresAt, as a current page
+                // receives it.
+                writer.WriteStringValue("open-ended-interactions/1");
                 writer.WriteEndArray();
                 writer.WriteStartArray("languages");
                 foreach (var language in languages) writer.WriteStringValue(language);

@@ -7,6 +7,7 @@ import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge, type MockBridge, type MockBridgeOptions, type MockRegionHandler, type MockRegionRequest, type MockTypedCollection,
   type MockTypedInteraction, type MockTypedOperation, type MockTypedView } from "../dist/mock.js";
 import { mockTypedView } from "../dist/generated-mock.js";
+import { clock } from "../dist/clock.js";
 
 type Row = { readonly id: number; readonly label: string };
 type State = { readonly title: string; readonly count: bigint; readonly rows: readonly Row[]; readonly canSave: boolean; readonly isSaveExecuting: boolean };
@@ -326,6 +327,102 @@ test("interactions reach the open presentation's handler and report its answer",
   stop();
   await until(() => !notes.interactions.confirm.handled, "The handler stayed registered.");
   client.dispose();
+});
+
+// sdk#1146: the page keeps the producer's deadline however distant, in browser timers of at most 2^31 - 1 ms, and a
+// request without one (open-ended-interactions/1) runs until it is answered or cancelled. The interaction timers run on a
+// virtual clock; the runtime's short protocol timers keep real time.
+function interactionClock(): { readonly delays: number[]; advance(milliseconds: number): void; restore(): void } {
+  const saved = { set: clock.set, clear: clock.clear, now: clock.now };
+  let offset = 0;
+  const delays: number[] = [];
+  const timers = new Set<{ readonly at: number; readonly callback: () => void }>();
+  clock.now = () => Date.now() + offset;
+  clock.set = (callback, milliseconds) => {
+    if (milliseconds < 60_000) return { real: saved.set(callback, milliseconds) };
+    delays.push(milliseconds);
+    const timer = { at: clock.now() + milliseconds, callback };
+    timers.add(timer);
+    return timer;
+  };
+  clock.clear = handle => {
+    const timer = handle as { real?: unknown };
+    if (timer.real !== undefined) saved.clear(timer.real); else timers.delete(handle as never);
+  };
+  return {
+    delays,
+    advance(milliseconds) {
+      offset += milliseconds;
+      for (let due = [...timers].find(timer => timer.at <= clock.now()); due; due = [...timers].find(timer => timer.at <= clock.now())) {
+        timers.delete(due);
+        due.callback();
+      }
+    },
+    restore() { Object.assign(clock, saved); },
+  };
+}
+
+test("an interaction's distant deadline aborts its handler then, without a timer longer than a browser takes", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const client = await connect();
+  const time = interactionClock();
+  try {
+    let signal: AbortSignal | undefined;
+    const stop = client.interactions["confirm"]!.handle(((_input: string, context: { signal: AbortSignal }) => {
+      signal = context.signal;
+      return new Promise<boolean>(resolve => context.signal.addEventListener("abort", () => resolve(false), { once: true }));
+    }) as never);
+    await client.command("save");
+    const day = 86_400_000;
+    const reply = notes.interactions.confirm.request("Later?", { timeout: 40 * day });
+    await until(() => signal !== undefined, "The handler was not called.");
+    assert.ok(time.delays.length > 0 && time.delays.every(delay => delay <= 2_147_483_647), `A timer was too long: ${time.delays}`);
+    time.advance(39 * day);
+    assert.equal(signal!.aborted, false, "The handler was aborted before its deadline.");
+    time.advance(2 * day);
+    assert.equal(signal!.aborted, true, "The handler was not aborted at its deadline.");
+    assert.deepEqual(await reply, { kind: "cancelled" });
+    stop();
+  } finally {
+    time.restore();
+    client.dispose();
+  }
+});
+
+test("an interaction without a deadline names none and runs until it is answered", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const client = await connect();
+  const time = interactionClock();
+  const pushes: Record<string, unknown>[] = [];
+  const stopWatching = bridge.onMessage(message => {
+    const push = JSON.parse(message) as Record<string, unknown>;
+    if (push["kind"] === "interaction") pushes.push(push);
+  });
+  try {
+    let signal: AbortSignal | undefined;
+    let answer!: (value: boolean) => void;
+    const stop = client.interactions["confirm"]!.handle(((_input: string, context: { signal: AbortSignal }) => {
+      signal = context.signal;
+      return new Promise<boolean>(resolve => { answer = resolve; });
+    }) as never);
+    await client.command("save");
+    const reply = notes.interactions.confirm.request("Keep?", { timeout: Infinity });
+    await until(() => signal !== undefined, "The handler was not called.");
+    assert.equal(pushes.length, 1);
+    assert.equal("expiresAt" in pushes[0]!, false, `The request named a deadline: ${JSON.stringify(pushes[0])}`);
+    assert.deepEqual(time.delays, [], "The page armed a deadline timer.");
+    time.advance(400 * 86_400_000);
+    assert.equal(signal!.aborted, false, "The handler without a deadline was aborted.");
+    answer(true);
+    assert.deepEqual(await reply, { kind: "answered", output: true });
+    stop();
+  } finally {
+    stopWatching();
+    time.restore();
+    client.dispose();
+  }
 });
 
 test("checked writes are idempotent by request id and can commit with an error", async () => {

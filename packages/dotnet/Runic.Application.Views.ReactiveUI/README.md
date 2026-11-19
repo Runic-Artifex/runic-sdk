@@ -131,8 +131,9 @@ const unregister = view.interactions.confirmDiscard.handle(
 
 The disposer, replacement handler, view disposal, unmount, disconnect, the
 cancellation of the command that asked, and the end of a navigation guard that
-asked (see [Leave confirmation in a web View](#leave-confirmation-in-a-web-view))
-abort the handler signal as appropriate. Requests go only to a selected mounted
+asked (see [Leave confirmation in a web View](#leave-confirmation-in-a-web-view)),
+and the end of the interaction's [lifetime](#interaction-lifetime) abort the
+handler signal as appropriate. Requests go only to a selected mounted
 endpoint through a pull route, and never to another window or browser
 connection. With no eligible browser handler, the adapter does not consume the
 interaction, preserving normal ReactiveUI .NET handler precedence and unhandled
@@ -149,6 +150,37 @@ attaches. ReactiveUI asks the latest handler first, so a .NET handler registered
 after the View attached, such as a WPF View's in `WhenActivated`, answers before
 it, and a fallback registered in the ViewModel's constructor answers only when
 no browser handler is eligible.
+
+### Interaction lifetime
+
+A page has two minutes to answer. When they pass, the handler's `signal` aborts
+and `Interaction.Handle` throws `RunicInteractionTimeoutException` in the
+command that asked. Set another lifetime on the property with
+`[RunicInteractionTimeout]`, in milliseconds up to 24 hours, or
+`Timeout.Infinite` for none:
+
+```csharp
+// A modal question waits for its answer, however long the person takes.
+[RunicInteractionTimeout(Timeout.Infinite)]
+public Interaction<ConfirmationRequest, bool> ConfirmAction { get; } = new();
+
+[RunicInteractionTimeout(15 * 60 * 1000)] // fifteen minutes
+public Interaction<RenameRequest, string?> Rename { get; } = new();
+```
+
+Without a deadline the question still ends when the command that asked is
+cancelled, the navigation guard that asked ends, its page unmounts or
+disconnects, or the Window closes; `Handle` then throws
+`RunicInteractionCancelledException`. A command that asks a question it can
+also ask later can catch both exceptions around `Handle` and treat the question
+as not answered.
+
+The Bridge generator passes the attribute to the generated descriptor; it
+changes neither the generated TypeScript nor the contract hash. A value outside
+the range is reported as RUNICBRIDGE011, and the attribute on a
+`ViewQuestion<TInput, TOutput>`, which takes its `timeout` in its constructor,
+as RUNICBRIDGE035. A page built with `@runic-artifex/views` before 0.23 still
+aborts its handler after ten minutes, whatever the lifetime.
 
 ## Model-context scheduling
 

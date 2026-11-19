@@ -292,6 +292,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `hosted-regions/1` | The page declares regions where the host shows a guest application's Window, and reports their size, visibility and focus: [hosted regions](#hosted-regions) | 0.18 |
 | `trace-context/1` | A call's request carries the page's W3C trace context, the parent of the producer's span for the call: [trace context](#trace-context) | 0.20 |
 | `handler-timing/1` | A call's request asks for its handler's name and duration, which the reply carries; a producer offers it only in development: [handler timing](#handler-timing) | 0.20 |
+| `open-ended-interactions/1` | An interaction request without a deadline carries no `expiresAt`: [interaction deadlines](#interaction-deadlines) | 0.23 |
 
 ### Request sessions
 
@@ -1719,7 +1720,7 @@ confirmation.
 | Message | Members |
 | --- | --- |
 | request `interactions` | `route`, `presentation`, `generation`, `handlers: [{name, contract}]` |
-| push `interaction` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `expiresAt`, `input` |
+| push `interaction` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `expiresAt` (absent for no deadline with `open-ended-interactions/1`), `input` |
 | push `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` |
 | request `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` |
 
@@ -1732,8 +1733,8 @@ confirmation.
 
   A higher `generation` replaces the registration. `open` registers its `handlers` as generation 0.
 - **Requests.** The producer pushes `interaction` to the presentation's connection. `expiresAt` is an
-  `offset-date-time` after which the request times out, and `ownerEpoch` a number the producer assigns that the
-  reply repeats. `input` is encoded as the interaction's input type.
+  `offset-date-time` after which the request times out ([interaction deadlines](#interaction-deadlines)), and
+  `ownerEpoch` a number the producer assigns that the reply repeats. `input` is encoded as the interaction's input type.
 - **Cancellation.** When a request ends before the page answered, the producer pushes `interaction-cancelled` with a
   human-readable `message`. The page stops the handler.
 - **Replies.** `outcome` is `answered` (with `output`, encoded as the interaction's output type), `cancelled` or
@@ -1769,8 +1770,24 @@ started and that runs on after it, such as a timer, is outside both scopes. A na
 runs its hooks, such as the departing page's leave guard, in that scope until the navigation ends. The window scope,
 which names no connection, does not end: work that it starts stays in it. A request ends
 when its scope ends, its presentation closes or its connection closes, or the window closes; the waiting interaction
-then fails. Interactions time out after two minutes by default (at most ten). A window holds at most 32 pending
-requests and 8 per presentation.
+then fails. A window holds at most 32 pending requests and 8 per presentation.
+
+### Interaction deadlines
+
+Each request has a lifetime that the application sets for its interaction: by default two minutes, at most 24 hours,
+or none, as for a question a person answers. When a finite lifetime passes, the producer ends the request with
+`interaction-cancelled` and the waiting interaction fails with a timeout. A request without a deadline ends only as
+every request also does: with its scope, its presentation, its connection or its window.
+
+- **`expiresAt`.** For a finite lifetime it is the instant the request was sent plus the lifetime. With the feature
+  **`open-ended-interactions/1`**, a request without a deadline has no `expiresAt`. On a connection without the
+  feature, `expiresAt` is present on every request: for one without a deadline it is the latest instant a finite
+  lifetime reaches, 24 hours after the request was sent. The producer arms no timer of its own for such a request.
+- **Client.** A client aborts the handler when `expiresAt` passes on its clock and answers `cancelled`; without
+  `expiresAt` it aborts it only when `interaction-cancelled` arrives. It honours any `expiresAt`, however distant: a
+  client whose timers have a limit, such as a browser's 2<sup>31</sup> − 1 milliseconds (about 24.8 days), never arms a
+  longer timer, and waits in steps of at most that limit instead. `@runic-artifex/views` before 0.23 does not list the
+  feature and ends every request after at most ten minutes, whatever its `expiresAt`.
 
 ## View requests
 
@@ -1985,7 +2002,7 @@ Pushes:
 | `frame` | `route`, `baseRevision`, `revision`, `changes` | every connection |
 | `failure` | `route`, `revision`, `error` | every connection |
 | `operation` | `route`, `member`, `operation`, `contract`, `status` | each watching connection |
-| `interaction` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `expiresAt`, `input` | the presentation's connection |
+| `interaction` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `expiresAt` (absent for no deadline with `open-ended-interactions/1`), `input` | the presentation's connection |
 | `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` | the presentation's connection |
 | `view-request` (`view-requests/1`) | `route`, `presentation`, `revision`, `name`, `contract`, `input` | the connection of each selected presentation |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
@@ -2080,4 +2097,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`, and 0.23 the feature `open-ended-interactions/1`. |
