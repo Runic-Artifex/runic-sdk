@@ -615,7 +615,7 @@ public partial class ViewModelBridge
                 descriptor.WriteItem(writer, row);
             }
             writer.WriteEndArray();
-            Blobs.ReleaseSlots(this, RowSlot(descriptor, ""), keep: slot => keys.Contains(slot[(descriptor.Name.Length + 1)..]));
+            if (BridgeBlobs.IsSupported) Blobs.ReleaseSlots(this, RowSlot(descriptor, ""), keep: slot => keys.Contains(slot[(descriptor.Name.Length + 1)..]));
             return;
         }
         using (BridgeBlobScope.EnterSlot(member.Name)) member.Write(writer, _vm);
@@ -632,6 +632,7 @@ public partial class ViewModelBridge
     // The rows a collection change took away release their blobs.
     private void ReleaseRows(BridgeCollectionDescriptor descriptor, IEnumerable<string> keys)
     {
+        if (!BridgeBlobs.IsSupported) return;
         foreach (var key in keys) Blobs.ReleaseSlots(this, RowSlot(descriptor, key), exact: true);
     }
 

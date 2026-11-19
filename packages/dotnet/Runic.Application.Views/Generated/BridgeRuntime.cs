@@ -1075,7 +1075,7 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         }
         _modelTurn.RunForTeardown(DisposeCore);
         // blobs/1: the URLs of the blobs the route encoded stop working.
-        _blobs?.ReleaseRoute(this);
+        if (BridgeBlobs.IsSupported) _blobs?.ReleaseRoute(this);
         Interlocked.Exchange(ref _modelContextLease, null)?.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -1086,7 +1086,9 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
 
     // Enters the scope of the route's encodes and decodes; connection is the key of the request's connection, or null
     // outside a request.
-    private BridgeBlobScope.Restore EnterBlobs(string? connection) => BridgeBlobScope.Enter(Blobs, this, connection);
+    // Without blobs/1 (BridgeBlobs.IsSupported) it enters nothing and creates no store.
+    private BridgeBlobScope.Restore EnterBlobs(string? connection) =>
+        BridgeBlobs.IsSupported ? BridgeBlobScope.Enter(Blobs, this, connection) : default;
 
     private void DisposeCore()
     {

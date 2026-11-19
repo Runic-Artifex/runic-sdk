@@ -164,6 +164,73 @@
                                       Condition="'$(RunicDevelopmentOnlyViews)' != 'true'" />
     </ItemGroup>
   </Target>
+  <!-- Bridge blobs and uploads (blobs/1, runic-sdk#1193): the generated codecs of a member that holds a RunicBlob or
+       takes a RunicUpload mark their assembly with the assembly metadata Runic.Application.Views.Blobs=true. A trimmed
+       or NativeAOT publish in which neither the application nor a referenced assembly has it turns blobs/1 off, so the
+       trimmer removes the Window's blob store and the hosts' blob endpoints. RunicBridgeBlobs=true keeps them. Only the
+       publish, as above: builds and dotnet run keep blobs/1. -->
+  <UsingTask TaskName="RunicViewsFindBlobUse" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Assemblies ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <UsedBy ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Code Type="Method" Language="cs"><![CDATA[
+        // The serialized custom attribute blob of [assembly: AssemblyMetadata("Runic.Application.Views.Blobs", "true")]
+        // (ECMA-335 II.23.3): the prolog, then each argument as a length-prefixed UTF-8 string, then no named arguments.
+        // The blob heap holds it as it is, so the bytes find it without loading the assembly.
+        public override bool Execute()
+        {
+          var key = System.Text.Encoding.UTF8.GetBytes("Runic.Application.Views.Blobs");
+          var value = System.Text.Encoding.UTF8.GetBytes("true");
+          var pattern = new byte[2 + 1 + key.Length + 1 + value.Length + 2];
+          pattern[0] = 1;
+          pattern[2] = (byte)key.Length;
+          key.CopyTo(pattern, 3);
+          pattern[3 + key.Length] = (byte)value.Length;
+          value.CopyTo(pattern, 4 + key.Length);
+          foreach (var item in Assemblies)
+          {
+            var path = item.GetMetadata("FullPath");
+            if (!File.Exists(path)) continue;
+            if (!Contains(File.ReadAllBytes(path), pattern)) continue;
+            UsedBy = Path.GetFileNameWithoutExtension(path);
+            return true;
+          }
+          return true;
+        }
+
+        // Without spans: the task also compiles against .NET Framework's MSBuild.
+        private static bool Contains(byte[] bytes, byte[] pattern)
+        {
+          for (var start = Array.IndexOf(bytes, pattern[0]); start >= 0 && start <= bytes.Length - pattern.Length;
+               start = Array.IndexOf(bytes, pattern[0], start + 1))
+          {
+            var index = 1;
+            while (index < pattern.Length && bytes[start + index] == pattern[index]) index++;
+            if (index == pattern.Length) return true;
+          }
+          return false;
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="_RunicViewsPublishBlobsFeatureSwitch" BeforeTargets="PrepareForILLink" Condition="'$(RunicBridgeBlobs)' != 'true'">
+    <ItemGroup>
+      <_RunicViewsBlobCandidate Include="@(IntermediateAssembly)" />
+      <_RunicViewsBlobCandidate Include="@(ReferencePath)" Condition="'%(ReferencePath.FrameworkReferenceName)' == ''" />
+    </ItemGroup>
+    <RunicViewsFindBlobUse Assemblies="@(_RunicViewsBlobCandidate)">
+      <Output TaskParameter="UsedBy" PropertyName="_RunicViewsBlobsUsedBy" />
+    </RunicViewsFindBlobUse>
+    <Message Importance="low" Condition="'$(_RunicViewsBlobsUsedBy)' != ''" Text="Runic Bridge: $(_RunicViewsBlobsUsedBy) uses blobs or uploads, so blobs/1 stays in the publish." />
+    <ItemGroup Condition="'$(_RunicViewsBlobsUsedBy)' == ''">
+      <RuntimeHostConfigurationOption Include="Runic.Application.Views.Blobs" Value="false" Trim="true" />
+    </ItemGroup>
+  </Target>
 
   <!-- The generator and the frontend commands run with IgnoreExitCode, so a
        failure is not repeated as MSB3073 ("The command exited with code 1").

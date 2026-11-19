@@ -25,6 +25,18 @@ namespace Runic.Application.Views;
 internal sealed class BridgeBlobs : IDisposable
 {
     internal const string Feature = "blobs/1";
+
+    // A trimmed or NativeAOT publish turns blobs/1 off when no assembly's generated Bridges hold a RunicBlob or take a
+    // RunicUpload (build/Runic.Application.Views.targets, runic-sdk#1193): the generated codecs of such a member mark
+    // their assembly. Off, the producer does not list blobs/1, grants no uploads and enters no blob scope, the hosts
+    // serve no blob endpoint, and the trimmer removes this store, the upload folder and the hosts' blob endpoints.
+    internal const string FeatureSwitch = "Runic.Application.Views.Blobs";
+
+    // The assembly metadata key that the generated codecs of a blob or upload member write ("true").
+    internal const string UsedMetadata = FeatureSwitch;
+
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(FeatureSwitch)]
+    internal static bool IsSupported => !AppContext.TryGetSwitch(FeatureSwitch, out var enabled) || enabled;
     internal const string UploadTokenHeader = "X-Runic-Upload-Token";
     internal const string UploadNameHeader = "X-Runic-Upload-Name";
     internal const long DefaultMaximumUploadBytes = 256L * 1_048_576;
@@ -1065,6 +1077,8 @@ internal sealed class BridgeBlobScope
 
     internal static Restore Enter(BridgeBlobs blobs, object route, string? connection)
     {
+        // blobs/1 off (BridgeBlobs.IsSupported): no scope, so no codec finds a Window.
+        if (!BridgeBlobs.IsSupported) return default;
         var previous = CurrentScope.Value;
         CurrentScope.Value = new BridgeBlobScope(blobs, route, connection, null);
         return new Restore(true, previous, null, null, blobs);
@@ -1087,7 +1101,7 @@ internal sealed class BridgeBlobScope
     {
         public void Dispose()
         {
-            if (!active) return;
+            if (!active || !BridgeBlobs.IsSupported) return;
             CurrentScope.Value = previous;
             if (member is not null) previous!.Blobs.ReplaceSlot(previous.Route, member, slot!);
             if (report is not null && previous is null) report.ReportEvictions();

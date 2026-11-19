@@ -54,11 +54,12 @@ internal static class BridgeSharedCodecs
     internal static void WriteAll(string directory)
     {
         AssignNames();
+        var usesBlobs = Codecs.Any(codec => UsesBlobs(codec.Body)) || Pending.Any(file => UsesBlobs(file.Content));
         // A Bridge is in the codecs' namespace, so RunicBridgeCodecs needs no qualification there.
         foreach (var (path, content) in Pending)
             GeneratedFile.WriteIfChanged(path, Resolve(content, index => $"{ClassName}.{Codecs[index].Name}"));
         Pending.Clear();
-        GeneratedFile.WriteIfChanged(Path.Combine(directory, FileName), SharedFile());
+        GeneratedFile.WriteIfChanged(Path.Combine(directory, FileName), SharedFile(usesBlobs));
         BridgeSupportFiles.WriteAll(directory);
     }
 
@@ -137,11 +138,25 @@ internal static class BridgeSharedCodecs
         return new string([.. name.Select(character => char.IsLetterOrDigit(character) || character == '_' ? character : '_')]);
     }
 
-    private static string SharedFile()
+    // The support API calls of a RunicBlob or RunicUpload codec (BridgeTypeGraph): only they reach the Window's blob
+    // store, whose size a trimmed or NativeAOT publish saves when no assembly has them (runic-sdk#1193).
+    private static readonly string[] BlobCalls =
+        ["BridgeWire.WriteBlob(", "BridgeWire.WriteUpload(", "BridgeWire.ReadUpload("];
+
+    private static bool UsesBlobs(string code) => BlobCalls.Any(call => code.Contains(call, StringComparison.Ordinal));
+
+    private static string SharedFile(bool usesBlobs)
     {
         var cs = new StringBuilder();
         cs.AppendLine(GeneratedOutput.Header);
         cs.AppendLine("#nullable enable");
+        if (usesBlobs)
+        {
+            // Runic.Application.Views.targets reads it from every assembly a trimmed or NativeAOT publish compiles and
+            // keeps blobs/1 when one has it (the Runic.Application.Views.Blobs feature switch).
+            cs.AppendLine("// This assembly's Bridges hold a RunicBlob or take a RunicUpload, so a trimmed or NativeAOT publish keeps blobs/1.");
+            cs.AppendLine("[assembly: global::System.Reflection.AssemblyMetadata(\"Runic.Application.Views.Blobs\", \"true\")]");
+        }
         cs.AppendLine($"namespace {Namespace};");
         cs.AppendLine();
         cs.AppendLine("// The wire codecs of this assembly's Bridges: one class per distinct value shape, shared by every member, command");

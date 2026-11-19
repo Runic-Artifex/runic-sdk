@@ -4232,6 +4232,13 @@ feature `blobs/1`, `specs/application/README.md`, "Blobs and uploads"). Their
 bytes never cross the Bridge as JSON, so neither the input limit nor JSON
 encoding applies, and a large file streams instead of being buffered.
 
+An application that uses neither leaves them out of a trimmed or NativeAOT
+publish: the generated codecs of a `RunicBlob` or `RunicUpload` member mark
+their assembly, and without a marked assembly the publish turns `blobs/1` off,
+so the executable has no blob store or blob endpoint (0.23, about 360 KB on
+CS-WebUI). `<RunicBridgeBlobs>true</RunicBridgeBlobs>` keeps them in every
+publish.
+
 **A blob for the page.** Expose a `RunicBlob` as a state property, in a DTO or
 collection row, or as a command or operation result:
 

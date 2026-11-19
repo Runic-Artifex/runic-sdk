@@ -576,7 +576,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         try
         {
             // blobs/1: a blob in an interaction's input is held until the window closes.
-            using (BridgeBlobScope.Enter(BridgeDispatcher.For(_transport).Blobs, this, null))
+            using (BridgeBlobs.IsSupported ? BridgeBlobScope.Enter(BridgeDispatcher.For(_transport).Blobs, this, null) : default)
                 inputJson = encodeInput(input);
             ValidateJsonPayload(inputJson);
         }
@@ -822,7 +822,7 @@ public sealed class BridgeInteractionRouter : IDisposable
             try
             {
                 // blobs/1: an upload in the output decodes only for the connection that answered.
-                using var blobs = BridgeBlobScope.Enter(BridgeDispatcher.For(_transport).Blobs, this, connectionKey);
+                using var blobs = BridgeBlobs.IsSupported ? BridgeBlobScope.Enter(BridgeDispatcher.For(_transport).Blobs, this, connectionKey) : default;
                 request.CompleteOutput(request.Decode(reply.Output!.Value));
             }
             catch (Exception error)
