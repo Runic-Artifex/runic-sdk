@@ -1,0 +1,12 @@
+<Window x:Class="WpfReactive.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:rv="https://runic-artifex.eu/xaml/views"
+        xmlns:local="clr-namespace:WpfReactive"
+        Title="Editor">
+  <!-- A local type, here a ReactiveUI.WPF ReactiveUserControl, makes WPF compile its temporary *_wpftmp
+       assembly before the main compile. -->
+  <local:EditorPanel>
+    <rv:RunicViewHost />
+  </local:EditorPanel>
+</Window>

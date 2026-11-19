@@ -19,6 +19,10 @@
 //  6. A copy of the split layout whose model names its composition after the application
 //     (a 0.7.0-preview.6 app after the upgrade) builds without CS0121.
 //  7. If that application declares a View too, it gets one RUNICBRIDGE018 error.
+//  8. ReactiveUI (I-153): a WPF application with ReactiveUI.WPF and the Runic ReactiveUI adapter whose bridged
+//     ReactiveObject has a ReactiveCommand. Its local XAML type (a ReactiveUserControl) makes WPF compile the
+//     *_wpftmp assembly, which needs the generated Bridge, before the main compile. The ReactiveUI flavor must be
+//     inferred by then: generated without it, the command is RUNICBRIDGE025 and the build fails.
 // Usage: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -35,7 +39,9 @@ const feed = resolve(args.find(arg => !arg.startsWith("--")) ?? join(root, "arti
 const { version } = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "utf8"));
 const container = /<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/.exec(readFileSync(join(root, "Directory.Packages.props"), "utf8"))?.[1];
 assert.ok(container, "Directory.Packages.props has no Microsoft.Extensions.DependencyInjection version.");
-for (const id of ["Runic.Application.Views", "Runic.Application.Views.Desktop", "Runic.Application.Views.Wpf", "Runic.Desktop.Kestrel"])
+const reactiveUiWpf = /<PackageVersion Include="ReactiveUI.WPF" Version="([^"]+)"/.exec(readFileSync(join(root, "Directory.Packages.props"), "utf8"))?.[1];
+assert.ok(reactiveUiWpf, "Directory.Packages.props has no ReactiveUI.WPF version.");
+for (const id of ["Runic.Application.Views", "Runic.Application.Views.Desktop", "Runic.Application.Views.Wpf", "Runic.Application.Views.ReactiveUI", "Runic.Desktop.Kestrel"])
   assert.ok(existsSync(join(feed, `${id}.${version}.nupkg`)), `Pack ${id} ${version} into ${feed} first.`);
 
 const directory = mkdtempSync(join(tmpdir(), "runic-wpf-bridge-"));
@@ -47,7 +53,7 @@ const env = {
 // MSBuild repeats each diagnostic in its summary; the summary counts are exact.
 function build(project, { fail = false } = {}) {
   const commandArgs = ["build", project, "-c", "Release", "--nologo",
-    `-p:RunicPackageVersion=${version}`, `-p:RunicContainerVersion=${container}`];
+    `-p:RunicPackageVersion=${version}`, `-p:RunicContainerVersion=${container}`, `-p:RunicReactiveUiWpfVersion=${reactiveUiWpf}`];
   console.log(`> dotnet ${commandArgs.join(" ")}`);
   const result = spawnSync("dotnet", commandArgs, { cwd: directory, env, encoding: "utf8" });
   const output = `${result.stdout}${result.stderr}`;
@@ -173,7 +179,23 @@ public sealed partial class StatusWebView : RunicView<StatusViewModel>;
   const clash = build("Upgraded/App/SplitApp.csproj", { fail: true });
   assert.equal(summary(clash, "Error"), 1, "Expected exactly one error.");
   assert.ok(count(clash, /error RUNICBRIDGE018:.*SplitApp\.RunicViewsComposition.*SplitModel.*RunicApplicationFrontendCompositionType/) > 0, "Expected RUNICBRIDGE018.");
-  console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off|renamed-properties|upgraded-split|composition-clash");
+
+  // 8. ReactiveUI: the flavor is inferred before WPF's markup compile.
+  const reactive = build("ReactiveUI/WpfReactive.csproj");
+  assert.equal(count(reactive, /RUNICBRIDGE025/), 0, "The ReactiveCommand was generated without the inferred ReactiveUI flavor.");
+  assert.equal(summary(reactive, "Warning"), 0, "The ReactiveUI project reported warnings.");
+  exists("ReactiveUI/Frontend/src/generated/editor.ts");
+  exists("ReactiveUI/bin/Release/net10.0-windows/www/index.html");
+  // Without the temporary assembly, the case would not cover the markup compile.
+  assert.ok(readdirSync(join(directory, "ReactiveUI/obj/Release"), { recursive: true }).some(name => /_wpftmp\.AssemblyInfo\.cs$/.test(String(name))),
+    "WPF compiled no *_wpftmp assembly for the ReactiveUI project.");
+  const bridgeDirectory = join(directory, "ReactiveUI/obj/Release/net10.0-windows/runic-bridge");
+  const generated = readdirSync(bridgeDirectory, { recursive: true }).filter(name => String(name).endsWith(".g.cs"))
+    .map(name => readFileSync(join(bridgeDirectory, String(name)), "utf8")).join("\n");
+  assert.ok(generated.includes("global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution"),
+    "The generated Bridge does not execute SaveCommand through Runic.Application.Views.ReactiveUI.");
+  assert.ok(!generated.includes("Runic.Application.Views.ReactiveUI.Reactive."), "The generated Bridge uses the System.Reactive flavor.");
+  console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off|renamed-properties|upgraded-split|composition-clash|reactiveui");
 } finally {
   if (keep) console.log(`Kept ${directory}`);
   else rmSync(directory, { recursive: true, force: true, maxRetries: 5 });
