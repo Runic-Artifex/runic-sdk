@@ -2418,12 +2418,13 @@ the generated code. `RunicApplicationFrontendBootstrap` is `true` only in the bo
 ### The host of a page
 
 A page loads `webui.js`, which the host serves, and `runic-views.js`, the host's
-Views client, which the host package copies into `www/`:
+Views client, which the host package copies into `www/` under that name:
 `Runic.Application.Views.Desktop` (and so `Runic.Application.Views.Wpf`) copies
-`runic-desktop-views.js`, `Runic.Application.Views.CsWebUi` copies
-`runic-cswebui.js`. Both are also copied under those names, so a page that loads
-one of them directly keeps working; that copy is deprecated since 0.22 and removed
-in 0.23, and such a page logs a console warning. Load `runic-views.js` instead. Neither `index.html` nor the Vite
+its Desktop client, `Runic.Application.Views.CsWebUi` its CS-WebUI client.
+Since 0.23 neither is copied under a host-named file name any more
+(`runic-desktop-views.js`, `runic-cswebui.js`, deprecated in 0.22): a page that
+still loads one of those gets a 404 and no Bridge, and the build reports warning
+`RUNICBRIDGE019`. Load `runic-views.js` instead. Neither `index.html` nor the Vite
 configuration names a host, so the same `dist/` runs on every host, and
 switching hosts changes the host package and `Program.cs`, not the frontend.
 `runic({ desktop: true })` from `@runic-artifex/vite-plugin-runic` is not needed
@@ -2438,9 +2439,7 @@ dotnet run -p:RunicApplicationHost=desktop
 ```
 
 Without it, such a project copies no `www/runic-views.js`, and gets warning
-`RUNICBRIDGE019` when a copied page loads `runic-views.js`. A page that loads
-the deprecated `runic-cswebui.js` or `runic-desktop-views.js` itself builds
-without the warning. The frontend build receives the host as the `RUNIC_APPLICATION_HOST`
+`RUNICBRIDGE019` when a copied page loads `runic-views.js`. The frontend build receives the host as the `RUNIC_APPLICATION_HOST`
 environment variable and is part of its build state, so a Vite configuration
 that still needs a host-specific build can read it and is rebuilt when it
 changes. A frontend that a referenced project builds, such as the model project

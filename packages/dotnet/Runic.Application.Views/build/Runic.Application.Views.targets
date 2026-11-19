@@ -1400,6 +1400,26 @@
     <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge019"
              Condition="'@(_RunicBridgeHostNeutralPage)' != ''"
              Text="$(AssemblyName) references more than one Runic host ($(_RunicApplicationHostNamesText)), and its page @(_RunicBridgeHostNeutralPage->'%(Filename)%(Extension)', ', ') loads runic-views.js, but the build copies no www/runic-views.js, so the page gets no Bridge. Set RunicApplicationHost in $(MSBuildProjectFile) or on the command line (-p:RunicApplicationHost=...) to the host the application runs on." />
+    <!-- 0.23 removed the host-named copies of the client (D072.11): a page that still loads one by that name, which
+         its frontend does not supply itself, gets a 404 and no Bridge. -->
+    <ItemGroup>
+      <_RunicBridgeFrontendFileName Include="@(_RunicBridgeWwwFile->'%(Filename)%(Extension)')" />
+      <_RunicBridgeOwnDesktopClient Include="@(_RunicBridgeFrontendFileName)" Condition="'%(Identity)' == 'runic-desktop-views.js'" />
+      <_RunicBridgeOwnCsWebUiClient Include="@(_RunicBridgeFrontendFileName)" Condition="'%(Identity)' == 'runic-cswebui.js'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicBridgeHostNamedPattern></_RunicBridgeHostNamedPattern>
+      <_RunicBridgeHostNamedPattern Condition="'@(_RunicBridgeOwnDesktopClient)' == ''">desktop-views</_RunicBridgeHostNamedPattern>
+      <_RunicBridgeHostNamedPattern Condition="'@(_RunicBridgeOwnCsWebUiClient)' == ''">$(_RunicBridgeHostNamedPattern)|cswebui</_RunicBridgeHostNamedPattern>
+      <_RunicBridgeHostNamedPattern>$(_RunicBridgeHostNamedPattern.Trim('|'))</_RunicBridgeHostNamedPattern>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicBridgeHostNamedPattern)' != ''">
+      <_RunicBridgeHostNamedPage Include="@(_RunicBridgeWwwFile->'%(FullPath)')"
+          Condition="'%(Extension)' == '.html' and Exists('%(FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(FullPath)')), '(^|[^\w.-])runic-($(_RunicBridgeHostNamedPattern))\.js'))" />
+    </ItemGroup>
+    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge019"
+             Condition="'@(_RunicBridgeHostNamedPage)' != ''"
+             Text="The page @(_RunicBridgeHostNamedPage->'%(Filename)%(Extension)', ', ') of $(AssemblyName) loads runic-desktop-views.js or runic-cswebui.js, which Runic 0.23 no longer copies to www/, so the page gets no Bridge. Load runic-views.js instead (&lt;script src=&quot;runic-views.js&quot;&gt;&lt;/script&gt; after webui.js)." />
     <!-- Each record line is "<last write time>|<path>". A recorded file is
          deleted only when its time is unchanged, so a file that someone else
          wrote there since (an operator's config.json, for example) stays. -->

@@ -92,8 +92,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   its own next to the surface's `frame-ancestors` policy, and the WebView
   enforces both. The Bridge needs `'self'` scripts and connections and no
   `'unsafe-eval'`: `DesktopBridgeTransport` sends Views pushes as raw data to
-  `__runicViewsPush`, which the served bridge script hands to
-  `runic-desktop-views.js` without evaluating them, so
+  `__runicViewsPush`, which the served bridge script hands to the Views client
+  (`runic-views.js`) without evaluating them, so
   `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
   works and blocks inline, foreign and evaluated scripts. Only
   `DesktopSurface.ExecuteJavaScriptAsync`, which evaluates a string in the
@@ -596,7 +596,7 @@ and logical View lifetimes. `DesktopHostOptions` and `DesktopWindowOptions`
 select the browser or embedded backend; the Runic Desktop guide lists the
 native prerequisites for each platform.
 
-The package's build targets copy `runic-desktop-views.js` into `www/`, also as
+The package's build targets copy its Views client into `www/` as
 `runic-views.js`. It installs `__runicBridge`: requests go to `__runicViews`,
 and pushes arrive on the WebSocket as they are sent, so the script does not
 poll. Load `webui.js` (served by the surface) and `runic-views.js`
@@ -605,8 +605,9 @@ CS-WebUI, whose package copies its own client as `runic-views.js`. A project
 that references both hosts sets `RunicApplicationHost` (`desktop` or
 `cswebui`); see
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
-Pages that load `runic-desktop-views.js` keep working in 0.22 but log a console
-warning: that copy is deprecated and removed in 0.23. `runic({ desktop: true })`
+Since 0.23 the build no longer copies the client as `runic-desktop-views.js`
+(deprecated in 0.22): a page that loads that name gets a 404 and no Bridge, and
+the build reports warning `RUNICBRIDGE019`. `runic({ desktop: true })`
 is not needed for a Views page. The adapter uses the same host-neutral client
 contract as the CS-WebUI adapter, and its build defaults match
 `Runic.Application.Views.CsWebUi`, so `AddRunicViews()` is generated in
