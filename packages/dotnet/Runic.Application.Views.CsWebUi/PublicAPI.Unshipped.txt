@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Application.Views.CsWebUi.RunicCsWebUiHost.Placement.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Application.Views.RunicWindowPlacement?>?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Placement.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Application.Views.RunicWindowPlacement?>?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Placement.init -> void

@@ -50,9 +50,11 @@ switch (args.SingleOrDefault())
     // WebViewProbe.cs, a real WebView2 or WebKitGTK window; the package smoke builds Program.cs alone.
     case "--probe-webview-close-guard":
         return WebViewProbe.RunCloseGuard();
+    case "--probe-webview-placement":
+        return WebViewProbe.RunPlacement();
 #endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement");
         return 2;
 }
 WebUiApplication.Clean();
@@ -260,7 +262,7 @@ static async Task<int> ProbePresentationAsync()
     catch (ArgumentOutOfRangeException) { rejected = true; }
     Check(rejected, "An undefined color scheme was accepted.");
 
-    var webView = new CsWebUiWindowPresentation(native, webView: true)
+    var webView = new CsWebUiWindowPresentation(native, webView: true, reportsPlacement: false)
     {
         IsShown = () => shown, Focus = () => throw new ObjectDisposedException("window"), Minimize = () => minimized++,
     };
@@ -274,8 +276,68 @@ static async Task<int> ProbePresentationAsync()
     Check(webView.Features == RunicWindowPresentationFeatures.None, "A closed WebUI window reported features.");
     Check(await browser.PresentAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
         { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed } && focused == 1, "A closed WebUI window was presented.");
+    await ProbePlacementSeamsAsync(native);
     Console.WriteLine("CSWEBUI_PRESENTATION_OK");
     return 0;
+}
+
+// sdk#1149: a WebView window that reports its placement, through the presentation's seams: it reads the placement when
+// asked and when the window closes, maximizes and restores over the same restored bounds, keeps a placement on a work
+// area, and refuses full screen and, on Wayland, a position.
+static async Task ProbePlacementSeamsAsync(WebUiWindow native)
+{
+    static void Check(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+    var shown = true;
+    var current = new WebUiWindowPlacement(100, 80, 640, 480);
+    var written = new List<WebUiWindowPlacement>();
+    var presentation = new CsWebUiWindowPresentation(native, webView: true, reportsPlacement: true)
+    {
+        IsShown = () => shown,
+        ReadPlacement = (out WebUiWindowPlacement placement) =>
+        {
+            placement = current;
+            return true;
+        },
+        WritePlacement = placement =>
+        {
+            written.Add(placement);
+            current = placement;
+            return true;
+        },
+        WorkAreas = () => [new Runic.Desktop.Internal.ScreenRect(0, 0, 1600, 900)],
+    };
+    var changes = 0;
+    presentation.PropertyChanged += (_, args) => changes += args.PropertyName == nameof(IRunicWindowPresentation.Placement) ? 1 : 0;
+    Check(presentation.Features == (RunicWindowPresentationFeatures.Present | RunicWindowPresentationFeatures.Minimize
+        | RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement), $"A placed WebView window reported {presentation.Features}.");
+    Check(presentation.Placement is null && presentation.Refresh() && changes == 1
+        && presentation.Placement == new RunicWindowPlacement { X = 100, Y = 80, Width = 640, Height = 480 }, "The placement was not read.");
+    Check(presentation.Refresh() && changes == 1, "An unchanged placement was reported again.");
+    Check(await presentation.MaximizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success
+        && written[^1] == new WebUiWindowPlacement(100, 80, 640, 480, IsMaximized: true) && presentation.Placement is { Maximized: true } && changes == 2,
+        "MaximizeAsync did not maximize over the restored bounds.");
+    Check(await presentation.RestoreAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success
+        && written[^1] == new WebUiWindowPlacement(100, 80, 640, 480) && changes == 3, "RestoreAsync did not restore.");
+    Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { X = 1500, Y = 850, Width = 400, Height = 300 })
+        is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success && written[^1] == new WebUiWindowPlacement(1200, 600, 400, 300),
+        $"SetPlacementAsync did not keep the window on the work area: {written[^1]}.");
+    var count = written.Count;
+    Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { FullScreen = true }) is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.BackendUnavailable } && written.Count == count, "A full-screen placement was taken.");
+    current = current with { HasPosition = false };
+    Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { X = 10, Y = 10 }) is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.BackendUnavailable } && written.Count == count, "A position was taken on Wayland.");
+    Check(presentation.Refresh() && presentation.Placement is { X: null, Y: null, Width: 400 }, "A Wayland placement reported a position.");
+    // A closed window keeps its last placement; requests report it closed.
+    shown = false;
+    var last = presentation.Placement;
+    Check(!presentation.Refresh() && presentation.Placement == last && presentation.Features == RunicWindowPresentationFeatures.None,
+        "A closed window's placement changed.");
+    Check(await presentation.MaximizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed }, "A closed window was maximized.");
 }
 
 // Without AddRunicViews(), validation and OpenWindowAsync name the missing Bridge before a native window

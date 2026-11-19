@@ -133,4 +133,41 @@ public sealed record RunicCsWebUiHostOptions
     /// </code>
     /// </remarks>
     public Runic.Assets.IAssetSource? Assets { get; init; }
+
+    /// <summary>
+    /// Chooses the saved placement each Window restores: its size, position and maximized state from the last time it
+    /// closed. <see langword="null"/>, the default, restores none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called with each Window as it opens, once its ViewModel is set, before its native window shows. It returns the
+    /// <see cref="IRunicWindowPresentation.Placement"/> saved when the Window closed, or <see langword="null"/> for none,
+    /// and replaces the size of <see cref="RunicWindowOptions"/>. The bounds are kept on a monitor that exists now: bounds
+    /// off every monitor's work area move onto the one they are nearest, and bounds larger than it shrink to fit, as on
+    /// Runic Desktop.
+    /// </para>
+    /// <code>
+    /// return RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions
+    /// {
+    ///     UseWebView = true,
+    ///     Placement = window =&gt; window is MainWindow ? settings.MainWindowPlacement : null,
+    /// }, async host =&gt;
+    /// {
+    ///     await using var window = await host.OpenWindowAsync&lt;MainWindow&gt;();
+    ///     await window.WaitForCloseAsync();
+    ///     settings.MainWindowPlacement = window.Presentation.Placement;
+    ///     return 0;
+    /// });
+    /// </code>
+    /// <para>
+    /// A <see cref="UseWebView"/> window on Windows (WebView2) or Linux (WebKitGTK) takes the whole placement once it is
+    /// shown, and reports its own in <see cref="IRunicWindowPresentation.Placement"/>, also when the user closed it; on
+    /// Wayland it gets the size and maximized state, since the compositor places windows. A browser window, a macOS
+    /// WebView and a window that <see cref="ShowWindow"/> shows take only the size and a position WebUI accepts before
+    /// showing (0 to 3000 × 0 to 1800), and report no placement. Serve-only mode shows no window and does not call it.
+    /// A placement saved on one machine or operating system is not meant for another. A callback that throws fails the
+    /// open.
+    /// </para>
+    /// </remarks>
+    public Func<IRunicWindow, RunicWindowPlacement?>? Placement { get; init; }
 }

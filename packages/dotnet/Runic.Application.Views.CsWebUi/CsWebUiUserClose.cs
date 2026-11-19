@@ -6,7 +6,8 @@ namespace Runic.Application.Views.CsWebUi;
 // (WebUiWindow.SetCloseHandler): WebView2 on Windows and WebKitGTK on Linux. The handler keeps the window open, the
 // Window's close guard (RunicWindowOpening.CloseGuard) decides in a model turn, and an approved close goes through
 // WebUiWindow.Close, which CS-WebUI never sends through the handler again. RunicWindow.RequestCloseAsync joins the same
-// decision (RunicWindowOpening.UseCloseRequest), so the user and the application never ask twice at once.
+// decision (RunicWindowOpening.UseCloseRequest), so the user and the application never ask twice at once. Without a
+// guard the handler only lets the window close, after reading its placement (sdk#1149).
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
     Justification = "The source only cancels and has no timer; a guard may still hold its token after the window closed.")]
 internal sealed class CsWebUiUserClose
@@ -42,6 +43,9 @@ internal sealed class CsWebUiUserClose
         : !closeHandlerSupported ? "CS-WebUI's WebView on macOS"
         : null;
 
+    // sdk#1149: runs first in each user close, on WebUI's user-interface thread, to read the window's placement.
+    internal Action? BeforeUserClose { get; init; }
+
     // Whether a decision runs now, for tests.
     internal bool IsDeciding
     {
@@ -55,6 +59,7 @@ internal sealed class CsWebUiUserClose
     // it returns false and decides in the background; a close while a decision runs is ignored, as on Runic Desktop.
     internal bool OnUserClose()
     {
+        BeforeUserClose?.Invoke();
         lock (_gate)
         {
             if (_closed || _abandoned.IsCancellationRequested) return true;
