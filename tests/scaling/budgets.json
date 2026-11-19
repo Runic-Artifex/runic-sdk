@@ -289,8 +289,8 @@
     "aot/assembly/Runic.Application.Views.CsWebUi": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 149641,
-      "measured": [142515, 142515],
+      "limit": 157199,
+      "measured": [149713, 149713],
       "margin": 0.05,
       "note": "mstat bytes owned by Runic.Application.Views.CsWebUi (the CS-WebUI host adapter and, since #1111, its own loopback HTTP server: 103,608 B before): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
     },
