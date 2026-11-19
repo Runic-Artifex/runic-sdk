@@ -179,9 +179,10 @@ try
         // main thread.
         Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions() with { StandardMenuTitles = MonitorSmoke.GermanTitles }, MonitorSmoke.RunAsync);
     }
-    else if (args.Contains("--file-drop", StringComparer.Ordinal) && OperatingSystem.IsLinux())
+    else if (args.Contains("--file-drop", StringComparer.Ordinal) && (OperatingSystem.IsLinux() || OperatingSystem.IsWindows()))
     {
-        // Only the GTK 3 file drop, drag out and frame drops (W315-006, B11), for repeated local runs.
+        // Only the file drop, the side panel's drops (#1189), drag out and frame drops (W315-006, B11), on GTK 3 or
+        // WebView2, for repeated local runs.
         await using var host = await DesktopHost.StartAsync(CreateHostOptions());
         await FileDropSmoke.RunAsync(host);
     }

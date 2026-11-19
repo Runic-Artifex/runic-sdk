@@ -205,8 +205,17 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
             view.GetSettings().SetEnableDeveloperExtras(panel.WebContent.Rules.DevToolsEnabled);
             PanelSignals.Connect(this, view);
             WebContentSignals.Connect(this, view);
-            // Drops are refused in this version (D062.6): without WebKit's drop target the view takes none.
-            PanelSignals.RemoveDropTarget(view);
+            // Dropped files reach the window's FilesDropped as the page's do, marked InSidePanel (#1189, D077.2): the
+            // panel's own drop script and pairing, and its view's WebKit drop target in Gtk4FileDrops.
+            if (_receivesFileDrops && manager.RegisterScriptMessageHandler(FileDropSupport.WebKitMessageHandler, WebKitGtkKeyboard.ScriptWorld))
+            {
+                UserContentManager.ScriptMessageReceivedSignal.Connect(manager, OnPanelFileDropMessage, false, FileDropSupport.WebKitMessageHandler);
+                using var dropScript = UserScript.NewForWorld(FileDropSupport.WebKitScript, UserContentInjectedFrames.AllFrames,
+                    UserScriptInjectionTime.Start, WebKitGtkKeyboard.ScriptWorld, null, null);
+                manager.AddScript(dropScript);
+                panel.Drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait, sidePanel: true);
+                Gtk4FileDrops.Connect(this, view, sidePanel: true);
+            }
             if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
             {
                 view.SetDirection(options.LayoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? Gtk.TextDirection.Rtl : Gtk.TextDirection.Ltr);
@@ -486,6 +495,14 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
         panel.Released = true;
         UserContentManager.ScriptMessageReceivedSignal.Disconnect(panel.Manager, OnPanelZoomMessage);
         panel.Manager.UnregisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld);
+        if (panel.Drops is { } drops)
+        {
+            UserContentManager.ScriptMessageReceivedSignal.Disconnect(panel.Manager, OnPanelFileDropMessage);
+            panel.Manager.UnregisterScriptMessageHandler(FileDropSupport.WebKitMessageHandler, WebKitGtkKeyboard.ScriptWorld);
+            Gtk4FileDrops.Disconnect(this, sidePanel: true);
+            // A drop still waiting for its label is discarded.
+            drops.Dispose();
+        }
         if (_overlay is { } overlay && panel.View.GetParent() is not null) overlay.RemoveOverlay(panel.View);
         panel.View.TryClose();
         panel.View.Dispose();
@@ -520,6 +537,14 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
             _pageHandOff = null;
         }
         if (shown) panel.Request.Closed(DesktopSidePanelCloseReason.WindowClosed);
+    }
+
+    // As OnFileDropMessage, for the panel's page and its pairing.
+    private void OnPanelFileDropMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
+    {
+        if (!IsOpen || _panel?.Drops is not { } drops) return;
+        var report = FileDropSupport.DecodeReport(args.Value.ToString());
+        drops.PageReport(report.Label, refused: !GtkDragSupport.AcceptsReport(_presentedUrl, report.Origin), report.Effect);
     }
 
     private void OnPanelZoomMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
@@ -596,6 +621,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
         internal WebUiSidePanelRequest Request { get; } = request;
         internal WebView View { get; } = view;
         internal UserContentManager Manager { get; } = manager;
+        // The panel's drops, marked InSidePanel; null when the window takes no file drops.
+        internal FileDropPairing? Drops { get; set; }
         internal WebKitGtkWebContent? WebContent { get; set; }
         internal TaskCompletionSource<bool> Loaded { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal bool LoadFailed { get; set; }
@@ -720,36 +747,6 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
             Connect(host, native, "load-changed", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, void>)&OnLoadChanged);
         }
 
-        // WebKit's drop target of the view, removed.
-        internal static void RemoveDropTarget(WebView view)
-        {
-            var native = view.Handle.DangerousGetHandle();
-            var targetType = DropTargetAsyncGetType();
-            var controllers = WidgetObserveControllers(native);
-            if (controllers == 0) return;
-            List<nint> found = [];
-            try
-            {
-                var count = ListModelGetNItems(controllers);
-                for (uint index = 0; index < count; index++)
-                {
-                    var controller = ListModelGetItem(controllers, index);
-                    if (controller == 0) continue;
-                    if (TypeCheckInstanceIsA(controller, targetType) != 0) found.Add(controller);
-                    else ObjectUnref(controller);
-                }
-            }
-            finally
-            {
-                ObjectUnref(controllers);
-            }
-            foreach (var controller in found)
-            {
-                WidgetRemoveController(native, controller);
-                ObjectUnref(controller);
-            }
-        }
-
         internal static void ConnectFocusWidget(Gtk4WindowHost host, Gtk.Window window) =>
             Connect(host, window.Handle.DangerousGetHandle(), "notify::focus-widget", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnFocusWidget);
 
@@ -842,26 +839,5 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
 
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
         private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
-
-        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_drop_target_async_get_type")]
-        private static partial nuint DropTargetAsyncGetType();
-
-        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_observe_controllers")]
-        private static partial nint WidgetObserveControllers(nint widget);
-
-        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_remove_controller")]
-        private static partial void WidgetRemoveController(nint widget, nint controller);
-
-        [LibraryImport("libgio-2.0.so.0", EntryPoint = "g_list_model_get_n_items")]
-        private static partial uint ListModelGetNItems(nint list);
-
-        [LibraryImport("libgio-2.0.so.0", EntryPoint = "g_list_model_get_item")]
-        private static partial nint ListModelGetItem(nint list, uint position);
-
-        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_type_check_instance_is_a")]
-        private static partial int TypeCheckInstanceIsA(nint instance, nuint type);
-
-        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")]
-        private static partial void ObjectUnref(nint instance);
     }
 }

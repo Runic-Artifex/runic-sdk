@@ -29,11 +29,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private DesktopWindowState? _state;
     private DesktopWindowPlacement? _normal;
     private int _stateUpdateQueued;
-    private FileDropPairing? _drops;
-    // GTK thread only: the file URIs WebKit fetched while the drag moved over the view, per drag context.
-    private nint _dragContext;
-    private List<string>? _dragPaths;
-    private bool _dropRequested;
+    // The page view's drops; the side panel's view has a receiver of its own (SidePanel.Drops).
+    private DropReceiver? _drops;
     // GTK thread only: the window's DesktopWebContentPolicy (SEC-04) and the web context's download-started connection.
     private WebKitGtkWebContent? _webContent;
     private nint _downloadContext;
@@ -475,11 +472,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         if (Api.CanReceiveFileDrops)
         {
             // Before WebKit's handlers: the drop's paths come from GTK, the page only reports the label of its target.
-            _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
-            Api.AddFileDropScript(contentManager);
-            Api.Connect(contentManager, "script-message-received::" + FileDropSupport.WebKitMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnFileDropMessage, this);
-            Api.Connect(_webView, "drag-data-received", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, nint, uint, uint, nint, void>)&OnDragDataReceived, this);
-            Api.Connect(_webView, "drag-drop", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnDragDrop, this);
+            _drops = new DropReceiver(new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait));
+            ConnectFileDrops(_webView, contentManager);
         }
         if (options.Frameless && options.Resizable)
         {
@@ -695,8 +689,6 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         _webContent?.Clear();
         ReleaseDragOut();
         _drops?.Dispose();
-        _dragContext = 0;
-        _dragPaths = null;
         _window = 0;
         _webView = 0;
         if (Interlocked.Exchange(ref _ephemeralDataStore, null) is { } dataStore)
@@ -818,6 +810,21 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
     }
 
+    // GTK thread: the drop script and handlers of a web view, the page's or the side panel's, before WebKit's own: the
+    // drop's paths come from GTK, the page only reports the label of its target.
+    private unsafe void ConnectFileDrops(nint webView, nint contentManager)
+    {
+        Api.AddFileDropScript(contentManager);
+        Api.Connect(contentManager, "script-message-received::" + FileDropSupport.WebKitMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnFileDropMessage, this);
+        Api.Connect(webView, "drag-data-received", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, nint, uint, uint, nint, void>)&OnDragDataReceived, this);
+        Api.Connect(webView, "drag-drop", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnDragDrop, this);
+    }
+
+    // The drop receiver of a web view, or of the user content manager its script reports to: the side panel's, or the
+    // page's.
+    private DropReceiver? DropsOf(nint webViewOrManager) =>
+        _panel is { Drops: { } panel } && (_panel.View == webViewOrManager || _panel.ContentManager == webViewOrManager) ? panel : _drops;
+
     // WebKit asks for the drag's data while it moves over the view, so the URIs are usually known before the drop.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnDragDataReceived(nint widget, nint context, int x, int y, nint data, uint info, uint time, nint userData)
@@ -825,14 +832,15 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         try
         {
             if (GCHandle.FromIntPtr(userData).Target is not LinuxWebKitGtkHost { IsOpen: true } host || data == 0) return;
+            if (host.DropsOf(widget) is not { } drops) return;
             var uris = Api.GetSelectionUris(data);
             if (uris is null) return;
-            host._dragContext = context;
-            host._dragPaths = FileDropSupport.ParseUriList(uris);
-            if (host._dropRequested)
+            drops.DragContext = context;
+            drops.DragPaths = FileDropSupport.ParseUriList(uris);
+            if (drops.DropRequested)
             {
-                host._dropRequested = false;
-                host.DeliverNativeDrop();
+                drops.DropRequested = false;
+                drops.DeliverNativeDrop();
             }
         }
         catch
@@ -846,18 +854,18 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         try
         {
-            if (GCHandle.FromIntPtr(userData).Target is LinuxWebKitGtkHost { IsOpen: true } host)
+            if (GCHandle.FromIntPtr(userData).Target is LinuxWebKitGtkHost { IsOpen: true } host && host.DropsOf(widget) is { } drops)
             {
                 // The action WebKit chose for the page's dropEffect, kept for a drop whose URIs arrive later.
-                host._dropEffect = DropEffectOf(context);
-                if (host._dragContext == context && host._dragPaths is not null)
+                drops.DropEffect = DropEffectOf(context);
+                if (drops.DragContext == context && drops.DragPaths is not null)
                 {
-                    host.DeliverNativeDrop();
+                    drops.DeliverNativeDrop();
                 }
                 else if (Api.DragOffersUriList(context))
                 {
                     // WebKit did not fetch the URIs during the motion: ask for them; they arrive in drag-data-received.
-                    host._dropRequested = true;
+                    drops.DropRequested = true;
                     Api.RequestUriList(widget, context, time);
                 }
             }
@@ -870,12 +878,31 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         return 0;
     }
 
-    private void DeliverNativeDrop()
+    // One web view's drops, the page's or the side panel's: its pairing, and on the GTK thread the file URIs WebKit
+    // fetched while the drag moved over the view, per drag context, and the effect GTK reported when it was dropped.
+    private sealed class DropReceiver(FileDropPairing pairing) : IDisposable
     {
-        var paths = _dragPaths;
-        _dragPaths = null;
-        _dragContext = 0;
-        if (paths is { Count: > 0 }) _drops?.NativeDrop(paths, [], _dropEffect);
+        internal FileDropPairing Pairing { get; } = pairing;
+        internal nint DragContext;
+        internal List<string>? DragPaths;
+        internal bool DropRequested;
+        internal Runic.Platform.DesktopDragEffects DropEffect = Runic.Platform.DesktopDragEffects.Copy;
+
+        internal void DeliverNativeDrop()
+        {
+            var paths = DragPaths;
+            DragPaths = null;
+            DragContext = 0;
+            if (paths is { Count: > 0 }) Pairing.NativeDrop(paths, [], DropEffect);
+        }
+
+        public void Dispose()
+        {
+            DragPaths = null;
+            DragContext = 0;
+            DropRequested = false;
+            Pairing.Dispose();
+        }
     }
 
     // The script runs in every frame (D037.2); a report from a subframe of another origin than the presented one
@@ -892,7 +919,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 // gets none.
                 var accepted = GtkDragSupport.AcceptsReport(host._presentedUrl, report.Origin);
                 var region = accepted ? null : host._options?.RegionFrames?.Find(report.FrameAddress);
-                host._drops?.PageReport(report.Label, refused: !accepted && region is null, deliverTo: region?.Dropped);
+                host.DropsOf(manager)?.Pairing.PageReport(report.Label, refused: !accepted && region is null, deliverTo: region?.Dropped);
             }
         }
         catch

@@ -67,6 +67,15 @@ public sealed record RunicFileDrop(IReadOnlyList<RunicDroppedFile> Files, string
     /// staged copies, when the handler's task completes.
     /// </remarks>
     public IReadOnlyList<RunicPromisedFile> PromisedFiles { get; init; } = [];
+
+    /// <summary>Gets whether the files were dropped onto the Window's side panel rather than its page.</summary>
+    /// <remarks>
+    /// The side panel's page (<see cref="IRunicWindowPresentation.OpenSidePanelAsync"/>) binds to the same ViewModel tree,
+    /// so its drops reach the same root ViewModel, under the same rules; <see cref="Target"/> then is the label of the
+    /// panel page's element. The native window sets this from the view that received the drop, so unlike
+    /// <see cref="Target"/> it is trusted.
+    /// </remarks>
+    public bool InSidePanel { get; init; }
 }
 
 /// <summary>What a drop onto a Window performed, for <see cref="RunicFileDrop.Effect"/>.</summary>

@@ -2110,11 +2110,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
-            // The side panel takes no drops from outside its page (D062.6).
-            if (RefusesDrop(self, sender)) return 0;
             if (WebViews.TryGetValue(self, out var host) && host.IsOpen)
             {
-                host.ReadDrop(sender);
+                host.ReadDrop(self, sender);
             }
         }
         catch
@@ -2138,7 +2136,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
-            if (WebViews.TryGetValue(Api.SendNint(message, "webView"), out var host) && host.IsOpen)
+            var webView = Api.SendNint(message, "webView");
+            if (WebViews.TryGetValue(webView, out var host) && host.IsOpen)
             {
                 var body = Api.SendNint(message, "body");
                 var report = FileDropSupport.DecodeReport(Api.IsString(body) ? Api.Text(body) : null);
@@ -2150,7 +2149,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 var accepted = MacOsDragOperations.AcceptsFrame(mainFrame, host._presentedUrl, origin);
                 var region = accepted || frame == 0 || origin is null ? null
                     : host._regionFrames?.Find(Api.RequestUrl(frame) is { } address && RegionFrames.SameOrigin(address, origin) ? address : origin);
-                host.PageReport(report.Label, refused: !accepted && region is null, deliverTo: region?.Dropped);
+                host.PageReport(webView, report.Label, refused: !accepted && region is null, deliverTo: region?.Dropped);
             }
         }
         catch

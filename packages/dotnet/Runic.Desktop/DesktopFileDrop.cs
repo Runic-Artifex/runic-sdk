@@ -98,6 +98,15 @@ public sealed class DesktopFileDropEventArgs : EventArgs
             ? value
             : throw new ArgumentOutOfRangeException(nameof(value), "A drop performs exactly one of Copy, Move or Link.");
     } = DesktopDragEffects.Copy;
+
+    /// <summary>Gets whether the files were dropped onto the window's side panel rather than its page.</summary>
+    /// <remarks>
+    /// <see langword="false"/> for a drop onto the page. A drop onto the side panel's page
+    /// (<see cref="DesktopWindow.OpenSidePanelAsync"/>) reaches the same <see cref="DesktopWindow.FilesDropped"/> event with
+    /// the same rules: native paths, the panel page's <see cref="Target"/> label and <see cref="Effect"/>. Unlike
+    /// <see cref="Target"/>, the native window sets it, from the view that received the drop, so it is trusted.
+    /// </remarks>
+    public bool InSidePanel { get; init; }
 }
 
 /// <summary>An optional native host that reports files the user dropped onto its window.</summary>

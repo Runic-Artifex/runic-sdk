@@ -1246,10 +1246,10 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         _mediaFrames?.Receive(args.Value.ToString());
     }
 
-    // The drop's paths and the actions it offers (gdk_drop_get_actions).
-    internal void NativeFileDrop(IReadOnlyList<string> paths, Runic.Platform.DesktopDragEffects offered)
+    // The drop's paths and the actions it offers (gdk_drop_get_actions), onto the page's view or the side panel's.
+    internal void NativeFileDrop(IReadOnlyList<string> paths, Runic.Platform.DesktopDragEffects offered, bool sidePanel = false)
     {
-        if (IsOpen) _drops?.NativeDrop(paths, [], GtkDragSupport.OfferedDropEffect(offered), offered);
+        if (IsOpen) (sidePanel ? _panel?.Drops : _drops)?.NativeDrop(paths, [], GtkDragSupport.OfferedDropEffect(offered), offered);
     }
 
     private void DetachZoomHandlers(Gtk.EventControllerKey? keys, UserContentManager? contentManager)

@@ -1531,6 +1531,11 @@ document-portal paths under `/run/user/<uid>/doc`, which the application can
 open; a macOS App Sandbox grants access to dropped files while the application
 runs.
 
+Files dropped on the Window's [side panel](../../../docs/side-panel.md#dropped-files-on-the-panel)
+reach the same root ViewModel, in the same queue, with `RunicFileDrop.InSidePanel`
+set and the panel page's label in `Target`. The host sets `InSidePanel` from the
+view that received the drop, so unlike the label it can be trusted.
+
 `RunicFileDrop.Effect` is `Copy`, `Move` or `Link`, as the drag source, the
 user's modifier keys and the page agreed; mark where a drop copies, moves, links
 or is refused with `data-runic-drop-effect="copy|move|link|none"`, and treat the
