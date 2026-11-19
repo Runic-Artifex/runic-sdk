@@ -1,7 +1,7 @@
 // translation-text/1 against the real Runic Translations ESM: the state the .NET producer writes
 // (fixtures/translations/producer-state.json, TranslatedTextTests.TheProducersReferencesAreThePageFixture) is decoded by
 // the generated client's decoders and resolved with the generated `resolveTextReference` of a small catalog
-// (fixtures/translations/catalog, generated with runic-translations 0.9.1 into fixtures/translations/generated), and
+// (fixtures/translations/catalog, generated with runic-translations 0.15.0 into fixtures/translations/generated), and
 // with `createReferenceResolver` beside a component library's catalog (fixtures/translations/library).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

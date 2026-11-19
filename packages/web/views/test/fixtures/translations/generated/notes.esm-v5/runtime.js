@@ -10,6 +10,7 @@ export const sourceHash = "sha256:2465228c89d2a71f7922a8a4cdae4ac8a9afa9988b0d9d
 export const baseLocale = "en";
 export const locales = Object.freeze(["de","en"]);
 const unsupportedLocalePolicy = "ParentsThenDefault";
+const pseudoLocales = Object.freeze([]);
 const generatedLocaleData = {"bidiIsolation":"default","rightToLeftScripts":["Adlm","Arab","Armi","Avst","Chrs","Cprt","Elym","Gara","Hatr","Hebr","Hung","Khar","Lydi","Mand","Mani","Mend","Merc","Mero","Narb","Nbat","Nkoo","Orkh","Ougr","Palm","Phli","Phlp","Phnx","Prti","Rohg","Samr","Sarb","Sidt","Sogd","Sogo","Syrc","Thaa","Yezi"],"likely":{"de":"de-Latn-DE","en":"en-Latn-US","en-Shaw":"en-Shaw-GB"},"parents":{"en-150":"en-001","en-AG":"en-001","en-AI":"en-001","en-AT":"en-150","en-AU":"en-001","en-BB":"en-001","en-BE":"en-150","en-BM":"en-001","en-BS":"en-001","en-BW":"en-001","en-BZ":"en-001","en-CC":"en-001","en-CH":"en-150","en-CK":"en-001","en-CM":"en-001","en-CX":"en-001","en-CY":"en-001","en-CZ":"en-150","en-DE":"en-150","en-DG":"en-001","en-DK":"en-150","en-DM":"en-001","en-EE":"en-150","en-ER":"en-001","en-ES":"en-150","en-FI":"en-150","en-FJ":"en-001","en-FK":"en-001","en-FM":"en-001","en-FR":"en-150","en-GB":"en-001","en-GD":"en-001","en-GE":"en-150","en-GG":"en-001","en-GH":"en-001","en-GI":"en-001","en-GM":"en-001","en-GS":"en-001","en-GY":"en-001","en-HK":"en-001","en-HU":"en-150","en-ID":"en-001","en-IE":"en-001","en-IL":"en-001","en-IM":"en-001","en-IN":"en-001","en-IO":"en-001","en-IT":"en-150","en-JE":"en-001","en-JM":"en-001","en-KE":"en-001","en-KI":"en-001","en-KN":"en-001","en-KY":"en-001","en-LC":"en-001","en-LR":"en-001","en-LS":"en-001","en-LT":"en-150","en-LV":"en-150","en-MG":"en-001","en-MO":"en-001","en-MS":"en-001","en-MT":"en-001","en-MU":"en-001","en-MV":"en-001","en-MW":"en-001","en-MY":"en-001","en-NA":"en-001","en-NF":"en-001","en-NG":"en-001","en-NL":"en-150","en-NO":"en-150","en-NR":"en-001","en-NU":"en-001","en-NZ":"en-001","en-PG":"en-001","en-PK":"en-001","en-PL":"en-150","en-PN":"en-001","en-PT":"en-150","en-PW":"en-001","en-RO":"en-150","en-RW":"en-001","en-SB":"en-001","en-SC":"en-001","en-SD":"en-001","en-SE":"en-150","en-SG":"en-001","en-SH":"en-001","en-SI":"en-150","en-SK":"en-150","en-SL":"en-001","en-SS":"en-001","en-SX":"en-001","en-SZ":"en-001","en-TC":"en-001","en-TK":"en-001","en-TO":"en-001","en-TT":"en-001","en-TV":"en-001","en-TZ":"en-001","en-UA":"en-150","en-UG":"en-001","en-VC":"en-001","en-VG":"en-001","en-VU":"en-001","en-WS":"en-001","en-ZA":"en-001","en-ZM":"en-001","en-ZW":"en-001"},"aliases":{},"cardinal":{"de":5,"en":5},"ordinal":{"de":0,"en":46},"grouping":{},"numbers":{"de":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"de-AT":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"de-CH":["latn","0123456789",".","'","-","3","3","3","3","","%","-","%"],"de-LI":["latn","0123456789",".","'","-","3","3","3","3","","%","-","%"],"en":["latn","0123456789",".",",","-","3","3","3","3","","%","-","%"],"en-AT":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"en-BE":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-CH":["latn","0123456789",".","'","-","3","3","3","3","","%","-","%"],"en-CZ":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-DE":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"en-DK":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"en-Dsrt":["latn","0123456789",".",",","-","3","3","3","3","","%","-","%"],"en-EE":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-ES":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-FI":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"en-FR":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-GE":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-HU":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-ID":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-IN":["latn","0123456789",".",",","-","3","2","3","2","","%","-","%"],"en-IT":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-LT":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-LV":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-NL":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-NO":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"en-PL":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-PT":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-RO":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-SE":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"en-SI":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-SK":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-Shaw":["latn","0123456789",".",",","-","3","3","3","3","","%","-","%"],"en-UA":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-ZA":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"]},"list":{"de":["{0}, {1}","{0}, {1}","{0} und {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0} oder {1}","{0} oder {1}","{0}, {1}","{0}, {1}","{0} oder {1}","{0} oder {1}","{0}, {1}","{0}, {1}","{0} oder {1}","{0} oder {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0}, {1}"],"en":["{0}, {1}","{0}, {1}","{0}, and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, & {1}","{0} & {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-001":["{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-CA":["{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-Dsrt":["{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}"],"en-IN":["{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, and {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-Shaw":["{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}"]},"relativeTime":{"de":[null,"vor {0} Sekunde",null,null,null,"vor {0} Sekunden",null,"in {0} Sekunde",null,null,null,"in {0} Sekunden",null,null,"jetzt",null,null,null,"vor {0} Minute",null,null,null,"vor {0} Minuten",null,"in {0} Minute",null,null,null,"in {0} Minuten",null,null,"in dieser Minute",null,null,null,"vor {0} Stunde",null,null,null,"vor {0} Stunden",null,"in {0} Stunde",null,null,null,"in {0} Stunden",null,null,"in dieser Stunde",null,null,null,"vor {0} Tag",null,null,null,"vor {0} Tagen",null,"in {0} Tag",null,null,null,"in {0} Tagen","vorgestern","gestern","heute","morgen","übermorgen",null,"vor {0} Woche",null,null,null,"vor {0} Wochen",null,"in {0} Woche",null,null,null,"in {0} Wochen",null,"letzte Woche","diese Woche","nächste Woche",null,null,"vor {0} Monat",null,null,null,"vor {0} Monaten",null,"in {0} Monat",null,null,null,"in {0} Monaten",null,"letzten Monat","diesen Monat","nächsten Monat",null,null,"vor {0} Jahr",null,null,null,"vor {0} Jahren",null,"in {0} Jahr",null,null,null,"in {0} Jahren",null,"letztes Jahr","dieses Jahr","nächstes Jahr",null],"en":[null,"{0} second ago",null,null,null,"{0} seconds ago",null,"in {0} second",null,null,null,"in {0} seconds",null,null,"now",null,null,null,"{0} minute ago",null,null,null,"{0} minutes ago",null,"in {0} minute",null,null,null,"in {0} minutes",null,null,"this minute",null,null,null,"{0} hour ago",null,null,null,"{0} hours ago",null,"in {0} hour",null,null,null,"in {0} hours",null,null,"this hour",null,null,null,"{0} day ago",null,null,null,"{0} days ago",null,"in {0} day",null,null,null,"in {0} days",null,"yesterday","today","tomorrow",null,null,"{0} week ago",null,null,null,"{0} weeks ago",null,"in {0} week",null,null,null,"in {0} weeks",null,"last week","this week","next week",null,null,"{0} month ago",null,null,null,"{0} months ago",null,"in {0} month",null,null,null,"in {0} months",null,"last month","this month","next month",null,null,"{0} year ago",null,null,null,"{0} years ago",null,"in {0} year",null,null,null,"in {0} years",null,"last year","this year","next year",null],"en-Dsrt":[null,null,null,null,null,"-{0} s",null,null,null,null,null,"+{0} s",null,null,"now",null,null,null,null,null,null,null,"-{0} min",null,null,null,null,null,"+{0} min",null,null,"this minute",null,null,null,null,null,null,null,"-{0} h",null,null,null,null,null,"+{0} h",null,null,"this hour",null,null,null,null,null,null,null,"-{0} d",null,null,null,null,null,"+{0} d","𐐜 𐐼𐐩 𐐺𐐲𐑁𐐬𐑉 𐐷𐐯𐑅𐐻𐐲𐑉𐐼𐐩","𐐏𐐯𐑅𐐻𐐲𐑉𐐼𐐩","𐐓𐐲𐐼𐐩","𐐓𐐲𐑋𐐱𐑉𐐬","𐐜 𐐼𐐩 𐐰𐑁𐐻𐐲𐑉 𐐻𐐲𐑋𐐱𐑉𐐬",null,null,null,null,null,"-{0} w",null,null,null,null,null,"+{0} w",null,"last week","this week","next week",null,null,null,null,null,null,"-{0} m",null,null,null,null,null,"+{0} m",null,"last month","this month","next month",null,null,null,null,null,null,"-{0} y",null,null,null,null,null,"+{0} y",null,"last year","this year","next year",null],"en-Shaw":[null,null,null,null,null,"-{0} s",null,null,null,null,null,"+{0} s",null,null,"now",null,null,null,null,null,null,null,"-{0} min",null,null,null,null,null,"+{0} min",null,null,"this minute",null,null,null,null,null,null,null,"-{0} h",null,null,null,null,null,"+{0} h",null,null,"this hour",null,null,null,null,null,null,null,"-{0} d",null,null,null,null,null,"+{0} d",null,"yesterday","today","tomorrow",null,null,null,null,null,null,"-{0} w",null,null,null,null,null,"+{0} w",null,"last week","this week","next week",null,null,null,null,null,null,"-{0} m",null,null,null,null,null,"+{0} m",null,"last month","this month","next month",null,null,null,null,null,null,"-{0} y",null,null,null,null,null,"+{0} y",null,"last year","this year","next year",null]}};
 // CLDR plural rules over BigInt operands { i, v, w, f, t, e } of the visible decimal.
 const pluralRule0 = (o) => { return "other"; };
@@ -253,7 +254,16 @@ export function negotiateLocale(preferences) {
 // nearest truncation with the same likely script (tlh-x-a → tlh, but never sr-Latn-RS → sr or zh-Hant → zh), else
 // undefined. The undetermined language (und, und-DE) matches nothing. LocaleNegotiation.Match in .NET.
 function matchLocale(canonical, available = overlays === null ? locales : overlays.supported) {
+  if (available.includes(canonical)) return canonical;
+  available = withoutPseudoLocales(available);
   return cldrMatch(canonical, available) ?? truncateLocale(canonical, available);
+}
+// The development pseudo-locales of runic.json pseudoLocales (the generated pseudoLocales constant lists the catalog's,
+// none in a release build) are chosen only when requested by their own tag: fallback and negotiation of every other tag
+// skip them, so a development build resolves en-US, en or ar-EG exactly as a release build does. PseudoLocaleTags in .NET.
+function withoutPseudoLocales(candidates) {
+  if (pseudoLocales === undefined || pseudoLocales.length === 0) return candidates;
+  return candidates.filter(tag => !pseudoLocales.includes(tag));
 }
 // The nearest locale of available (canonical tags in ordinal order) left by removing subtags, with the same likely script.
 function truncateLocale(canonical, available) {
@@ -1162,7 +1172,7 @@ export function freezeGeneratedMessage(data, value) {
 function dynamicContract(tables, key) {
   let contracts = dynamicContracts.get(tables); if (!contracts) dynamicContracts.set(tables, contracts = new Map());
   let contract = contracts.get(key);
-  if (!contract) { const markup = tables.rmf2Contract.messages?.[key]; contract = contractOf({ ...markup, key, structured: tables.messageContracts[key].structured, inputs: tables.messageContracts[key].inputs, contentLocales: markup?.contentLocales ?? {} }); contracts.set(key, contract); }
+  if (!contract) { const markup = contractEntry(tables.rmf2Contract, key); contract = contractOf({ ...markup, key, structured: tables.messageContracts[key].structured, inputs: tables.messageContracts[key].inputs, contentLocales: markup?.contentLocales ?? {} }); contracts.set(key, contract); }
   return contract;
 }
 
@@ -1171,7 +1181,7 @@ export function decodeLocaleArtifactV5(value, tables) {
   const captured = snapshotJson(value, limits.maximumDepth, limits.maximumDocumentBytes);
   if (!captured.ok) return failure(`RTR0023/${captured.reason}`);
   const snapshot = captured.value;
-  const envelope = validateEnvelope(snapshot, tables.rmf2Contract); if (envelope) return failure(envelope);
+  const envelope = validateEnvelope(snapshot, tables); if (envelope) return failure(envelope);
   const entries = [];
   for (const [key, message] of Object.entries(snapshot.messages)) {
     if (!Object.hasOwn(tables.messageContracts, key)) return failure("RTR0023/unknown-key");
@@ -1272,6 +1282,7 @@ function overlayState(tables) {
 // locales (es-419 for es-MX, de for de-CH), else the nearest truncation with its likely script. Every result is a strict
 // ancestor, so a chain of nearest parents ends. LocaleRequestResolver.NearestParent in .NET.
 function nearestParent(canonical, candidates) {
+  candidates = withoutPseudoLocales(candidates);
   const steps = cldrChain(cldrDataId(canonical)); let best, bestStep = Infinity;
   for (const candidate of candidates) {
     if (candidate === canonical) continue;
@@ -1297,12 +1308,12 @@ export function installOverlayV5(value, tables, options) {
   // A locale the catalog declares keeps the catalog's chain, so a library release that adds the locale keeps the overlay working.
   if (!declared && fallback !== null) for (const entry of state.entries)
     if (entry.locale === locale && entry.fallback !== null && entry.fallback !== fallback) throw new RangeError(`Locale '${locale}' is already added with fallback '${entry.fallback}'.`);
-  const own = new Map(), copies = new Map(), diagnostics = [], markup = snapshot.markupContract.messages;
+  const own = new Map(), copies = new Map(), diagnostics = [];
   for (const key of Object.keys(snapshot.messages)) {
     const message = snapshot.messages[key];
     if (!isRecord(message) || typeof message.contentLocale !== "string" || canonicalLocale(message.contentLocale) !== message.contentLocale || !isRecord(message.ast)) return failure("RTR0023/malformed-pattern");
     // The artifact's own contract states each message's content locale and kind.
-    const linked = isRecord(markup) && Object.hasOwn(markup, key) && isRecord(markup[key]) ? markup[key] : undefined;
+    const linked = contractEntry(snapshot.markupContract, key);
     if (!linked || !isRecord(linked.contentLocales) || linked.contentLocales[locale] !== message.contentLocale) return failure("RTR0023/argument-contract-mismatch");
     const copy = message.contentLocale !== locale;
     // A fallback copy (a build with relaxed completeness) is not application text for a locale the catalog declares.
@@ -1362,7 +1373,8 @@ function validateOverlayEnvelope(value) {
   if (!members.every(name => Object.hasOwn(value, name))) return "RTR0023/malformed";
   if (value.artifactVersion !== 5) return "RTR0023/artifact-version-mismatch";
   if (value.messageGrammarVersion !== 5 || value.profile !== profile) return "RTR0023/message-grammar-version-mismatch";
-  if (!isRecord(value.markupContract) || value.markupContract.version !== 2) return "RTR0023/markup-contract-version-mismatch";
+  if (!isRecord(value.markupContract) || (value.markupContract.version !== 2 && value.markupContract.version !== 3)) return "RTR0023/markup-contract-version-mismatch";
+  if (!validContractLocales(value.markupContract)) return "RTR0023/malformed";
   if (value.catalog !== catalog) return "RTR0023/catalog-mismatch";
   if (typeof value.contractFingerprint !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value.contractFingerprint)) return "RTR0023/malformed";
   if (typeof value.locale !== "string" || canonicalLocale(value.locale) !== value.locale) return "RTR0023/locale-mismatch";
@@ -1416,18 +1428,59 @@ export function decodeWireValue(value, type) {
   } catch { return failure(); }
 }
 
-function validateEnvelope(value, rmf2Contract) {
+// Markup contract v3 (D077.16) is v2 without the message entries of the default shape, with the catalog's locales instead:
+// a message it does not list has no slots, is not structured, has inline content without skeletons, and each locale is its
+// own content locale. Version 2 lists every message and has no locales.
+function validContractLocales(contract) {
+  if (contract.version === 2) return !Object.hasOwn(contract, "locales");
+  return Array.isArray(contract.locales) && contract.locales.every((locale, index) => typeof locale === "string" && canonicalLocale(locale) === locale &&
+    (index === 0 || contract.locales[index - 1] < locale));
+}
+
+// @runic-markup-contract-start
+function defaultContractEntry(locales) {
+  return { slots: {}, structured: false, contentLocales: Object.fromEntries(locales.map(locale => [locale, locale])), content: "inline", skeletons: [] };
+}
+
+// The entry of a message of the catalog: the listed one, or in v3 the default one. Callers check that the key is the catalog's.
+function contractEntry(contract, key) {
+  const messages = contract?.messages;
+  if (isRecord(messages) && Object.hasOwn(messages, key)) return isRecord(messages[key]) ? messages[key] : undefined;
+  return contract?.version === 3 && Array.isArray(contract.locales) ? defaultContractEntry(contract.locales) : undefined;
+}
+
+// A contract in version 2, as the compiler writes it: a v3 contract with the default entry of each of the catalog's keys
+// it does not list, in ordinal key order.
+function expandContract(contract, keys) {
+  if (!isRecord(contract) || contract.version !== 3 || !Array.isArray(contract.locales) || !isRecord(contract.messages)) return contract;
+  const messages = {};
+  for (const key of [...new Set([...keys, ...Object.keys(contract.messages)])].sort((left, right) => left < right ? -1 : left > right ? 1 : 0))
+    messages[key] = Object.hasOwn(contract.messages, key) ? contract.messages[key] : defaultContractEntry(contract.locales);
+  return { version: 2, contracts: contract.contracts, messages };
+}
+
+// Two contracts of one catalog are the same in version 2 or 3: equal, or equal once each is written in version 2. A v3
+// catalog loads the v2 packs written for it and the other way round (.NET Rmf2MarkupContract.SameContract).
+function sameMarkupContract(left, right, keys) {
+  if (JSON.stringify(left) === JSON.stringify(right)) return true;
+  return JSON.stringify(expandContract(left, keys)) === JSON.stringify(expandContract(right, keys));
+}
+// @runic-markup-contract-end
+
+function validateEnvelope(value, tables) {
+  const rmf2Contract = tables.rmf2Contract;
   const members=["artifactVersion","messageGrammarVersion","profile","catalog","locale","contractFingerprint","messages","markupContract"];
   if (!isRecord(value)) return "RTR0023/malformed";
   if (Object.keys(value).some(name=>!members.includes(name)&&name!=="formatData")) return "RTR0023/unknown-member";
   if (!members.every(name=>Object.hasOwn(value,name))) return "RTR0023/malformed";
   if (value.artifactVersion !== 5) return "RTR0023/artifact-version-mismatch";
   if (value.messageGrammarVersion !== 5 || value.profile !== profile) return "RTR0023/message-grammar-version-mismatch";
-  if (!isRecord(value.markupContract) || value.markupContract.version !== 2) return "RTR0023/markup-contract-version-mismatch";
+  if (!isRecord(value.markupContract) || (value.markupContract.version !== 2 && value.markupContract.version !== 3)) return "RTR0023/markup-contract-version-mismatch";
+  if (!validContractLocales(value.markupContract)) return "RTR0023/malformed";
   if (value.catalog !== catalog) return "RTR0023/catalog-mismatch"; if (value.contractFingerprint !== contractFingerprint) return "RTR0023/contract-fingerprint-mismatch";
   if (typeof value.locale !== "string" || !localeSet.has(value.locale) || canonicalLocale(value.locale) !== value.locale) return "RTR0023/locale-mismatch";
   if (!isRecord(value.messages)) return "RTR0023/malformed"; if (Object.keys(value.messages).length > limits.maximumMessages) return "RTR0023/limit-exceeded";
-  if (JSON.stringify(value.markupContract) !== JSON.stringify(rmf2Contract)) return "RTR0023/argument-contract-mismatch";
+  if (!sameMarkupContract(value.markupContract, rmf2Contract, Object.keys(tables.messageContracts))) return "RTR0023/argument-contract-mismatch";
   return null;
 }
 

@@ -22,24 +22,24 @@
       },
       "Runic.Translations": {
         "type": "Direct",
-        "requested": "[0.14.0, )",
-        "resolved": "0.14.0",
-        "contentHash": "LFp21MvrAj7BUY8tSqZ195m2bs3T+YtOj28VZN/P3bhWWT2rBGpW5eey0vsjmOunb0Wawy/EQPVGSwMicPszkA=="
+        "requested": "[0.15.0, )",
+        "resolved": "0.15.0",
+        "contentHash": "8bP2tLCow1cCu7wgh1fkgWHPfZC+i0BRZdZ5rYTAADT6j9wqeocFzOARyL5Zd1Gb+sFD3jA9R0kg0fu4MVYL5g=="
       },
       "Runic.Translations.Build": {
         "type": "Direct",
-        "requested": "[0.14.0, )",
-        "resolved": "0.14.0",
-        "contentHash": "D/COeY6gEmqMqfSqmYUv2fU5CVK3eW+6KPaMFaRwrFPKhb+mxqwIPa5I1K7O6A5AsI710Xa1LLsOvLgu6LkAiw=="
+        "requested": "[0.15.0, )",
+        "resolved": "0.15.0",
+        "contentHash": "/8RktReurVkOPYWeaWDCBc0uKPKIAtbRXz/C/GUOU2oDEpNRg97gWtKVFeoY3ARy9rfDVeIzxLdmxx4euHoO8A=="
       },
       "Runic.Translations.Hosting": {
         "type": "Direct",
-        "requested": "[0.14.0, )",
-        "resolved": "0.14.0",
-        "contentHash": "OkhMbeUO3duGpCFikcvopBaN9UXghDpiXcXsQjLZoeCtXjshPIa3vHM68r/Pt4L/cSGClcugKTqsP7eTiMYL7g==",
+        "requested": "[0.15.0, )",
+        "resolved": "0.15.0",
+        "contentHash": "Kh0v0bmjW5Knperpqx+0xkjKm8SjYRozQIh5ZXr2fQXYp+jthi8vu5MbIQaNLU4lbO2TWfAp7jfu6Sl3OmWVPQ==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
-          "Runic.Translations": "[0.14.0, 0.15.0-0.0)"
+          "Runic.Translations": "[0.15.0, 0.16.0-0.0)"
         }
       },
       "runic.application.views": {
