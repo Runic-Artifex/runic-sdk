@@ -166,7 +166,7 @@ internal static partial class WindowsFileDropSmoke
         return (screen.X, screen.Y);
     }
 
-    private static (int Width, int Height) ClientSize(nint window)
+    internal static (int Width, int Height) ClientSize(nint window)
     {
         _ = GetClientRect(window, out var bounds);
         return (bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);

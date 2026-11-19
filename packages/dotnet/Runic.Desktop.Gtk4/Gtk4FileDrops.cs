@@ -9,7 +9,8 @@ namespace Runic.Desktop.Gtk4;
 // return TRUE, which ends the emission, so a handler of the host would never run. The host instead adds emission
 // hooks, which GLib runs before any handler, and only acts for WebKit's target on a host's view. When the drag is
 // accepted it starts reading the drop's GdkFileList, as WebKit starts reading its own data then, long before the drop
-// finishes; when the drop happens, the read's paths are delivered.
+// finishes; when the drop happens, the read's paths are delivered. The side panel's view has a session of its own, whose
+// drops the host marks InSidePanel (#1189).
 [SupportedOSPlatform("linux")]
 internal static unsafe partial class Gtk4FileDrops
 {
@@ -22,7 +23,7 @@ internal static unsafe partial class Gtk4FileDrops
     private static bool s_hooked;
 
     // Finds WebKit's drop target on the view; false when the view has none, so the window reports no FileDrop.
-    internal static bool Connect(Gtk4WindowHost host, WebKit.WebView webView)
+    internal static bool Connect(Gtk4WindowHost host, WebKit.WebView webView, bool sidePanel = false)
     {
         var targetType = DropTargetAsyncGetType();
         if (!InstallHooks(targetType)) return false;
@@ -38,7 +39,7 @@ internal static unsafe partial class Gtk4FileDrops
                 try
                 {
                     if (TypeCheckInstanceIsA(controller, targetType) == 0) continue;
-                    Sessions[controller] = new Session(host, controller);
+                    Sessions[controller] = new Session(host, controller, sidePanel);
                     return true;
                 }
                 finally
@@ -54,10 +55,11 @@ internal static unsafe partial class Gtk4FileDrops
         }
     }
 
-    // When the window closes; the controller goes with the view.
-    internal static void Disconnect(Gtk4WindowHost host)
+    // When the window closes, or with sidePanel when its side panel closes; the controller goes with the view.
+    internal static void Disconnect(Gtk4WindowHost host, bool sidePanel = false)
     {
-        foreach (var (controller, session) in Sessions.Where(entry => ReferenceEquals(entry.Value.Host, host)).ToArray())
+        foreach (var (controller, session) in Sessions.Where(entry => ReferenceEquals(entry.Value.Host, host)
+            && (!sidePanel || entry.Value.SidePanel)).ToArray())
         {
             Forget(session);
             Sessions.Remove(controller);
@@ -132,10 +134,11 @@ internal static unsafe partial class Gtk4FileDrops
     }
 
     // GTK thread only: the drop being read and whether it was dropped.
-    private sealed class Session(Gtk4WindowHost host, nint controller)
+    private sealed class Session(Gtk4WindowHost host, nint controller, bool sidePanel)
     {
         internal Gtk4WindowHost Host { get; } = host;
         internal nint Controller { get; } = controller;
+        internal bool SidePanel { get; } = sidePanel;
         internal nint Drop;
         internal bool Dropped;
         internal List<string>? Paths;
@@ -203,7 +206,7 @@ internal static unsafe partial class Gtk4FileDrops
         var paths = session.Paths;
         var actions = session.Actions;
         Forget(session);
-        if (paths is { Count: > 0 }) session.Host.NativeFileDrop(paths, actions);
+        if (paths is { Count: > 0 }) session.Host.NativeFileDrop(paths, actions, session.SidePanel);
     }
 
     private static void Forget(Session session)

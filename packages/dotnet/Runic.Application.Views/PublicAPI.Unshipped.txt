@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.RunicFileDrop.InSidePanel.get -> bool
+Runic.Application.Views.RunicFileDrop.InSidePanel.init -> void

@@ -20,9 +20,10 @@ namespace Runic.Desktop.Internal;
 // - Accessibility: the content view's children are listed in subview order, so the panel is below the page on the left
 //   edge and above it on the right: the reading order is the visual order.
 // - The panel's view shares the window's delegates through the WebViews map; PanelViews tells them it is the panel.
-//   Its title does not reach the window (no title observer), its drag regions are its own, drops from outside it are
-//   refused, window.close() closes it, and its own web content process ends with a reload once and a close the second
-//   time (D062.6, §3.1).
+//   Its title does not reach the window (no title observer), its drag regions are its own, window.close() closes it,
+//   and its own web content process ends with a reload once and a close the second time (D062.6, §3.1). Files dropped
+//   on it reach the window's FilesDropped as the page's do, through a pairing of its own that marks them InSidePanel
+//   (#1189, D077.2).
 internal sealed partial class MacOsWkWebViewHost
 {
     private const ulong ViewMinXMargin = 1;
@@ -127,7 +128,7 @@ internal sealed partial class MacOsWkWebViewHost
         // The page's profile: its website data store (macOS 12 shares one web content process pool anyway).
         var store = Api.SendNint(Api.SendNint(_webView, "configuration"), "websiteDataStore");
         var view = Api.AllocInitWebView(new CGRect(bounds.X + bounds.Width, bounds.Y, panel.NativeWidth, bounds.Height),
-            request.DocumentStartScript, WebViewClass, fileDropHandler: 0,
+            request.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0,
             WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, store, FocusHandler.Value);
         if (view == 0) throw new InvalidOperationException("WebKit could not create the side panel's WKWebView.");
         panel.View = view;
@@ -136,8 +137,9 @@ internal sealed partial class MacOsWkWebViewHost
         {
             WebViews[view] = this;
             PanelViews[view] = panel;
-            // Without Runic's WKWebView subclass the panel cannot tell drops from outside apart: it takes none.
-            if (WebViewClass == 0) Api.SendVoid(view, "unregisterDraggedTypes");
+            // As the page's: with Runic's WKWebView subclass, which reads the drop's paths and promised files.
+            if (WebViewClass != 0)
+                panel.Drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait, sidePanel: true);
             if (_webContent is { } rules && Api.RespondsToSelector(view, "setInspectable:"))
                 Api.SendVoidBool(view, "setInspectable:", rules.DevToolsEnabled);
             Api.SendVoidNint(view, "setNavigationDelegate:", _webContentDelegate);
@@ -398,6 +400,8 @@ internal sealed partial class MacOsWkWebViewHost
         panel.IsShown = false;
         panel.IsClosed = true;
         panel.Loaded.TrySetResult(false);
+        // A drop still waiting for its label or promised files is discarded, with the staged copies.
+        lock (_promiseGate) panel.Drops?.Dispose();
         if (panel.View is var view and not 0)
         {
             panel.View = 0;
@@ -432,9 +436,8 @@ internal sealed partial class MacOsWkWebViewHost
         if (opened) panel.Request.Closed(DesktopSidePanelCloseReason.WindowClosed);
     }
 
-    // The panel's web view whose drop should be refused: one that comes from outside the panel's own page.
-    private static bool RefusesDrop(nint view, nint draggingInfo) =>
-        PanelViews.ContainsKey(view) && (draggingInfo == 0 || Api.SendNint(draggingInfo, "draggingSource") != view);
+    // The pairing of a web view's drops: the side panel's own, or the page's.
+    private FileDropPairing? DropsOf(nint view) => PanelViews.TryGetValue(view, out var panel) ? panel.Drops : _drops;
 
     // Main thread: the drag regions the panel's page reported, or the page's.
     private MacOsWindowChrome.DragRegions DragRegionsOf(nint webView) =>
@@ -643,6 +646,8 @@ internal sealed partial class MacOsWkWebViewHost
         internal bool IsClosed { get; set; }
         internal int Crashes { get; set; }
         internal MacOsWindowChrome.DragRegions DragRegions = MacOsWindowChrome.DragRegions.Empty;
+        // The panel's drops, marked InSidePanel; null without Runic's WKWebView subclass.
+        internal FileDropPairing? Drops { get; set; }
         // The window's bounds without the panel, and the bounds the last open, move or width change gave it.
         internal DesktopWindowBounds? Before { get; set; }
         internal DesktopWindowBounds? Opened { get; set; }

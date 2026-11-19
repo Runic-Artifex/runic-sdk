@@ -1277,7 +1277,8 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
   with a credential of its own (`IRunicConnections` lists it), so it binds
   to the same ViewModel tree as the page. It is not granted `navigation-path/1`:
   its address and history are its own. It may show hosted regions. Files dropped
-  on it are refused, `window.close()` in it closes the panel, and its title is
+  on it reach `FilesDropped` as the page's do, with `InSidePanel` set ([File
+  drops](#file-drops)), `window.close()` in it closes the panel, and its title is
   not the window's. A panel page that crashes reloads once; a second crash closes
   it with `DesktopSidePanelCloseReason.Crashed`.
 - **While it is open**, `State.Bounds` and `VisibleBounds` include the panel and
@@ -1581,6 +1582,12 @@ script accepts every file drag at the window, before the page's handlers run.
 the nearest element under the drop that has one. The page reports it, so treat
 it as an untrusted routing label, never as a path and never for an access
 decision.
+
+A drop onto the window's side panel (`OpenSidePanelAsync`) raises the same
+event under the same rules, with `DesktopFileDropEventArgs.InSidePanel` set and
+the panel page's label in `Target`. The window sets `InSidePanel` from the view
+that received the drop, so it can be trusted. Drops of the page and the panel
+share one queue, in drop order.
 
 `DesktopFileDropEventArgs.Effect` says what the drop performed: `Copy` (the
 default), `Move` or `Link`, as the drag source, the user's modifier keys and the

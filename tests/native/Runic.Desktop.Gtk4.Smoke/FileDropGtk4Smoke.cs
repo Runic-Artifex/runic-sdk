@@ -6,8 +6,8 @@ using Runic.Desktop;
 #pragma warning disable CA1416 // The GTK 4 smoke runs on Linux.
 // W315-006: a real X11 drag and drop from a GTK 4 drag source onto the GTK 4 WebKitGTK 6 window, driven through
 // XTEST under Xvfb. The window reports the native paths with the page's routing label, the page still receives its
-// drop event, and the window does not navigate to the dropped file. Then B11's drag out and frame drops
-// (LinuxDragOutSmoke).
+// drop event, and the window does not navigate to the dropped file. Then drops onto a side panel (SidePanelDropSmoke)
+// and B11's drag out and frame drops (LinuxDragOutSmoke).
 internal static partial class FileDropGtk4Smoke
 {
     private const string Page =
@@ -64,6 +64,35 @@ internal static partial class FileDropGtk4Smoke
                 await window.InvokeNativeAsync(_ => source?.Destroy());
             }
             await window.CloseAsync();
+            // GTK 4 places only Runic's windows (on X11): the page from x 200 to 600 and the panel left of it, from 80, on
+            // Xvfb's 640-pixel screen; the drag source at the origin.
+            await SidePanelDropSmoke.RunAsync(host, [file, folder], new SidePanelDropSmoke.Toolkit
+            {
+                Name = "GTK 4",
+                Window = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 400, Height = 300, X = 200, Y = 0 },
+                Edge = DesktopWindowEdge.Left,
+                Width = 120,
+                PanelPoint = static _ => (140, 220),
+                PagePoint = static _ => (400, 150),
+                DragsText = true,
+                Drag = async (window, paths, target) =>
+                {
+                    Gtk.Window? dragSource = null;
+                    await window.InvokeNativeAsync(_ => dragSource = paths is null
+                        ? CreateDragSource(SidePanelDropSmoke.Text, Gdk.DragAction.Copy, "text/plain;charset=utf-8")
+                        : CreateDragSource(string.Concat(paths.Select(static path => new Uri(path).AbsoluteUri + "\r\n")), Gdk.DragAction.Copy));
+                    try
+                    {
+                        await Task.Delay(700);
+                        await pointer.DragAsync((60, 60), target);
+                    }
+                    finally
+                    {
+                        await window.InvokeNativeAsync(_ => dragSource?.Destroy());
+                    }
+                    return true;
+                },
+            });
             // GTK 4 places only Runic's windows (on X11): the page window to the right of the test windows, which
             // open at the origin.
             List<Gtk.Window> windows = [];
@@ -103,15 +132,15 @@ internal static partial class FileDropGtk4Smoke
         return window.Handle.DangerousGetHandle();
     }
 
-    // A GTK 4 window at the origin that offers text/uri-list when dragged.
-    private static Gtk.Window CreateDragSource(string uriList, Gdk.DragAction actions)
+    // A GTK 4 window at the origin that offers text/uri-list, or another type, when dragged.
+    private static Gtk.Window CreateDragSource(string uriList, Gdk.DragAction actions, string type = "text/uri-list")
     {
         var source = Gtk.Window.New();
         source.SetDefaultSize(120, 120);
         var label = Gtk.Label.New("drag me");
         var drag = Gtk.DragSource.New();
         drag.SetActions(actions);
-        drag.OnPrepare += (_, _) => Gdk.ContentProvider.NewForBytes("text/uri-list", GLib.Bytes.New(Encoding.UTF8.GetBytes(uriList)));
+        drag.OnPrepare += (_, _) => Gdk.ContentProvider.NewForBytes(type, GLib.Bytes.New(Encoding.UTF8.GetBytes(uriList)));
         label.AddController(drag);
         source.SetChild(label);
         source.Present();

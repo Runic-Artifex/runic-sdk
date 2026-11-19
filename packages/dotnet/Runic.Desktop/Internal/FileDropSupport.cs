@@ -166,8 +166,9 @@ internal static class FileDropSupport
 
 // Pairs a native drop with the label the page reports for it right after. The native drop always comes first on
 // WebKit: the UI process sees it before the web process dispatches the page's drop event. A drop whose label does not
-// arrive within the wait, for example because the page's script did not run, is delivered without one.
-internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, TimeSpan wait) : IDisposable
+// arrive within the wait, for example because the page's script did not run, is delivered without one. A side panel's
+// view has a pairing of its own, whose drops are delivered with InSidePanel (sidePanel).
+internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, TimeSpan wait, bool sidePanel = false) : IDisposable
 {
     private readonly object _gate = new();
     private readonly Queue<Pending> _pending = new();
@@ -237,7 +238,14 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     {
         var effect = reported is DesktopDragEffects.Copy or DesktopDragEffects.Move or DesktopDragEffects.Link
             && pending.Offered.HasFlag(reported) ? reported : pending.Effect;
-        try { (deliverTo ?? deliver)(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label) { Effect = effect }); }
+        try
+        {
+            (deliverTo ?? deliver)(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label)
+            {
+                Effect = effect,
+                InSidePanel = sidePanel,
+            });
+        }
         catch (Exception error) when (error is not OutOfMemoryException) { pending.Discard(); }
     }
 

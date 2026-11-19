@@ -4,7 +4,8 @@ using Runic.Desktop;
 
 // W315-006: a real X11 drag and drop from a GTK 3 drag source onto the GTK 3 WebKitGTK window, driven through XTEST
 // under Xvfb. The window reports the native paths with the page's routing label, the page still receives its drop
-// event, and the window does not navigate to the dropped file. Then B11's drag out and frame drops (LinuxDragOutSmoke).
+// event, and the window does not navigate to the dropped file. Then drops onto a side panel (SidePanelDropSmoke) and
+// B11's drag out and frame drops (LinuxDragOutSmoke).
 internal static partial class FileDropSmoke
 {
     internal const string Page =
@@ -74,6 +75,34 @@ internal static partial class FileDropSmoke
                 if (source != 0) await window.InvokeNativeAsync(_ => DragSource.Destroy(source));
             }
             await window.CloseAsync();
+            // Xvfb's 640-pixel screen leaves room on the left edge: the panel from x 100 to 220, the page to 620.
+            await SidePanelDropSmoke.RunAsync(host, [file, folder], new SidePanelDropSmoke.Toolkit
+            {
+                Name = "GTK 3",
+                Window = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 400, Height = 300, X = 220, Y = 20 },
+                Edge = DesktopWindowEdge.Left,
+                Width = 120,
+                PanelPoint = static _ => (160, 250),
+                PagePoint = static _ => (420, 170),
+                DragsText = true,
+                Drag = async (window, paths, target) =>
+                {
+                    nint source = 0;
+                    await window.InvokeNativeAsync(_ => source = paths is null
+                        ? DragSource.CreateText(SidePanelDropSmoke.Text, x: 10, y: 10, size: 150)
+                        : DragSource.Create([.. paths.Select(static path => new Uri(path).AbsoluteUri)], x: 10, y: 10, size: 150, actions: DragSource.Copy));
+                    try
+                    {
+                        await Task.Delay(500);
+                        await pointer.DragAsync((85, 85), target);
+                    }
+                    finally
+                    {
+                        await window.InvokeNativeAsync(_ => DragSource.Destroy(source));
+                    }
+                    return true;
+                },
+            });
             // The page window where FileDropSmoke's was; the test windows where its drag source was.
             await LinuxDragOutSmoke.RunAsync(host, pointer, [file, folder], new LinuxDragOutSmoke.Toolkit
             {
@@ -95,24 +124,39 @@ internal static partial class FileDropSmoke
         }
     }
 
-    // A GTK 3 window that offers text/uri-list when dragged.
+    // A GTK 3 window that offers text/uri-list when dragged, or with CreateText plain text.
     internal static unsafe partial class DragSource
     {
         internal const int Copy = 1 << 1;
         internal const int Move = 1 << 2;
         private static nint[] s_uris = [];
+        private static string? s_text;
 
         internal static nint Create(string[] uris, int x, int y, int size, int actions)
         {
             foreach (var pointer in s_uris) Marshal.FreeCoTaskMem(pointer);
             s_uris = [.. uris.Select(Marshal.StringToCoTaskMemUTF8), 0];
+            s_text = null;
+            return CreateWindow(["text/uri-list"], x, y, size, actions);
+        }
+
+        // UTF8_STRING and text/plain;charset=utf-8, which GTK fills from gtk_selection_data_set_text.
+        internal static nint CreateText(string text, int x, int y, int size)
+        {
+            s_text = text;
+            return CreateWindow(["text/plain;charset=utf-8", "UTF8_STRING"], x, y, size, Copy);
+        }
+
+        private static nint CreateWindow(string[] targets, int x, int y, int size, int actions)
+        {
             var window = WindowNew(0);
             WindowSetDefaultSize(window, size, size);
             WindowMove(window, x, y);
-            var target = Marshal.StringToCoTaskMemUTF8("text/uri-list");
-            var entry = new TargetEntry { Target = target, Flags = 0, Info = 0 };
-            DragSourceSet(window, 1 << 8, &entry, 1, actions); // GDK_BUTTON1_MASK
-            Marshal.FreeCoTaskMem(target);
+            var names = targets.Select(Marshal.StringToCoTaskMemUTF8).ToArray();
+            var entries = stackalloc TargetEntry[names.Length];
+            for (var index = 0; index < names.Length; index++) entries[index] = new TargetEntry { Target = names[index], Flags = 0, Info = 0 };
+            DragSourceSet(window, 1 << 8, entries, names.Length, actions); // GDK_BUTTON1_MASK
+            foreach (var name in names) Marshal.FreeCoTaskMem(name);
             SignalConnectData(window, "drag-data-get",
                 (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, uint, uint, nint, void>)&OnDragDataGet, 0, 0, 0);
             WidgetShowAll(window);
@@ -127,6 +171,11 @@ internal static partial class FileDropSmoke
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
         private static void OnDragDataGet(nint widget, nint context, nint data, uint info, uint time, nint userData)
         {
+            if (s_text is { } text)
+            {
+                _ = SelectionDataSetText(data, text, -1);
+                return;
+            }
             fixed (nint* uris = s_uris) _ = SelectionDataSetUris(data, uris);
         }
 
@@ -144,6 +193,8 @@ internal static partial class FileDropSmoke
         [LibraryImport(Gtk, EntryPoint = "gtk_window_move")] private static partial void WindowMove(nint window, int x, int y);
         [LibraryImport(Gtk, EntryPoint = "gtk_drag_source_set")] private static partial void DragSourceSet(nint widget, int mask, TargetEntry* targets, int count, int actions);
         [LibraryImport(Gtk, EntryPoint = "gtk_selection_data_set_uris")] private static partial int SelectionDataSetUris(nint data, nint* uris);
+        [LibraryImport(Gtk, EntryPoint = "gtk_selection_data_set_text", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial int SelectionDataSetText(nint data, string text, int length);
         [LibraryImport(Gtk, EntryPoint = "gtk_widget_show_all")] private static partial void WidgetShowAll(nint widget);
         [LibraryImport(Gtk, EntryPoint = "gtk_widget_destroy")] private static partial void WidgetDestroy(nint widget);
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
@@ -309,12 +360,44 @@ internal static partial class WindowsFileDropSmoke
             if (pageDrops != "1" || after != before)
                 throw new InvalidOperationException($"The page saw {pageDrops} drop events and moved from {before} to {after}.");
             Console.WriteLine($"File drop passed: native paths [{string.Join(", ", drop.Paths)}], target '{drop.Target}', one page drop event, no navigation.");
+            await window.CloseAsync();
+            await SidePanelDropAsync(host, [file, folder]);
             await DragOutAsync(host, [file, folder]);
         }
         finally
         {
             root.Delete(recursive: true);
         }
+    }
+
+    // #1189: the panel on the right of the page; the OLE drag onto its middle, then onto the page's.
+    private static async Task SidePanelDropAsync(DesktopHost host, string[] paths)
+    {
+        // win-arm64: the drag onto WebView2 does not end there (#391), as for the page.
+        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+        {
+            Console.WriteLine("WebView2 side panel drop: unverified on Windows arm64, where the OLE drag onto WebView2 does not end (#391).");
+            return;
+        }
+        const int PanelWidth = 160;
+        await SidePanelDropSmoke.RunAsync(host, paths, new SidePanelDropSmoke.Toolkit
+        {
+            Name = "WebView2",
+            Window = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 480, Height = 360, X = 300, Y = 200 },
+            Edge = DesktopWindowEdge.Right,
+            Width = PanelWidth,
+            PanelPoint = window => PanelPoints(window, PanelWidth).Panel,
+            PagePoint = window => PanelPoints(window, PanelWidth).Page,
+            Drag = async (window, dropped, target) => await DragOntoAsync(window.NativeHandle, dropped!, target) is not null,
+        });
+    }
+
+    // Client pixels: the panel's child window fills the client area's right PanelWidth DIPs, the page the rest.
+    private static ((int X, int Y) Panel, (int X, int Y) Page) PanelPoints(DesktopWindow window, int panelWidth)
+    {
+        var client = ClientSize(window.NativeHandle);
+        var native = (int)Math.Round(panelWidth * (window.State?.Bounds?.Scale ?? 1), MidpointRounding.AwayFromZero);
+        return ((client.Width - native / 2, client.Height / 2), ((client.Width - native) / 2, client.Height / 2));
     }
 
     private static async Task DragOutAsync(DesktopHost host, string[] paths)

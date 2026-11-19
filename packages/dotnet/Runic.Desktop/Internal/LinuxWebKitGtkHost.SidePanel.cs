@@ -146,6 +146,7 @@ internal sealed partial class LinuxWebKitGtkHost
             // hands Tab to the page.
             Api.AddDocumentStartScript(view, request.DocumentStartScript);
             var manager = Api.AddKeyboardScript(view);
+            panel.ContentManager = manager;
             PanelNative.Value.AddKeyboardWorldScript(manager, HandOffScript(true));
             Api.Connect(manager, "script-message-received::" + WebKitGtkKeyboard.ZoomMessageHandler,
                 (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnPanelZoomMessage, this);
@@ -156,9 +157,12 @@ internal sealed partial class LinuxWebKitGtkHost
             // Before the web content's load-failed, which can stop the emission.
             Api.Connect(view, "load-failed", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, nint, nint, int>)&OnPanelLoadFailed, this);
             Api.Connect(view, "load-changed", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, void>)&OnPanelLoadChanged, this);
-            // Drops from outside the panel are refused in this version (D062.6); drags inside its page still work.
-            Api.Connect(view, "drag-motion", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnPanelDragMotion, this);
-            Api.Connect(view, "drag-drop", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnPanelDragDrop, this);
+            // Dropped files reach the window's FilesDropped as the page's do, marked InSidePanel (#1189, D077.2).
+            if (Api.CanReceiveFileDrops)
+            {
+                panel.Drops = new DropReceiver(new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait, sidePanel: true));
+                ConnectFileDrops(view, manager);
+            }
             // The window's web content policy, with the panel's own pending navigations. No title, permission or media
             // frame handlers: the title is the page's, and WebKit denies the requests no handler allows.
             panel.WebContent = new WebKitGtkWebContent(new WebContentRules(options.WebContent, request.Url, options.AdditionalOrigins),
@@ -416,6 +420,7 @@ internal sealed partial class LinuxWebKitGtkHost
             _layout.Discard();
             if (shown && _webView != 0) SetPageHandOff(false);
         }
+        panel.Drops?.Dispose();
         if (panel.View != 0)
         {
             // As for the page's view (HandleDestroyed): its children first, while it still lists them.
@@ -437,6 +442,7 @@ internal sealed partial class LinuxWebKitGtkHost
         _panel = null;
         Volatile.Write(ref _panelOpen, 0);
         _layout.Discard();
+        panel.Drops?.Dispose();
         if (panel.View != 0) Api.DestroyWebViewChildren(panel.View);
         panel.View = 0;
         if (shown) panel.Request.Closed(DesktopSidePanelCloseReason.WindowClosed);
@@ -567,37 +573,6 @@ internal sealed partial class LinuxWebKitGtkHost
         }
     }
 
-    // A drag from outside the panel's view gets no drop action, and WebKit's handlers do not run.
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static int OnPanelDragMotion(nint widget, nint context, int x, int y, uint time, nint userData)
-    {
-        try
-        {
-            if (PanelNative.Value.DragSourceWidget(context) == widget) return 0;
-            PanelNative.Value.DragStatus(context, time);
-            return 1;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static int OnPanelDragDrop(nint widget, nint context, int x, int y, uint time, nint userData)
-    {
-        try
-        {
-            if (PanelNative.Value.DragSourceWidget(context) == widget) return 0;
-            PanelNative.Value.DragFinish(context, time);
-            return 1;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
     // The web content policy of the view a signal came from: the panel's, or the page's.
     private WebKitGtkWebContent? WebContentOf(nint webView) =>
         _panel is { WebContent: { } panel, View: var view } && view == webView ? panel : _webContent;
@@ -610,6 +585,9 @@ internal sealed partial class LinuxWebKitGtkHost
 
         internal WebUiSidePanelRequest Request { get; } = request;
         internal nint View { get; set; } = view;
+        // The panel view's user content manager, which its drop script reports to, and its drops; null without file drops.
+        internal nint ContentManager { get; set; }
+        internal DropReceiver? Drops { get; set; }
         internal WebKitGtkWebContent? WebContent { get; set; }
         internal TaskCompletionSource<bool> Loaded { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal bool LoadFailed { get; set; }
@@ -723,7 +701,6 @@ internal sealed partial class LinuxWebKitGtkHost
     internal sealed unsafe class PanelApi
     {
         private readonly nint _overlayNew, _overlayAddOverlay, _overlayReorder, _queueResize, _widgetShow;
-        private readonly nint _dragGetSourceWidget, _dragStatus, _dragFinish;
         private readonly nint _objectNewWithProperties, _valueInit, _valueSetObject, _valueUnset, _objectUnref;
         private readonly nint _webViewGetType, _contentManagerGetType, _contentManagerNew, _contentManagerAddScript, _contentManagerRemoveScript;
         private readonly nint _userScriptNewForWorld, _userScriptUnref;
@@ -740,9 +717,6 @@ internal sealed partial class LinuxWebKitGtkHost
             _overlayReorder = Export(gtk, "gtk_overlay_reorder_overlay");
             _queueResize = Export(gtk, "gtk_widget_queue_resize");
             _widgetShow = Export(gtk, "gtk_widget_show");
-            _dragGetSourceWidget = Export(gtk, "gtk_drag_get_source_widget");
-            _dragStatus = Export(gtk, "gdk_drag_status");
-            _dragFinish = Export(gtk, "gtk_drag_finish");
             _objectNewWithProperties = Export(gobject, "g_object_new_with_properties");
             _valueInit = Export(gobject, "g_value_init");
             _valueSetObject = Export(gobject, "g_value_set_object");
@@ -758,7 +732,7 @@ internal sealed partial class LinuxWebKitGtkHost
             _evaluateJavascript = Export(webkit, "webkit_web_view_evaluate_javascript");
             _runJavascriptInWorld = Export(webkit, "webkit_web_view_run_javascript_in_world");
             IsAvailable = _overlayNew != 0 && _overlayAddOverlay != 0 && _overlayReorder != 0 && _queueResize != 0 && _widgetShow != 0
-                && _dragGetSourceWidget != 0 && _dragStatus != 0 && _dragFinish != 0 && _objectNewWithProperties != 0 && _valueInit != 0
+                && _objectNewWithProperties != 0 && _valueInit != 0
                 && _valueSetObject != 0 && _valueUnset != 0 && _objectUnref != 0 && _webViewGetType != 0 && _contentManagerGetType != 0
                 && _contentManagerNew != 0 && _contentManagerAddScript != 0 && _contentManagerRemoveScript != 0 && _userScriptNewForWorld != 0
                 && _userScriptUnref != 0 && (_evaluateJavascript != 0 || _runJavascriptInWorld != 0);
@@ -783,13 +757,6 @@ internal sealed partial class LinuxWebKitGtkHost
         }
 
         internal void WidgetShow(nint widget) => ((delegate* unmanaged[Cdecl]<nint, void>)_widgetShow)(widget);
-
-        internal nint DragSourceWidget(nint context) => ((delegate* unmanaged[Cdecl]<nint, nint>)_dragGetSourceWidget)(context);
-
-        // No action: the drag cannot drop here.
-        internal void DragStatus(nint context, uint time) => ((delegate* unmanaged[Cdecl]<nint, int, uint, void>)_dragStatus)(context, 0, time);
-
-        internal void DragFinish(nint context, uint time) => ((delegate* unmanaged[Cdecl]<nint, int, int, uint, void>)_dragFinish)(context, 0, 0, time);
 
         // A view related to page, sharing its web context and web process, with a user content manager of its own:
         // webkit_web_view_new_with_related_view would share the page's, and with it the page's credential and handlers.

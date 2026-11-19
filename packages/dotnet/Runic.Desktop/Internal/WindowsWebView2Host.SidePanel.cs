@@ -131,13 +131,13 @@ internal sealed partial class WindowsWebView2Host
     }
 
     // Window thread: the panel controller's registrations, the window's for its page with the panel's address. The title
-    // is not the window's, window.close() closes the panel, and drops from outside are refused (D062.6).
+    // is not the window's and window.close() closes the panel. Dropped files reach the window's FilesDropped as the
+    // page's do, from the panel page's File objects, marked InSidePanel (#1189).
     private async Task ConfigurePanelAsync(SidePanel panel, WindowsWebView2Controller controller, WebUiEmbeddedHostOptions options)
     {
         var url = panel.Request.Url;
         controller.Bounds = new Rectangle(0, 0, panel.NativeWidth, ClientBounds().Height);
         controller.IsVisible = true;
-        controller.RefuseExternalDrops();
         controller.RegisterEvents(
             static _ => { },
             () => PostToWindow(() =>
@@ -160,8 +160,9 @@ internal sealed partial class WindowsWebView2Host
         });
         controller.RegisterAcceleratorKeys(IsMenuShortcut);
         var documentStart = controller.AddDocumentStartScriptAsync(panel.Request.DocumentStartScript);
+        var fileDrops = controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop), options.RegionFrames, sidePanel: true);
         var menuKeys = controller.EnableMenuKeysAsync(url, OnMenuKey, options.RegionFrames);
-        await Task.WhenAll(documentStart, menuKeys);
+        await Task.WhenAll(documentStart, fileDrops, menuKeys);
     }
 
     // Window thread: a crashed panel page reloads once; a second crash, or the browser process's end, closes the panel.
