@@ -976,6 +976,21 @@ reads the request. Without the variable, `dev` doesn't read its input, and an
 interactive terminal works as before. An older `dev` ignores the variable, so
 keep the forced stop as the fallback.
 
+**Known issue: SIGTERM with the .NET 11 SDK.** With SDK 11.0.100 on Linux, a
+SIGTERM sent to the `dotnet` process that runs `dotnet runic dev` ends that
+process without forwarding the signal to `dev`
+([dotnet/sdk#57091](https://github.com/dotnet/sdk/issues/57091)): `dev` keeps
+running without its parent, with its Window and development server, and a
+process manager that stops it so leaves it behind. SDK 10 forwards the signal.
+Set `DOTNET_CLI_ENABLEAOT=0` in the environment that starts `dev`, which makes
+SDK 11 forward it too, or send the signal to `dev` itself (the session file's
+`processId`) or to its process group. Ctrl+C in a terminal is not affected: the
+terminal signals every process of its group. The stop on standard input
+(`RUNIC_DEV_STOP_ON_INPUT=1`) is not affected either, as `dev` reads the input
+it inherits from the `dotnet` process; Runic DevKit for Visual Studio and for VS
+Code stop `dev` that way. Neither SDK forwards a SIGINT that reaches only the
+`dotnet` process: send a forced stop's SIGINT to `dev` or its process group.
+
 The two prefix lines are where a background task's `beginsPattern` starts a new
 build cycle, as the template's `.vscode/tasks.json` below does; the text after
 the prefix is not part of the contract.
