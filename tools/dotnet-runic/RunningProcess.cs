@@ -16,6 +16,7 @@ internal sealed class RunningProcess : IAsyncDisposable
     private readonly TaskCompletionSource<int> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _stopping;
+    private WindowsJobObject? _job;
 
     private RunningProcess(Process process, string label)
     {
@@ -55,7 +56,8 @@ internal sealed class RunningProcess : IAsyncDisposable
         IReadOnlyDictionary<string, string?>? environment = null,
         Func<string, bool>? suppressLine = null,
         Action<string>? observeLine = null,
-        bool holdInput = false)
+        bool holdInput = false,
+        bool endTreeAtStop = false)
     {
         ProcessStartInfo startInfo = CommandRunner.CreateStartInfo(
             executable,
@@ -111,6 +113,10 @@ internal sealed class RunningProcess : IAsyncDisposable
             }
 
             running.Id = process.Id;
+            // endTreeAtStop: on Windows, the process and everything it starts go in a kill-on-close job, which the stop
+            // ends even when the process itself has exited first (#1163). Elsewhere, and when Windows refuses, the stop
+            // ends the process tree as before.
+            running._job = endTreeAtStop ? WindowsJobObject.TryAssign(process) : null;
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             return running;
@@ -181,6 +187,7 @@ internal sealed class RunningProcess : IAsyncDisposable
 
     private async Task TerminateAsync()
     {
+        _job?.Terminate();
         CommandRunner.TryTerminate(_process);
         try
         {
@@ -194,7 +201,14 @@ internal sealed class RunningProcess : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync().ConfigureAwait(false);
-        _process.Dispose();
+        try
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _job?.Dispose();
+            _process.Dispose();
+        }
     }
 }

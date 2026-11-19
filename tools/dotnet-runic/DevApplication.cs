@@ -714,7 +714,8 @@ internal static class DevApplication
                 "frontend",
                 packageManager.Executable,
                 configuration.WorkspaceRoot,
-                packageManager.RunScriptArguments("dev", configuration.Workspace));
+                packageManager.RunScriptArguments("dev", configuration.Workspace),
+                endTreeAtStop: true);
         }
 
         throw new InvalidOperationException("No frontend watcher is configured.");
