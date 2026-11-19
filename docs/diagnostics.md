@@ -1226,7 +1226,7 @@ Exit code 1. Since 0.21.
 
 **Fix:** stop the process that holds 9222, or run `dev` with
 `--no-debug-endpoint`. See
-[Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview).
+[Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux).
 
 ### RAPPPKG1001
 

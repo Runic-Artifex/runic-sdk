@@ -139,7 +139,7 @@ Since 0.11, `dev` takes these options of `dotnet run` and `dotnet build`:
 | `-e`, `--environment NAME=VALUE` | Sets an environment variable for the Window process, as `dotnet run -e` does; repeat it for several. It wins over the defaults in the table below, so `-e DOTNET_ENVIRONMENT=Staging` runs the Window in `Staging`. The variables `dev` uses to describe the development server (`RUNIC_APPLICATION_*` below) are refused with `RAPPDEV1012`, and a value without `=` with `RAPPDEV1011`. `--dry-run` prints the names, never the values. |
 | `-v`, `--verbosity <level>` | Passes the MSBuild verbosity (`q[uiet]`, `m[inimal]`, `n[ormal]`, `d[etailed]` or `diag[nostic]`) to the restore, the build and `dotnet watch`. |
 
-Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-pages-javascript-on-linux-preview)):
+Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-pages-javascript-on-linux)):
 
 | Option | Effect |
 | --- | --- |
@@ -616,7 +616,18 @@ build, as the debug configuration's `preLaunchTask`:
 ```
 
 With C# Dev Kit, a `"type": "dotnet"` configuration can start the launch
-profile above instead.
+profile above instead, after the same task:
+
+```jsonc
+{
+  "name": "Window (C# Dev Kit)",
+  "type": "dotnet",
+  "request": "launch",
+  "projectPath": "${workspaceFolder}/App.csproj",
+  "launchConfigurationId": "TargetFramework=;Window (dotnet runic dev --no-window)",
+  "preLaunchTask": "runic: dev --no-window"
+}
+```
 
 **Rider**: start `dotnet runic dev --no-window` in Rider's terminal (or add it
 to the run configuration's "Before launch" list as an external tool), then
@@ -651,10 +662,25 @@ Verified by hand in 0.20 on Linux with VS Code 1.144 and the C# extension
 (2.160, `coreclr`): F5 ran the task, waited for `Ready`, built without
 replacing the development page, stopped on a breakpoint in `Program.cs`, and
 the Window showed the page from the Vite server and a frontend edit live.
-The C# Dev Kit `dotnet` configuration, Rider, Visual Studio and Windows
-(WebView2) are not yet verified by hand.
+Also verified by hand, with the 0.22.0 packages:
 
-## Debug the page's JavaScript on Linux (preview)
+- **C# Dev Kit** 3.40 in VS Code 1.144 on Linux: the `"type": "dotnet"`
+  configuration above ran the task, waited for `Ready`, started the launch
+  profile under the debugger and stopped on a breakpoint in `Program.cs`; the
+  Window showed the page from the Vite server and a frontend edit live.
+- **Visual Studio 2026** Community on Windows 11, without Runic DevKit: with
+  `dotnet runic dev --no-window` running, F5 on the project's launch profile
+  built, stopped on a breakpoint in `Program.cs`, and the WebView2 Window showed
+  the page from the Vite server and a frontend edit live.
+- **Visual Studio with Runic DevKit** (0.22, Visual Studio 2026 18.12): Debug
+  the Window and Attach to the Page, with C# and `Frontend/src` breakpoints in
+  one session.
+
+Runic does not test Rider. VS Code on Windows runs the configurations above
+with the `.exe` program; Runic's CI checks the template's WebView2 script
+debugging there, not VS Code's .NET debugger.
+
+## Debug the page's JavaScript on Linux
 
 Since 0.21, `dotnet runic dev` on Linux serves the Window's WebKitGTK pages to
 JavaScript debuggers on port 9222, as WebView2 does on Windows (D066.39). VS
@@ -668,7 +694,11 @@ Breakpoints and logpoints also hit code that runs while the page loads, in a
 module that loads after thousands of others too: as Chromium does, the adapter
 stops each script with a source map before it runs until the debugger has its
 source map. When `dotnet watch` restarts the Window after a C# edit, the debugger stays
-attached and continues on the new Window's page with its breakpoints.
+attached and continues on the new Window's page with its breakpoints. Runic's CI
+runs these scenarios with VS Code's JavaScript debugger on GTK 3 and GTK 4 for
+every change to the adapter. Verified by hand with VS Code 1.144 (dotnet-runic
+0.22.0): the template's `Window + WebKitGTK (Linux)` stopped on a breakpoint in
+`Program.cs` and then, through the adapter, on one in `App.tsx`'s click handler.
 
 How it works: `dev` starts the Window with `WEBKIT_INSPECTOR_SERVER` on a free
 loopback port (9223 with `--no-window`, which the template's
@@ -703,8 +733,8 @@ names. The session file lists both under `debugEndpoints`.
 - **Not supported.** Setting a variable to an object or a `const` (WebKit has no
   `setVariableValue`; a primitive is assigned in the frame), restarting a frame,
   and the Elements, Network and other panels of a Chrome DevTools window on this
-  endpoint. Rider's JavaScript debugger attaches to such ports too; it is not
-  verified yet. On macOS, WKWebView offers Safari's Web Inspector only.
+  endpoint. Rider's JavaScript debugger speaks the same protocol, but Runic does
+  not test it. On macOS, WKWebView offers Safari's Web Inspector only.
 - **WebKit's own inspector.** WebKit serves either its socket for the adapter or
   its Web Inspector over HTTP (`WEBKIT_INSPECTOR_HTTP_SERVER`), never both.
   `--webkit-inspector` opens the HTTP one instead of the adapter, for any browser,
