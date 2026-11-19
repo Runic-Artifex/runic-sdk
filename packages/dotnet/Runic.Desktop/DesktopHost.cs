@@ -626,6 +626,12 @@ public sealed class DesktopHost : IAsyncDisposable
         if (isolatedCore is not null) isolatedCore.PeerAdmission = PeerAdmission;
         var core = isolatedCore ?? _core;
         var security = ToCorePolicy(configured.Security ?? _options.Security);
+        // A browser's proxy for the surface (DesktopSurfaceOptions.ServedThrough) is one of its origins.
+        if (configured.ServedThrough is { } servedThrough)
+            security = security with
+            {
+                AdditionalOrigins = new HashSet<string>(security.AdditionalOrigins, StringComparer.Ordinal) { PresentationSecurityPolicy.CanonicalOrigin(servedThrough) },
+            };
         var surfaceFactory = windowHostFactory ?? _options.WindowHostFactory;
         IWebUiEmbeddedHostFactory embeddedFactory = surfaceFactory is null
             ? _options.BuiltInHostFactory ?? new WebUiEmbeddedHostFactory(_options.Linux.EmbeddedBackend)
@@ -644,6 +650,7 @@ public sealed class DesktopHost : IAsyncDisposable
             ContentSecurityPolicy = configured.ContentSecurityPolicy,
             GlobalMenu = _options.Linux.GlobalMenu,
             TimeProvider = _options.TimeProvider,
+            ServedThrough = configured.ServedThrough,
         };
         var engine = new WebUiWindow(core, path, security, runtime) { HostedDataStore = hostedDataStore };
         var surface = new DesktopSurface(this, id, engine, isolatedCore, windowHostFactory);

@@ -150,7 +150,7 @@ Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the
 
 | Option | Effect |
 | --- | --- |
-| `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://127.0.0.1:9224/`, so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
+| `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://<label>.localhost:9224/`, an origin of its own for each run, for the one browser that its one-time code admits (`obj/runic/dev-browser.html` opens it), so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
 
 Since 0.22, for CS-WebUI (see [Debug a CS-WebUI page's JavaScript](#debug-a-cs-webui-pages-javascript)):
 
@@ -776,32 +776,90 @@ behaviour in the Window itself.
 [serve-only mode](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md)
 of Runic Desktop and CS-WebUI) and opens no native window. Everything else is
 as without `--browser`: the development server or watcher, the build, `dotnet
-watch` restarting the Window after C# edits. The page reaches its Bridge
-directly, through the Window's own loopback server, as in the Window. Native
+watch` restarting the Window after C# edits. Native
 window features are unavailable: platform services such as file dialogs, menus
 and the window's own commands report `OwnerUnavailable`, a Window with
 `GuardClose` opens unguarded, and there is no side panel.
 
 The Window's own address changes with every start and carries its server's
-credential, so `dev` does not print it. Instead it listens on
-`http://127.0.0.1:9224/` (another free port when 9224 is taken; the line says
-which) and sends a browser that opens that address to the Window's first page;
-`/windows/2` and so on are the Windows the application opens after it. Until the
-Window serves, and while `dotnet watch` restarts it, the address shows a page
-that reloads itself every second. The Window admits one browser, the first that
-connects, so open the address once; after `dotnet watch` restarts the Window,
-open it again (or reload it) in the same tab.
+credential, so `dev` does not print it. Instead it serves the Window's pages at
+a stable address of its own, `http://<label>.localhost:9224/` (another free
+port when 9224 is taken; the lines say which), for one browser that a one-time
+code admits. `<label>` is 26 random lowercase letters and digits, new for each
+`dev` run and the same across its Window restarts. Chromium browsers (Chrome,
+Edge) and Firefox resolve names under `.localhost` to the loopback interface
+themselves.
+`/` is the Window's first page, `/windows/2` and so on the Windows the
+application opens after it. Until the Window serves, and while `dotnet watch`
+restarts it, the address shows a page that reloads itself every second.
 
 ```text
-[dev] Browser: the Window serves without a native window (--browser). Open http://127.0.0.1:9224/ in Chrome or Edge, …
-[dev] Browser: Window serves at http://127.0.0.1:9224/
+[dev] Browser: the Window serves without a native window (--browser). Open http://<label>.localhost:9224/?code=… in Chrome or Edge, or the page obj/runic/dev-browser.html, …
+[dev] Browser: Window serves at http://<label>.localhost:9224/?code=…
 [dev] Ready
 ```
 
+Since 0.23 (#1187), the address is a proxy to the Window's own loopback server,
+and a tab keeps it across restarts:
+
+- **An origin for each session.** Each `dev` run is an origin of its own, so
+  pages, service workers, storage and cookies of an earlier session or another
+  project, such as a script that an npm dependency left there, do not reach it.
+  The address answers only its own name: a request to `127.0.0.1:9224`,
+  `localhost:9224` or another label gets 403, which names no label.
+
+- **The code.** The `[dev] Browser:` lines carry the current one-time code, and
+  `dev` writes a page that opens the address with it,
+  `obj/runic/dev-browser.html` (the session file's `browser.codeFile`), with
+  the label. Only you
+  can read that page: mode 0600 on Linux and macOS, an access list of your account
+  alone on Windows. Opening the address with the code gives that browser a new
+  cookie of `dev`'s (`HttpOnly`, `SameSite=Strict`), replaces the code and
+  rewrites the page; a `[dev] Browser:` line prints the new code. `dev` deletes
+  the page when it stops.
+- **One browser at a time.** The new cookie takes over when that browser's next
+  navigation, which the admission's page makes at once, presents it. Then the
+  previous browser's admission ends: its next request gets 403, and its open
+  WebSocket connections, such as a page's Bridge, close. A request that only
+  carries the code, and no such navigation, ends nothing. To move to another
+  browser or profile, open the page (or the newest code) there.
+- **A client other than a browser.** The address is meant for a browser.
+  Browsers resolve names under `.localhost` to the loopback interface
+  themselves, and so does current curl (8.x). Programs that use the system's
+  resolver, such as Node's `fetch`, .NET's `HttpClient` or PowerShell, find
+  the name only where that resolver knows `.localhost` names: on Linux with
+  systemd's resolver or `nss-myhostname`, not on Windows 11 or on a Linux with
+  files and DNS alone (such as musl-based images). There, and on macOS, connect
+  to `127.0.0.1:<port>` and send `Host: <label>.localhost:<port>` (curl:
+  `--resolve <label>.localhost:9224:127.0.0.1`). Such a client is admitted as
+  a browser is: the request with the code gets the cookie, and a `GET` of `/`
+  with the cookie confirms it.
+- **A Window the application closes.** When the application closes a Window
+  while its process keeps running, `/` opens the first Window that still serves,
+  and `/windows/<n>` of the closed one says that it closed.
+- **Restarts.** After `dotnet watch` restarts the Window, a Runic Desktop page
+  reloads itself onto the new Window. Its Bridge connects through the same
+  address. When the stopping Window tells the page to close, `dev` passes on
+  the Bridge's token refusal instead, so the page reloads; it waits at the
+  address until the new Window serves, then opens it. A page's Bridge that
+  reconnects to a Window that has gone gets the same answer.
+  A CS-WebUI page's WebUI connection goes to the Window's own port, so reload a
+  CS-WebUI tab after a restart; the address stays the same.
+- **The Window's side.** `dev` sets `RUNIC_APPLICATION_SERVE_ORIGIN` to the
+  address's origin, `http://<label>.localhost:<port>`, in the Window's
+  environment, which other users cannot read: Runic Desktop admits the pages from it and
+  connects their Bridge through it, and Runic's CS-WebUI host admits it at its
+  upload endpoint. Requests keep their `Origin`; `dev` gives the Window its own
+  `Host` and moves the Window's redirects onto the address.
+- **More than one CS-WebUI Window.** CS-WebUI Windows each serve at their own
+  server's root, so the address serves the first one; `/windows/<n>` sends the
+  browser to a later one's own address, which does not survive a restart.
+
 A VS Code launch configuration (the `runic-app` template's `Window in Chrome`)
 runs `dev --browser` as a background task that ends at `[dev] Ready` and opens
-the address with VS Code's JavaScript debugger, with `webRoot` set to the
-frontend directory for the development server's source maps:
+the code page with VS Code's JavaScript debugger, with `webRoot` set to the
+frontend directory for the development server's source maps. The page carries
+the port, so the configuration needs no change when 9224 is taken:
 
 ```jsonc
 // .vscode/launch.json; the task is the IDE contract's "runic: dev" task with "args": ["runic", "dev", "--browser"]
@@ -810,31 +868,49 @@ frontend directory for the development server's source maps:
   "type": "chrome",                 // "msedge" for Edge
   "request": "launch",
   "preLaunchTask": "runic: dev --browser",
-  "url": "http://127.0.0.1:9224/",
+  "file": "${workspaceFolder}/obj/runic/dev-browser.html",
   "webRoot": "${workspaceFolder}/Frontend"
 }
 ```
 
+Before 0.23, the configuration opened `"url": "http://127.0.0.1:9224/"`; a
+project generated earlier needs the `"file"` line instead. A configuration that
+matches the page by URL, such as an attach configuration's `urlFilter`, uses
+`http://*.localhost:9224/*`.
+
 Breakpoints in the frontend's sources, stepping, conditions, logpoints,
 exceptions, the console, the page's variables, reloads and HMR updates work as
-in any Chrome page. Other IDEs open the same address from their own JavaScript
-debug configuration, such as Rider's "JavaScript Debug" with that URL.
+in any Chrome page, and a Runic Desktop page's breakpoints stop again after a
+restart. Other IDEs open the same page from their own JavaScript debug
+configuration, such as Rider's "JavaScript Debug" with its `file://` URL, or the
+address with the code from the `[dev] Browser:` line.
 
-- **Security.** The address listens on 127.0.0.1 only and redirects only a
-  navigation that the browser starts itself, such as one from its address bar,
-  its command line or a debugger: it refuses (403) a request whose `Host` is not
-  an IP address or `localhost`, any request with an `Origin`, and a
-  `Sec-Fetch-Site` other than `none` or `same-origin`, so a web page in a browser
-  cannot send it to the Window and take its one client slot. The redirect is not
-  cached and sends no referrer.
-- **Other users on the machine.** Loopback ports admit every local account, and
-  the redirect hands out the Window's credentialed address. On Linux, `dev`
-  looks up the owner of each connection's other end in `/proc/net/tcp`, as for
-  the CDP adapter, answers 403 when that is another user, and says so once per
-  user in a `[dev] Warning:` line. macOS and Windows offer no unprivileged way
-  to tell a loopback connection's user, so there another local user's process
-  can follow the redirect and take the Window's one client slot first. On a
-  machine that you share with other users, use `--browser` on Linux only.
+- **Security.** The address listens on 127.0.0.1 only and answers only its
+  own `Host`, `<label>.localhost:<port>`, which also keeps out DNS rebinding. A
+  request with the current code (a `GET` of `/` or `/windows/<n>`) is admitted
+  from any site, since the code page is a `file:` document; every other request
+  needs the admitted browser's cookie, no `Origin` other than the address's own,
+  and a `Sec-Fetch-Site` of `none` or `same-origin` when it has one, so a web
+  page in a browser cannot reach the Window through it. The code is compared in
+  constant time, and its answers are not cached and send no referrer. `dev`'s
+  cookie is host-only (no `Domain`) and stays out of the requests it passes to
+  the Window.
+- **The label, the code and the cookie are bearer secrets.** Whoever has the
+  code, or the admitted browser's cookie together with the label, uses the
+  Window as you do. Browsers do not scope cookies by port, so your browser sends
+  the cookie with every request to `<label>.localhost` on any port: someone who
+  knew the label could have it send the cookie to a port of theirs. So `dev`
+  keeps the label where it keeps the code: in its `[dev] Browser:` output and
+  the code page, which only you can read. The session file has `*` in its place,
+  and neither appears in process arguments or `dev`'s other lines. Do not paste
+  the address where others can read it.
+- **Other users on the machine.** Loopback ports admit every local account,
+  but without the label and the code or cookie another user's process gets
+  403. On Linux, `dev` also looks up the owner of each connection's other end
+  in `/proc/net/tcp`, as for the CDP adapter, answers 403 when that is another
+  user, and says so once per user in a `[dev] Warning:` line. macOS and Windows
+  cannot tell a loopback connection's user, so there only the secrets keep
+  another user out.
 - **Standard input.** A serve-only Window stops serving at a line on its
   standard input, so `dev` gives it an empty pipe instead of the terminal.
 - **The .NET debugger.** Attach it to the process that
@@ -854,8 +930,10 @@ opens none, and says so in a `[dev] Debugging:` line.
 
 - **`--debug-endpoint`**, for an IDE to pass when it starts `dev`: `dev`
   sets `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=0` for the Window. In Development,
-  Runic.Desktop then starts the Window's browser with `--remote-debugging-port`
-  on a free loopback port.
+  the CS-WebUI host (`Runic.Application.Views.CsWebUi`) then starts the browser
+  of each Window that runs in a browser with `--remote-debugging-port` on a free
+  loopback port, by the same rules as Runic Desktop. A Window with `UseWebView`
+  opens none.
   - The Window prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp <url>`
     when the browser listens, and `RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=<url>`
     when it exits.
@@ -947,7 +1025,7 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | --- | --- |
 | `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
 | `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. With `--browser`, `Ready` waits for the Window's first page instead: it follows the first `Browser` line of each Window process, which can come before `Window started`, so a browser that an IDE opens at `Ready` finds the page. |
-| `[dev] Browser: Window serves at <url>` | With `--browser` (since 0.21), each time the Window process serves a Window: the first at `dev`'s root address, later ones at `/windows/<n>` ([Debug the page in Chrome](#debug-the-page-in-chrome---browser)). One form for every Window; match it with `^\[dev\] Browser: Window serves at (?<url>http://\S+)$`. Other `[dev] Browser:` lines are human text. |
+| `[dev] Browser: Window serves at <url>` | With `--browser` (since 0.21), each time the Window process serves a Window: the first at `dev`'s root address, later ones at `/windows/<n>` ([Debug the page in Chrome](#debug-the-page-in-chrome---browser)). Since 0.23 the URL carries the current one-time code (`?code=…`), which admits one browser; the session file's `browser.codeFile` opens the address with the newest code. One form for every Window; match it with `^\[dev\] Browser: Window serves at (?<url>http://\S+)$`. Other `[dev] Browser:` lines are human text. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
 | `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
 | `[vite] [runic] Frontend errors cleared` | Since 0.23, after a frontend module that did not compile (a `RUNICP008` line, below) compiles again: the frontend errors printed since the last such line no longer apply. Printed by the Runic Vite plugin, so only for a Vite frontend. |
@@ -1154,10 +1232,15 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   },
   // With --browser (since 0.21): dev's address for a browser, and the Windows the running Window process serves,
   // each at its address there (not the Windows' own addresses, which carry their credential); null without --browser.
+  // Since 0.23 the address is http://<label>.localhost:9224/ with a session label, and it admits one browser by a
+  // one-time code. This file has neither: the URLs have * for the label (a pattern for a launch configuration's
+  // urlFilter), and codeFile is the page, readable only by the user who runs dev, that opens the address with the newest
+  // code.
   "browser": {
-    "url": "http://127.0.0.1:9224/",
+    "url": "http://*.localhost:9224/",
+    "codeFile": "/path/to/App/obj/runic/dev-browser.html",
     "windows": [
-      { "url": "http://127.0.0.1:9224/", "type": "App.MainWindow" } // type: the Window's class, null until the host names it
+      { "url": "http://*.localhost:9224/", "type": "App.MainWindow" } // type: the Window's class, null until the host names it
     ]
   },
   "debugEndpoints": [

@@ -278,18 +278,37 @@ debugger configuration with a web root there, or the Vite build of the Angular f
 ## The page in Chrome (`dotnet runic dev --browser`)
 
 Since 0.21, `dotnet runic dev --browser` serves the Window without a native window, and your IDE's JavaScript
-debugger opens its page in Chrome or Edge at `http://127.0.0.1:9224/`, which `dev` redirects to the Window's own
-address (it changes with every start and carries the Window's credential). This works the same on Windows, Linux and
-macOS, so it is the IDE route to breakpoints in `Frontend/src` on macOS, where WKWebView has no DevTools Protocol
-endpoint. The template's `Window in Chrome` configuration (`--editor vscode`) runs it: breakpoints through the
-development server's source maps, stepping, conditions, logpoints, exceptions, the console, reloads and HMR.
+debugger opens its page in Chrome or Edge at a stable address where `dev` serves the Window's pages (the Window's own
+address changes with every start and carries its credential). This works the same on Windows, Linux and macOS, so it is
+the IDE route to breakpoints in `Frontend/src` on macOS, where WKWebView has no DevTools Protocol endpoint. The
+template's `Window in Chrome` configuration (`--editor vscode`) runs it: breakpoints through the development server's
+source maps, stepping, conditions, logpoints, exceptions, the console, reloads and HMR.
+
+Since 0.23 (#1187), the address is `http://<label>.localhost:9224/`, with a random label for each `dev` run that stays
+the same across its Window restarts. Each session is an origin of its own, so an earlier session's or another
+project's pages, service workers, storage and cookies do not reach it. Chromium browsers (Chrome, Edge) and Firefox
+resolve names under `.localhost` to the loopback interface themselves. The address admits one browser by a one-time
+code: the `[dev] Browser:` lines print the address with it (`http://<label>.localhost:9224/?code=…`), and
+`obj/runic/dev-browser.html`, a page only you can read, opens it with the newest one, as `Window in Chrome` does with
+`"file"`. The browser that opens it becomes the admitted one, and the previous browser's admission ends, with its open
+connections. The tab keeps the address when `dotnet watch` restarts the Window: a Runic Desktop page reloads itself onto
+the new Window, and its breakpoints stop again; reload a CS-WebUI tab. A configuration that matches the page by URL uses
+`http://*.localhost:9224/*`. The address is meant for a browser: a program that uses the system's resolver, such as
+Node's `fetch` or PowerShell, may not find `<label>.localhost` (Windows 11 does not resolve it, nor does Linux without
+systemd's resolver or `nss-myhostname`); connect it to `127.0.0.1:9224` with `Host: <label>.localhost:9224`. Current
+curl resolves the name itself. See the dotnet-runic README's
+[Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser) for the admission such a
+client makes.
 
 Two differences from the Window: the page runs on **Chromium**, not on the Window's engine, so check WebKit- or
 WebView2-specific behaviour in the Window; and it has **no native window features**: file dialogs, menus and the
-window's commands report `OwnerUnavailable`, and there is no side panel. On Linux the address answers only the user who
-runs `dev`; macOS and Windows cannot tell a loopback connection's user, so on a shared machine another local user's
-process can follow it there. The Window admits one browser, and after
-`dotnet watch` restarts it, open the address again. Attach the .NET debugger to the process that
+window's commands report `OwnerUnavailable`, and there is no side panel. Without the code, or the admitted browser's
+cookie on the session's own name, the address answers 403. The label, the code and the cookie are bearer secrets: your
+browser sends the cookie to `<label>.localhost` on any port, so whoever knew the label could collect it on a port of
+theirs. `dev` therefore prints the label only in its `[dev] Browser:` lines and writes it only to the code page; the
+session file has `*` in its place. On Linux the address also answers only the user who runs `dev`; macOS and Windows
+cannot tell a loopback connection's user, so there the secrets alone keep other local users out. Attach the .NET
+debugger to the process that
 `[dev] Window started` names, as without `--browser`. See the dotnet-runic README's
 [Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).
 

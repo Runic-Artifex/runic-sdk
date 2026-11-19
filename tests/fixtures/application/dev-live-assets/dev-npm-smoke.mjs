@@ -2,7 +2,9 @@
 // as npm.cmd, which dev must find through PATHEXT and start through cmd.exe. The fixture's frontend runs here as an npm
 // project: dev installs it (`npm ci`), starts its watcher (`npm run dev`, which copies the page to Frontend/dist), and
 // the Runic Desktop host serves that directory (`--browser`, serve-only). A page edit then reaches the served page,
-// so the watcher that npm started is running.
+// so the watcher that npm started is running. The page is read through dev's --browser address with the code of the
+// `[dev] Browser:` line, as a browser is admitted (#1187); Node does not resolve <label>.localhost on Windows, so the
+// requests go to 127.0.0.1 with the session's name as Host (browser-entry.mjs).
 // Run from the SDK root after a Release build of tools/dotnet-runic:
 //   node tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs
 import { spawn } from "node:child_process";
@@ -11,6 +13,7 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree, scaled, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
+import { admitToBrowserEntry } from "./browser-entry.mjs";
 
 const fixture = fileURLToPath(new URL(".", import.meta.url));
 const root = join(fixture, "../../../..");
@@ -47,10 +50,11 @@ dev.stdout.on("data", chunk => { output += chunk; });
 dev.stderr.on("data", chunk => { errors += chunk; });
 const detail = async () => `dev stdout:\n${tail(output)}\ndev stderr:\n${tail(errors)}`;
 const until = (condition, label, timeout) => waitFor(condition, { label, detail, timeout });
-const served = async url => {
+let entry;
+const served = async () => {
   try {
-    const response = await fetch(url);
-    return response.ok ? /<p id="marker">([^<]*)<\/p>/.exec(await response.text())?.[1] ?? null : null;
+    const response = await entry.get("/");
+    return response.status === 200 ? /<p id="marker">([^<]*)<\/p>/.exec(response.body)?.[1] ?? null : null;
   } catch {
     return null;
   }
@@ -65,12 +69,13 @@ try {
   if (!/^\[dev\] Installing Views Window frontend dependencies\.\.\.$/m.test(output))
     throw new Error(`dev did not install the frontend with npm ci:\n${tail(output)}`);
   if (!/^\[frontend\] Watching index\.html$/m.test(output)) throw new Error(`npm run dev did not start the watcher:\n${tail(output)}`);
-  await until(async () => (await served(started)) === "one", "the initial page", 30_000);
+  entry = await admitToBrowserEntry(started);
+  await until(async () => (await served()) === "one", "the initial page", 30_000);
 
   // The watcher copies an edited page into dist/, and the host serves the new page.
   await writeFile(`${page}.tmp`, originalPage.replace('<p id="marker">one</p>', '<p id="marker">npm</p>'));
   await rename(`${page}.tmp`, page);
-  await until(async () => (await served(started)) === "npm", "the page that the npm watcher copied", 30_000);
+  await until(async () => (await served()) === "npm", "the page that the npm watcher copied", 30_000);
   console.log("DEV_NPM_OK|npm-ci|npm-run-dev|served|watcher-copied");
 } finally {
   // SIGTERM stops dev the way Ctrl+C does on Unix. On Windows it would end dev alone, so its tree is killed instead

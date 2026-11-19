@@ -3580,8 +3580,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var embeddedHost = _embeddedHost;
         // A frame's page connects to the listener that serves it.
         var frameListener = _frameBinding.Listener;
+        // A page that a browser's proxy serves (DesktopSurfaceOptions.ServedThrough) connects through it.
         var inputs = new BootstrapInputs(
-            frameListener?.Port ?? Url?.Port ?? 0,
+            frameListener?.Port ?? _runtimeOptions?.ServedThrough?.Port ?? Url?.Port ?? 0,
             _surface?.PathBase ?? string.Empty,
             embeddedHost?.SupportsDocumentStartScript == true,
             embeddedHost is not null && _frameless,

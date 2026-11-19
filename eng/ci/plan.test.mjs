@@ -8,7 +8,7 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
-  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, matchesPath } from './platforms.mjs';
+  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, matchesPath } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -465,6 +465,18 @@ test('dotnet runic\'s Windows file replace plans the native Windows x64 leg', ()
     assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
   }
   assert.deepEqual(plan(['tools/dotnet-runic/FrontendCompilerHotReloadCoordinator.cs']).platforms, []);
+});
+
+// #1187: dev --browser's code file and its check of the Windows access list plan the native Windows x64 leg, which runs
+// that check.
+test('dotnet runic dev --browser\'s private code file plans the native Windows x64 leg', () => {
+  assert.deepEqual(windowsPrivateFilePaths,
+    ['tools/dotnet-runic/BrowserEntry.cs', 'tests/dotnet/Runic.Application.Tool.Tests/DevBrowserCodeFileTests.cs']);
+  for (const file of windowsPrivateFilePaths) {
+    assert.ok(existsSync(resolve(root, file)), file);
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  }
+  assert.deepEqual(plan(['tests/dotnet/Runic.Application.Tool.Tests/DevBrowserTests.cs']).platforms, []);
 });
 
 // The narrow rule above holds only while every process start of the tool goes through CommandRunner, whose callers pass

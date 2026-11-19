@@ -14,6 +14,25 @@ using TUnit.Core;
 // input. It takes precedence over RUNIC_APPLICATION_CLOSE_AFTER_OPEN.
 internal sealed class ServeOnlyChecks
 {
+    // #1187 (D077.14, D077.15): RUNIC_APPLICATION_SERVE_ORIGIN names dotnet runic dev --browser's per-session address,
+    // http://<label>.localhost:<port>; anything but an http origin on localhost or one label under .localhost, with an
+    // explicit port and nothing after it, is ignored.
+    [Test]
+    public void ServeOriginIsALocalhostHttpOriginOrNothing()
+    {
+        const string label = "k3v9q2m8x4c7w1z5r6t0y2b8n4";
+        Check(RunicDesktopHost.ServedThrough($"http://{label}.localhost:9224") == new Uri($"http://{label}.localhost:9224/"), "a label");
+        Check(RunicDesktopHost.ServedThrough($"http://{label}.localhost:9224/") == new Uri($"http://{label}.localhost:9224/"), "a label/");
+        Check(RunicDesktopHost.ServedThrough("http://A-1.LOCALHOST:9224") == new Uri("http://a-1.localhost:9224/"), "case");
+        Check(RunicDesktopHost.ServedThrough("http://localhost:41000") == new Uri("http://localhost:41000/"), "localhost");
+        foreach (var value in new[] { null, "", $"https://{label}.localhost:9224", $"http://{label}.localhost", "http://a.b.localhost:9224",
+            "http://localhost.evil:9224", "http://evil.localhost.example:9224", "http://.localhost:9224", "http://-a.localhost:9224",
+            "http://a-.localhost:9224", "http://a_b.localhost:9224", $"http://{new string('a', 64)}.localhost:9224", "http://127.0.0.1:9224",
+            "http://[::1]:9224", "http://example.com:9224", $"http://{label}.localhost:9224/path", $"http://{label}.localhost:9224/?x=1",
+            $"http://user@{label}.localhost:9224", $"{label}.localhost:9224" })
+            Check(RunicDesktopHost.ServedThrough(value) is null, $"'{value}' was taken as a serve origin.");
+    }
+
     [Test, NotInParallel(Order = 1)]
     public async Task ServeOnlySwitchServesWithoutAWindowUntilAnInputLine()
     {

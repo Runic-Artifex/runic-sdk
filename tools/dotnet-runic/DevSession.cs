@@ -61,6 +61,7 @@ internal sealed partial class DevSession
     private bool _writePending;
     private bool _markerPending;
     private string? _browserUrl;
+    private string? _browserCodeFile;
     private IReadOnlyList<BrowserEntry.ServedWindow> _browserWindows = [];
     private readonly List<DebugEndpoint> _windowEndpoints = [];
 
@@ -307,11 +308,16 @@ internal sealed partial class DevSession
 
     /// <summary>
     /// <c>--browser</c>: the entry address that sends a browser to the Window (<see cref="BrowserEntry"/>), written as
-    /// <c>browser.url</c>; without <c>--browser</c>, <c>browser</c> is null.
+    /// <c>browser.url</c>, and the page that opens it with the current one-time code, as <c>browser.codeFile</c> (the code
+    /// itself stays out of this file, which other users may be able to read); without <c>--browser</c>, <c>browser</c> is null.
     /// </summary>
-    internal void BrowserStarted(string url)
+    internal void BrowserStarted(string url, string? codeFile = null)
     {
-        lock (_gate) _browserUrl = url;
+        lock (_gate)
+        {
+            _browserUrl = url;
+            _browserCodeFile = codeFile;
+        }
         Write();
     }
 
@@ -542,6 +548,7 @@ internal sealed partial class DevSession
             {
                 json.WriteStartObject("browser");
                 WriteStringOrNull(json, "url", _browserUrl);
+                WriteStringOrNull(json, "codeFile", _browserCodeFile);
                 json.WriteStartArray("windows");
                 foreach (BrowserEntry.ServedWindow served in _browserWindows)
                 {

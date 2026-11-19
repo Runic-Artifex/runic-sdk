@@ -57,25 +57,32 @@ internal static class DevApplication
     internal const string BrowserUnavailableCode = "RAPPDEV1016";
 
     /// <summary>
-    /// The <c>--browser</c> hint: where the browser opens the Window, and what it does not get there. A port other than
-    /// <see cref="BrowserEntry.DefaultPort"/> means the launch configuration needs it.
+    /// The <c>--browser</c> hint: the address with its one-time code, the page that opens it, and what the browser does
+    /// not get there. The code file carries the port, so a launch configuration that opens it needs no change when
+    /// <see cref="BrowserEntry.DefaultPort"/> is taken.
     /// </summary>
-    internal static string BrowserHint(int port)
+    internal static string BrowserHint(int port, string codeUrl)
     {
-        string url = BrowserEntry.RootUrl(port);
         string moved = port == BrowserEntry.DefaultPort
             ? ""
-            : $" Port {BrowserEntry.DefaultPort.ToString(System.Globalization.CultureInfo.InvariantCulture)} was taken: set \"url\": \"{url}\" in your launch configuration.";
-        return $"[dev] Browser: the Window serves without a native window (--browser). Open {url} in Chrome or Edge, as your " +
-            "IDE's launch configuration does, and again after the Window restarts. The pages run on Chromium, not the Window's " +
-            $"WebView, and native window features such as dialogs and menus report OwnerUnavailable.{moved}";
+            : $" Port {BrowserEntry.DefaultPort.ToString(System.Globalization.CultureInfo.InvariantCulture)} was taken, so the address moved; the page opens it.";
+        return $"[dev] Browser: the Window serves without a native window (--browser). Open {codeUrl} " +
+            $"in Chrome or Edge, or the page obj/runic/{BrowserEntry.CodeFileName}, as your IDE's launch configuration does. " +
+            "The code admits one browser, which keeps the address after the Window restarts: a Runic Desktop page reloads " +
+            "itself, a CS-WebUI page needs a reload. The pages run on Chromium, not the Window's WebView, and native window " +
+            $"features such as dialogs and menus report OwnerUnavailable.{moved}";
     }
 
+    /// <summary>After an admission request: the new code, whose browser becomes the admitted one and ends the previous one's admission.</summary>
+    internal static string BrowserAdmittedLine(string codeUrl) =>
+        $"[dev] Browser: a browser used the code. The next one is {codeUrl}; the browser that opens it becomes the admitted one.";
+
     /// <summary>
-    /// The IDE contract line for each Window that the serve-only Window process serves, at its entry address: one form for
-    /// every Window, which <see cref="BrowserServedPattern"/> matches. The first Window's address is the root, <c>/</c>.
+    /// The IDE contract line for each Window that the serve-only Window process serves, at its entry address with the
+    /// current code: one form for every Window, which <see cref="BrowserServedPattern"/> matches. The first Window's
+    /// address is the root, <c>/</c>.
     /// </summary>
-    internal static string BrowserServedLine(BrowserEntry.ServedWindow served) => BrowserServedPrefix + served.EntryUrl;
+    internal static string BrowserServedLine(string codeUrl) => BrowserServedPrefix + codeUrl;
 
     internal const string BrowserServedPrefix = "[dev] Browser: Window serves at ";
 
@@ -145,11 +152,17 @@ internal static class DevApplication
         // inspector port of this user.
         LoopbackSockets? sockets = LoopbackSockets.Current;
         // --browser: a fixed loopback address for the IDE's browser, which sends it to the serve-only Window's page.
+        // The page that opens it with the current one-time code, which the IDE's launch configuration opens.
+        string browserCodeFile = Path.Combine(configuration.SessionDirectory, BrowserEntry.CodeFileName);
         await using BrowserEntry? browser = options.Browser
-            ? BrowserEntry.TryStart(BrowserEntry.DefaultPort, sockets, Console.Error.WriteLine) ?? BrowserEntry.TryStart(0, sockets, Console.Error.WriteLine)
+            ? BrowserEntry.TryStart(BrowserEntry.DefaultPort, sockets, Console.Error.WriteLine, browserCodeFile) ??
+                BrowserEntry.TryStart(0, sockets, Console.Error.WriteLine, browserCodeFile)
                 ?? throw new DevDevelopmentException(BrowserUnavailableCode,
                     "--browser could not open a loopback port for the browser's address.", category: CommandExitCategory.Unavailable)
             : null;
+        // The Window admits the address's origin, http://<label>.localhost:<port>. The variable is in the Window's
+        // environment only, which other users cannot read; the label stays out of arguments, the session file and logs.
+        if (browser is not null) options = options with { BrowserOrigin = browser.Origin };
         await using WebKitDebugEndpoint? adapter = debugging.StartAdapter
             ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort, sockets, Console.Error.WriteLine)
             : null;
@@ -221,8 +234,12 @@ internal static class DevApplication
         WriteSession(session.Start);
         if (browser is not null)
         {
-            WriteSession(() => session.BrowserStarted(browser.Url));
-            Console.WriteLine(BrowserHint(browser.Port));
+            // The session file names the code file, not the code: only the code file is this user's alone.
+            // The session file names the address with * for the label, and the code file; both secrets stay out of it.
+            WriteSession(() => session.BrowserStarted(browser.PublicUrl, browser.CodeFile));
+            Console.WriteLine(BrowserHint(browser.Port, browser.CodeUrlFor(0)));
+            // An admission replaces the code; the next browser needs the new one.
+            browser.CodeChanged += () => Console.WriteLine(BrowserAdmittedLine(browser.CodeUrlFor(0)));
         }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
@@ -1042,7 +1059,7 @@ internal static class DevApplication
             writeSession(() => session.BrowserWindows(browser.Windows));
             // The URL line; the Window line that follows it only adds the type.
             if (served.Type is not null) return;
-            writeLine(BrowserServedLine(served));
+            writeLine(BrowserServedLine(browser.CodeUrlFor(served.Index)));
             if (served.Index == 0) Ready();
         }
 
