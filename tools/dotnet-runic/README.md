@@ -930,8 +930,10 @@ opens none, and says so in a `[dev] Debugging:` line.
 
 - **`--debug-endpoint`**, for an IDE to pass when it starts `dev`: `dev`
   sets `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT=0` for the Window. In Development,
-  Runic.Desktop then starts the Window's browser with `--remote-debugging-port`
-  on a free loopback port.
+  the CS-WebUI host (`Runic.Application.Views.CsWebUi`) then starts the browser
+  of each Window that runs in a browser with `--remote-debugging-port` on a free
+  loopback port, by the same rules as Runic Desktop. A Window with `UseWebView`
+  opens none.
   - The Window prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp <url>`
     when the browser listens, and `RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=<url>`
     when it exits.
