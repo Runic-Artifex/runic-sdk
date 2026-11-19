@@ -157,6 +157,12 @@
   <!-- Development-only views and members ([RunicDevelopmentOnly], D072.12/D072.13): RunicDevelopmentOnlyViews=auto (the
        default) leaves them out of trimmed and NativeAOT publishes, here for the same reason, so that the trimmer removes
        their Bridges and members; true keeps them in every publish. Builds, dotnet run and untrimmed publishes keep them. -->
+  <!-- RunicViewsBlobs=false (sdk#1193): the application uses no RunicBlob or RunicUpload, so the Bridge offers no blobs/1
+       and the hosts start no blob endpoint; a trimmed or NativeAOT build drops that code. The application's choice, so it
+       applies to every build, and dotnet run shows the same behaviour as the publish. -->
+  <ItemGroup Condition="'$(RunicViewsBlobs)' == 'false'">
+    <RuntimeHostConfigurationOption Include="Runic.Application.Views.Blobs" Value="false" Trim="true" />
+  </ItemGroup>
   <Target Name="_RunicViewsPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
     <ItemGroup>
       <RuntimeHostConfigurationOption Include="Runic.Application.DevelopmentServerForwarding" Value="false" Trim="true" />

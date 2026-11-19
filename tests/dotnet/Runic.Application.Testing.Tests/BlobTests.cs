@@ -54,6 +54,32 @@ internal sealed class BlobTests
         Require((await host.ReadBlobAsync("http://runic.test/_runic/blobs/../../etc/passwd")).StatusCode == 404, "A path was resolved.");
     }
 
+    // sdk#1193: RunicViewsBlobs=false turns the feature switch off. The Bridge then offers no blobs/1 and grants no
+    // upload, a blob crosses with an empty URL (as from a host that serves none), and nothing is served.
+    [Test]
+    public async Task WithoutBlobsTheBridgeOffersAndServesNoneAsync()
+    {
+        AppContext.SetSwitch(BridgeBlobs.FeatureSwitch, false);
+        try
+        {
+            using var host = Host(new BlobViewModel());
+            Require(Avatar(host).GetProperty("url").GetString() == "", $"A blob was issued a URL: {Avatar(host)}");
+            Require(host.ServedBlobCount == 0, "A blob was registered.");
+            using var hello = JsonDocument.Parse(host.Transport.Request(
+                """{"kind":"hello","protocol":4,"session":"s-blobs-off","client":{"name":"t","version":"1"},"features":["blobs/1"]}""",
+                "blobs-off", "client-blobs-off"));
+            Require(!hello.RootElement.GetProperty("features").EnumerateArray().Any(feature => feature.GetString() == "blobs/1")
+                    && !hello.RootElement.TryGetProperty("blobs", out _),
+                $"The hello offered blobs/1 or an upload grant: {hello.RootElement}");
+            Require((await host.ReadBlobAsync("http://runic.test/_runic/blobs/" + new string('a', 43))).StatusCode == 404,
+                "A blob request was answered.");
+        }
+        finally
+        {
+            AppContext.SetSwitch(BridgeBlobs.FeatureSwitch, true);
+        }
+    }
+
     [Test]
     public void ABlobPropertyIsReadOnlyForThePage()
     {

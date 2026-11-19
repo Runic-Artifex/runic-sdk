@@ -25,6 +25,15 @@ namespace Runic.Application.Views;
 internal sealed class BridgeBlobs : IDisposable
 {
     internal const string Feature = "blobs/1";
+
+    // sdk#1193: an application that uses no RunicBlob or RunicUpload sets the MSBuild property RunicViewsBlobs to false.
+    // The Bridge then offers no blobs/1, issues no blob URLs (an empty one, as from a host that serves none), takes no
+    // uploads and serves nothing, and a trimmed or NativeAOT build drops that code and the hosts' blob endpoints (the
+    // CS-WebUI loopback server). The application's choice, so it applies to every build, as RunicDesktopRegionHost.
+    internal const string FeatureSwitch = "Runic.Application.Views.Blobs";
+
+    [System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(FeatureSwitch)]
+    internal static bool IsSupported => !AppContext.TryGetSwitch(FeatureSwitch, out var enabled) || enabled;
     internal const string UploadTokenHeader = "X-Runic-Upload-Token";
     internal const string UploadNameHeader = "X-Runic-Upload-Name";
     internal const long DefaultMaximumUploadBytes = 256L * 1_048_576;
@@ -127,6 +136,7 @@ internal sealed class BridgeBlobs : IDisposable
     // serves no blobs.
     internal string Issue(RunicBlob blob, BridgeBlobScope scope)
     {
+        if (!IsSupported) return Unavailable();
         BridgeBlobEndpoint? endpoint;
         BlobEntry entry;
         lock (_gate)
@@ -144,16 +154,18 @@ internal sealed class BridgeBlobs : IDisposable
             else Hold(entry, new Holder(scope.Route, null));
         }
         var blobBase = endpoint?.BlobBase();
-        if (blobBase is null)
+        return blobBase is null ? Unavailable() : blobBase.AbsoluteUri + entry.Token;
+    }
+
+    // The empty URL of a blob that this window's host does not serve, with one warning (1205) per window.
+    private string Unavailable()
+    {
+        if (!_unavailableLogged)
         {
-            if (!_unavailableLogged)
-            {
-                _unavailableLogged = true;
-                BlobsLog.BlobsUnavailable(Logger);
-            }
-            return string.Empty;
+            _unavailableLogged = true;
+            BlobsLog.BlobsUnavailable(Logger);
         }
-        return blobBase.AbsoluteUri + entry.Token;
+        return string.Empty;
     }
 
     // A state member was written: its blobs are now exactly these.
@@ -312,6 +324,7 @@ internal sealed class BridgeBlobs : IDisposable
     // The upload token of a connection whose hello lists blobs/1, or null when the host takes no uploads.
     internal BridgeUploadGrant? Grant(string connectionKey)
     {
+        if (!IsSupported) return null;
         lock (_gate)
         {
             if (_closed || _endpoint?.UploadUrl() is not { } uploadUrl) return null;
@@ -368,6 +381,11 @@ internal sealed class BridgeBlobs : IDisposable
     // Receives an upload request whose origin the host has admitted: POST with the connection's token.
     internal async Task ReceiveUploadAsync(IBridgeBlobExchange exchange)
     {
+        if (!IsSupported)
+        {
+            await WriteErrorAsync(exchange, 403, "forbidden", "This application takes no uploads (RunicViewsBlobs=false).").ConfigureAwait(false);
+            return;
+        }
         var token = exchange.GetRequestHeader(UploadTokenHeader);
         string? connection;
         lock (_gate) connection = token.Length == 0 ? null : _connectionByToken.GetValueOrDefault(token);
@@ -598,7 +616,7 @@ internal sealed class BridgeBlobs : IDisposable
         exchange.AppendResponseHeader("Content-Security-Policy", ContentSecurityPolicy);
         exchange.SetResponseHeader("Cross-Origin-Resource-Policy", "same-site");
         exchange.SetResponseHeader("Referrer-Policy", "no-referrer");
-        if (!IsToken(token) || !TryResolve(token, out var blob))
+        if (!IsSupported || !IsToken(token) || !TryResolve(token, out var blob))
         {
             exchange.SetResponseHeader("Cache-Control", "no-store");
             exchange.StatusCode = 404;

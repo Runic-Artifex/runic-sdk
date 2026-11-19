@@ -57,6 +57,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendWindowProject` | property | `false` | Marks the Window project that `dotnet runic dev` and `doctor` run. |
 | `RunicApplicationFrontendBootstrap` | property (read-only) | set by the targets | `true` only in the bootstrap pass. |
 | `RunicDevelopmentOnlyViews` | property | `auto` | `auto` leaves [development-only views and members](packaging.md#development-only-views-and-members) (`[RunicDevelopmentOnly]`) out of trimmed and NativeAOT publishes; `true` keeps them in every publish (since 0.22). Builds, `dotnet run` and untrimmed publishes always keep them. |
+| `RunicViewsBlobs` | property | `true` | `false` for an application that uses no `RunicBlob` or `RunicUpload` (since 0.23): the Bridge offers no `blobs/1`, a blob would cross with an empty URL (warning 1205), and the hosts serve and accept nothing, so a trimmed or NativeAOT build leaves the blob code and the CS-WebUI host's loopback blob server out ([packaging](packaging.md#the-smallest-nativeaot-executable)). It applies to every build, so `dotnet run` behaves as the publish. |
 | `RunicApplicationFrontendInput` | item | none | An input outside the frontend directory that rebuilds it. |
 | `RunicApplicationFrontendBuildEnvironment` | item | none | An environment variable that changes the built frontend. |
 

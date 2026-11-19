@@ -152,7 +152,10 @@ of yours:
   selects, and none for `None`. An application that is never a hosted guest
   does not keep hosted mode, and one whose pages declare no hosted regions can
   leave the region host out with `RunicDesktopRegionHost=false`
-  ([MSBuild](msbuild.md#runicapplicationviewsdesktop)).
+  ([MSBuild](msbuild.md#runicapplicationviewsdesktop)). An application whose
+  ViewModels use no `RunicBlob` or `RunicUpload` leaves Bridge blobs out with
+  `RunicViewsBlobs=false` (0.23), and the CS-WebUI host then starts no
+  loopback blob server ([MSBuild](msbuild.md#runicapplicationviews)).
 - On Linux and macOS, the CS-WebUI host serves blobs and uploads from a small
   loopback HTTP/1.1 server of its own instead of .NET's `HttpListener`, so the
   executable has no HTTP client, TLS or X.509 code for it (0.22).
@@ -204,6 +207,7 @@ differ, so measure it ([below](#measuring-your-own-application)).
 | `RunicDesktopServer=None` for an executable that opens no Runic Desktop window | the referenced server | 46 KB without a server package; 4.6 MB when `Runic.Desktop.Kestrel` is referenced | [MSBuild](msbuild.md#runicdesktop) |
 | GTK 3 instead of `Runic.Desktop.Gtk4` (`--linux-gtk 4`) | GTK 3 | 1.5 MB (13.9 instead of 12.4 MB) | [Size and cost of each publish mode](#size-and-cost-of-each-publish-mode) |
 | `RunicDesktopRegionHost=false` for pages without hosted regions | `true` | 17 KB | [MSBuild](msbuild.md#runicapplicationviewsdesktop), [Hosted regions](hosted-regions.md) |
+| `RunicViewsBlobs=false` for an application without `RunicBlob` or `RunicUpload` (0.23) | `true` | 336 KB (CS-WebUI, which then starts no loopback blob server); 69 KB (Runic Desktop) | [MSBuild](msbuild.md#runicapplicationviews) |
 | An application that never starts as a hosted guest (`RunicGuestOptions.FromStandardInput()`) leaves the guest out | automatic | 509 KB | [Hosted applications](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-applications) |
 | `dotnet runic dev`'s live frontend directory (`Runic.Application.Views.Desktop.DevelopmentAssets`) is off in a publish | automatic | 155 KB | [above](#making-the-executable-smaller) |
 | Runic Desktop's CS-WebUI remote-debugging endpoint (`Runic.Desktop.WebUiRemoteDebugging`) is off in a publish | automatic | 50 KB | [above](#making-the-executable-smaller) |
@@ -223,6 +227,8 @@ Runic Desktop executable, combine them:
   <PublishAot>true</PublishAot>
   <!-- Runic: only when the pages declare no hosted regions. -->
   <RunicDesktopRegionHost>false</RunicDesktopRegionHost>
+  <!-- Runic: only when no ViewModel uses RunicBlob or RunicUpload. -->
+  <RunicViewsBlobs>false</RunicViewsBlobs>
   <!-- .NET: each gives something up, see the table above. -->
   <StackTraceSupport>false</StackTraceSupport>
   <InvariantGlobalization>true</InvariantGlobalization>

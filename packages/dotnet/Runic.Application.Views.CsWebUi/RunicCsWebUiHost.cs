@@ -289,8 +289,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var menu = menuRoutes;
             var bindings = new Bindings(menuRoutes);
             menuRoutes = null;
-            // blobs/1: the window's blobs and uploads, from a loopback listener of its own (CsWebUiBlobEndpoint).
-            if (CsWebUiBlobEndpoint.Start(BridgeDispatcher.For(transport).Blobs, window, menuLogger) is { } blobEndpoint)
+            // blobs/1: the window's blobs and uploads, from a loopback listener of its own (CsWebUiBlobEndpoint). Without
+            // blobs (RunicViewsBlobs=false, BridgeBlobs.IsSupported) the window starts none, and a trimmed build drops it.
+            if (BridgeBlobs.IsSupported && CsWebUiBlobEndpoint.Start(BridgeDispatcher.For(transport).Blobs, window, menuLogger) is { } blobEndpoint)
                 bindings.Add(blobEndpoint);
             host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, bindings, viewModel);
             var attachment = opening.AttachBridge(transport, content);
