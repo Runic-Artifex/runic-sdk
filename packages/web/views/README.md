@@ -1373,8 +1373,11 @@ The returned mock has `state`, `update(changes)` (pushes a full state like a
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
 and `move` (each pushes a frame; `batch(edit)` combines edits into one),
-`interactions.<name>.request(input)`, which resolves with the answer of the
-open presentation's handler, or `unhandled` when none is registered, and
+`interactions.<name>.request(input, { signal, timeout })`, which resolves with the answer of the
+open presentation's handler, or `unhandled` when none is registered (`timeout`
+is the .NET lifetime in milliseconds that the request's `expiresAt` names, by
+default two minutes; `Infinity` sends none, as `[RunicInteractionTimeout(Timeout.Infinite)]`
+does), and
 `requests.<name>.raise(input)`, which raises a [view request](#view-requests)
 as the ViewModel's `Raise(input)` does and returns how many of the View's open
 presentations it reached (0 when none handles it; it is not kept), with

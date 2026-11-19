@@ -203,7 +203,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             var adapterNamespace = contract.Flavor is ReactiveUiFlavor.SystemReactive
                 ? "global::Runic.Application.Views.ReactiveUI.Reactive.Generated"
                 : "global::Runic.Application.Views.ReactiveUI.Generated";
-            return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
+            return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element){(plan.Timeout is { } timeout ? $", timeout: {timeout}" : "")})";
         }
     }
 }
