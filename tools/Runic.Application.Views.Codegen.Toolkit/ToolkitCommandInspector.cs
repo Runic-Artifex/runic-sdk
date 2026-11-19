@@ -182,9 +182,9 @@ public static class ToolkitCommandInspector
                 && method.GetCustomAttribute<RelayCommandAttribute>(false) is { IncludeCancelCommand: true }
                 && typeof(Task).IsAssignableFrom(method.ReturnType)
                 && method.GetParameters() is var parameters
-                && parameters.Length == (contract.HasInput ? 2 : 1)
+                && parameters.Length == (contract.Input is null ? 1 : 2)
                 && parameters[^1].ParameterType == typeof(CancellationToken)
-                && (!contract.HasInput || parameters[0].ParameterType == contract.Input));
+                && (contract.Input is null || parameters[0].ParameterType == contract.Input));
     }
 
     private static string? GeneratorVersion(PropertyInfo property) =>
@@ -226,7 +226,15 @@ public static class ToolkitCommandInspector
 /// <summary>Typed CommunityToolkit command shape shared with bridge generation.</summary>
 public sealed record ToolkitCommandContract(string Name, Type? Input, bool IsAsync)
 {
-    public bool HasInput => Input is not null;
+    /// <summary>
+    /// Whether the command's parameter is an <see cref="IProgress{T}"/> of <see cref="double"/> that the Bridge binds to
+    /// the running operation (RunicOperationProgress.Current), as the Toolkit binds a CancellationToken: it is no
+    /// page input. Only an async command takes it; a synchronous command has no operation.
+    /// </summary>
+    public bool TakesProgress => IsAsync && Input == typeof(IProgress<double>);
+
+    /// <summary>Whether the page sends the command's parameter: it has one that is not a progress reporter.</summary>
+    public bool HasInput => Input is not null && !TakesProgress;
 
     /// <summary>The <c>T</c> of an async command whose method returns <c>Task&lt;T&gt;</c>, or null.</summary>
     public Type? Result { get; init; }

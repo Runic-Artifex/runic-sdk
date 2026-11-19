@@ -75,7 +75,12 @@ public static class ReactiveCommandInspector
 public sealed record ReactiveCommandContract(string Name, Type Input, Type Result, ReactiveUiFlavor Flavor,
     RunicCommandResultCardinality Cardinality)
 {
-    public bool HasInput => !IsVoid(Input);
+    /// <summary>
+    /// Whether <c>TParam</c> is an <see cref="IProgress{T}"/> of <see cref="double"/> that the Bridge binds to the running
+    /// operation (RunicOperationProgress.Current): it is no page input.
+    /// </summary>
+    public bool TakesProgress => Input == typeof(IProgress<double>);
+    public bool HasInput => !IsVoid(Input) && !TakesProgress;
     public bool HasResult => !IsVoid(Result);
     internal static bool IsVoid(Type type) => type == typeof(RxVoid) || type.FullName == "System.Reactive.Unit";
 }

@@ -3013,6 +3013,35 @@ private async Task ImportAsync(ImportSource source, CancellationToken token)
 }
 ```
 
+A command without input can take the progress as its parameter instead, the
+usual .NET pattern, which also suits a library method that takes an
+`IProgress<double>`. The Bridge binds the parameter as CommunityToolkit binds
+the `CancellationToken`: the page sends nothing for it, and the generated
+client calls `import()` and `startImport()` without an argument. Started as an
+operation, the command receives a reporter bound to that operation, which keeps
+reporting to it from any thread until it ends; otherwise, such as through the
+awaited `import()` call, a reporter that does nothing.
+
+```csharp
+[RelayCommand(IncludeCancelCommand = true)]
+private Task ImportAsync(IProgress<double> progress, CancellationToken token) =>
+    importer.ImportAllAsync(progress, token);
+
+// ReactiveUI
+ImportCommand = ReactiveCommand.CreateFromTask<IProgress<double>>(
+    (progress, token) => importer.ImportAllAsync(progress, token));
+```
+
+Only an asynchronous command binds it: a CommunityToolkit
+`IAsyncRelayCommand<IProgress<double>>` (a `[RelayCommand]` method that
+returns `Task`) or a ReactiveUI `ReactiveCommand<IProgress<double>, TResult>`.
+A command that also takes input keeps `RunicOperationProgress.Report`, since
+CommunityToolkit gives a command one parameter. .NET code that runs such a
+command itself passes its own reporter, or `RunicOperationProgress.Current`,
+the reporter of the operation on the current flow. A WPF button without a
+`CommandParameter` passes `null`, so a command that a WPF View binds too writes
+`progress?.Report(...)`.
+
 A result that other parts of the page show, or that must survive a reload, is
 better published as state. Publish it in a read-only property, together with the input it
 answers. The page can then tell whether the result still matches its current
