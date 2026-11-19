@@ -16,15 +16,21 @@ test('dependencies publish first and cycles fail',()=>{
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execFileSync } from 'node:child_process';
 import { scan } from './artifacts.mjs';
+import { writeTarGz, writeZip } from './test-archives.mjs';
+const nuspec=(id,version,{readme,dependencies=[]}={})=>`<package><metadata><id>${id}</id><version>${version}</version>${readme?`<readme>${readme}</readme>`:''}`
+ +`<repository url="https://github.com/${REPOSITORY}" commit="${'a'.repeat(40)}" />`
+ +(dependencies.length?`<dependencies>${dependencies.map(([dependency,range])=>`<dependency id="${dependency}" version="${range}" />`).join('')}</dependencies>`:'')
+ +'</metadata></package>';
 test('real archives reject stale extras, source, metadata and internal dependency leaks',()=>{
  const dir=mkdtempSync(join(tmpdir(),'runic-preview-test-')), source='a'.repeat(40);
  const inventory=[{registry:'npm',name:'@runic-artifex/test'},{registry:'nuget',name:'Runic.Test'}];
  mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
  const npm={name:inventory[0].name,version:VERSION,repository:`https://github.com/${REPOSITORY}`,gitHead:source,dependencies:{'Runic.Test':VERSION}};
- const script=`import io,json,tarfile,zipfile,sys\nd,p,v,s,r=sys.argv[1:]\nb=p.encode()\nwith tarfile.open(d+'/npm/test.tgz','w:gz') as t:\n i=tarfile.TarInfo('package/package.json');i.size=len(b);t.addfile(i,io.BytesIO(b))\nwith zipfile.ZipFile(d+'/nuget/test.nupkg','w') as z:\n z.writestr('Runic.Test.nuspec','<package><metadata><id>Runic.Test</id><version>'+v+'</version><repository url="https://github.com/'+r+'" commit="'+s+'" /></metadata></package>')\n`;
- const pack=()=>execFileSync('python3',['-c',script,dir,JSON.stringify(npm),VERSION,source,REPOSITORY]);
+ const pack=()=>{
+  writeTarGz(join(dir,'npm','test.tgz'),[['package/package.json',JSON.stringify(npm)]]);
+  writeZip(join(dir,'nuget','test.nupkg'),[['Runic.Test.nuspec',nuspec('Runic.Test',VERSION)]]);
+ };
  try {
   pack();expect(scan(dir,inventory,source).map(p=>p.name)).toEqual(['Runic.Test','@runic-artifex/test']);
   for(const [key,value] of [['version','0.1.0'],['gitHead','b'.repeat(40)],['repository','https://github.com/obsolete/repo']]) {
@@ -46,8 +52,10 @@ test('packed READMEs with a main-branch link are rejected',()=>{
  const inventory=[{registry:'npm',name:'@runic-artifex/test'},{registry:'nuget',name:'Runic.Test'}];
  mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
  const npm={name:inventory[0].name,version:VERSION,repository:`https://github.com/${REPOSITORY}`,gitHead:source};
- const script=`import io,json,tarfile,zipfile,sys\nd,p,v,s,r,npm_readme,nuget_readme=sys.argv[1:]\nwith tarfile.open(d+'/npm/test.tgz','w:gz') as t:\n for n,b in [('package/package.json',p.encode()),('package/README.md',npm_readme.encode())]:\n  i=tarfile.TarInfo(n);i.size=len(b);t.addfile(i,io.BytesIO(b))\nwith zipfile.ZipFile(d+'/nuget/test.nupkg','w') as z:\n z.writestr('Runic.Test.nuspec','<package><metadata><id>Runic.Test</id><version>'+v+'</version><readme>README.md</readme><repository url="https://github.com/'+r+'" commit="'+s+'" /></metadata></package>')\n z.writestr('README.md',nuget_readme)\n`;
- const pack=(npmReadme,nugetReadme)=>execFileSync('python3',['-c',script,dir,JSON.stringify(npm),VERSION,source,REPOSITORY,npmReadme,nugetReadme]);
+ const pack=(npmReadme,nugetReadme)=>{
+  writeTarGz(join(dir,'npm','test.tgz'),[['package/package.json',JSON.stringify(npm)],['package/README.md',npmReadme]]);
+  writeZip(join(dir,'nuget','test.nupkg'),[['Runic.Test.nuspec',nuspec('Runic.Test',VERSION,{readme:'README.md'})],['README.md',nugetReadme]]);
+ };
  const tagged=`https://github.com/${REPOSITORY}/blob/v${VERSION}/README.md`, main=`https://github.com/${REPOSITORY}/blob/main/README.md`;
  try {
   pack(tagged,tagged);expect(scan(dir,inventory,source).map(p=>Object.hasOwn(p,'readme'))).toEqual([false,false]);
@@ -63,22 +71,15 @@ test('real package dependencies require registry-specific exact preview ranges',
   {registry:'npm',name:'@runic-artifex/core'},{registry:'npm',name:'@runic-artifex/consumer'}
  ];
  mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
- const script=`import io,json,tarfile,zipfile,sys,xml.etree.ElementTree as E
-d,v,s,r,nuget_range,npm_range=sys.argv[1:]
-for name in ['Runic.Core','Runic.Consumer']:
- root=E.Element('package');m=E.SubElement(root,'metadata')
- E.SubElement(m,'id').text=name;E.SubElement(m,'version').text=v
- E.SubElement(m,'repository',url='https://github.com/'+r,commit=s)
- if name=='Runic.Consumer':E.SubElement(E.SubElement(m,'dependencies'),'dependency',id='Runic.Core',version=nuget_range)
- with zipfile.ZipFile(d+'/nuget/'+name+'.nupkg','w') as z:z.writestr(name+'.nuspec',E.tostring(root))
-for name in ['core','consumer']:
- p=dict(name='@runic-artifex/'+name,version=v,repository='https://github.com/'+r,gitHead=s)
- if name=='consumer':p['dependencies']={'@runic-artifex/core':npm_range}
- b=json.dumps(p).encode()
- with tarfile.open(d+'/npm/'+name+'.tgz','w:gz') as t:
-  i=tarfile.TarInfo('package/package.json');i.size=len(b);t.addfile(i,io.BytesIO(b))
-`;
- const pack=(nugetRange,npmRange)=>execFileSync('python3',['-c',script,dir,VERSION,source,REPOSITORY,nugetRange,npmRange]);
+ const pack=(nugetRange,npmRange)=>{
+  writeZip(join(dir,'nuget','Runic.Core.nupkg'),[['Runic.Core.nuspec',nuspec('Runic.Core',VERSION)]]);
+  writeZip(join(dir,'nuget','Runic.Consumer.nupkg'),[['Runic.Consumer.nuspec',nuspec('Runic.Consumer',VERSION,{dependencies:[['Runic.Core',nugetRange]]})]]);
+  for(const name of ['core','consumer']) {
+   const p={name:'@runic-artifex/'+name,version:VERSION,repository:'https://github.com/'+REPOSITORY,gitHead:source};
+   if(name==='consumer')p.dependencies={'@runic-artifex/core':npmRange};
+   writeTarGz(join(dir,'npm',name+'.tgz'),[['package/package.json',JSON.stringify(p)]]);
+  }
+ };
  try {
   pack(`[${VERSION}]`,VERSION);
   expect(scan(dir,inventory,source)).toHaveLength(4);
@@ -195,16 +196,10 @@ test('a package on its own version is scanned at that version and dependents pin
  const dir=mkdtempSync(join(tmpdir(),'runic-own-version-test-')), source='a'.repeat(40), own='9.0.0-preview.1';
  const inventory=[{registry:'nuget',name:'Runic.Own',version:own},{registry:'nuget',name:'Runic.Consumer',version:VERSION}];
  mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
- const script=`import zipfile,sys,xml.etree.ElementTree as E
-d,r,s,own_version,consumer_version,range=sys.argv[1:]
-for name,v in [('Runic.Own',own_version),('Runic.Consumer',consumer_version)]:
- root=E.Element('package');m=E.SubElement(root,'metadata')
- E.SubElement(m,'id').text=name;E.SubElement(m,'version').text=v
- E.SubElement(m,'repository',url='https://github.com/'+r,commit=s)
- if name=='Runic.Consumer':E.SubElement(E.SubElement(m,'dependencies'),'dependency',id='Runic.Own',version=range)
- with zipfile.ZipFile(d+'/nuget/'+name+'.nupkg','w') as z:z.writestr(name+'.nuspec',E.tostring(root))
-`;
- const pack=(ownVersion,range)=>execFileSync('python3',['-c',script,dir,REPOSITORY,source,ownVersion,VERSION,range]);
+ const pack=(ownVersion,range)=>{
+  writeZip(join(dir,'nuget','Runic.Own.nupkg'),[['Runic.Own.nuspec',nuspec('Runic.Own',ownVersion)]]);
+  writeZip(join(dir,'nuget','Runic.Consumer.nupkg'),[['Runic.Consumer.nuspec',nuspec('Runic.Consumer',VERSION,{dependencies:[['Runic.Own',range]]})]]);
+ };
  try {
   pack(own,`[${own}]`);
   expect(scan(dir,inventory,source).map(p=>[p.name,p.version])).toEqual([['Runic.Own',own],['Runic.Consumer',VERSION]]);

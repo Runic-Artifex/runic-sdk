@@ -165,6 +165,34 @@ internal sealed partial class ToolTests
         running.DisposeAsync().AsTask().Wait();
     }
 
+    // #1163: bun exits on the console's Ctrl+C and leaves Node.js (Vite, and the runic-translations serve it started)
+    // running. The stop still ends that orphan: the frontend server is in a Job object, which the stop ends whether or
+    // not the process dev started has exited.
+    [Test, Category("WindowsCommands"), DisplayName("stopping the frontend server ends a process its exited root left running on Windows")]
+    public void StopEndsProcessLeftByExitedRoot()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var workspace = new TestWorkspace();
+        // The grandchild ignores the stop signal, as a server that missed it would.
+        workspace.Write("stuck", "");
+        (string executable, IReadOnlyList<string> prefix) = ProcessTreeSignal.SelfCommand();
+        RunningProcess running = RunningProcess.Start("stop-test", executable, workspace.Root,
+            [.. prefix, StopTestChild.Argument, StopTestChild.LeaveRole, workspace.Root], endTreeAtStop: true);
+        int orphan = WaitForStopChild(workspace.Root);
+        True(running.Completion.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "The stand-in package manager did not exit.");
+        False(ProcessTreeSignal.HasExited(orphan), "The stand-in Node.js process exited with its parent.");
+        try
+        {
+            True(running.StopAsync().Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "The stop did not finish.");
+            WaitForExit(orphan);
+        }
+        finally
+        {
+            running.DisposeAsync().AsTask().Wait();
+            if (!ProcessTreeSignal.HasExited(orphan)) Process.GetProcessById(orphan).Kill();
+        }
+    }
+
     private static int ParentOf(int pid)
     {
         using Process process = Process.Start(new ProcessStartInfo("powershell.exe",
