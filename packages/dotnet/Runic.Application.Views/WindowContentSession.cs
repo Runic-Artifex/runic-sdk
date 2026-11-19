@@ -1368,7 +1368,8 @@ public sealed class WindowContentSession : IDisposable
             {
                 if (_disposed) return BridgePresentationOutcome.Released;
                 var outcome = _owners.Open(presentation, connection, out var added);
-                if (added) owner._interactions.OnPresentationMounted(Route, presentation, connection.ClientKey, connection.Key);
+                if (added) owner._interactions.OnPresentationMounted(Route, presentation, connection.ClientKey, connection.Key,
+                    connection.UsesOpenEndedInteractions);
                 return outcome;
             }
         }
@@ -1666,7 +1667,10 @@ public sealed class WindowContentSession : IDisposable
                 }
             }
 
-            _session._interactions.OnPresentationMounted(Route, token, owner.ClientKey, owner.ConnectionKey);
+            // Outside the gates: the dispatcher's lookup takes its own.
+            var openEnded = owner.ConnectionKey is { } connectionKey
+                && _session.Dispatcher.FindConnection(connectionKey)?.UsesOpenEndedInteractions == true;
+            _session._interactions.OnPresentationMounted(Route, token, owner.ClientKey, owner.ConnectionKey, openEnded);
             if (notifyView) NotifyMounted(inner, token);
         }
 

@@ -7,6 +7,10 @@ using AttemptValueCodec = global::Runic.Application.Views.Generated.Bridges.Runi
 using AcceptedCountValueCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Int32;
 using ConfirmInteractionInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.GeneratedInteractionRequestToPage;
 using ConfirmInteractionOutputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
+using ConfirmWithoutDeadlineInteractionInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.GeneratedInteractionRequestToPage;
+using ConfirmWithoutDeadlineInteractionOutputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
+using ConfirmSlowlyInteractionInputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.GeneratedInteractionRequestToPage;
+using ConfirmSlowlyInteractionOutputCodec = global::Runic.Application.Views.Generated.Bridges.RunicBridgeCodecs.Boolean;
 internal sealed class GeneratedInteractionBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
     private readonly global::System.IDisposable? _rootInteractionMount;
@@ -24,6 +28,8 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
     private static readonly global::Runic.Application.Views.Generated.BridgeInteractionDescriptor[] Interactions =
     [
         global::Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirm", "<fingerprint>:interaction:Confirm", static vm => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).Confirm, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmInteractionInputCodec.Write(writer, input)), element => ConfirmInteractionOutputCodec.Read(element)),
+        global::Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirmWithoutDeadline", "<fingerprint>:interaction:ConfirmWithoutDeadline", static vm => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).ConfirmWithoutDeadline, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmWithoutDeadlineInteractionInputCodec.Write(writer, input)), element => ConfirmWithoutDeadlineInteractionOutputCodec.Read(element), timeout: global::System.Threading.Timeout.InfiniteTimeSpan),
+        global::Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirmSlowly", "<fingerprint>:interaction:ConfirmSlowly", static vm => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).ConfirmSlowly, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmSlowlyInteractionInputCodec.Write(writer, input)), element => ConfirmSlowlyInteractionOutputCodec.Read(element), timeout: global::System.TimeSpan.FromMilliseconds(900000)),
     ];
 
     // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).
@@ -32,12 +38,18 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
         P Attempt attempt 0 -
         P AcceptedCount acceptedCount 1 -
         K Ask ask 0 CORU - -
+        K AskWithoutDeadline askWithoutDeadline 1 CORU - -
+        K AskSlowly askSlowly 2 CORU - -
         D 0 - attempt Attempt - 0
         D 1 - acceptedCount AcceptedCount - 1
         S attempt 0
         S acceptedCount 1
         S canAsk 2
         S isAskExecuting 3
+        S canAskWithoutDeadline 4
+        S isAskWithoutDeadlineExecuting 5
+        S canAskSlowly 6
+        S isAskSlowlyExecuting 7
         """u8);
 
     private sealed class Members : RunicBridgeMembers
@@ -62,6 +74,10 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
                 case 1: AcceptedCountValueCodec.Write(writer, vm.AcceptedCount); return;
                 case 2: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default)); return;
                 case 3: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand)); return;
+                case 4: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskWithoutDeadlineCommand, global::ReactiveUI.Primitives.RxVoid.Default)); return;
+                case 5: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskWithoutDeadlineCommand)); return;
+                case 6: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskSlowlyCommand, global::ReactiveUI.Primitives.RxVoid.Default)); return;
+                case 7: writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskSlowlyCommand)); return;
             }
             throw new global::System.ArgumentOutOfRangeException(nameof(id));
         }
@@ -72,6 +88,8 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
             switch (id)
             {
                 case 0: return vm.AskCommand;
+                case 1: return vm.AskWithoutDeadlineCommand;
+                case 2: return vm.AskSlowlyCommand;
             }
             throw new global::System.ArgumentOutOfRangeException(nameof(id));
         }
@@ -82,6 +100,8 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
             switch (id)
             {
                 case 0: return RunicBridgeCommands.Completion(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default, token));
+                case 1: return RunicBridgeCommands.Completion(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskWithoutDeadlineCommand, global::ReactiveUI.Primitives.RxVoid.Default, token));
+                case 2: return RunicBridgeCommands.Completion(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskSlowlyCommand, global::ReactiveUI.Primitives.RxVoid.Default, token));
             }
             throw new global::System.ArgumentOutOfRangeException(nameof(id));
         }
@@ -92,6 +112,8 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
             switch (id)
             {
                 case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default);
+                case 1: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskWithoutDeadlineCommand, global::ReactiveUI.Primitives.RxVoid.Default);
+                case 2: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskSlowlyCommand, global::ReactiveUI.Primitives.RxVoid.Default);
             }
             throw new global::System.ArgumentOutOfRangeException(nameof(id));
         }
@@ -102,6 +124,8 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
             switch (id)
             {
                 case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, changed);
+                case 1: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskWithoutDeadlineCommand, changed);
+                case 2: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskSlowlyCommand, changed);
             }
             throw new global::System.ArgumentOutOfRangeException(nameof(id));
         }
@@ -112,6 +136,8 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
             switch (id)
             {
                 case 0: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, logger, "GeneratedInteractionViewModel.AskCommand");
+                case 1: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskWithoutDeadlineCommand, logger, "GeneratedInteractionViewModel.AskWithoutDeadlineCommand");
+                case 2: return global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskSlowlyCommand, logger, "GeneratedInteractionViewModel.AskSlowlyCommand");
             }
             throw new global::System.ArgumentOutOfRangeException(nameof(id));
         }

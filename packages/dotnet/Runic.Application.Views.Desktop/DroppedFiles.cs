@@ -17,6 +17,7 @@ internal static class DroppedFiles
                 _ => RunicDropEffect.Copy,
             },
             PromisedFiles = drop.PromisedFiles.Select(static lease => (RunicPromisedFile)new LeasedPromisedFile(lease)).ToArray(),
+            InSidePanel = drop.InSidePanel,
         };
 
     // Delivers the drop, then disposes the promised files the handler did not open; an opened one is the handler's.

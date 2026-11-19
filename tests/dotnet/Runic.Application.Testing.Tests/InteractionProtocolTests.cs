@@ -86,6 +86,90 @@ public sealed class InteractionProtocolTests
             "An answer after the cancellation was not stale.");
     }
 
+    // sdk#1146: a longer timeout than the default, up to a day.
+    [Test]
+    public async Task ALongerTimeoutEndsTheInteractionAtItsDeadlineAsync()
+    {
+        using var window = new InteractionWindow(openEnded: true);
+        window.Open("p-1");
+        window.Register("p-1", 1, ("confirm", Contract));
+        var answer = window.Ask("Clear?", TimeSpan.FromMinutes(15));
+        var push = (await window.PushesAsync())[0];
+        Require(push["expiresAt"]!.GetValue<string>() == "2026-10-28T12:15:00Z", $"The deadline is not fifteen minutes away: {push}");
+        window.Clock.Advance(TimeSpan.FromMinutes(10));
+        Require(!answer.IsCompleted && window.Transport.TakeMessages().Count == 0, "The interaction ended before its deadline.");
+        window.Clock.Advance(TimeSpan.FromMinutes(5));
+        Require(await ThrowsAsync<RunicInteractionTimeoutException>(answer), "The interaction did not time out at its deadline.");
+    }
+
+    // sdk#1146: Timeout.InfiniteTimeSpan arms no timer, and a page that uses open-ended-interactions/1 receives no expiresAt.
+    [Test]
+    public async Task AnInteractionWithoutADeadlineWaitsForItsAnswerAsync()
+    {
+        using var window = new InteractionWindow(openEnded: true);
+        window.Open("p-1");
+        window.Register("p-1", 1, ("confirm", Contract));
+        var answer = window.Ask("Clear?", Timeout.InfiniteTimeSpan);
+        var push = (await window.PushesAsync())[0];
+        Require(push["kind"]!.GetValue<string>() == "interaction" && !push.ContainsKey("expiresAt"),
+            $"The interaction without a deadline named one: {push}");
+        window.Clock.Advance(TimeSpan.FromDays(60));
+        Require(!answer.IsCompleted && window.Transport.TakeMessages().Count == 0, "The interaction without a deadline ended.");
+        Require(window.Reply(push, """{"outcome":"answered","output":{"accepted":true}}""") == "ok", "The late answer was not ok.");
+        Require(await answer.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The late answer did not reach the waiting interaction.");
+    }
+
+    // A page without open-ended-interactions/1, such as @runic-artifex/views before 0.23, needs an instant: it receives
+    // the latest one a finite timeout reaches, a day later, and the producer still arms no timer.
+    [Test]
+    public async Task APageWithoutOpenEndedInteractionsReceivesADayAsTheDeadlineAsync()
+    {
+        using var window = new InteractionWindow();
+        window.Open("p-1");
+        window.Register("p-1", 1, ("confirm", Contract));
+        var answer = window.Ask("Clear?", Timeout.InfiniteTimeSpan);
+        var push = (await window.PushesAsync())[0];
+        Require(push["expiresAt"]?.GetValue<string>() == "2026-10-29T12:00:00Z", $"The interaction did not name a day as its deadline: {push}");
+        window.Clock.Advance(TimeSpan.FromDays(2));
+        Require(!answer.IsCompleted, "The producer timed out an interaction without a deadline.");
+        // The page ends it: an older page aborts its handler at its own limit and replies cancelled.
+        Require(window.Reply(push, """{"outcome":"cancelled"}""") == "ok", "The page's cancellation was not ok.");
+        Require(await ThrowsAsync<RunicInteractionCancelledException>(answer), "The page's cancellation did not end the interaction.");
+    }
+
+    [Test]
+    public void TimeoutsArePositiveAndAtMostADayOrInfinite()
+    {
+        using var window = new InteractionWindow();
+        foreach (var timeout in new[] { TimeSpan.Zero, TimeSpan.FromMilliseconds(-2), TimeSpan.FromHours(24) + TimeSpan.FromTicks(1) })
+        {
+            Require(Rejects(() => window.Session.Interactions.Register<string, bool>(Route, "other", Contract, static input => input,
+                static _ => true, timeout: timeout)), $"Register accepted {timeout}.");
+            Require(Rejects(() => _ = new ViewQuestion<string, bool>(timeout: timeout)), $"ViewQuestion accepted {timeout}.");
+            Require(Rejects(() => Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<string, bool>("other",
+                Contract, static _ => new global::ReactiveUI.Binding.Interaction<string, bool>(), static input => input, static _ => true, timeout)),
+                $"ReactiveInteractionDescriptor accepted {timeout}.");
+        }
+        foreach (var timeout in new[] { Timeout.InfiniteTimeSpan, TimeSpan.FromHours(24), TimeSpan.FromTicks(1) })
+        {
+            window.Session.Interactions.Register<string, bool>(Route, "other", Contract, static input => input, static _ => true, timeout: timeout).Dispose();
+            Require(new ViewQuestion<string, bool>(timeout: timeout).Timeout == timeout, $"ViewQuestion did not keep {timeout}.");
+            Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<string, bool>("other", Contract,
+                static _ => new global::ReactiveUI.Binding.Interaction<string, bool>(), static input => input, static _ => true, timeout);
+        }
+        Require(new RunicInteractionTimeoutAttribute(Timeout.Infinite).Timeout == Timeout.InfiniteTimeSpan
+            && new RunicInteractionTimeoutAttribute(900_000).Timeout == TimeSpan.FromMinutes(15)
+            && TimeSpan.FromMilliseconds(RunicInteractionTimeoutAttribute.MaximumMilliseconds) == TimeSpan.FromHours(24),
+            "RunicInteractionTimeoutAttribute does not convert its milliseconds.");
+
+        static bool Rejects(Action action)
+        {
+            try { action(); }
+            catch (ArgumentOutOfRangeException) { return true; }
+            return false;
+        }
+    }
+
     [Test]
     public async Task AnOutputThatDoesNotDecodeFailsTheInteractionAsync()
     {
@@ -132,13 +216,14 @@ public sealed class InteractionProtocolTests
         private readonly IDisposable _definition;
         private readonly IDisposable _route;
 
-        public InteractionWindow()
+        // openEnded: connection-1 lists open-ended-interactions/1 in its hello.
+        public InteractionWindow(bool openEnded = false)
         {
             Session = new WindowContentSession(Transport, new WindowContentSessionOptions { TimeProvider = Clock, IncludeFailureDetail = false });
             _definition = Session.Interactions.Register<string, bool>(Route, "confirm", Contract,
                 static input => JsonSerializer.Serialize(input), static output => output.GetProperty("accepted").GetBoolean());
             _route = BridgeDispatcher.For(Transport).RegisterRoute(Route, new Handler(Session));
-            Hello("connection-1", "client-1");
+            Hello("connection-1", "client-1", openEnded);
             Hello("connection-2", "client-2");
         }
 
@@ -153,7 +238,8 @@ public sealed class InteractionProtocolTests
 
         // As an open of the presentation on connection-1 does.
         public void Open(string presentation) =>
-            Session.Interactions.OnPresentationMounted(Route, presentation, "client-1", Key("connection-1"));
+            Session.Interactions.OnPresentationMounted(Route, presentation, "client-1", Key("connection-1"),
+                Connection().UsesOpenEndedInteractions);
 
         public string Register(string presentation, long generation, params (string Name, string Contract)[] handlers) =>
             Register(presentation, generation, "connection-1", handlers);
@@ -173,11 +259,11 @@ public sealed class InteractionProtocolTests
         }
 
         // Asks the interaction as a command invoked on connection-1 does.
-        public Task<bool> Ask(string question)
+        public Task<bool> Ask(string question, TimeSpan? timeout = null)
         {
             using (RunicInteractionInvocation.Enter(Session, Route, "client-1", Key("connection-1")))
                 return Session.Interactions.TryRequest<string, bool>(Route, "confirm", Contract, question,
-                    static input => JsonSerializer.Serialize(input), static output => output.GetProperty("accepted").GetBoolean())
+                    static input => JsonSerializer.Serialize(input), static output => output.GetProperty("accepted").GetBoolean(), timeout)
                     ?? throw new InvalidOperationException("The interaction did not reach the presentation.");
         }
 
@@ -205,14 +291,18 @@ public sealed class InteractionProtocolTests
                 .Select(message => JsonNode.Parse(message.Json)!.AsObject())];
         }
 
-        private void Hello(string connection, string client) =>
-            Request(new JsonObject
+        private void Hello(string connection, string client, bool openEnded = false)
+        {
+            var hello = new JsonObject
             {
                 ["kind"] = "hello",
                 ["protocol"] = 4,
                 ["session"] = $"s-{connection}",
                 ["client"] = new JsonObject { ["name"] = "t", ["version"] = "1" },
-            }, connection, client);
+            };
+            if (openEnded) hello["features"] = new JsonArray("open-ended-interactions/1");
+            Request(hello, connection, client);
+        }
 
         private JsonObject Request(JsonObject message, string connection, string? client = null) =>
             JsonNode.Parse(Transport.Request(message.ToJsonString(), connection,

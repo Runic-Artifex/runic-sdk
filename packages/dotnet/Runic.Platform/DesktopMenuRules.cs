@@ -19,16 +19,19 @@ internal static class DesktopMenuRules
             throw new ArgumentException($"{what} has a title longer than {MaximumTitleLength} characters or with a NUL character.");
     }
 
-    // Throws for a command id outside the identifier rule or with the reserved prefix, naming the id and the rule.
-    internal static void CommandId(string? commandId, string what) => Identifier(commandId, "command id", what);
+    // Throws for a command id outside the identifier rule or with the reserved prefix, naming the id and the rule. A menu
+    // bar's items (standardCommands) may name Runic's standard commands (DesktopMenuItem.OpenDevToolsCommandId).
+    internal static void CommandId(string? commandId, string what, bool standardCommands = false) =>
+        Identifier(commandId, "command id", what, standardCommands);
 
     // The radio group name follows the command id rule.
-    private static void Identifier(string? value, string kind, string what)
+    private static void Identifier(string? value, string kind, string what, bool standardCommands = false)
     {
         if (string.IsNullOrEmpty(value)) throw new ArgumentException($"{what} has no {kind}: {CommandIdRule}");
         if (value.Length > MaximumCommandIdLength || value.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '.' and not '_' and not '-'))
             throw new ArgumentException($"The {kind} '{value}' of {what} is not valid: {CommandIdRule}");
-        if (value.StartsWith(ReservedPrefix, StringComparison.OrdinalIgnoreCase))
+        if (value.StartsWith(ReservedPrefix, StringComparison.OrdinalIgnoreCase) &&
+            !(standardCommands && string.Equals(value, DesktopMenuItem.OpenDevToolsCommandId, StringComparison.Ordinal)))
             throw new ArgumentException($"The {kind} '{value}' of {what} starts with '{ReservedPrefix}', which is reserved for Runic's standard commands.");
     }
 
@@ -41,10 +44,11 @@ internal static class DesktopMenuRules
             throw new ArgumentException($"The access key '{key}' of {what} is not valid: use one letter or digit.");
     }
 
-    // Throws for an item whose command id, parameter, access key or radio group breaks the rules; the title is checked separately.
-    internal static void Item(DesktopMenuItem item, string what)
+    // Throws for an item whose command id, parameter, access key or radio group breaks the rules; the title is checked
+    // separately. A menu bar item (standardCommands) may name Runic's standard commands.
+    internal static void Item(DesktopMenuItem item, string what, bool standardCommands = false)
     {
-        CommandId(item.CommandId, what);
+        CommandId(item.CommandId, what, standardCommands);
         if (item.CommandParameter is { } parameter && (parameter.Length > MaximumCommandParameterLength || parameter.Contains('\0')))
             throw new ArgumentException($"The command parameter of {what} is longer than {MaximumCommandParameterLength} characters or has a NUL character.");
         AccessKey(item.AccessKey, what);

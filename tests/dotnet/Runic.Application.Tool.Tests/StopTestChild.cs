@@ -10,7 +10,8 @@ namespace Runic.Application.Tool.Tests;
 /// <summary>
 /// A child of the test runner that stands in for <c>dotnet watch</c> ("parent", which ignores signals) and the
 /// application under <c>dotnet run</c> ("run"). The "run" role exits with 3 on its first signal unless a "stuck"
-/// file exists in the marker directory; stuck, it writes a "signalled" marker instead.
+/// file exists in the marker directory; stuck, it writes a "signalled" marker instead. "leave" stands in for a package
+/// manager that exits and leaves its Node.js process running (#1163): it starts "run" and exits once that is ready.
 /// </summary>
 internal static partial class StopTestChild
 {
@@ -19,6 +20,9 @@ internal static partial class StopTestChild
 
     /// <summary>Stands in for a dev server that lost its port: prints Vite's message and exits.</summary>
     internal const string PortInUseRole = "port-in-use";
+
+    /// <summary>Starts "run" and exits once it is ready, leaving it without a living parent.</summary>
+    internal const string LeaveRole = "leave";
 
     internal static int Run(string role, string markers)
     {
@@ -47,7 +51,7 @@ internal static partial class StopTestChild
         using var interrupt = PosixSignalRegistration.Create(PosixSignal.SIGINT, Handle);
         using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, Handle);
 
-        if (role == "parent")
+        if (role is "parent" or LeaveRole)
         {
             (string executable, var prefix) = ProcessTreeSignal.SelfCommand();
             var startInfo = new ProcessStartInfo(executable);
@@ -56,6 +60,12 @@ internal static partial class StopTestChild
             startInfo.ArgumentList.Add("run");
             startInfo.ArgumentList.Add(markers);
             using Process child = Process.Start(startInfo)!;
+            if (role == LeaveRole)
+            {
+                string started = Path.Combine(markers, "ready");
+                while (!File.Exists(started) && !child.HasExited) Thread.Sleep(20);
+                return 0;
+            }
             Thread.Sleep(Timeout.Infinite);
         }
 

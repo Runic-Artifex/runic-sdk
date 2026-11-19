@@ -256,12 +256,18 @@ internal sealed class CdpServer : IAsyncDisposable
     private bool SecretMatches(string candidate) =>
         CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(candidate), Encoding.ASCII.GetBytes(_secret));
 
-    private static async Task WriteUpgradeAsync(Stream stream, string key)
+    /// <summary>The <c>Sec-WebSocket-Accept</c> value for a handshake's key (RFC 6455); also BrowserEntry's.</summary>
+    internal static string WebSocketAccept(string key)
     {
         // RFC 6455 defines the handshake with SHA-1; it is not used for security here.
 #pragma warning disable CA5350
-        string accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
+        return Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
 #pragma warning restore CA5350
+    }
+
+    private static async Task WriteUpgradeAsync(Stream stream, string key)
+    {
+        string accept = WebSocketAccept(key);
         byte[] head = Encoding.ASCII.GetBytes(
             "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
             $"Sec-WebSocket-Accept: {accept}\r\n\r\n");
@@ -302,12 +308,16 @@ internal sealed class HttpRequestHead
 {
     private readonly Dictionary<string, string> _headers;
 
-    private HttpRequestHead(string method, string path, Dictionary<string, string> headers)
+    private HttpRequestHead(string method, string path, Dictionary<string, string> headers, IReadOnlyList<KeyValuePair<string, string>> lines)
     {
         Method = method;
         Path = path;
         _headers = headers;
+        Lines = lines;
     }
+
+    /// <summary>The header lines as sent, in order and with repeats, for a proxy that forwards them (BrowserEntry).</summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> Lines { get; }
 
     internal string Method { get; }
 
@@ -347,6 +357,7 @@ internal sealed class HttpRequestHead
         string[] requestLine = lines[0].Split(' ');
         if (requestLine.Length != 3 || !requestLine[2].StartsWith("HTTP/1.", StringComparison.Ordinal) || !requestLine[1].StartsWith('/')) return null;
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<KeyValuePair<string, string>>();
         foreach (string line in lines[1..])
         {
             if (line.Length == 0) continue;
@@ -356,7 +367,8 @@ internal sealed class HttpRequestHead
             // A repeated Host or Origin is ambiguous: refuse the request rather than pick one.
             if (headers.ContainsKey(name) && (name.Equals("Host", StringComparison.OrdinalIgnoreCase) || name.Equals("Origin", StringComparison.OrdinalIgnoreCase))) return null;
             headers[name] = line[(colon + 1)..].Trim();
+            ordered.Add(new(name, line[(colon + 1)..].Trim()));
         }
-        return new HttpRequestHead(requestLine[0], requestLine[1], headers);
+        return new HttpRequestHead(requestLine[0], requestLine[1], headers, ordered);
     }
 }

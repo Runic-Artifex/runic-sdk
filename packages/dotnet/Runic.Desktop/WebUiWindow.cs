@@ -1195,11 +1195,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The window's accessibility API announces the message, except on WebView2 while the keyboard focus is in the page:
     // the focus is then in WebView2's browser process, and NVDA speaks a UI Automation notification only from the
     // focused object's process (I-184). The page's Bridge then announces it in a live region, which NVDA speaks from the
-    // page's process. Without a connected Bridge the window announces it.
+    // page's process. The same holds while the focus is on the window itself, which WebView2 leaves it on after it
+    // activates the window for a UI Automation action while NVDA stays on the page's control (sdk#1181). Without a
+    // connected Bridge the window announces it.
     internal async Task AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
     {
         var host = GetEmbeddedHost();
-        if (host is WindowsWebView2Host { IsWebContentFocused: true }
+        if (host is WindowsWebView2Host { IsFocusOnPageOrWindow: true }
             && await AnnounceInPageAsync(message, priority, cancellationToken).ConfigureAwait(false))
         {
             return;
@@ -1742,7 +1744,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private void AttachMenuCommands(IWebUiEmbeddedHost host)
     {
         var menuHost = MenuHost;
-        var commands = new MenuCommandChain(() => menuHost?.MenuCommands, Logger) { ShortcutsSuspended = _menuShortcutsSuspended };
+        var commands = new MenuCommandChain(() => menuHost?.MenuCommands, Logger) { ShortcutsSuspended = _menuShortcutsSuspended, DevTools = host };
         Volatile.Write(ref _menuChain, new EmbeddedMenuChain(host, commands));
         host.MenuCommands = commands;
         if (menuHost is not null && Interlocked.Exchange(ref _menuBarSubscribed, 1) == 0) menuHost.MenuBarChanged += OnMenuBarChanged;
@@ -1850,12 +1852,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsNativeDispatch: true } host && !host.CheckNativeAccess())
         {
             var ran = false;
-            await host.InvokeNativeAsync(() => ran = MenuCommandChain.TryExecute(item, window, application, Logger), cancellationToken)
+            await host.InvokeNativeAsync(() => ran = MenuCommandChain.TryExecute(item, window, application, Logger, host), cancellationToken)
                 .ConfigureAwait(false);
             return ran;
         }
         cancellationToken.ThrowIfCancellationRequested();
-        return MenuCommandChain.TryExecute(item, window, application, Logger);
+        return MenuCommandChain.TryExecute(item, window, application, Logger, Volatile.Read(ref _embeddedHost));
     }
 
     // Whether each item can run now, as the command path asks, and its check mark: on the window's UI thread when it has one.
@@ -1863,11 +1865,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         IDesktopMenuCommandTarget? window, CancellationToken cancellationToken)
     {
         var application = MenuHost?.MenuCommands;
+        var devTools = Volatile.Read(ref _embeddedHost);
         var results = new (bool Enabled, bool? Checked)[items.Count];
         void Ask()
         {
             for (var index = 0; index < items.Count; index++)
-                results[index] = (MenuCommandChain.CanExecute(items[index], window, application, Logger),
+                results[index] = (MenuCommandChain.CanExecute(items[index], window, application, Logger, devTools),
                     MenuCommandChain.IsChecked(items[index], window, application, Logger));
         }
         if (Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsNativeDispatch: true } host && !host.CheckNativeAccess())
@@ -3577,8 +3580,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var embeddedHost = _embeddedHost;
         // A frame's page connects to the listener that serves it.
         var frameListener = _frameBinding.Listener;
+        // A page that a browser's proxy serves (DesktopSurfaceOptions.ServedThrough) connects through it.
         var inputs = new BootstrapInputs(
-            frameListener?.Port ?? Url?.Port ?? 0,
+            frameListener?.Port ?? _runtimeOptions?.ServedThrough?.Port ?? Url?.Port ?? 0,
             _surface?.PathBase ?? string.Empty,
             embeddedHost?.SupportsDocumentStartScript == true,
             embeddedHost is not null && _frameless,

@@ -246,6 +246,46 @@ public sealed class FileDropPairingTests
         Assert.Equal("mine", Assert.Single(delivered).Target);
     }
 
+    // #1189: the side panel's view has a pairing of its own, whose drops are marked, with or without the page's label.
+    [Test]
+    public async Task ASidePanelsPairingMarksItsDrops()
+    {
+        var delivered = new List<DesktopFileDropEventArgs>();
+        var expired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var page = new FileDropPairing(drop => { lock (delivered) delivered.Add(drop); }, TimeSpan.FromSeconds(30));
+        using var panel = new FileDropPairing(drop =>
+        {
+            lock (delivered) delivered.Add(drop);
+            if (drop.Target is null) expired.TrySetResult();
+        }, TimeSpan.FromMilliseconds(50), sidePanel: true);
+        page.NativeDrop([File1]);
+        panel.NativeDrop([File2], [], DesktopDragEffects.Move);
+        // Each view's label joins its own view's drop.
+        panel.PageReport("panel-inbox");
+        page.PageReport("page-folder");
+        lock (delivered)
+        {
+            Assert.Equal(2, delivered.Count);
+            Assert.Equal([File2], delivered[0].Paths);
+            Assert.Equal("panel-inbox", delivered[0].Target);
+            Assert.Equal(DesktopDragEffects.Move, delivered[0].Effect);
+            Assert.True(delivered[0].InSidePanel);
+            Assert.Equal("page-folder", delivered[1].Target);
+            Assert.False(delivered[1].InSidePanel);
+        }
+        // Without the panel page's label, after the wait.
+        panel.NativeDrop([File1]);
+        await expired.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        lock (delivered) Assert.True(delivered[2].InSidePanel);
+    }
+
+    [Test]
+    public void ADropIsThePagesUnlessMarked()
+    {
+        Assert.False(new DesktopFileDropEventArgs([File1]).InSidePanel);
+        Assert.True(new DesktopFileDropEventArgs([File1], "x") { InSidePanel = true }.InSidePanel);
+    }
+
     [Test]
     public async Task DisposalDropsPendingDrops()
     {
@@ -294,6 +334,31 @@ public sealed class WindowFileDropTests
                 seen.Select(static item => item.Target));
             Assert.All(seen, static item => Assert.True(item.Pool));
         }
+    }
+
+    // #1189: a drop onto the side panel reaches the window's one FilesDropped, in order with the page's, still marked.
+    [Test]
+    public async Task SidePanelDropsReachTheWindowsEventMarked()
+    {
+        var factory = new DropFactory();
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+        var seen = new List<(string? Target, bool InSidePanel)>();
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.FilesDropped += (_, drop) =>
+        {
+            lock (seen)
+            {
+                seen.Add((drop.Target, drop.InSidePanel));
+                if (seen.Count == 3) done.TrySetResult();
+            }
+        };
+        factory.Hosts[0].Drop(new([Dropped], "page"));
+        factory.Hosts[0].Drop(new([Dropped], "panel") { InSidePanel = true });
+        factory.Hosts[0].Drop(new([Dropped], "page-again"));
+        await done.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        lock (seen) Assert.Equal(new (string?, bool)[] { ("page", false), ("panel", true), ("page-again", false) }, seen);
     }
 
     [Test]

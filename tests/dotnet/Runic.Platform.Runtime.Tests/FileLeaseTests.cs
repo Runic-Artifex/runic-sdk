@@ -83,7 +83,14 @@ internal sealed class FileLeaseTests
             {
                 // Group write must survive the process umask; set-ID bits are not carried over.
                 var shared = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite;
-                File.SetUnixFileMode(path, shared | UnixFileMode.SetGroup);
+                try { File.SetUnixFileMode(path, shared | UnixFileMode.SetGroup); }
+                catch (UnauthorizedAccessException)
+                {
+                    // EPERM: the Nix build sandbox, systemd's RestrictSUIDSGID=yes and Flatpak refuse set-ID bits.
+                    // The group-write part is still tested; the set-ID part cannot be here.
+                    File.SetUnixFileMode(path, shared);
+                    TestContext.Current?.Output.WriteLine("Not testable here: setting set-GID failed with EPERM, so dropping set-ID bits on replacement is unchecked.");
+                }
                 await Commit(path, "shared");
                 Check(File.GetUnixFileMode(path) == shared && await File.ReadAllTextAsync(path) == "shared", "Replacement changed the target's permissions.");
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);

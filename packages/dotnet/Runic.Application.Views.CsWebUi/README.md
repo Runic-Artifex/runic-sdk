@@ -50,15 +50,9 @@ another host's. `WaitForCloseAsync` completes when WebUI reports that its
 windows have closed: CS-WebUI reports closing for all of its windows at once,
 so with several windows open it waits for all of them.
 
-A browser window closes without asking the application, and WebUI reports the
-close only after it happened, so CS-WebUI cannot keep a window open. A Window
-with `GuardClose` opens unguarded, logs event 1053 `WindowCloseGuardUnavailable`
-once, and its `CanCloseAsync` is not asked when the user closes the browser
-window; the navigation regions' departure guards still run for navigation
-inside the window. `window.RequestCloseAsync()` still asks `CanCloseAsync`
-before it closes the window, because the application is the one closing. Use
-Runic Desktop's embedded window when a user close must be able to keep unsaved
-work open.
+A Window with `GuardClose` keeps a `UseWebView` window on Windows and Linux open
+while `CanCloseAsync` decides the user's close; elsewhere it opens unguarded
+(see [Closing a window](#closing-a-window)).
 
 `ValidateWindow<TWindow>` checks at startup that the generated Bridge for the
 ViewModel is registered and returns a `RunicWindowValidationResult`, the same
@@ -85,7 +79,7 @@ Frames queue in the bridge, which sends a recovery state once the queue is
 full, and the window's other clients wait for the same write. Other CS-WebUI windows are not held back:
 WebUI before nightly `9264f7ae9` (webui-dev/webui#723) wrote every WebSocket
 frame under one process-wide lock, so one stalled client delayed every window in
-the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.9, the lowest
+the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.10, the lowest
 version this package accepts, includes the fix.
 
 ## What a window opens
@@ -205,7 +199,9 @@ to one browser; an upload also needs its connection's token. There is no native 
 
 A ViewModel's `IRunicWindowPresentation` does what WebUI can:
 `PresentAsync` brings the window to the front (`WebUiWindow.Focus`), and
-`MinimizeAsync` minimizes a `UseWebView` window. The rest, hiding, full screen,
+`MinimizeAsync` minimizes a `UseWebView` window. A `UseWebView` window on
+Windows and Linux also reports its placement and maximizes and restores (see
+[Window placement](#window-placement)). The rest, hiding, full screen,
 the edited mark and the color scheme, reports `Unavailable(BackendUnavailable)`.
 A browser window tells WebUI nothing about its focus, so the Window reports no
 activity: `Features` lacks `Activity` and the Window counts as active and
@@ -260,6 +256,138 @@ GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.
 
+Under `dotnet runic dev --browser`, `dev` serves the page at its session address,
+`http://<label>.localhost:9224`, and only pages go through it: the page's WebUI
+connection goes to the Window's own port (#1187). Nothing the host sends over
+that connection moves the tab off the address (#1225):
+
+- The host never sends WebUI a navigation. A serve-only Window only starts its
+  server, so WebUI's navigation command, which `WebUiWindow.Navigate` and a
+  second `Show` of a shown window send, never goes out.
+- The Views client routes in the URL's fragment (`#/…`), so a back or forward
+  navigation and a reload keep the document's own path.
+- `runic-views.js` repeats a navigation that WebUI cancelled only when it stays
+  on the page's own origin, the session address.
+- WebUI's redirect from `/` to the start page is relative, and `dev` moves
+  any redirect to the Window's own address onto the session address.
+- After a restart, reload the tab yourself: the page's WebUI connection ended
+  with the old Window, and the reload stays on the address.
+
+An application's own navigation can leave the address, as with any page served
+through a proxy. `WebUiWindow.Navigate` with an absolute URL of the Window's
+own address does, and so does a second `Show`, which navigates to WebUI's own
+address. Pass `Navigate` a path relative to the page instead, which the
+browser resolves against the session address. With a development server, a
+path that `www/` does not have is redirected to that server
+([#1085](https://github.com/Runic-Artifex/runic-sdk/issues/1085)). Views'
+fragment routing never requests one as a document, but an application router
+that keeps its routes in the URL's path does, on a reload. A published CS-WebUI
+application has no fallback for such a path either.
+
+## Closing a window
+
+Since 0.23 (#1148) a `UseWebView` window asks before it closes on Windows and
+Linux: when the user closes a Window with `GuardClose`, with the close button,
+Alt+F4 or the window manager, the window stays open while `CanCloseAsync`
+decides in a model turn, as on Runic Desktop. When it allows, the host closes
+the window with `WebUiWindow.Close`, which CS-WebUI never sends through the
+close handler again; when it refuses, the window stays as it was. A second
+close while the guard asks is ignored. `window.RequestCloseAsync()` asks the
+same guard and joins a decision the user started, so the two never ask at
+once; an allowed request releases the Window as before. `CloseAsync`,
+disposal and the end of `Run` close without asking and cancel a pending
+decision.
+
+| Window | The user's close of a guarded Window |
+| --- | --- |
+| `UseWebView` on Windows (WebView2) | Guarded (`WM_CLOSE`) |
+| `UseWebView` on Linux (WebKitGTK, X11 and Wayland) | Guarded (GTK `delete-event`) |
+| `UseWebView` on macOS (WKWebView) | Unguarded, event 1053: WebUI learns of the close only afterwards |
+| Browser window (the default presentation) | Unguarded, event 1053: the browser closes its window without asking |
+| `RunicCsWebUiHostOptions.ShowWindow` | Unguarded, event 1053: the host cannot tell how the window is shown |
+| `RUNIC_APPLICATION_SERVE_ONLY=1` | Unguarded, event 1053: there is no window |
+
+Where the user's close cannot be guarded, a Window with `GuardClose` opens
+unguarded, logs event 1053 `WindowCloseGuardUnavailable` once naming the
+reason, and its `CanCloseAsync` is not asked when the user closes the window;
+the navigation regions' departure guards still run for navigation inside the
+window, and `RequestCloseAsync` still asks `CanCloseAsync` before it closes
+the window, because the application is the one closing. The host sets its
+close handler before `ConfigureWindow` runs, so an application that calls
+`WebUiWindow.SetCloseHandler` there replaces the guard for the user's close.
+
+## Window placement
+
+Since 0.23 (#1149) a `UseWebView` window on Windows and Linux reports its
+placement, the restored bounds and whether it is maximized, in
+`IRunicWindowPresentation.Placement`, and takes one with `SetPlacementAsync`,
+`MaximizeAsync` and `RestoreAsync`; `Features` has `Placement` and `Maximize`.
+Save the placement when the Window closes and pass it back with
+`RunicCsWebUiHostOptions.Placement` at the next start, as with Runic Desktop's
+`RunicDesktopHostOptions.Placement`:
+
+```csharp
+return RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions
+{
+    UseWebView = true,
+    Placement = window => window is MainWindow ? settings.MainWindowPlacement : null,
+}, async host =>
+{
+    await using var window = await host.OpenWindowAsync<MainWindow>();
+    await window.WaitForCloseAsync();
+    settings.MainWindowPlacement = window.Presentation.Placement; // also after the user closed it
+    return 0;
+});
+```
+
+The host reads the placement every 500 ms while the window is shown, and once
+more when it closes, also when the user closes it: WebUI raises no event when a
+window moves or resizes. A Win32 subclass could report `WM_WINDOWPOSCHANGED`
+on Windows, but only on the window's own thread, which runs WebUI's message
+loop, and GTK offers no signal to another thread, so both platforms poll; a
+read is a few user32 calls on Windows and one turn of GTK's main loop on
+Linux. `PropertyChanged` reports a change in a model turn, so a drag reaches
+the ViewModel as a few changes, not one per pixel. A placement, the initial one
+included, is kept on a monitor that exists now: bounds off every monitor's
+work area move onto the one they are nearest, and bounds larger than it shrink
+to fit, by Runic Desktop's rule.
+
+| Window | Reported | Taken |
+| --- | --- | --- |
+| `UseWebView` on Windows (WebView2) | Restored bounds (outer frame, screen coordinates), maximized | Bounds, maximized |
+| `UseWebView` on Linux, X11 | Size, frame position, maximized | Size, position, maximized |
+| `UseWebView` on Linux, Wayland | Size and maximized; `X` and `Y` are `null` | Size and maximized; a placement with a position reports `Unavailable(BackendUnavailable)` |
+| `UseWebView` on macOS (WKWebView) | Nothing (`Placement` is `null`) | The initial size and a position WebUI accepts, before the window shows |
+| Browser window, `ShowWindow` | Nothing | The initial size and a position WebUI accepts, before the window shows |
+| `RUNIC_APPLICATION_SERVE_ONLY=1` | Nothing | Nothing: there is no window, and `Placement` is not called |
+
+- The units are CS-WebUI's (`WebUiWindowPlacement`): on Windows the outer
+  window rectangle in screen coordinates, scaled as the process's DPI
+  awareness scales them; on Linux GTK's window size, without the frame, and the
+  frame's position. They are not Runic Desktop's, so save a placement per host.
+- Before a window shows, WebUI takes positions from 0 × 0 to 3000 × 1800 and
+  sizes from 100 to 3840 pixels only; a WebView window takes the whole
+  placement, a negative position included, once it is shown.
+- CS-WebUI has no full screen: a placement with `FullScreen` reports
+  `Unavailable(BackendUnavailable)`. On Linux `RestoreAsync` un-maximizes but
+  does not bring back a minimized window.
+- A Linux window manager decides whether to maximize and where to put a window;
+  without one, as under a bare Xvfb, a window does not maximize.
+
+## The page in a JavaScript debugger
+
+In Development, a browser window's Chrome or Edge opens its DevTools Protocol
+endpoint on 127.0.0.1 when `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for it
+(since 0.23, #1221): `dotnet runic dev --debug-endpoint`, `--no-window` and the
+template's `(CS-WebUI script debugging)` profile set it, and the Window prints
+`RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:<port>/` once
+the endpoint answers, which `dev` turns into its `[dev] Debugging:` line. A
+`UseWebView`, `ShowWindow` or serve-only window opens none, nor does a
+non-Chromium browser or a trimmed or NativeAOT publish. The host passes WebUI's
+Chromium defaults with the port as the window's custom parameters, before
+`ConfigureWindow`. See
+[CS-WebUI pages in a JavaScript debugger](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#cs-webui-pages-in-a-javascript-debugger).
+
 ## Menu bar
 
 A CS-WebUI window has no native menu bar, so the page renders the host's bar
@@ -308,10 +436,10 @@ one connection travel through the connection's mailbox
 
 ## Build output
 
-The package's build targets copy `runic-cswebui.js` into `www/` next to the
-built frontend, also as `runic-views.js`. With
+The package's build targets copy its Views client into `www/` next to the
+built frontend as `runic-views.js`. With
 `RunicApplicationFrontendDelivery=Embedded` (since 0.15) they pack the frontend
-and both scripts into the application assembly instead, and each window serves
+and the client into the application assembly instead, and each window serves
 that archive without extracting it; see
 [Ship the frontend inside the executable](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#ship-the-frontend-inside-the-executable).
 `RunicCsWebUiHostOptions.Assets` serves another `IAssetSource`, such as one
@@ -326,8 +454,9 @@ runs on Runic Desktop, whose package copies its own client as `runic-views.js`.
 A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 `desktop`); see
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
-Pages that load `runic-cswebui.js` keep working in 0.22 but log a console
-warning: that copy is deprecated and removed in 0.23. The script adapts
+Since 0.23 the build no longer copies the client as `runic-cswebui.js`
+(deprecated in 0.22): a page that loads that name gets a 404 and no Bridge, and
+the build reports warning `RUNICBRIDGE019`. The script adapts
 `window.webui` to the generated client's transport contract, `__runicBridge`.
 Load it right after `webui.js`: it then observes WebUI's connection events
 through `webui.setEventCallback` and passes every event on to the callback the
@@ -342,7 +471,7 @@ requests can reach WebUI at once. Runic relies on WebUI's fix for concurrent cal
 two calls that arrive together. One call could then run with the other's
 arguments or receive the other's reply, and one of them could receive no reply
 at all. The fix is in WebUI nightly `efac0e24d` and in every CsWebUi since
-2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.9, the lowest version this package
+2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.10, the lowest version this package
 accepts, bundles WebUI nightly `24c7d196edc63f5b777d465063c3d26731f52dea`,
 which also removes the process-wide send lock (webui-dev/webui#723) and gives
 navigation events their URL argument (webui-dev/webui#724). An application that
@@ -352,7 +481,7 @@ calls, and `2b35db13f` or later for the behaviour this package is tested with.
 WebUI reports no version or commit that Runic could check, so the host logs
 event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before the first
 window opens, when such a library is configured.
-Applications that keep their own copy of `runic-cswebui.js` must update it: the
+Applications that keep their own copy of the client must update it: the
 script and the host speak one Views protocol, 4 in this release. A copy from
 an earlier release speaks Views protocol 3, so its Views do not connect. The build replaces the
 copy in `www/` on every build, so only a copy the application keeps elsewhere,
@@ -392,7 +521,7 @@ connection that just closed, even before WebUI reports that close. Since 0.16:
   closed connection never reaches the connection that reused its slot.
 - With `request-session/1`, which pages and hosts of 0.16 use, every request
   names the random session of its page's `hello`. A request of another page,
-  including the `receive` that `runic-cswebui.js` sends as soon as its socket
+  including the `receive` that `runic-views.js` sends as soon as its socket
   opens, is answered `no-hello` and never touches the old connection or its
   mailbox, and the new page's `hello` closes the old connection at once
   ([request sessions](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#request-sessions)).
@@ -463,17 +592,35 @@ translated text of its own) and the in-page bar's shortcut labels take
 `DesktopPlatformTexts.Current` (the bar shows English Ctrl/Shift/Alt unless the
 application names them).
 [`Runic.Application.Views.Translations`](../Runic.Application.Views.Translations/README.md)
-keeps both in the application's language. A file the frontend does not have is
-answered with an empty `404`, without a page.
+keeps both in the application's language.
 
-Two pages are WebUI's own and stay English: **Access Denied**, which a second
-browser gets when `MultiClient` is off and another one already shows the
-window, and **Resource Not Available**, which WebUI shows for a request it
-cannot serve itself. They are built into the WebUI library that CS-WebUI
-ships, which has no way to replace them, so `DesktopPlatformTexts`'
-`AccessDeniedTitle`, `ContentInUseMessage`, `ResourceUnavailableTitle` and
-`ResourceUnavailableMessage` apply to Runic Desktop's browser windows only.
-Translating them needs a CS-WebUI change.
+The pages and banners CS-WebUI shows itself take `DesktopPlatformTexts.Current`
+too (since 0.23, cs-webui#32), with the window's locale as their language:
+
+| Text | `DesktopPlatformTexts` | Shown |
+| --- | --- | --- |
+| **Resource Not Available** page | `ResourceUnavailableTitle`, `ResourceUnavailableMessage` | A file an embedded frontend (`Assets`, `RunicApplicationFrontendDelivery=Embedded`) does not have |
+| **Internal Server Error** page | `ServerErrorTitle`, `ServerErrorMessage` | The window's file handler fails |
+| Connection banners of WebUI's bridge | `ConnectionErrorLabel`, `ConnectionFailedMessage`, `WebSocketUnsupportedMessage`, `ConnectionLostMessage` | The page cannot connect within five seconds, or the browser has no WebSocket |
+
+The host gives the window CS-WebUI's `WebUiTexts` before each response, and
+`runic-views.js` loads their banner script from the window's
+`/_runic/cswebui/texts.js`. The script recognizes WebUI's banners by their
+element id and English text at the pinned WebUI, so a future WebUI may show
+them in English again. `runic-views.js` handles a lost connection itself, so
+`ConnectionLostMessage` shows only in a page without it. A window served from a
+web root folder gets the same file handler, for the banner script alone, and
+keeps WebUI's authentication cookie on, as an embedded frontend does. A file
+handler that the application installs itself, through `ConfigureWindow` or
+`ShowWindow`, replaces the host's, and the banners stay English.
+
+Two pages are WebUI's own and stay English (D061.8): **Access Denied**, which a
+second browser gets when `MultiClient` is off and another one already shows the
+window, and WebUI's **Resource Not Available** for a file a web root folder
+(`RunicWindowOptions.ContentRoot`, `www/`) does not have. WebUI sends them
+itself, before or without the file handler, and has no way to replace them, so
+`DesktopPlatformTexts`' `AccessDeniedTitle` and `ContentInUseMessage` apply to
+Runic Desktop's browser windows only.
 
 ## Security
 
@@ -502,7 +649,7 @@ decisions:
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
   with an older WebUI, Bridge calls that arrive together can run with each
   other's arguments or receive each other's replies. Runic is tested with
-  `24c7d196e`, which CsWebUi 2.5.0-beta.4.9 bundles (see above). Runic cannot
+  `24c7d196e`, which CsWebUi 2.5.0-beta.4.10 bundles (see above). Runic cannot
   check a custom build, so the host logs event 2101 when one is configured.
 
 - **Embedded frontends and file handlers.** WebUI turns its authentication
@@ -522,7 +669,7 @@ decisions:
   cannot carry `frame-ancestors`, `report-uri` or `sandbox`. The Bridge needs
   `'self'` scripts and connections and no `'unsafe-eval'`, as in
   `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`.
-  The host sends Views state and navigations as data, which `runic-cswebui.js`
+  The host sends Views state and navigations as data, which `runic-views.js`
   parses instead of evaluating. WebUI still evaluates script for
   `WebUiWindow.RunJavaScript`/`ExecuteJavaScript` and
   `WebUiEvent.RunJavaScript`, and for `SetSize` or `SetPosition` while a browser

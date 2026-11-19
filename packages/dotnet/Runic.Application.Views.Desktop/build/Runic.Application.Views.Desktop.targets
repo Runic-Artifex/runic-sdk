@@ -1,9 +1,10 @@
 <Project>
   <!-- Runic Desktop serves a page that loads webui.js and its Views client. The
-       client is copied as runic-desktop-views.js and, when RunicApplicationHost is
-       desktop, as runic-views.js, the host-neutral name a page can load on
-       every host. RunicViewsResolveHost in Runic.Application.Views sets
-       RunicApplicationHost to the only host referenced before the build. -->
+       client is copied as runic-views.js, the host-neutral name a page loads on
+       every host, when RunicApplicationHost is desktop. RunicViewsResolveHost in
+       Runic.Application.Views sets RunicApplicationHost to the only host
+       referenced before the build. The package keeps the source as
+       www/runic-desktop-views.js; 0.23 no longer copies it under that name (D072.11). -->
   <PropertyGroup>
     <_RunicApplicationHostNames>$(_RunicApplicationHostNames);desktop</_RunicApplicationHostNames>
     <!-- The Views www/ mirror runs these first and records runic-views.js, so
@@ -30,7 +31,6 @@
   </Target>
   <Target Name="RunicViewsStageDesktopClient" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ItemGroup>
-      <_RunicViewsEmbeddedHostFile Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../www/runic-desktop-views.js'))" RunicFrontendPath="runic-desktop-views.js" />
       <_RunicViewsEmbeddedHostFile Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../www/runic-desktop-views.js'))" RunicFrontendPath="runic-views.js"
           Condition="'$(RunicApplicationHost)' == 'desktop'" />
     </ItemGroup>
@@ -41,9 +41,6 @@
     <PropertyGroup>
       <_RunicViewsHostWebRoot>$([MSBuild]::ValueOrDefault('$(_RunicApplicationFrontendWebRoot)', 'www'))</_RunicViewsHostWebRoot>
     </PropertyGroup>
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
-          DestinationFiles="$(TargetDir)$(_RunicViewsHostWebRoot)/runic-desktop-views.js"
-          SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
           DestinationFiles="$(TargetDir)$(_RunicViewsHostWebRoot)/runic-views.js"
           SkipUnchangedFiles="true"
@@ -58,9 +55,6 @@
     <PropertyGroup>
       <_RunicViewsHostWebRoot>$([MSBuild]::ValueOrDefault('$(_RunicApplicationFrontendWebRoot)', 'www'))</_RunicViewsHostWebRoot>
     </PropertyGroup>
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
-          DestinationFiles="$(PublishDir)$(_RunicViewsHostWebRoot)/runic-desktop-views.js"
-          SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
           DestinationFiles="$(PublishDir)$(_RunicViewsHostWebRoot)/runic-views.js"
           SkipUnchangedFiles="true"

@@ -5,6 +5,7 @@ import type { Plugin, UserConfig, ViteDevServer } from "vite";
 import { isFileLoadingAllowed } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type { RunicDiagnosticEntry } from "./diagnostics.js";
+import { printDevErrors } from "./dev-errors.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
@@ -337,6 +338,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     async configureServer(viteServer) {
       server = viteServer;
+      // Under dotnet runic dev, a module that does not compile is also an MSBuild-form error line (dev-errors.ts).
+      printDevErrors(viteServer);
       // Absolute file paths as the sources of the modules' maps, which Visual Studio's JavaScript debugger needs: it
       // attaches with no web root (dev-source-paths.ts). Only the development server; a build keeps Vite's maps.
       serveAbsoluteSourceMapSources(viteServer);

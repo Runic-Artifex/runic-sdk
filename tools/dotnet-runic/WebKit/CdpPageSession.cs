@@ -64,8 +64,13 @@ internal sealed partial class CdpPageSession
     // debugger sees carry a prefix ("r1.40"); WebKit gets them back without it.
     private string _scriptPrefix = "";
     private int _restarts;
-    private readonly Channel<(string Method, JsonObject Parameters)> _events =
-        Channel.CreateUnbounded<(string, JsonObject)>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<(string Method, JsonObject Parameters, long Documents)> _events =
+        Channel.CreateUnbounded<(string, JsonObject, long)>(new UnboundedChannelOptions { SingleReader = true });
+    // How many times the page's document was replaced, counted as WebKit's events arrive (Post), before they are
+    // translated: a script parsed before a later replacement belongs to a document that is gone (#1108).
+    private long _postedDocuments;
+    // The scripts of a replaced document that the debugger was not told of, by WebKit ID. On the event loop only.
+    private readonly HashSet<string> _goneScripts = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _scriptUrls = new(StringComparer.Ordinal);
     // The emulated instrumentation pause (InstrumentationPausesAsync): the scripts with a source map that WebKit parsed
     // since its last stop, oldest first; WebKit's ID of the breakpoint that stops each script before it runs; the
@@ -116,17 +121,38 @@ internal sealed partial class CdpPageSession
     };
 
     /// <summary>Takes a WIP event; events are translated one at a time, in WebKit's order, by <see cref="RunAsync"/>.</summary>
-    internal void Post(string method, JsonObject parameters) => _events.Writer.TryWrite((method, parameters));
+    internal void Post(string method, JsonObject parameters)
+    {
+        long documents = ReplacesDocument(method, parameters)
+            ? Interlocked.Increment(ref _postedDocuments)
+            : Interlocked.Read(ref _postedDocuments);
+        _events.Writer.TryWrite((method, parameters, documents));
+    }
+
+    // A navigation of the main frame, or a restarted Window's page: the scripts parsed before it can no longer run.
+    private static bool ReplacesDocument(string method, JsonObject parameters) =>
+        method is Cleared or "Debugger.globalObjectCleared" ||
+        method == "Page.frameNavigated" && parameters["frame"] is JsonObject frame && frame["parentId"] is null;
+
+    /// <summary>
+    /// Whether a script WebKit parsed belongs to a document that a later event, already received, replaced (#1108). The
+    /// adapter translates events after WebKit sent them, so during a reload in quick succession it can still hold the
+    /// old document's scripts when WebKit already navigated. Told of them right before the contexts are cleared,
+    /// js-debug removes such a script while it is still creating the sources of its source map, and the original source
+    /// it then creates stays, bound to the removed script: js-debug binds the next scripts with that source map to it
+    /// and can no longer set breakpoints in that file. The debugger is not told of these scripts: they cannot run.
+    /// </summary>
+    private bool IsOfReplacedDocument(long documents) => documents < Interlocked.Read(ref _postedDocuments);
 
     /// <summary>Translates posted events until the session ends.</summary>
     internal async Task RunAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await foreach ((string method, JsonObject parameters) in _events.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            await foreach ((string method, JsonObject parameters, long documents) in _events.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 await WaitForRepliesAsync(method).ConfigureAwait(false);
-                await TranslateEventAsync(method, parameters).ConfigureAwait(false);
+                await TranslateEventAsync(method, parameters, IsOfReplacedDocument(documents)).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -794,8 +820,9 @@ internal sealed partial class CdpPageSession
     internal const string InstrumentationUrlRegex = "^";
 
     /// <summary>Translates one WIP event into the CDP events js-debug expects.</summary>
-    internal async Task TranslateEventAsync(string method, JsonObject p)
+    internal async Task TranslateEventAsync(string method, JsonObject p, bool ofReplacedDocument = false)
     {
+        if (ReplacesDocument(method, p)) _goneScripts.Clear();
         switch (method)
         {
             case Cleared:
@@ -842,6 +869,7 @@ internal sealed partial class CdpPageSession
                 // breakpoint set while a navigation replaced the script gets its location only this way, and js-debug
                 // shows it unverified until then.
                 JsonObject? forward = null;
+                if (_goneScripts.Contains(p["location"]?["scriptId"]?.GetValue<string>() ?? "")) return;
                 lock (_stateGate)
                 {
                     if (p["breakpointId"]?.GetValue<string>() is not { } resolved || p["location"] is not JsonObject location) return;
@@ -875,6 +903,11 @@ internal sealed partial class CdpPageSession
                 await _emit("Runtime.executionContextsCleared", []).ConfigureAwait(false);
                 return;
             case "Debugger.scriptParsed":
+                if (ofReplacedDocument)
+                {
+                    _goneScripts.Add(p["scriptId"]?.GetValue<string>() ?? "");
+                    return;
+                }
                 await ScriptParsedAsync(p).ConfigureAwait(false);
                 return;
             case "Debugger.paused":
@@ -1023,7 +1056,10 @@ internal sealed partial class CdpPageSession
         return current;
     }
 
-    // The sources an inline (base64 data: URL) source map lists, as one key; null for other scripts.
+    // The sources an inline (base64 data: URL) source map lists, as one key; null for other scripts. Each source is
+    // resolved as js-debug resolves it, against the map's sourceRoot and the script's URL without its query: an HMR
+    // version (src/App.tsx?t=…) has the sources of the module it replaced, while different modules can list the same
+    // name ("client" for both @vite/client and virtual:runic/client) and must both be kept (#1108).
     private static string? InlineSourcesKey(JsonObject script)
     {
         if (script["sourceMapURL"]?.GetValue<string>() is not { } map || !map.StartsWith("data:", StringComparison.Ordinal)) return null;
@@ -1032,12 +1068,24 @@ internal sealed partial class CdpPageSession
         try
         {
             JsonNode? json = JsonNode.Parse(Convert.FromBase64String(map[(comma + 1)..]));
-            return json?["sources"] is JsonArray sources ? string.Join('\n', sources.Select(static source => source?.GetValue<string>())) : null;
+            if (json?["sources"] is not JsonArray sources) return null;
+            string root = json["sourceRoot"]?.GetValue<string>() ?? "";
+            string url = script["url"]?.GetValue<string>() ?? "";
+            int end = url.IndexOfAny(['?', '#']);
+            Uri? scriptUri = Uri.TryCreate(end < 0 ? url : url[..end], UriKind.Absolute, out Uri? parsed) ? parsed : null;
+            return string.Join('\n', sources.Select(source => ResolveSource(scriptUri, root, source?.GetValue<string>() ?? "")));
         }
         catch (Exception error) when (error is FormatException or System.Text.Json.JsonException or InvalidOperationException)
         {
             return null;
         }
+    }
+
+    private static string ResolveSource(Uri? script, string root, string source)
+    {
+        string path = root.Length == 0 || Uri.IsWellFormedUriString(source, UriKind.Absolute) ? source : root.TrimEnd('/') + "/" + source;
+        if (Uri.TryCreate(path, UriKind.Absolute, out Uri? absolute)) return absolute.AbsoluteUri;
+        return script is not null && Uri.TryCreate(script, path, out Uri? relative) ? relative.AbsoluteUri : path;
     }
 
     private async Task PausedAsync(JsonObject p)
@@ -1365,16 +1413,19 @@ internal sealed partial class CdpPageSession
         }
     }
 
-    // WIP's console and async stack frames are 1-based; CDP's are 0-based.
+    // WIP's console and async stack frames are 1-based; CDP's are 0-based. A frame in a script that the debugger was not
+    // told of, since its document was already replaced, keeps its URL and position only: js-debug would wait for such
+    // a script, and holds the removal of the cleared contexts' scripts until its console output is out (#1108).
     private JsonArray ConsoleFrames(JsonArray wip)
     {
         var frames = new JsonArray();
         foreach (JsonNode? frame in wip)
         {
+            string scriptId = frame!["scriptId"]?.GetValue<string>() ?? "";
             frames.Add((JsonNode)new JsonObject
             {
-                ["functionName"] = frame!["functionName"]?.DeepClone() ?? "",
-                ["scriptId"] = ToCdpScriptId(frame["scriptId"]?.GetValue<string>() ?? ""),
+                ["functionName"] = frame["functionName"]?.DeepClone() ?? "",
+                ["scriptId"] = _goneScripts.Contains(scriptId) ? "" : ToCdpScriptId(scriptId),
                 ["url"] = frame["url"]?.GetValue<string>() is { } url && url != "undefined" ? url : "",
                 ["lineNumber"] = ZeroBased(frame["lineNumber"]),
                 ["columnNumber"] = ZeroBased(frame["columnNumber"]),

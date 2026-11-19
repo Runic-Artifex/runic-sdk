@@ -38,6 +38,9 @@ internal sealed partial class WindowsWebView2Host
         }
     }
 
+    // Window thread: the menu item of DesktopMenuItem.OpenDevToolsCommandId (MenuCommandChain).
+    public bool CanOpenDevTools => _devToolsEnabled && _controller is not null;
+
     // Window thread.
     private bool OpenDevTools()
     {

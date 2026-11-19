@@ -377,7 +377,8 @@ const pushRules = {
   failure: m => isRoute(m.route) && isSafe(m.revision) && isObject(m.error) && typeof m.error.kind === "string" && typeof m.error.message === "string",
   operation: m => identity(m) && validStatus(m.status),
   interaction: m => isRoute(m.route) && isIdentifier(m.presentation) && isIdentifier(m.requestId) && isSafe(m.ownerEpoch)
-    && isMember(m.name) && typeof m.contract === "string" && isOffsetDateTime(m.expiresAt) && "input" in m,
+    // open-ended-interactions/1: a request without a deadline has no expiresAt.
+    && isMember(m.name) && typeof m.contract === "string" && (m.expiresAt === undefined || isOffsetDateTime(m.expiresAt)) && "input" in m,
   "interaction-cancelled": m => isRoute(m.route) && isIdentifier(m.presentation) && isIdentifier(m.requestId) && isSafe(m.ownerEpoch) && typeof m.message === "string",
   // presented/1. closing is the first push without a route.
   present: m => isRoute(m.route) && isSafe(m.revision),

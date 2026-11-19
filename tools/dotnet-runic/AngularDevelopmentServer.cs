@@ -70,7 +70,8 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             configuration.WorkspaceRoot,
             CreateArguments(configuration, port),
             CreateEnvironment(configuration, session),
-            observeLine: conflict.Observe);
+            observeLine: conflict.Observe,
+            endTreeAtStop: true);
         var server = new AngularDevelopmentServer(process, origin);
         try
         {

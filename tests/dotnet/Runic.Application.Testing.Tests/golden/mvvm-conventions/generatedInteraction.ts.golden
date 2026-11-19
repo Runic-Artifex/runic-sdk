@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineInteractions, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { GeneratedInteractionState, GeneratedInteractionInteractionContext, GeneratedInteractionInteractions, GeneratedInteractionClient, GeneratedInteractionPageReference } from "./generatedInteraction.contract.js";
-export type { GeneratedInteractionState, GeneratedInteractionInteractionContext, GeneratedInteractionInteractions, GeneratedInteractionAskOperation, GeneratedInteractionClient, GeneratedInteractionPageReference } from "./generatedInteraction.contract.js";
+export type { GeneratedInteractionState, GeneratedInteractionInteractionContext, GeneratedInteractionInteractions, GeneratedInteractionAskOperation, GeneratedInteractionAskWithoutDeadlineOperation, GeneratedInteractionAskSlowlyOperation, GeneratedInteractionClient, GeneratedInteractionPageReference } from "./generatedInteraction.contract.js";
 import type { GeneratedInteractionRequest } from "./types.js";
 export type { GeneratedInteractionRequest } from "./types.js";
 
@@ -15,12 +15,20 @@ const members: BridgeMemberDecoders<GeneratedInteractionState> = {
   acceptedCount: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647),
   canAsk: (wire: unknown) => bridgeWire.boolean(wire),
   isAskExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  canAskWithoutDeadline: (wire: unknown) => bridgeWire.boolean(wire),
+  isAskWithoutDeadlineExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  canAskSlowly: (wire: unknown) => bridgeWire.boolean(wire),
+  isAskSlowlyExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
 const bridgeContract = "Runic.Application.Testing.Tests.GeneratedInteractionViewModel:<fingerprint>";
 const interactionDefinitions = defineInteractions({
   confirm: { contract: "<fingerprint>:interaction:Confirm", decodeInput: (value: unknown) => bridgeWire.object<GeneratedInteractionRequest>(value, value => ({ title: bridgeWire.string(value["title"]), attempt: bridgeWire.integer(value["attempt"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmWithoutDeadline: { contract: "<fingerprint>:interaction:ConfirmWithoutDeadline", decodeInput: (value: unknown) => bridgeWire.object<GeneratedInteractionRequest>(value, value => ({ title: bridgeWire.string(value["title"]), attempt: bridgeWire.integer(value["attempt"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmSlowly: { contract: "<fingerprint>:interaction:ConfirmSlowly", decodeInput: (value: unknown) => bridgeWire.object<GeneratedInteractionRequest>(value, value => ({ title: bridgeWire.string(value["title"]), attempt: bridgeWire.integer(value["attempt"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const askOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const askWithoutDeadlineOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const askSlowlyOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /** Options of `connectGeneratedInteraction`. */
 export interface GeneratedInteractionConnectOptions extends BridgeConnectOptions {
@@ -30,6 +38,8 @@ export interface GeneratedInteractionConnectOptions extends BridgeConnectOptions
    */
   readonly handlers?: {
     readonly confirm?: (input: GeneratedInteractionRequest, context: GeneratedInteractionInteractionContext) => boolean | Promise<boolean>;
+    readonly confirmWithoutDeadline?: (input: GeneratedInteractionRequest, context: GeneratedInteractionInteractionContext) => boolean | Promise<boolean>;
+    readonly confirmSlowly?: (input: GeneratedInteractionRequest, context: GeneratedInteractionInteractionContext) => boolean | Promise<boolean>;
   };
 }
 /**
@@ -47,7 +57,13 @@ async function connectGeneratedInteractionAt(route: string, options?: GeneratedI
     dispose: view.dispose,
     interactions: view.interactions as unknown as GeneratedInteractionInteractions,
     async ask() { return view.command("ask"); },
+    async askWithoutDeadline() { return view.command("askWithoutDeadline"); },
+    async askSlowly() { return view.command("askSlowly"); },
     startAsk(options?: BridgeOperationStartOptions) { return view.start("ask", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, askOperation); },
     recoverAsk(requestId: string) { return view.recover("ask", requestId, askOperation); },
+    startAskWithoutDeadline(options?: BridgeOperationStartOptions) { return view.start("askWithoutDeadline", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, askWithoutDeadlineOperation); },
+    recoverAskWithoutDeadline(requestId: string) { return view.recover("askWithoutDeadline", requestId, askWithoutDeadlineOperation); },
+    startAskSlowly(options?: BridgeOperationStartOptions) { return view.start("askSlowly", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, askSlowlyOperation); },
+    recoverAskSlowly(requestId: string) { return view.recover("askSlowly", requestId, askSlowlyOperation); },
   });
 }

@@ -286,7 +286,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
-| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), [components](#components-experimental), and until 0.23 a deprecated `onBridgeDraining` (import it from the root entry) |
+| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), [components](#components-experimental). `onBridgeDraining` is a root export; 0.23 removed its deprecated re-export here |
 
 Every entry has `types`, `development`, `import` and `default` conditions (see
 [Development build](#development-build)); the package is ESM only. Application code imports the root entry and `/mock`. The `/experimental`
@@ -1373,8 +1373,11 @@ The returned mock has `state`, `update(changes)` (pushes a full state like a
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
 and `move` (each pushes a frame; `batch(edit)` combines edits into one),
-`interactions.<name>.request(input)`, which resolves with the answer of the
-open presentation's handler, or `unhandled` when none is registered, and
+`interactions.<name>.request(input, { signal, timeout })`, which resolves with the answer of the
+open presentation's handler, or `unhandled` when none is registered (`timeout`
+is the .NET lifetime in milliseconds that the request's `expiresAt` names, by
+default two minutes; `Infinity` sends none, as `[RunicInteractionTimeout(Timeout.Infinite)]`
+does), and
 `requests.<name>.raise(input)`, which raises a [view request](#view-requests)
 as the ViewModel's `Raise(input)` does and returns how many of the View's open
 presentations it reached (0 when none handles it; it is not kept), with

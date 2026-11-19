@@ -123,10 +123,12 @@ the release notes, which give the full detail and the pull requests:
    From 0.22, also remove every `RUNICDESK104` (side panel) and `RUNICDESK105`
    (close drain) suppression, and import `onBridgeDraining` from
    `@runic-artifex/views` instead of `@runic-artifex/views/experimental`, where
-   it is deprecated in 0.22 and removed in 0.23. From 0.22, also load
+   it is deprecated in 0.22 and removed in 0.23 ([From 0.22 to 0.23](#from-022-to-023)). From 0.22, also load
    `runic-views.js` in pages that load `runic-desktop-views.js` or
-   `runic-cswebui.js`: that copy logs a console warning in 0.22, and 0.23 removes
-   it; a project that references more than one host sets `RunicApplicationHost`.
+   `runic-cswebui.js`: that copy logs a console warning in 0.22, and from 0.23
+   the build no longer copies it, so such a page gets no Bridge (warning
+   `RUNICBRIDGE019`); a project that references more than one host sets
+   `RunicApplicationHost`.
    What is experimental now, hosted applications (`RUNICDESK103`), from 0.18
    the npm packages' new `./experimental` entries for hosted regions,
    from 0.20 `runicComponentMount` in `@runic-artifex/angular/experimental`, and
@@ -193,10 +195,11 @@ XAML that names `assembly=Runic.Application.Wpf` names
 `Runic.Application.Views.Wpf`, or uses the `rv` namespace
 `https://runic-artifex.eu/xaml/views` (0.7.0-preview.8).
 
-Since 0.14, the removed types that the table marks 0.9.0 and that
+From 0.14 to 0.22, the removed types that the table marks 0.9.0 and that
 [Removed types](#removed-types) lists, such as `RunicReactiveSchedulerProvider`,
-`INativePickerOwner` and `RunicBridgeJsonIgnore`, fail with `CS0619` naming
-their replacement instead of `CS0246`, for one release.
+`INativePickerOwner` and `RunicBridgeJsonIgnore`, failed with `CS0619` naming
+their replacement instead of `CS0246`. 0.23 removed those error tombstones, so
+the code fails with `CS0246` again; the tables give the replacement.
 
 | 0.7/0.8 | 1.0 | Release |
 | --- | --- | --- |
@@ -934,8 +937,10 @@ Details: 0.14.0 [Text splices and requests with `hello`](../eng/release/notes/0.
 
 ### Removed types
 
-Since 0.14, a type removed in 0.9 or 0.13 that the code still names fails with
-`CS0619` and its replacement instead of `CS0246`, for one release:
+From 0.14 to 0.22, a type removed in 0.9 or 0.13 that the code still named failed
+with `CS0619` and its replacement instead of `CS0246`. 0.23 removed these error
+tombstones ([From 0.22 to 0.23](#from-022-to-023)): such code now fails with
+`CS0246` (type not found). The replacements:
 
 | Removed | Use |
 | --- | --- |
@@ -1660,3 +1665,18 @@ template:
 | Angular CLI build: `@angular/build` and `@angular/cli` 22.2.4 with a `vite` override (and for pnpm a `pnpm-workspace.yaml`) | 22.2.7 without the override: `@angular/build` now depends on Vite 8.3.5. After moving to `@angular/build` 22.2.5 or later, remove the `vite` override from `package.json`, and for pnpm from `pnpm-workspace.yaml`. `--angular-build vite` projects are unchanged |
 
 Details: 0.22.0 [Upgrading from 0.21](../eng/release/notes/0.22.0.md#upgrading-from-021).
+
+## From 0.22 to 0.23
+
+Update every Runic NuGet and npm package to 0.23.0 together and rebuild, so that the generated clients and Bridges are
+regenerated. 0.23.0 removes what 0.22.0 deprecated.
+
+### Removed in 0.23
+
+| 0.22 | 0.23 |
+| --- | --- |
+| A page loads `runic-desktop-views.js` (Runic Desktop) or `runic-cswebui.js` (CS-WebUI), which logged a deprecation warning | Load `runic-views.js` (`<script src="runic-views.js"></script>` after `webui.js`). The build no longer copies the host-named copy, so such a page gets no Bridge, and the build reports warning `RUNICBRIDGE019` naming the page |
+| `import { onBridgeDraining } from "@runic-artifex/views/experimental"`, deprecated | `import { onBridgeDraining } from "@runic-artifex/views"`, the same function. `./experimental` no longer exports it, so the old import fails to compile (TypeScript) or to bundle |
+| Code that names a type removed in 0.9 or 0.13 failed with `CS0619`, whose message named the replacement: `RunicBridgeJsonIgnoreAttribute`, `IAsyncBridgeTransport`, `IBridgeUtf8Transport`, `IBridgeArguments` (`Runic.Application.Views`), `RunicReactiveSchedulerProvider`, `IRunicReactiveSchedulerProvider` (`Runic.Application.Views.ReactiveUI` and `.Reactive`), `BridgeTestArguments` (`Runic.Application.Testing`), `INativePickerOwner` (`Runic.Platform.Runtime`) | These error tombstones are gone, so such code fails with `CS0246`. The replacements are in [Removed types](#removed-types) |
+
+Details: the 0.23.0 release notes, "Upgrading".

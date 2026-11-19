@@ -347,6 +347,14 @@ public sealed record DesktopHostOptions
 /// <summary>Configures one isolated presentation surface.</summary>
 public sealed record DesktopSurfaceOptions
 {
+    /// <summary>
+    /// The loopback <c>http</c> origin that serves this surface's pages to a browser for it, such as
+    /// <c>dotnet runic dev --browser</c>'s address (#1187, D077.14): the surface admits it as one of its origins, and the
+    /// page's Bridge connects to its port, so the proxy carries the Bridge's WebSocket too. Null, the default, for none.
+    /// Runic.Application.Views.Desktop sets it for a serve-only Window from <c>RUNIC_APPLICATION_SERVE_ORIGIN</c>.
+    /// </summary>
+    internal Uri? ServedThrough { get; init; }
+
     /// <summary>Gets the optional single-segment listener path; an opaque path is generated when omitted.</summary>
     public string? Path { get; init; }
 

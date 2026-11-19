@@ -22,6 +22,7 @@
     <Compile Include="../Runic.Desktop.WebViewSmoke/InspectorEnvironmentSmoke.cs" Link="InspectorEnvironmentSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.cs" Link="SidePanelSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.MacOS.cs" Link="SidePanelSmoke.MacOS.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelDropSmoke.cs" Link="SidePanelDropSmoke.cs" />
     <!-- The clipboard format checks encode and decode small PNG files with the platform tests' helper. -->
     <Compile Include="../../dotnet/Runic.Platform.Windows.Tests/ThumbnailImages.cs" Link="ThumbnailImages.cs" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />

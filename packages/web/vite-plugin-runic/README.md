@@ -39,6 +39,12 @@ and the Runic dock appears when `DevTools()` is registered. `true` also requires
 `DevTools()`: serving without it fails with
 [`RUNICP007`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicp007).
 `false` turns off both the dock and the development client.
+
+Under `dotnet runic dev`, a module that does not compile is also printed as an
+MSBuild-form error line, `<file>(<line>,<column>): error RUNICP008: <message>`,
+which IDE error lists read, and `[runic] Frontend errors cleared` once the
+modules compile again
+([`RUNICP008`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicp008)).
 `maxTimelineEntries` sets how many timeline entries the dock keeps: 200 by
 default, rounded down and limited to 1 to 500.
 
@@ -826,9 +832,11 @@ the session, was removed in 0.15: SvelteKit uses `runic({ html: false })`
 
 The `runic-app` template's SvelteKit and Angular frontends are set up this way.
 
-The native host serves `webui.js` and its client script (`runic-desktop.js`,
-`runic-views.js`, `runic-cswebui.js` or `runic-desktop-views.js`) from the root
-of the web content, outside the Vite build. The plugin leaves those classic script tags
+The native host serves `webui.js` and its client script (`runic-desktop.js` or
+`runic-views.js`) from the root of the web content, outside the Vite build. The
+plugin also recognizes `runic-cswebui.js` and `runic-desktop-views.js`, the
+host-named copies that Runic 0.23 no longer copies to the web root; a page that
+still loads one of them gets no Bridge, so load `runic-views.js`. The plugin leaves those classic script tags
 unbundled, so `vite build` prints no "can't be bundled without
 type="module"" warning, and points them at the web root from every page: a
 nested page such as `pages/settings.html` loads `../webui.js` in the build and

@@ -253,8 +253,9 @@ needs it:
   evaluate script and need `'unsafe-eval'`. CS-WebUI serves `SetRootFolder`
   files without headers of its own, so give such a page a
   `<meta http-equiv="Content-Security-Policy">` policy; a `<meta>` policy cannot
-  carry `frame-ancestors`. Keep `runic-cswebui.js` copies current: a copy from
-  before 0.11.0 receives no state under any policy.
+  carry `frame-ancestors`. Keep any copy of the CS-WebUI client (`runic-views.js`)
+  that the application keeps itself current: a copy from before 0.11.0 receives
+  no state under any policy.
 
 `'self'` matches the same-origin `ws:` connection of the Bridge in current
 WebView2, WKWebView, WebKitGTK, Chromium and Firefox. An older WebKitGTK that
@@ -303,14 +304,16 @@ diagnostics that report grants a presentation cannot apply.
   changed. See
   [the browser's developer tools per engine](debugging.md#the-browsers-developer-tools-per-engine).
 - **CS-WebUI's DevTools Protocol port** is Runic's own switch, not the
-  engine's: Runic.Desktop adds `--remote-debugging-port` to an installed
-  Chromium browser's command line only in Development, when
-  `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for it (since 0.22). Outside
-  Development the variable is ignored, so a build started with it opens
-  nothing unless it also runs in Development: the gate is the environment, not
-  the build configuration. A `--remote-debugging-port`, or
-  `--remote-allow-origins`, in the application's own `BrowserArguments` applies
-  in every environment; do not ship either.
+  engine's: Runic.Desktop (since 0.22) and the CS-WebUI host (since 0.23,
+  #1221) add `--remote-debugging-port` to an installed Chromium browser's
+  command line only in Development, when `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`
+  asks for it, and only in an untrimmed build. Outside Development the
+  variable is ignored, so a build started with it opens nothing unless it also
+  runs in Development: the gate is the environment, not the build
+  configuration. A `--remote-debugging-port`, or `--remote-allow-origins`, in
+  the application's own `BrowserArguments` or CS-WebUI custom parameters
+  (`WebUiWindow.SetCustomParameters`) applies in every environment; do not
+  ship either.
 - **Failure detail** (exception type, message and stack) reaches the page only in
   Development, or when a window sets `IncludeFailureDetail`. Detail can contain
   paths and application data; do not enable it for a distributed build
@@ -332,6 +335,15 @@ not checked: `dev` then relies on the server exiting when its port is taken.
 Add the plugin as the
 [`dotnet runic dev` documentation](../tools/dotnet-runic/README.md) describes
 for your frontend.
+
+The development pages that `dev` writes into the output's `www/` load their
+script from that loopback port. Once `dev` has stopped, another local process
+could bind the port and serve the application script to a Window started from
+that output without a build. Since 0.23, `dev` replaces those pages when it
+stops with a page whose content security policy refuses every script and
+request; the next build copies the frontend's pages back. A `dev` killed by
+force, which cannot run its stop, leaves its pages until the next build:
+build before you run the output after such an end.
 
 The development server is not a boundary against other users of the same
 machine. Loopback admits every local account, and Vite serves the frontend
@@ -396,7 +408,7 @@ it could read from the server directly, as described above.
 
 On Linux, `dev` also opens two debugging endpoints for the Window's WebKitGTK
 pages, as the
-[`dotnet runic dev` documentation](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview)
+[`dotnet runic dev` documentation](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux)
 describes. Both listen on loopback only, and both can script the Window's page
 and its Bridge:
 
@@ -452,6 +464,70 @@ terminal `dotnet runic dev` opens none. It is the browser's endpoint, so:
 On a machine that you share with other users, run `dev` with
 `--no-debug-endpoint`, which opens none of these, and do not use the script
 debugging profiles there. `--no-debug-endpoint` wins over `--debug-endpoint`.
+
+`dotnet runic dev --browser` serves the Window's pages to a browser through a
+proxy on port 9224
+([the page in Chrome](debugging.md#the-page-in-chrome-dotnet-runic-dev---browser)).
+Whoever it admits uses the Window as you do, Bridge included. Since 0.23
+(#1187):
+
+- **An origin for each session** (D077.15). The address is
+  `http://<label>.localhost:9224/`, with 26 random lowercase letters and digits
+  (130 bits) as the label, new for each `dev` run and the same across its
+  Window restarts. So the pages, service workers, storage and cookie of an
+  earlier session or another project, a script that a compromised npm
+  dependency left behind for example, are another origin's and do not reach a
+  later session's code, bootstrap or Bridge. Chromium browsers and Firefox
+  resolve names under `.localhost` to the loopback interface themselves.
+
+- **One browser, by a one-time code.** A request with the current code admits
+  its browser, also from another site: the code page that `dev` writes is a
+  `file:` document. The code is compared in constant time. The admitted browser
+  gets a new cookie of `dev`'s (host-only, with no `Domain`; `HttpOnly`,
+  `SameSite=Strict`, random per admission), and the code is replaced. The cookie takes over when that
+  browser's next navigation, which the admission's page makes, presents it:
+  then the previous browser's cookie ends and the proxy closes its open
+  WebSocket connections. A request that only carries the code (a `file:` page
+  that frames or opens the code page, for example) ends no admission.
+- **Where the code and the label are.** In `dev`'s `[dev] Browser:` output, and
+  in `obj/runic/dev-browser.html`, readable only by you: mode 0600 on Linux and
+  macOS, an access list of your account alone with no inherited entries on
+  Windows. `dev` writes it atomically, rewrites it after each admission and
+  deletes it when it stops. The session file names that page, and lists the
+  address with `*` for the label, because other users may be able to read it.
+  The label is in no process argument and no other `dev` line; the Window gets
+  it in its environment, which other users cannot read.
+- **Every other request** needs the session's own `Host`,
+  `<label>.localhost:<port>` (which also keeps out DNS rebinding), the admitted
+  browser's cookie, no `Origin` other than the address's own, and a
+  `Sec-Fetch-Site` of `none` or `same-origin` when it has one. A request to
+  `127.0.0.1:9224`, `localhost:9224` or another label gets 403, which names no
+  label. So a web page in a browser cannot reach the Window through it, and a
+  local process without the label and the code or the cookie gets 403. On Linux
+  the address also refuses connections of other users (`/proc/net/tcp`).
+- **The label, the code and the cookie are bearer secrets.** Browsers do not
+  scope cookies by port: the admitted browser sends `dev`'s cookie with every
+  request to `<label>.localhost` on any port, and `SameSite=Strict` does not hold
+  it back there (it is the same site). Someone who knew the label could get your
+  browser to load `<label>.localhost` on a port of theirs, collect the cookie and
+  replay it to 9224 from outside a browser, where requests carry no `Origin` or
+  `Sec-Fetch-Site`. That is why the label is kept like the code. On Linux the
+  peer check also refuses another user's replay; macOS and Windows cannot tell a
+  loopback connection's user, so there the secrets alone keep other local users
+  out.
+- **What the Window admits.** `dev` tells the serve-only Window the address's
+  origin (`RUNIC_APPLICATION_SERVE_ORIGIN`). Runic Desktop admits that origin
+  for its surfaces and connects their Bridge through the proxy; Runic's
+  CS-WebUI host admits it at its upload endpoint. Each host takes the variable
+  only in serve-only mode, not in a guest, and only as an `http` origin on
+  `localhost` or one label under `.localhost`, with a port and nothing after it.
+  The proxy passes `Origin` on unchanged, gives the Window its own `Host`, and
+  keeps its own cookie out of what it forwards. On a Runic Desktop page's Bridge
+  socket it offers the Window no compression and replaces the Window's close
+  command with the Bridge's token refusal, and it answers a Bridge socket of a
+  Window that has gone with that refusal itself: the page reloads, and the new
+  Window admits it as any page, with its own credential. A CS-WebUI page's WebUI
+  connection goes to the Window's port directly, as before.
 
 ## Hosted application windows
 

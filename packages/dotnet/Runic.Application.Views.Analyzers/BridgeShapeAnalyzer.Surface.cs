@@ -42,17 +42,27 @@ public sealed partial class BridgeShapeAnalyzer
             if (candidates.FirstOrDefault(candidate => BridgeSymbols.MetadataName(candidate) == ReactiveCommand) is { } reactive)
             {
                 var input = reactive.TypeArguments[0];
-                var hasInput = BridgeSymbols.MetadataName(input) is not ("ReactiveUI.Primitives.RxVoid" or "System.Reactive.Unit");
+                var hasInput = BridgeSymbols.MetadataName(input) is not ("ReactiveUI.Primitives.RxVoid" or "System.Reactive.Unit")
+                    && !IsProgress(input);
                 return new CommandShape(true, hasInput, hasInput ? input : null, true);
             }
             if (candidates.FirstOrDefault(candidate => BridgeSymbols.MetadataName(candidate) == ToolkitAsyncInputCommand) is { } asyncInput)
-                return new CommandShape(true, true, asyncInput.TypeArguments[0], true);
+                return IsProgress(asyncInput.TypeArguments[0])
+                    ? new CommandShape(true, false, null, true)
+                    : new CommandShape(true, true, asyncInput.TypeArguments[0], true);
             if (BridgeSymbols.IsAsyncCommand(type)) return new CommandShape(true, false, null, true);
             if (candidates.FirstOrDefault(candidate => BridgeSymbols.MetadataName(candidate) == ToolkitInputCommand) is { } syncInput)
                 return new CommandShape(true, true, syncInput.TypeArguments[0], false);
             if (BridgeSymbols.IsToolkitCommand(type)) return new CommandShape(true, false, null, false);
             return new CommandShape(false, false, null, false);
         }
+
+        // An async command's IProgress<double> parameter, which the Bridge binds to the running operation
+        // (RunicOperationProgress.Current, #1180): it is no page input (ToolkitCommandContract.TakesProgress).
+        private static bool IsProgress(ITypeSymbol type) =>
+            type is INamedTypeSymbol { IsGenericType: true } named && named.TypeArguments.Length == 1
+            && named.TypeArguments[0].SpecialType == SpecialType.System_Double
+            && BridgeSymbols.MetadataName(named.OriginalDefinition) == "System.IProgress`1";
 
         // GeneratedCommandPlan.HasArgument: a library input, a RunicCommandInput or a RunicCommandKey key.
         private static bool HasArgument(IPropertySymbol command, IMethodSymbol? source, CommandShape shape) =>

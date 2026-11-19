@@ -74,30 +74,6 @@ for (const script of scripts) {
     expect(warnings[0]).toContain("__runicBridge.request(message)");
   });
 
-  // D072.11: the host-named copy is deprecated in 0.22 and removed in 0.23; a page that loads it by that name is told
-  // once, and runic-views.js, the same bytes, says nothing.
-  test(`${script} warns that its host-named copy is deprecated only when loaded by that name`, () => {
-    const name = script.split("/").pop();
-    const warningsFor = src => {
-      const warnings = [];
-      load(script, {
-        console: { ...console, warn: (...args) => warnings.push(args.join(" ")) },
-        document: { currentScript: src === undefined ? null : { src } },
-      });
-      return warnings;
-    };
-    for (const src of [`https://app.local/${name}`, `https://app.local/pages/${name}?v=2#x`]) {
-      const warnings = warningsFor(src);
-      expect(warnings.length, src).toBe(1);
-      expect(warnings[0]).toContain(`${name} is deprecated`);
-      expect(warnings[0]).toContain("removed in Runic 0.23");
-      expect(warnings[0]).toContain("Load runic-views.js instead");
-    }
-    for (const src of ["https://app.local/runic-views.js", `https://app.local/${name}/runic-views.js`,
-      `https://app.local/my-${name}`, "", undefined])
-      expect(warningsFor(src), String(src)).toEqual([]);
-  });
-
   test(`${script} rejects requests without the host's script`, async () => {
     const context = load(script);
     await expect(context.__runicBridge.request('{"kind":"hello"}')).rejects.toThrow(/is unavailable\.$/);
@@ -773,6 +749,41 @@ test("runic-cswebui.js continues a cancelled same-origin navigation", () => {
   expect(allowed).toBe(false);
 });
 
+// #1225, `dotnet runic dev --browser`: the page runs at dev's session address and its WebUI connection goes to the
+// Window's own port. The page's continued navigations keep the session address; one aimed at the Window's own address
+// (a link the application built from it, or WebUI's reload target after a restart) stays cancelled, so the tab keeps
+// the address and its admission.
+test("runic-cswebui.js keeps a --browser page on dev's session address", () => {
+  const actions = [];
+  let navigate;
+  const location = {
+    href: "http://k3x9a.localhost:9224/index.html#/notes", origin: "http://k3x9a.localhost:9224",
+    reload: () => actions.push(["reload"]),
+    assign: url => actions.push(["assign", url]),
+    replace: url => actions.push(["replace", url]),
+  };
+  const context = load(csWebUi, {
+    location, navigation: { addEventListener: (type, listener) => { if (type === "navigate") navigate = listener; } },
+    webui: { allowNavigation: () => {} },
+  });
+  const report = (url, navigationType) => {
+    const event = { destination: { url, key: "k" }, navigationType, formData: null, defaultPrevented: false };
+    navigate(event);
+    event.defaultPrevented = true;
+    context.__runicContinueNavigation();
+  };
+
+  report("http://k3x9a.localhost:9224/index.html#/notes", "reload");
+  report("http://k3x9a.localhost:9224/index.html#/settings", "push");
+  report("http://localhost:41837/index.html", "replace");
+  report("http://127.0.0.1:41837/index.html#/notes", "push");
+
+  expect(actions).toEqual([
+    ["reload"],
+    ["assign", "http://k3x9a.localhost:9224/index.html#/settings"],
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // CS-WebUI connection events. webui.js defines the WebuiBridge class and
 // creates window.webui when the document has loaded; WebUI reports CONNECTED
@@ -993,6 +1004,21 @@ test("runic-cswebui.js pauses the mailbox after a reply that only looks like a r
     expect(received, reply).toEqual([]);
     expect(webui.receives().length, reply).toBe(1);
   }
+});
+
+// cs-webui#32: the page loads the host's banner texts (WebUiTexts.BannerScript) once, from the window's own origin.
+test("runic-cswebui.js loads the banner texts script once", () => {
+  const appended = [];
+  const document = {
+    head: { append: element => appended.push(element) },
+    createElement: tag => ({ tag, dataset: {} }),
+    querySelector: selector => (selector === "script[data-runic-texts]" ? appended[0] ?? null : null),
+  };
+  load(csWebUi, { document });
+  load(csWebUi, { document });
+  expect(appended.map(element => [element.tag, element.src, element.dataset.runicTexts])).toEqual([
+    ["script", "/_runic/cswebui/texts.js", ""],
+  ]);
 });
 
 // Examples serve their own copy; each must match the package's script.

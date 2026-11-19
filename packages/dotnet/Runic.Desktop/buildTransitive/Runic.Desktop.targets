@@ -19,6 +19,20 @@
          presentation-server-unavailable, as without one). The executable's declaration, so it applies to every build. -->
     <RuntimeHostConfigurationOption Include="Runic.Desktop.PresentationServer" Value="false" Trim="true" Condition="'$(RunicDesktopServer)' == 'None'" />
   </ItemGroup>
+  <!-- The application icon of a window without IconFile on macOS outside a bundle with an icon (sdk#1207): the package
+       icon (RunicPackageIcon, else icons/icon.png) beside the executable, named in runtimeconfig.json. Windows uses the
+       executable's own icon resource, which Runic.Platform's targets generate (ApplicationIcon), and a bundle its
+       CFBundleIconFile, so only builds that can run on macOS carry the file. RunicApplicationIconGenerationEnabled=false
+       leaves it out. -->
+  <PropertyGroup>
+    <_RunicDesktopApplicationIcon Condition="'$(RunicApplicationIconGenerationEnabled)' != 'false' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(IsTestProject)' != 'true' and ('$(RuntimeIdentifier)' == '' or $(RuntimeIdentifier.StartsWith('osx')))">$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(RunicPackageIcon)', 'icons/icon.png'))'))</_RunicDesktopApplicationIcon>
+    <_RunicDesktopApplicationIcon Condition="'$(_RunicDesktopApplicationIcon)' != '' and !Exists('$(_RunicDesktopApplicationIcon)')"></_RunicDesktopApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_RunicDesktopApplicationIcon)' != ''">
+    <None Include="$(_RunicDesktopApplicationIcon)" Link="runic-application-icon.png" Visible="false"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.ApplicationIcon" Value="runic-application-icon.png" />
+  </ItemGroup>
   <!-- A CS-WebUI window's Development DevTools Protocol endpoint (WebUiRemoteDebugging, D070.7) is for untrimmed
        development builds such as dotnet runic dev's: a trimmed or NativeAOT publish turns it off, so the trimmer removes
        it and its HTTP client. Only the publish: PrepareForILLink runs before ILLink and before ILC writes its options,

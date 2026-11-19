@@ -548,6 +548,9 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
         ["/src/Ide.App/WorkspaceViewModel.cs", "19,24", "error", "CS1002", "; expected [/src/Ide.App/Ide.App.csproj]"]],
       ["[app] /src/Ide.App/WorkspaceViewModel.cs(7,1): warning CS0168: The variable 'x' is declared but never used",
         ["/src/Ide.App/WorkspaceViewModel.cs", "7,1", "warning", "CS0168", "The variable 'x' is declared but never used"]],
+      // A frontend module that does not compile, from the Runic Vite plugin (#1160).
+      ["[vite] /src/Ide.App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.",
+        ["/src/Ide.App/Frontend/src/App.tsx", "29,50", "error", "RUNICP008", "[vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'."]],
     ];
     assert.equal(msCompile.regexp.exec(diagnostics[3][0])?.[1], "[host] /src/Ide.App/WorkspaceViewModel.cs");
     for (const label of ["runic: dev", "runic: dev --no-window", "runic: dev --browser"]) {
@@ -578,7 +581,7 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.match("[dev] Reloading the Runic Views Window application.", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
     // --browser: after a restart the task is ready again once the new Window serves (dev's Ready follows its first page).
     assert.match("[dev] Window exited: process 4242", new RegExp(task["runic: dev --browser"].problemMatcher.background.beginsPattern));
-    assert.doesNotMatch("[dev] Browser: Window serves at http://127.0.0.1:9224/", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
+    assert.doesNotMatch("[dev] Browser: Window serves at http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224/?code=Zm9v", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
 
     const launch = parseJsonc(vscode[".vscode/launch.json"]);
     assert.equal(launch.version, "0.2.0");
@@ -595,13 +598,14 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     });
     assert.equal(configuration["Attach to the Window (dotnet runic dev)"].request, "attach");
     assert.equal(configuration["Attach to the Window (dotnet runic dev)"].preLaunchTask, "runic: dev");
-    // #1031: js-debug launches Chrome at dev --browser's fixed entry address (tools/dotnet-runic/BrowserEntry.cs), which
-    // sends it to the serve-only Window's page; the same webRoot as the attach configuration.
-    const browserPort = Number(/internal const int DefaultPort = (\d+);/
-      .exec(readFileSync(resolve(root, "tools/dotnet-runic/BrowserEntry.cs"), "utf8"))?.[1]);
+    // #1031, #1187: js-debug launches Chrome at the page dev --browser writes in the session directory
+    // (tools/dotnet-runic/BrowserEntry.cs), which opens its entry address with the one-time code; the same webRoot as the
+    // attach configuration.
+    const codeFile = /internal const string CodeFileName = "([^"]+)";/
+      .exec(readFileSync(resolve(root, "tools/dotnet-runic/BrowserEntry.cs"), "utf8"))?.[1];
     assert.deepEqual(configuration["Window in Chrome"], {
       name: "Window in Chrome", type: "chrome", request: "launch", preLaunchTask: "runic: dev --browser",
-      url: `http://127.0.0.1:${browserPort}/`, webRoot: "${workspaceFolder}/Frontend",
+      file: `\${workspaceFolder}/obj/runic/${codeFile}`, webRoot: "${workspaceFolder}/Frontend",
     });
     // Windows: the Window with WebView2's DevTools Protocol for script debugging (D066.25 3), and js-debug on its port.
     // WebView2 appends the variable to Runic's own AdditionalBrowserArguments.

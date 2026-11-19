@@ -46,8 +46,20 @@ switch (args.SingleOrDefault())
     case "--probe-unowned-dialogs":
         return UnownedDialogProbe.Run();
 #endif
+#if RUNIC_WEBVIEW_PROBE
+    // WebViewProbe.cs, a real WebView2 or WebKitGTK window; the package smoke builds Program.cs alone.
+    case "--probe-webview-close-guard":
+        return WebViewProbe.RunCloseGuard();
+    case "--probe-webview-placement":
+        return WebViewProbe.RunPlacement();
+#endif
+#if RUNIC_DEBUG_ENDPOINT_PROBE
+    // DebugEndpointProbe.cs, a real browser window; the package smoke builds Program.cs alone.
+    case "--probe-debug-endpoint":
+        return DebugEndpointProbe.Run();
+#endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-debug-endpoint");
         return 2;
 }
 WebUiApplication.Clean();
@@ -255,7 +267,7 @@ static async Task<int> ProbePresentationAsync()
     catch (ArgumentOutOfRangeException) { rejected = true; }
     Check(rejected, "An undefined color scheme was accepted.");
 
-    var webView = new CsWebUiWindowPresentation(native, webView: true)
+    var webView = new CsWebUiWindowPresentation(native, webView: true, reportsPlacement: false)
     {
         IsShown = () => shown, Focus = () => throw new ObjectDisposedException("window"), Minimize = () => minimized++,
     };
@@ -269,8 +281,61 @@ static async Task<int> ProbePresentationAsync()
     Check(webView.Features == RunicWindowPresentationFeatures.None, "A closed WebUI window reported features.");
     Check(await browser.PresentAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
         { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed } && focused == 1, "A closed WebUI window was presented.");
+    await ProbePlacementSeamsAsync(native);
     Console.WriteLine("CSWEBUI_PRESENTATION_OK");
     return 0;
+}
+
+// sdk#1149: a WebView window that reports its placement, through the presentation's seams: it reads the placement when
+// asked and when the window closes, maximizes and restores over the same restored bounds, keeps a placement on a work
+// area, and refuses full screen and, on Wayland, a position.
+static async Task ProbePlacementSeamsAsync(WebUiWindow native)
+{
+    static void Check(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+    var shown = true;
+    var current = new WebUiWindowPlacement(100, 80, 640, 480);
+    var written = new List<WebUiWindowPlacement>();
+    var presentation = new CsWebUiWindowPresentation(native, webView: true, reportsPlacement: true)
+    {
+        IsShown = () => shown,
+        Native = new SeamPlacement(() => current, placement =>
+        {
+            written.Add(placement);
+            current = placement;
+        }),
+    };
+    var changes = 0;
+    presentation.PropertyChanged += (_, args) => changes += args.PropertyName == nameof(IRunicWindowPresentation.Placement) ? 1 : 0;
+    Check(presentation.Features == (RunicWindowPresentationFeatures.Present | RunicWindowPresentationFeatures.Minimize
+        | RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement), $"A placed WebView window reported {presentation.Features}.");
+    Check(presentation.Placement is null && presentation.Refresh() && changes == 1
+        && presentation.Placement == new RunicWindowPlacement { X = 100, Y = 80, Width = 640, Height = 480 }, "The placement was not read.");
+    Check(presentation.Refresh() && changes == 1, "An unchanged placement was reported again.");
+    Check(await presentation.MaximizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success
+        && written[^1] == new WebUiWindowPlacement(100, 80, 640, 480, IsMaximized: true) && presentation.Placement is { Maximized: true } && changes == 2,
+        "MaximizeAsync did not maximize over the restored bounds.");
+    Check(await presentation.RestoreAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success
+        && written[^1] == new WebUiWindowPlacement(100, 80, 640, 480) && changes == 3, "RestoreAsync did not restore.");
+    Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { X = 1500, Y = 850, Width = 400, Height = 300 })
+        is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success && written[^1] == new WebUiWindowPlacement(1200, 600, 400, 300),
+        $"SetPlacementAsync did not keep the window on the work area: {written[^1]}.");
+    var count = written.Count;
+    Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { FullScreen = true }) is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.BackendUnavailable } && written.Count == count, "A full-screen placement was taken.");
+    current = current with { HasPosition = false };
+    Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { X = 10, Y = 10 }) is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.BackendUnavailable } && written.Count == count, "A position was taken on Wayland.");
+    Check(presentation.Refresh() && presentation.Placement is { X: null, Y: null, Width: 400 }, "A Wayland placement reported a position.");
+    // A closed window keeps its last placement; requests report it closed.
+    shown = false;
+    var last = presentation.Placement;
+    Check(!presentation.Refresh() && presentation.Placement == last && presentation.Features == RunicWindowPresentationFeatures.None,
+        "A closed window's placement changed.");
+    Check(await presentation.MaximizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed }, "A closed window was maximized.");
 }
 
 // Without AddRunicViews(), validation and OpenWindowAsync name the missing Bridge before a native window
@@ -402,7 +467,7 @@ static int ProbeShowFailure()
 // The in-page menu bar (D036.14): the host serves its bar on the Window's reserved routes, and menu-bar-probe.mjs drives
 // them from Chromium (the state reaches the page, enabled follows CanExecuteChanged, invoke answers executed, disabled
 // and stale, SetMenuBar reaches the page, the shortcut lease). The Window serves a page that loads only webui.js and
-// runic-cswebui.js; the probe prints its URL, waits for a line on standard input and then checks what the commands ran.
+// runic-views.js; the probe prints its URL, waits for a line on standard input and then checks what the commands ran.
 static int ProbeMenuBar()
 {
     if (new RunicCsWebUiHostOptions().MenuBar.Count != 0) throw new InvalidOperationException("RunicCsWebUiHostOptions.MenuBar is not empty by default.");
@@ -420,10 +485,10 @@ static int ProbeMenuBar()
     var root = Directory.CreateTempSubdirectory("runic-cswebui-menu-");
     try
     {
-        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-cswebui.js"), Path.Combine(root.FullName, "runic-cswebui.js"));
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-views.js"), Path.Combine(root.FullName, "runic-views.js"));
         File.WriteAllText(Path.Combine(root.FullName, "index.html"),
             "<!doctype html><html><head><meta charset=\"utf-8\"><title>Menu bar probe</title>" +
-            "<script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body></body></html>");
+            "<script src=\"/webui.js\"></script><script src=\"runic-views.js\"></script></head><body></body></html>");
         var services = new ServiceCollection();
         services.AddSingleton<MenuProbe>();
         services.AddScoped<MenuProbeViewModel>();
@@ -458,10 +523,10 @@ static int ProbeBlobs()
     var root = Directory.CreateTempSubdirectory("runic-cswebui-blobs-");
     try
     {
-        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-cswebui.js"), Path.Combine(root.FullName, "runic-cswebui.js"));
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-views.js"), Path.Combine(root.FullName, "runic-views.js"));
         File.WriteAllText(Path.Combine(root.FullName, "index.html"),
             "<!doctype html><html><head><meta charset=\"utf-8\"><title>Blob probe</title>" +
-            "<script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body></body></html>");
+            "<script src=\"/webui.js\"></script><script src=\"runic-views.js\"></script></head><body></body></html>");
         var services = new ServiceCollection();
         services.AddScoped<BlobProbeViewModel>();
         services.AddRunicViews();
@@ -487,7 +552,8 @@ static int ProbeBlobs()
 }
 
 // #726 and #730: a Window serves an asset source through its file handler, without a folder. One folder of an
-// archive is served as a frontend of its own; a path the source does not declare answers 404 instead of a file of the
+// archive is served as a frontend of its own; a path the source does not declare answers 404 (a page in the window's
+// texts, cs-webui#32) instead of a file of the
 // working directory, WebUI's default root; and WebUI's authentication cookie, which a file handler turns off, still
 // binds the window to the first client that loaded webui.js.
 static async Task ProbeEmbeddedAssetsAsync()
@@ -531,6 +597,29 @@ static async Task ProbeEmbeddedAssetsAsync()
             using var outside = await first.GetAsync("outside.txt");
             if (outside.StatusCode != System.Net.HttpStatusCode.NotFound)
                 throw new InvalidOperationException($"A path outside the source answered {(int)outside.StatusCode} instead of 404.");
+            // cs-webui#32: the 404 page and WebUI's banners take DesktopPlatformTexts.Current, as Runic Translations sets it.
+            var english = await outside.Content.ReadAsStringAsync();
+            Runic.Platform.DesktopPlatformTexts.Current = new Runic.Platform.DesktopPlatformTexts
+            {
+                ResourceUnavailableTitle = "Ressource nicht verfügbar", ConnectionFailedMessage = "Keine Verbindung zur Anwendung möglich",
+            };
+            try
+            {
+                using var missing = await first.GetAsync("missing.html");
+                var german = await missing.Content.ReadAsStringAsync();
+                if (missing.StatusCode != System.Net.HttpStatusCode.NotFound || !english.Contains("<h1>Resource Not Available</h1>", StringComparison.Ordinal)
+                    || !german.Contains("<h1>Ressource nicht verfügbar</h1>", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"The 404 pages did not follow the platform texts: '{english}', '{german}'.");
+                using var texts = await first.GetAsync("_runic/cswebui/texts.js");
+                var banner = await texts.Content.ReadAsStringAsync();
+                if (texts.StatusCode != System.Net.HttpStatusCode.OK || texts.Content.Headers.ContentType?.MediaType != "text/javascript"
+                    || !banner.Contains("Keine Verbindung zur Anwendung m", StringComparison.Ordinal) || !banner.Contains("webui-error-connection-lost", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"The banner texts answered {(int)texts.StatusCode} {texts.Content.Headers.ContentType}: {banner}");
+            }
+            finally
+            {
+                Runic.Platform.DesktopPlatformTexts.Current = null!;
+            }
             using var script = await first.GetAsync("webui.js");
             if (script.StatusCode != System.Net.HttpStatusCode.OK || !script.Headers.Contains("Set-Cookie"))
                 throw new InvalidOperationException($"webui.js answered {(int)script.StatusCode} without WebUI's authentication cookie.");
@@ -541,6 +630,17 @@ static async Task ProbeEmbeddedAssetsAsync()
             using var again = await first.GetAsync("index.html");
             if (again.StatusCode != System.Net.HttpStatusCode.OK)
                 throw new InvalidOperationException($"The first client answered {(int)again.StatusCode} after loading webui.js.");
+        }
+        // A web root folder: WebUI serves its files, and the window's file handler only the banner texts.
+        await using (var window = await new RunicCsWebUiHost(provider).OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = work.FullName }))
+        {
+            var url = CsWebUiPlatformServices.GetWebUiWindow(window)?.Url ?? throw new InvalidOperationException("The serve-only window has no URL.");
+            using var client = new HttpClient { BaseAddress = new UriBuilder(url) { Host = "127.0.0.1", Path = "/" }.Uri };
+            using var file = await client.GetAsync("outside.txt");
+            using var texts = await client.GetAsync("_runic/cswebui/texts.js");
+            if (file.StatusCode != System.Net.HttpStatusCode.OK || await file.Content.ReadAsStringAsync() != "outside"
+                || texts.StatusCode != System.Net.HttpStatusCode.OK || !(await texts.Content.ReadAsStringAsync()).Contains("Failed to connect", StringComparison.Ordinal))
+                throw new InvalidOperationException($"A folder window answered {(int)file.StatusCode} for its file and {(int)texts.StatusCode} for the banner texts.");
         }
         Console.WriteLine("CSWEBUI_EMBEDDED_ASSETS_OK");
     }
@@ -768,6 +868,24 @@ namespace CsWebUiWindowProbes
     public sealed partial class GuardedProbeViewModel : ObservableObject
     {
         [ObservableProperty] private bool dirty;
+    }
+
+    // The presentation's native placement, replaced for ProbePlacementSeamsAsync: a 1600 × 900 work area.
+    internal sealed class SeamPlacement(Func<WebUiWindowPlacement> read, Action<WebUiWindowPlacement> write) : CsWebUiWindowPresentation.NativePlacement(null)
+    {
+        internal override bool TryGet(out WebUiWindowPlacement placement)
+        {
+            placement = read();
+            return true;
+        }
+
+        internal override bool TrySet(WebUiWindowPlacement placement)
+        {
+            write(placement);
+            return true;
+        }
+
+        internal override WorkArea[] WorkAreas() => [new WorkArea(0, 0, 1600, 900)];
     }
 
     // Guards its close and answers CanCloseAsync with Answer, counting the calls.

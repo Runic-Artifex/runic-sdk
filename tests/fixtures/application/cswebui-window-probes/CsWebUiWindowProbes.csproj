@@ -24,7 +24,12 @@
     <ProjectReference Include="../../../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
   </ItemGroup>
   <PropertyGroup>
-    <DefineConstants>$(DefineConstants);RUNIC_UNOWNED_DIALOG_PROBE</DefineConstants>
+    <DefineConstants>$(DefineConstants);RUNIC_UNOWNED_DIALOG_PROBE;RUNIC_WEBVIEW_PROBE</DefineConstants>
+    <!-- WebViewProbe.cs (- -probe-webview-*): closes the real WebView window as its close button does, through WM_CLOSE or
+         GTK's main loop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- DebugEndpointProbe.cs (- -probe-debug-endpoint): a real browser window's DevTools Protocol endpoint (sdk#1221). -->
+    <DefineConstants>$(DefineConstants);RUNIC_DEBUG_ENDPOINT_PROBE</DefineConstants>
   </PropertyGroup>
   <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../../../packages/dotnet/Runic.Application.Views.CsWebUi/build/Runic.Application.Views.CsWebUi.targets" />
