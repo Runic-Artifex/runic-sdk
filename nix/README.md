@@ -445,6 +445,10 @@ runic-sdk.lib.buildRunicApplication pkgs {
 };
 ```
 
+An application that checks spelling itself with Runic.Spelling finds the same
+dictionaries: it reads `hunspell/` and `myspell/` of every `XDG_DATA_DIRS`
+entry ([Runic.Spelling](../packages/dotnet/Runic.Spelling/README.md#where-dictionaries-come-from)).
+
 Ship the dictionaries of the languages the application sets; a user's own,
 such as those of `environment.systemPackages` on NixOS, are found too, through
 the session's `XDG_DATA_DIRS`. A language without a dictionary is reported as

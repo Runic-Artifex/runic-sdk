@@ -39,6 +39,11 @@ the window cannot grow and each platform's limits.
 The [security guide](security.md) is for authors of Runic applications: what Runic
 protects by default, which options relax it, and what an application checks itself.
 
+The [spell checking guide](spelling.md) shows when the webview's spell checker is
+enough and when an application checks spelling itself with the preview
+Runic.Spelling package: each text in its own language, with English bundled, the
+system's dictionaries used and others downloaded when the user asks.
+
 The [packaging guide](packaging.md) covers `dotnet runic package`: what each
 format needs, how you sign the packages with your own credentials, and the
 settings that make a NativeAOT executable smaller.

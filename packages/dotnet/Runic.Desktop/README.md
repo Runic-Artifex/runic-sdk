@@ -2031,7 +2031,10 @@ var hostOptions = new RunicDesktopHostOptions
 An application that brings its own checker turns the native one off, so that
 the two do not both mark words, and checks the text itself in every field it
 wants checked: the native checker then checks no field without its own
-`spellcheck="true"`.
+`spellcheck="true"`. The preview [Runic.Spelling](../Runic.Spelling/README.md)
+package is such a checker: it checks each text in its own language with Hunspell
+dictionaries and names dictionaries for a tag with the same code as this host
+([spell checking guide](../../../docs/spelling.md)).
 
 A language without a dictionary is not checked; the window reports
 `spell-checking-dictionary-missing` to `DesktopHostOptions.DiagnosticSink` and

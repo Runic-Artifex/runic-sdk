@@ -76,6 +76,7 @@
     <Project Path="packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views.Translations/Runic.Application.Views.Translations.csproj" />
+    <Project Path="packages/dotnet/Runic.Spelling/Runic.Spelling.csproj" />
   </Folder>
   <Folder Name="/tests/benchmarks/">
     <Project Path="tests/benchmarks/Runic.Application.Views.Benchmarks/Runic.Application.Views.Benchmarks.csproj" />
@@ -108,6 +109,7 @@
     <Project Path="tests/dotnet/Runic.Application.Testing.Tests/Runic.Application.Testing.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Scaling.Tests/Runic.Application.Scaling.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Views.Translations.Tests/Runic.Application.Views.Translations.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Spelling.Tests/Runic.Spelling.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Navigation.Tests/Runic.Navigation.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Navigation.Wpf.Tests/Runic.Navigation.Wpf.Tests.csproj" />
     <Project Path="tests/fixtures/navigation/reactiveui-adapter/Runic.Navigation.ReactiveUI.Tests.csproj" />

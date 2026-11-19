@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Spelling</PackageId>
+    <!-- A preview package outside the 1.0 promise, like CsWebUi (D074.10): its own version (eng/Versions.props). -->
+    <PackageVersion>$(RunicSpellingPackageVersion)</PackageVersion>
+    <!-- Never published: no baseline to validate against until its first release (eng/build/README.md, "Public API"). -->
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <RunicPackageFirstReleaseVersion>0.23.0</RunicPackageFirstReleaseVersion>
+    <Description>An application's own spell checker: Hunspell dictionaries (English bundled, the system's, others downloaded on request) and a checker that skips the ranges an application names.</Description>
+    <PackageTags>runic-artifex;spelling;spell-checker;hunspell;dotnet;nativeaot</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Hunspell ported to managed code, used unchanged under its MPL 1.1 (README.md, "Licences"); no native library,
+         so it reads dictionaries under NativeAOT. No public signature exposes its types. -->
+    <PackageReference Include="WeCantSpell.Hunspell" />
+    <!-- Tags are parsed and matched to dictionary names as Runic.Desktop does for the platform checkers (D051.5), from
+         the same source, without a reference to Runic.Desktop. -->
+    <Compile Include="../Runic.Desktop/Internal/SpellingDictionaryNames.cs" Link="Shared/SpellingDictionaryNames.cs" />
+    <EmbeddedResource Include="catalogue/catalogue.json" LogicalName="Runic.Spelling.catalogue.json" />
+    <InternalsVisibleTo Include="Runic.Spelling.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Spelling.targets" Pack="true" PackagePath="buildTransitive/Runic.Spelling.targets" />
+    <!-- The bundled English dictionaries and their licences; the targets copy them into the application (dictionaries/README.md). -->
+    <None Include="dictionaries/*" Exclude="dictionaries/README.md" Pack="true" PackagePath="dictionaries/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

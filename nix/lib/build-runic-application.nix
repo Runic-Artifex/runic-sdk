@@ -74,8 +74,9 @@
   # which nixpkgs' binary cache does not have: WebKitGTK then builds from source, for hours.
   withSpeechSynthesis ? true,
   # Hunspell dictionaries for WebKitGTK's spell checker, such as [ hunspellDicts.de_CH hunspellDicts.en_US ]: the
-  # wrapper puts their share directories on XDG_DATA_DIRS, where enchant finds share/hunspell. A desktop may have none,
-  # and then nothing is checked. Only the desktop and desktop-gtk4 hosts check spelling.
+  # wrapper puts their share directories on XDG_DATA_DIRS, where enchant finds share/hunspell, and so does Runic.Spelling
+  # for an application's own checker. A desktop may have none, and then nothing is checked. Only the desktop and
+  # desktop-gtk4 hosts check spelling.
   spellingDictionaries ? [ ],
   # Publish projectFile with NativeAOT. Only that project gets PublishAot, as if its project file set it: the projects
   # it references and testProjectFile are restored and built as their own project files say.

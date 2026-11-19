@@ -11,6 +11,10 @@
     <!-- Last published Runic.Application.Views.CsWebUi, its package validation baseline (0.22.0 shipped it as 0.22.0-preview.1).
          Update it with RunicPackageValidationBaselineVersion after each release. -->
     <RunicCsWebUiPackageValidationBaselineVersion>0.22.0-preview.1</RunicCsWebUiPackageValidationBaselineVersion>
+    <!-- Runic.Spelling, an application's own spell checker (D074.10), is a preview package outside the 1.0 promise like
+         CsWebUi, on a version of its own; eng/workspace.json owns it ("version" on the package's entry). It has not been
+         published, so it has no validation baseline yet. -->
+    <RunicSpellingPackageVersion Condition="'$(RunicSpellingPackageVersion)' == ''">0.23.0-preview.1</RunicSpellingPackageVersion>
     <Version Condition="'$(Version)' == ''">$(RunicSdkVersion)</Version>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
   </PropertyGroup>

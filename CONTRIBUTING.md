@@ -268,10 +268,10 @@ independently released `Runic.CommandLine` pin in `Directory.Packages.props`.
 Template locks are stamped from the packed archives. The engineering tests fail
 when a copy differs.
 
-`Runic.Application.Views.CsWebUi` can ship on a version of its own: the
-`"version"` on its `eng/workspace.json` entry, copied to
-`RunicCsWebUiPackageVersion` in `eng/Versions.props`. Every other package uses
-the release-train version. `version:bump` moves the CsWebUi version with the
+`Runic.Application.Views.CsWebUi` and `Runic.Spelling`, the preview packages, can
+ship on a version of their own: the `"version"` on their `eng/workspace.json`
+entry, copied to `RunicCsWebUiPackageVersion` and `RunicSpellingPackageVersion`
+in `eng/Versions.props`. Every other package uses the release-train version. `version:bump` moves the CsWebUi version with the
 train while the two are equal and keeps it otherwise; set it explicitly with
 `bun run version:bump 1.0.0 --cswebui 1.0.0-preview.1`. Packing, the CLI
 compatibility metadata and the release scripts read each package's version from

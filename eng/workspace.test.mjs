@@ -9,7 +9,7 @@ import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveM
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 40);
+  assert.equal(workspace.nuget.length, 41);
   assert.equal(workspace.npm.length, 9);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
@@ -127,7 +127,7 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    ["desktop", "assets", "platform", "application", "scaling", "application-wpf", "views-effect", "views-translations", "vite", "svelte", "templates", "packaging", "examples"].sort(),
+    ["desktop", "assets", "platform", "application", "scaling", "application-wpf", "views-effect", "views-translations", "vite", "svelte", "templates", "packaging", "examples", "spelling"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["packages/web/svelte/src/index.ts"]).sort(),

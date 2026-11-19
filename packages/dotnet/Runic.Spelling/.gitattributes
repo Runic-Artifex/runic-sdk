@@ -1,0 +1,3 @@
+# The bundled dictionaries and their licences are pinned by SHA-256 (dictionaries/README.md), so every checkout keeps
+# upstream's bytes, also with core.autocrlf on Windows.
+dictionaries/* -text

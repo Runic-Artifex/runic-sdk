@@ -111,6 +111,15 @@ export const packageLayouts = {
     // needs a Runic.Translations outside that range.
     minorBounded: ["Runic.Translations"],
   },
+  // An application's own spell checker (D074.10, preview): the bundled English dictionaries with their licences, which
+  // its buildTransitive targets copy into the application as dictionaries/, and WeCantSpell.Hunspell, whose types no API
+  // exposes. No Runic package: it shares Runic.Desktop's tag matching as source.
+  "Runic.Spelling": {
+    files: ["README.md", "Runic.Spelling.nuspec", "icon.png", "lib/net10.0/Runic.Spelling.dll", "lib/net10.0/Runic.Spelling.xml",
+      "buildTransitive/Runic.Spelling.targets", "dictionaries/en_US.dic", "dictionaries/en_US.aff", "dictionaries/en_GB.dic",
+      "dictionaries/en_GB.aff", "dictionaries/README_en_US.txt", "dictionaries/README_en_GB.txt", "dictionaries/LICENSE_WeCantSpell.Hunspell.txt"],
+    dependencies: ["WeCantSpell.Hunspell"],
+  },
   // Host adapters set _RunicApplicationHostAdapter, which turns Bridge generation on
   // in every project that references them, directly or transitively.
   "Runic.Application.Views.Desktop": { includes: ["buildTransitive/Runic.Application.Views.Desktop.props"] },
