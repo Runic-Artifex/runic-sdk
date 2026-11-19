@@ -158,6 +158,7 @@ internal sealed partial class WindowsWebView2Host
             page.MoveFocus(reason);
             return true;
         });
+        controller.RegisterGotFocus(() => _panelFocusedLast = ReferenceEquals(_panel, panel));
         controller.RegisterAcceleratorKeys(IsMenuShortcut);
         var documentStart = controller.AddDocumentStartScriptAsync(panel.Request.DocumentStartScript);
         var fileDrops = controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop), options.RegionFrames, sidePanel: true);

@@ -23,6 +23,8 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2Controller", "put_IsVisible", WindowsWebView2Interop.ControllerVisibleSlot),
             ("ICoreWebView2Controller", "put_Bounds", WindowsWebView2Interop.ControllerBoundsSlot),
             ("ICoreWebView2Controller", "MoveFocus", WindowsWebView2Interop.ControllerFocusSlot),
+            ("ICoreWebView2Controller", "add_GotFocus", WindowsWebView2Interop.ControllerGotFocusSlot),
+            ("ICoreWebView2Controller", "remove_GotFocus", WindowsWebView2Interop.ControllerGotFocusSlot + 1),
             ("ICoreWebView2Controller", "Close", WindowsWebView2Interop.ControllerCloseSlot),
             ("ICoreWebView2Controller", "get_ZoomFactor", WindowsWebView2Interop.ControllerZoomFactorSlot),
             ("ICoreWebView2Controller", "add_AcceleratorKeyPressed", WindowsWebView2Interop.ControllerAcceleratorKeyPressedSlot),
@@ -244,6 +246,15 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventHandler"), typeof(IWebViewWebMessageReceived).GUID);
         Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventArgs2"), WindowsWebView2Interop.WebMessageReceivedEventArgs2);
         Assert.Equal(Interface("ICoreWebView2File"), WindowsWebView2Interop.FileInterface);
+    }
+
+    [Test]
+    public void FocusInterfacesMatchThePinnedMicrosoftSdkHeader()
+    {
+        var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
+        Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
+        Assert.Equal(Interface("ICoreWebView2FocusChangedEventHandler"), typeof(IWebViewFocusChanged).GUID);
+        Assert.Equal(Interface("ICoreWebView2MoveFocusRequestedEventHandler"), typeof(IWebViewMoveFocusRequested).GUID);
     }
 
     [Test]

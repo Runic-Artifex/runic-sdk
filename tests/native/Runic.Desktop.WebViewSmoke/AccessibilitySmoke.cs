@@ -147,10 +147,12 @@ internal static class AccessibilitySmoke
 
     // announce: how the host announces, when not through the window's DesktopWindow.AnnounceAsync. focusWindowItself:
     // puts the keyboard focus on the window itself before the assertive message and reports whether it is there
-    // (WindowsAnnouncementFocus, sdk#1181); the focus goes back to the page after the message.
+    // (WindowsAnnouncementFocus, sdk#1181). pageTakesFocusBack: reports whether the page then took the focus back by
+    // itself (sdk#1204); without it, the fixture gives the focus back to the page after the message.
     internal static async Task<int> RunAsync(DesktopHost host, string hostName, IReadOnlyList<string> probe,
         Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null, bool region = false, bool sidePanel = false,
-        Func<DesktopWindow, bool, ValueTask>? pressTab = null, Func<DesktopWindow, ValueTask<bool>>? focusWindowItself = null)
+        Func<DesktopWindow, bool, ValueTask>? pressTab = null, Func<DesktopWindow, ValueTask<bool>>? focusWindowItself = null,
+        Func<DesktopWindow, ValueTask<bool>>? pageTakesFocusBack = null)
     {
         if (region) probe = [.. probe, "--region"];
         if (sidePanel) probe = [.. probe, "--side-panel"];
@@ -241,9 +243,19 @@ internal static class AccessibilitySmoke
             {
                 var onWindow = focusWindowItself is not null && await focusWindowItself(window);
                 await announce(AssertiveAnnouncement, DesktopAnnouncementPriority.Assertive, deadline.Token);
-                if (focusWindowItself is not null) await window.FocusAsync(deadline.Token);
                 Console.WriteLine("ACCESSIBILITY announced the assertive message"
-                    + (focusWindowItself is null ? "." : onWindow ? " with the focus on the window itself." : "; the focus did not stay on the window itself."));
+                    + (focusWindowItself is null ? "." : onWindow ? " after the focus was on the window itself." : "; the focus did not go to the window itself."));
+                if (onWindow && pageTakesFocusBack is not null)
+                {
+                    // Keys typed after a screen reader's activation reach the page, not the window (sdk#1204).
+                    if (!await pageTakesFocusBack(window))
+                        throw new InvalidOperationException("The keyboard focus stayed on the window itself instead of returning to the page (sdk#1204).");
+                    Console.WriteLine("ACCESSIBILITY the page took the keyboard focus back from the window itself.");
+                }
+                else if (focusWindowItself is not null)
+                {
+                    await window.FocusAsync(deadline.Token);
+                }
             }
             else if (request == "dock-left")
             {

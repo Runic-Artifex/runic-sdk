@@ -71,7 +71,8 @@ try
         Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(),
             host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region, sidePanel: sidePanel,
                 pressTab: OperatingSystem.IsMacOS() ? SidePanelSmoke.PressTabOnMacOSAsync : null,
-                focusWindowItself: OperatingSystem.IsWindows() ? WindowsAnnouncementFocus.FocusWindowItselfAsync : null));
+                focusWindowItself: OperatingSystem.IsWindows() ? WindowsAnnouncementFocus.FocusWindowItselfAsync : null,
+                pageTakesFocusBack: OperatingSystem.IsWindows() ? WindowsAnnouncementFocus.PageTakesFocusBackAsync : null));
     }
     else if (args.Contains("--region", StringComparer.Ordinal))
     {
