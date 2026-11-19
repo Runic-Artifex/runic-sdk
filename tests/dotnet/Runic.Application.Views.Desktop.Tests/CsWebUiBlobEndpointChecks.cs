@@ -28,25 +28,35 @@ internal sealed partial class CsWebUiBlobEndpointChecks
     private const string IPv4OnlyVariable = "RUNIC_CSWEBUI_ENDPOINT_IPV4_ONLY";
     private static bool IPv4Only => Environment.GetEnvironmentVariable(IPv4OnlyVariable) == "1";
 
-    // #1187 (D077.14): under dotnet runic dev --browser, the serve-only window's pages also come from dev's address.
+    // #1187 (D077.14, D077.15): under dotnet runic dev --browser, the serve-only window's pages also come from dev's
+    // per-session address, http://<label>.localhost:<port>.
     [Test]
     public void TheServeOriginIsThePagesOriginOnlyWhenServingOnly()
     {
-        string? Read(string name, string? origin) => name switch
+        const string origin = "http://k3v9q2m8x4c7w1z5.localhost:9224";
+        string? Read(string name, string? value) => name switch
         {
             "RUNIC_APPLICATION_SERVE_ONLY" => "1",
-            "RUNIC_APPLICATION_SERVE_ORIGIN" => origin,
+            "RUNIC_APPLICATION_SERVE_ORIGIN" => value,
             _ => null,
         };
-        var served = BlobEndpoint.ServeOrigin(name => Read(name, "http://127.0.0.1:9224"));
-        Require(served == "http://127.0.0.1:9224", $"The serve origin was {served}.");
-        Require(BlobEndpoint.IsServedThrough("http://127.0.0.1:9224", served), "dev's origin was refused.");
-        Require(!BlobEndpoint.IsServedThrough("http://127.0.0.1:9225", served), "another port was admitted.");
-        Require(!BlobEndpoint.IsServedThrough("http://localhost:9224", served), "another name was admitted.");
-        Require(BlobEndpoint.ServeOrigin(name => name == "RUNIC_APPLICATION_SERVE_ORIGIN" ? "http://127.0.0.1:9224" : null) is null,
+        var served = BlobEndpoint.ServeOrigin(name => Read(name, origin));
+        Require(served == origin, $"The serve origin was {served}.");
+        Require(BlobEndpoint.IsServedThrough(origin, served), "dev's origin was refused.");
+        Require(!BlobEndpoint.IsServedThrough("http://k3v9q2m8x4c7w1z5.localhost:9225", served), "another port was admitted.");
+        Require(!BlobEndpoint.IsServedThrough("http://other.localhost:9224", served), "another label was admitted.");
+        Require(!BlobEndpoint.IsServedThrough("http://127.0.0.1:9224", served), "127.0.0.1 was admitted.");
+        Require(BlobEndpoint.IsServedThrough("http://localhost:9224", "http://localhost:9224"), "localhost was refused.");
+        Require(BlobEndpoint.ServeOrigin(name => name == "RUNIC_APPLICATION_SERVE_ORIGIN" ? origin : null) is null,
             "The origin counted without serve-only mode.");
-        foreach (var value in new[] { "https://127.0.0.1:9224", "http://example.com:9224", "http://127.0.0.1", "http://127.0.0.1:9224/x" })
-            Require(!BlobEndpoint.IsServedThrough(value.TrimEnd('/'), value), $"'{value}' was taken as a serve origin.");
+        foreach (var value in new[] { "https://a.localhost:9224", "http://a.b.localhost:9224", "http://localhost.evil:9224",
+            "http://.localhost:9224", "http://-a.localhost:9224", "http://a_b.localhost:9224", "http://127.0.0.1:9224",
+            "http://[::1]:9224", "http://example.com:9224", "http://a.localhost", "http://a.localhost:9224/x", "http://user@a.localhost:9224" })
+        {
+            // The value's scheme and authority, as a page's Origin would carry them (some are no valid URI).
+            string authority = string.Join('/', value.Split('/').Take(3));
+            Require(!BlobEndpoint.IsServedThrough(authority, value), $"'{value}' was taken as a serve origin.");
+        }
     }
 
     [Test]

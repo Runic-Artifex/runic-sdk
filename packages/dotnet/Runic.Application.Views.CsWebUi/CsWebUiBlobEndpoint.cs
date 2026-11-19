@@ -440,11 +440,26 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         return read("RUNIC_APPLICATION_SERVE_ONLY") == "1" && read("RUNIC_APPLICATION_SERVE_ORIGIN") is { Length: > 0 } value ? value : null;
     }
 
-    // The serve origin itself: http on a loopback name with an explicit port, and nothing after the authority.
+    // The serve origin itself: http on localhost or one DNS label under .localhost (dotnet runic dev's per-session origin,
+    // D077.15), with an explicit port and nothing after the authority.
     internal static bool IsServedThrough(string origin, string? serveOrigin) =>
         serveOrigin is not null && Uri.TryCreate(serveOrigin, UriKind.Absolute, out var served) && served.Scheme == Uri.UriSchemeHttp &&
-        served.IsLoopback && !served.IsDefaultPort && served.AbsolutePath == "/" && served.Query.Length == 0 &&
+        IsLocalhostName(served.Host) && !served.IsDefaultPort && served.UserInfo.Length == 0 && served.AbsolutePath == "/" &&
+        served.Query.Length == 0 && served.Fragment.Length == 0 &&
         string.Equals(origin, served.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
+
+    // localhost, or one DNS label (letters, digits, inner hyphens, at most 63) under .localhost, which browsers resolve to
+    // the loopback interface themselves (RFC 6761).
+    internal static bool IsLocalhostName(string host)
+    {
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)) return false;
+        var label = host[..^".localhost".Length];
+        if (label.Length is 0 or > 63 || label[0] == '-' || label[^1] == '-') return false;
+        foreach (var c in label)
+            if (!(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-')) return false;
+        return true;
+    }
 
     // An origin of the window's page: http on the page's port, with a loopback name.
     internal static bool IsPageOrigin(string origin, string pageOrigin)
