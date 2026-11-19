@@ -971,6 +971,21 @@ test("runic-cswebui.js pauses the mailbox after a reply that only looks like a r
   }
 });
 
+// cs-webui#32: the page loads the host's banner texts (WebUiTexts.BannerScript) once, from the window's own origin.
+test("runic-cswebui.js loads the banner texts script once", () => {
+  const appended = [];
+  const document = {
+    head: { append: element => appended.push(element) },
+    createElement: tag => ({ tag, dataset: {} }),
+    querySelector: selector => (selector === "script[data-runic-texts]" ? appended[0] ?? null : null),
+  };
+  load(csWebUi, { document });
+  load(csWebUi, { document });
+  expect(appended.map(element => [element.tag, element.src, element.dataset.runicTexts])).toEqual([
+    ["script", "/_runic/cswebui/texts.js", ""],
+  ]);
+});
+
 // Examples serve their own copy; each must match the package's script.
 test("example copies of the CS-WebUI runic-views.js match the package script", () => {
   const expected = readFileSync(resolve(root, csWebUi), "utf8");

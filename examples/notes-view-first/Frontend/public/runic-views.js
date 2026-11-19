@@ -2,6 +2,15 @@
 // small host-neutral Bridge client (Views protocol 4, specs/application/README.md,
 // "Host bridge (page)") instead of importing CS-WebUI.
 (() => {
+  // cs-webui#32: WebUI's bridge banners, such as "Failed to connect", in the window's texts. The host answers this path
+  // with CsWebUi's WebUiTexts.BannerScript, which rewrites a banner WebUI shows; a page served by a file handler of the
+  // application's own gets a 404 for it, and the banners stay English.
+  if (typeof document !== "undefined" && document.createElement && !document.querySelector?.("script[data-runic-texts]")) {
+    const texts = document.createElement("script");
+    texts.src = "/_runic/cswebui/texts.js";
+    texts.dataset.runicTexts = "";
+    (document.head ?? document.documentElement)?.append(texts);
+  }
   const connected = () => window.webui?.isConnected() ?? false;
   // A WebSocket reconnect keeps the page, and each new connection needs its own
   // hello. WebUI reports the transitions to its one event callback

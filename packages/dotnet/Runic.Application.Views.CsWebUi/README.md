@@ -550,17 +550,35 @@ translated text of its own) and the in-page bar's shortcut labels take
 `DesktopPlatformTexts.Current` (the bar shows English Ctrl/Shift/Alt unless the
 application names them).
 [`Runic.Application.Views.Translations`](../Runic.Application.Views.Translations/README.md)
-keeps both in the application's language. A file the frontend does not have is
-answered with an empty `404`, without a page.
+keeps both in the application's language.
 
-Two pages are WebUI's own and stay English: **Access Denied**, which a second
-browser gets when `MultiClient` is off and another one already shows the
-window, and **Resource Not Available**, which WebUI shows for a request it
-cannot serve itself. They are built into the WebUI library that CS-WebUI
-ships, which has no way to replace them, so `DesktopPlatformTexts`'
-`AccessDeniedTitle`, `ContentInUseMessage`, `ResourceUnavailableTitle` and
-`ResourceUnavailableMessage` apply to Runic Desktop's browser windows only.
-Translating them needs a CS-WebUI change.
+The pages and banners CS-WebUI shows itself take `DesktopPlatformTexts.Current`
+too (since 0.23, cs-webui#32), with the window's locale as their language:
+
+| Text | `DesktopPlatformTexts` | Shown |
+| --- | --- | --- |
+| **Resource Not Available** page | `ResourceUnavailableTitle`, `ResourceUnavailableMessage` | A file an embedded frontend (`Assets`, `RunicApplicationFrontendDelivery=Embedded`) does not have |
+| **Internal Server Error** page | `ServerErrorTitle`, `ServerErrorMessage` | The window's file handler fails |
+| Connection banners of WebUI's bridge | `ConnectionErrorLabel`, `ConnectionFailedMessage`, `WebSocketUnsupportedMessage`, `ConnectionLostMessage` | The page cannot connect within five seconds, or the browser has no WebSocket |
+
+The host gives the window CS-WebUI's `WebUiTexts` before each response, and
+`runic-views.js` loads their banner script from the window's
+`/_runic/cswebui/texts.js`. The script recognizes WebUI's banners by their
+element id and English text at the pinned WebUI, so a future WebUI may show
+them in English again. `runic-views.js` handles a lost connection itself, so
+`ConnectionLostMessage` shows only in a page without it. A window served from a
+web root folder gets the same file handler, for the banner script alone, and
+keeps WebUI's authentication cookie on, as an embedded frontend does. A file
+handler that the application installs itself, through `ConfigureWindow` or
+`ShowWindow`, replaces the host's, and the banners stay English.
+
+Two pages are WebUI's own and stay English (D061.8): **Access Denied**, which a
+second browser gets when `MultiClient` is off and another one already shows the
+window, and WebUI's **Resource Not Available** for a file a web root folder
+(`RunicWindowOptions.ContentRoot`, `www/`) does not have. WebUI sends them
+itself, before or without the file handler, and has no way to replace them, so
+`DesktopPlatformTexts`' `AccessDeniedTitle` and `ContentInUseMessage` apply to
+Runic Desktop's browser windows only.
 
 ## Security
 

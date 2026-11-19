@@ -75,6 +75,12 @@ platform {
   resource_unavailable_title = Ressource nicht verfügbar
   resource_unavailable = Die angeforderte Ressource ist nicht verfügbar.
   loading_title = Wird geladen…
+  server_error_title = Interner Serverfehler
+  server_error = Die Anwendung konnte diese Anfrage nicht beantworten.
+  connection_error_label = Fehler:
+  connection_failed = Keine Verbindung zur Anwendung möglich
+  connection_lost = Die Verbindung zur Anwendung wurde getrennt
+  websocket_unsupported = Dieser Browser unterstützt keine WebSockets
 }
 menu {
   about = Über {$app}

@@ -119,7 +119,8 @@ public sealed record DesktopPlatformTexts
 
     /// <summary>
     /// Gets the title of the page for a resource a Runic Desktop browser window does not serve;
-    /// <c>Resource Not Available</c>. CS-WebUI windows show WebUI's own English page.
+    /// <c>Resource Not Available</c>. A CS-WebUI window that serves an embedded frontend shows it too; WebUI's own page
+    /// for a file missing from a web root folder stays English.
     /// </summary>
     public string ResourceUnavailableTitle { get; init; } = "Resource Not Available";
 
@@ -131,6 +132,39 @@ public sealed record DesktopPlatformTexts
     /// also the loading surface's accessible name, which a screen reader reads, and on Linux with GTK 4. <c>Loading…</c>.
     /// </summary>
     public string LoadingTitle { get; init; } = "Loading…";
+
+    /// <summary>
+    /// Gets the title of the page a CS-WebUI window answers when the application fails to answer a request, for example
+    /// with an exception in its file handler; <c>Internal Server Error</c>.
+    /// </summary>
+    public string ServerErrorTitle { get; init; } = "Internal Server Error";
+
+    /// <summary>Gets the message of that page; <c>The application could not answer this request.</c></summary>
+    public string ServerErrorMessage { get; init; } = "The application could not answer this request.";
+
+    /// <summary>
+    /// Gets the label before the message of a CS-WebUI page's connection banner, which WebUI's bridge shows;
+    /// <c>Error:</c>.
+    /// </summary>
+    public string ConnectionErrorLabel { get; init; } = "Error:";
+
+    /// <summary>
+    /// Gets the banner of a CS-WebUI page that cannot connect to the application within five seconds;
+    /// <c>Failed to connect to the backend application</c>.
+    /// </summary>
+    public string ConnectionFailedMessage { get; init; } = "Failed to connect to the backend application";
+
+    /// <summary>
+    /// Gets the banner of a CS-WebUI page whose connection to the application ended; <c>Connection with the backend is
+    /// lost</c>. Runic's page script handles the connection itself, so its pages do not show it.
+    /// </summary>
+    public string ConnectionLostMessage { get; init; } = "Connection with the backend is lost";
+
+    /// <summary>
+    /// Gets the banner of a CS-WebUI page in a browser without WebSocket; <c>WebSocket is not supported by your web
+    /// browser</c>.
+    /// </summary>
+    public string WebSocketUnsupportedMessage { get; init; } = "WebSocket is not supported by your web browser";
 
     private void Validate()
     {
@@ -153,6 +187,12 @@ public sealed record DesktopPlatformTexts
         Check(ResourceUnavailableTitle, nameof(ResourceUnavailableTitle));
         Check(ResourceUnavailableMessage, nameof(ResourceUnavailableMessage));
         Check(LoadingTitle, nameof(LoadingTitle));
+        Check(ServerErrorTitle, nameof(ServerErrorTitle));
+        Check(ServerErrorMessage, nameof(ServerErrorMessage));
+        Check(ConnectionErrorLabel, nameof(ConnectionErrorLabel));
+        Check(ConnectionFailedMessage, nameof(ConnectionFailedMessage));
+        Check(ConnectionLostMessage, nameof(ConnectionLostMessage));
+        Check(WebSocketUnsupportedMessage, nameof(WebSocketUnsupportedMessage));
     }
 
     private static void Check(string? text, string name)

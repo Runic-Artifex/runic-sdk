@@ -331,13 +331,23 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var windowName = opening.Window.GetType().Name;
             var windowType = opening.Window.GetType();
             var shown = host;
+            // cs-webui#32: CS-WebUI's own pages and WebUI's banners in DesktopPlatformTexts.Current, in the window's locale.
+            var sessionContent = content;
+            var pageTexts = new CsWebUiPageTexts(native, () => sessionContent.Locale);
             void Show()
             {
-                if (assets is not null) CsWebUiAssets.Serve(native, assets);
+                if (assets is not null) CsWebUiAssets.Serve(native, assets, pageTexts);
                 // dotnet runic dev with a development server: what www/ does not have comes from the server (#1085).
                 else if (DevelopmentServerForwarding.IsSupported && DevelopmentServer is { } forwarding)
-                    CsWebUiDevelopmentServer.Serve(native, options.ResolveContentRoot(), forwarding);
-                else native.SetRootFolder(options.ResolveContentRoot());
+                    CsWebUiDevelopmentServer.Serve(native, options.ResolveContentRoot(), forwarding, pageTexts);
+                else
+                {
+                    native.SetRootFolder(options.ResolveContentRoot());
+                    // Only the banner script; WebUI serves the folder, and its 404 page stays English.
+                    native.SetFileHandler(pageTexts.Handler(inner: null));
+                    // As in CsWebUiAssets.Serve: WebUI's authentication cookie, which a file handler turns off, stays on.
+                    WebUiApplication.SetConfiguration(WebUiConfiguration.UseCookies, true);
+                }
                 if (initialPlacement is not null)
                 {
                     // What WebUI takes before the window shows; the WebView takes the whole placement once it is shown.
