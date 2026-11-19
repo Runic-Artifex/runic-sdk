@@ -145,7 +145,7 @@ public sealed class InteractionProtocolTests
         {
             Require(Rejects(() => window.Session.Interactions.Register<string, bool>(Route, "other", Contract, static input => input,
                 static _ => true, timeout: timeout)), $"Register accepted {timeout}.");
-            Require(Rejects(() => new ViewQuestion<string, bool>(timeout: timeout)), $"ViewQuestion accepted {timeout}.");
+            Require(Rejects(() => _ = new ViewQuestion<string, bool>(timeout: timeout)), $"ViewQuestion accepted {timeout}.");
             Require(Rejects(() => Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<string, bool>("other",
                 Contract, static _ => new global::ReactiveUI.Binding.Interaction<string, bool>(), static input => input, static _ => true, timeout)),
                 $"ReactiveInteractionDescriptor accepted {timeout}.");
