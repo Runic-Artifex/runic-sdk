@@ -761,11 +761,18 @@ assets. The 1.0 status:
 | `win-x64` | Supported | Supported | Supported |
 | `osx-arm64` | Supported | Supported | n/a |
 | `linux-arm64` | Supported | Supported | n/a |
-| `win-arm64` | Supported | Unsupported | Supported |
-| `linux-musl-x64` | Supported | Unsupported | n/a |
-| `linux-musl-arm64` | Supported | Unsupported | n/a |
+| `win-arm64` | Supported, with limits¹ | Unsupported | Supported |
+| `linux-musl-x64` | Supported, with limits² | Unsupported | n/a |
+| `linux-musl-arm64` | Supported, with limits² | Unsupported | n/a |
 | `osx-x64` | Unsupported | Unsupported | n/a |
 
+- ¹ Runic Desktop on `win-arm64`: drag-and-drop with WebView2 (#391) and the
+  side panel's frame capture and Tab between its views are not CI-verified,
+  because the hosted Arm runner delivers no input to WebView2 and captures no
+  frames. The rest runs in CI. An accepted 1.0 limitation (D077.3).
+- ² Runic Desktop on musl: `Runic.Desktop.Gtk4` is not CI-verified there; CI runs
+  Alpine with GTK 3 and WebKitGTK 4.1, the default Linux host. An accepted 1.0
+  limitation (D077.3).
 - Intel Macs (`osx-x64`) are not a Runic target since 0.12: CI runs only the
   latest macOS on Apple silicon, and `dotnet runic package macos` makes no
   universal bundle. `dotnet runic doctor --runtime osx-x64` fails `target-rid`.

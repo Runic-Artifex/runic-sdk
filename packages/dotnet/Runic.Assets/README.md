@@ -38,8 +38,7 @@ elsewhere, set `RunicDesktopHostOptions.Assets`.
 dotnet add package Runic.Assets --prerelease
 ```
 
-The package targets **.NET 10**, has no UI or web-framework dependency, and is
-currently in preview. Install `Runic.Assets.AspNetCore` or
+The package targets **.NET 10** and has no UI or web-framework dependency. Install `Runic.Assets.AspNetCore` or
 `Runic.Assets.Desktop` only when you also need that delivery integration.
 
 ## Embed a Vite build

@@ -35,6 +35,10 @@ export function validateSupport(support) {
       assert.ok(typeof target.reason === "string" && target.reason.length > 0, `eng/support.json: ${host.id}/${target.rid} needs a reason`);
       assert.equal(target.status === "unsupported", typeof target.remediation === "string",
         `eng/support.json: ${host.id}/${target.rid} needs a remediation exactly when unsupported`);
+      // A CI-verified pair that CI does not cover in full: what it leaves out, an accepted limitation (D077.3).
+      assert.ok(target.limitations === undefined || (target.status === "ci-verified" &&
+        typeof target.limitations === "string" && target.limitations.length > 0),
+        `eng/support.json: ${host.id}/${target.rid} may name limitations only when CI-verified`);
     }
   }
   const requirementIds = support.requirements.map(requirement => requirement.id);
@@ -55,12 +59,14 @@ export function supportRids(support) {
 }
 
 const status = (host, rid) => host.targets.find(target => target.rid === rid)?.status ?? "unsupported";
+const label = (host, rid) => host.targets.find(target => target.rid === rid)?.limitations
+  ? `${statusLabels["ci-verified"]}, with limits` : statusLabels[status(host, rid)];
 
 export function renderSupportMarkdown(support) {
   const lines = [
     `| RID | ${support.hosts.map(host => host.name).join(" | ")} |`,
     `| --- | ${support.hosts.map(() => "---").join(" | ")} |`,
-    ...supportRids(support).map(rid => `| \`${rid}\` | ${support.hosts.map(host => statusLabels[status(host, rid)]).join(" | ")} |`),
+    ...supportRids(support).map(rid => `| \`${rid}\` | ${support.hosts.map(host => label(host, rid)).join(" | ")} |`),
     "",
     ...supportStatuses.map(name => `- ${statusLabels[name]}: ${support.statuses[name]}`),
     "",
@@ -76,8 +82,16 @@ export function renderSupportMarkdown(support) {
     "",
     ...support.hosts.flatMap(host => host.targets.filter(target => target.status !== "ci-verified")
       .map(target => `- ${host.name}, \`${target.rid}\`: ${target.reason}`)),
+    ...limitations(support),
   ];
   return lines.join("\n");
+}
+
+// The parts of CI-verified pairs that CI does not run ("CI-verified, with limits"), accepted 1.0 limitations.
+function limitations(support) {
+  const lines = support.hosts.flatMap(host => host.targets.filter(target => target.limitations)
+    .map(target => `- ${host.name}, \`${target.rid}\`: ${target.limitations}`));
+  return lines.length ? ["", "Limits of CI-verified targets (CI-verified, with limits):", "", ...lines] : [];
 }
 
 // Replaces the text between the README markers; throws when they are missing.

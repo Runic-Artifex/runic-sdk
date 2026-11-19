@@ -46,9 +46,9 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 | `win-x64` | CI-verified | CI-verified |
 | `osx-arm64` | CI-verified | CI-verified |
 | `linux-arm64` | CI-verified | CI-verified |
-| `linux-musl-x64` | CI-verified | Unsupported |
-| `linux-musl-arm64` | CI-verified | Unsupported |
-| `win-arm64` | CI-verified | Unsupported |
+| `linux-musl-x64` | CI-verified, with limits | Unsupported |
+| `linux-musl-arm64` | CI-verified, with limits | Unsupported |
+| `win-arm64` | CI-verified, with limits | Unsupported |
 | `osx-x64` | Unsupported | Unsupported |
 
 - CI-verified: Runic CI builds and runs the host's native window layer on this RID for changes that affect it.
@@ -74,6 +74,12 @@ Notes on targets that CI does not verify:
 - CS-WebUI, `linux-musl-arm64`: CS-WebUI ships no native library for linux-musl-arm64; its Linux library needs glibc 2.34 or newer.
 - CS-WebUI, `win-arm64`: CS-WebUI ships no native library for win-arm64.
 - CS-WebUI, `osx-x64`: Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only, although CsWebUi.Native ships an osx-x64 library.
+
+Limits of CI-verified targets (CI-verified, with limits):
+
+- Runic Desktop, `linux-musl-x64`: `Runic.Desktop.Gtk4` (GTK 4 and WebKitGTK 6.0) is not CI-verified on musl: CI runs Alpine with GTK 3 and WebKitGTK 4.1, the default Linux host. Accepted for 1.0.
+- Runic Desktop, `linux-musl-arm64`: `Runic.Desktop.Gtk4` (GTK 4 and WebKitGTK 6.0) is not CI-verified on musl: CI runs Alpine with GTK 3 and WebKitGTK 4.1, the default Linux host. Accepted for 1.0.
+- Runic Desktop, `win-arm64`: Drag-and-drop with WebView2 ([#391](https://github.com/Runic-Artifex/runic-sdk/issues/391)) and the side panel's frame capture and Tab between its views are not CI-verified: the hosted Arm runner delivers no input to WebView2 and captures no frames. Everything else runs in CI. Accepted for 1.0.
 <!-- support-matrix:end -->
 
 ## Start developing

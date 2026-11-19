@@ -23,8 +23,8 @@ X11 do not certify every compositor, WebView runtime, or native permission scena
 ## Public API boundary
 
 The public .NET API models windows, surfaces, requests, and native capabilities.
-It does not publish a separate TypeScript Desktop transport package in this
-preview. Runic Application Views selects explicit Window and View contracts and
-generates TypeScript application clients; its current host adapter targets
-CS-WebUI. A future Views-to-Desktop adapter requires its own explicit design and
-public-path tests.
+It does not publish a separate TypeScript Desktop transport package. Runic
+Application Views selects explicit Window and View contracts and generates
+TypeScript application clients; its host adapters target Runic Desktop
+(`Runic.Application.Views.Desktop`) and CS-WebUI
+(`Runic.Application.Views.CsWebUi`).

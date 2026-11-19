@@ -326,17 +326,20 @@
           {
             "rid": "linux-musl-x64",
             "status": "ci-verified",
-            "reason": "Covered by the Native / linux-musl-x64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1."
+            "reason": "Covered by the Native / linux-musl-x64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1.",
+            "limitations": "`Runic.Desktop.Gtk4` (GTK 4 and WebKitGTK 6.0) is not CI-verified on musl: CI runs Alpine with GTK 3 and WebKitGTK 4.1, the default Linux host. Accepted for 1.0."
           },
           {
             "rid": "linux-musl-arm64",
             "status": "ci-verified",
-            "reason": "Covered by the Native / linux-musl-arm64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1."
+            "reason": "Covered by the Native / linux-musl-arm64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1.",
+            "limitations": "`Runic.Desktop.Gtk4` (GTK 4 and WebKitGTK 6.0) is not CI-verified on musl: CI runs Alpine with GTK 3 and WebKitGTK 4.1, the default Linux host. Accepted for 1.0."
           },
           {
             "rid": "win-arm64",
             "status": "ci-verified",
-            "reason": "Covered by the Native / win-arm64 CI job."
+            "reason": "Covered by the Native / win-arm64 CI job.",
+            "limitations": "Drag-and-drop with WebView2 ([#391](https://github.com/Runic-Artifex/runic-sdk/issues/391)) and the side panel's frame capture and Tab between its views are not CI-verified: the hosted Arm runner delivers no input to WebView2 and captures no frames. Everything else runs in CI. Accepted for 1.0."
           },
           {
             "rid": "osx-x64",

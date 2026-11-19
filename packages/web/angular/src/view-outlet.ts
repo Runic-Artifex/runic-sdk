@@ -167,11 +167,11 @@ export class RegionOutlets<R extends PageReference = PageReference> {
  * The name of {@link ViewOutlet} before 0.7.0-preview.7, where React, Vue and Svelte already used
  * `ViewOutlet`. It is the same component class, so it renders the same `<runic-view-outlet>` element
  * without a second component definition for that selector (NG0912).
- * @deprecated Import `ViewOutlet` instead; this alias is removed in the next major release.
+ * @deprecated Import `ViewOutlet` instead; this alias is removed in 2.0.
  */
 export const RunicViewOutlet = ViewOutlet;
 /**
  * The name of {@link ViewOutlet} before 0.7.0-preview.7.
- * @deprecated Import `ViewOutlet` instead; this alias is removed in the next major release.
+ * @deprecated Import `ViewOutlet` instead; this alias is removed in 2.0.
  */
 export type RunicViewOutlet<R extends PageReference = PageReference> = ViewOutlet<R>;
