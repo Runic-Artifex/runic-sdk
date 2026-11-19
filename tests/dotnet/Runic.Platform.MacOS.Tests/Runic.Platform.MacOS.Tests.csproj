@@ -28,8 +28,6 @@
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
     <!-- The thumbnail cases share the Windows suite's test images and PNG check. -->
     <Compile Include="../Runic.Platform.Windows.Tests/ThumbnailImages.cs" Link="ThumbnailImages.cs" />
-    <!-- The application icon codec of Runic.Platform's targets, without its MSBuild task (sdk#1207). -->
-    <Compile Include="../../../packages/dotnet/Runic.Platform/buildTransitive/RunicApplicationIcon.cs" Link="ApplicationIcon/RunicApplicationIcon.cs" />
     <!-- The generation tests also build small projects against the shipped targets. -->
     <None Include="../../../packages/dotnet/Runic.Platform/buildTransitive/*;../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/*" Link="privileged-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <RunicPrivilegedAction Include="eu.runic.tests.activate" Program="/usr/libexec/runic-tests/helper" Verb="activate"
@@ -43,4 +41,9 @@
   <!-- A package consumer gets these targets from the packages' buildTransitive folders. -->
   <Import Project="../../../packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets" />
   <Import Project="../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/Runic.Platform.MacOS.targets" />
+  <!-- The application icon codec of Runic.Platform's targets, without its MSBuild task (sdk#1207). After the import,
+       whose targets take the task's source out of a consumer's Compile items. -->
+  <ItemGroup>
+    <Compile Include="../../../packages/dotnet/Runic.Platform/buildTransitive/RunicApplicationIcon.cs" Link="ApplicationIcon/RunicApplicationIcon.cs" />
+  </ItemGroup>
 </Project>
