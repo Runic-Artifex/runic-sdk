@@ -119,6 +119,20 @@ public sealed class BootstrapAdmissionTests
         Assert.Equal(HttpStatusCode.OK, bridge.StatusCode);
         Assert.Contains("const PORT=9224;", await bridge.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
+        // dotnet runic dev's per-session origin (D077.15): the page's own host, http://<label>.localhost:9224, with the
+        // port replaced; the endpoint never names 127.0.0.1, so the host-only cookie and Origin match the page's.
+        await using var labelled = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { ServedThrough = new Uri("http://k3v9q2m8.localhost:9224/") });
+        using var labelledBootstrap = await SendAsync(client, new Uri(labelled.Url, "runic-desktop.js"), site: "cross-site", destination: "script",
+            referrer: "http://k3v9q2m8.localhost:9224/");
+        Assert.Equal(HttpStatusCode.OK, labelledBootstrap.StatusCode);
+        string labelledScript = await labelledBootstrap.Content.ReadAsStringAsync();
+        Assert.Contains("globalThis.location.href", labelledScript, StringComparison.Ordinal);
+        Assert.Contains("endpoint.port = 9224;", labelledScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("127.0.0.1", labelledScript, StringComparison.Ordinal);
+        using var otherLabel = await SendAsync(client, new Uri(labelled.Url, "runic-desktop.js"), site: "cross-site", destination: "script",
+            referrer: "http://other.localhost:9224/");
+        Assert.Equal(HttpStatusCode.Forbidden, otherLabel.StatusCode);
+
         // Without it, the page connects to the surface's own port.
         await using var plain = await host.CreateSurfaceAsync();
         using var own = await SendAsync(client, new Uri(plain.Url, "webui.js"), site: "same-origin", destination: "script");

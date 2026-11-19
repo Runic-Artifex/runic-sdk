@@ -1025,17 +1025,30 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// </summary>
     internal const string ServeOriginEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ORIGIN";
 
-    // Only an http origin on a loopback IP literal or localhost, with an explicit port and nothing after it; anything else
-    // is ignored, and the Window serves as without the variable.
+    // Only an http origin on localhost or one DNS label under .localhost (dotnet runic dev's per-session origin, D077.15),
+    // with an explicit port and nothing after it; anything else is ignored, and the Window serves as without the variable.
     internal static Uri? ServedThrough(string? value)
     {
         if (string.IsNullOrEmpty(value) || !Uri.TryCreate(value, UriKind.Absolute, out var origin)) return null;
         var authority = origin.GetLeftPart(UriPartial.Authority);
-        return origin.Scheme == Uri.UriSchemeHttp && origin.IsLoopback && !origin.IsDefaultPort && origin.UserInfo.Length == 0 &&
+        return origin.Scheme == Uri.UriSchemeHttp && IsLocalhostName(origin.Host) && !origin.IsDefaultPort && origin.UserInfo.Length == 0 &&
             (origin.AbsolutePath == "/" && origin.Query.Length == 0 && origin.Fragment.Length == 0) &&
             value.TrimEnd('/').Equals(authority, StringComparison.OrdinalIgnoreCase)
                 ? new Uri(authority + "/")
                 : null;
+    }
+
+    // localhost, or one DNS label (letters, digits, inner hyphens, at most 63) under .localhost, which browsers resolve to
+    // the loopback interface themselves (RFC 6761).
+    internal static bool IsLocalhostName(string host)
+    {
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)) return false;
+        var label = host[..^".localhost".Length];
+        if (label.Length is 0 or > 63 || label[0] == '-' || label[^1] == '-') return false;
+        foreach (var c in label)
+            if (!(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-')) return false;
+        return true;
     }
 
     internal static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
