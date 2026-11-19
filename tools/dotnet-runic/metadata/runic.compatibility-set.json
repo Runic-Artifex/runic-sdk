@@ -268,7 +268,7 @@
     {
       "name": "Command Line",
       "repository": "Runic-Artifex/runic-cli-sdk",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "nuget": [
         "Runic.CommandLine",
         "Runic.CommandLine.*"
@@ -278,7 +278,7 @@
     {
       "name": "Translations",
       "repository": "Runic-Artifex/runic-translations-sdk",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "nuget": [
         "Runic.Translations",
         "Runic.Translations.*",

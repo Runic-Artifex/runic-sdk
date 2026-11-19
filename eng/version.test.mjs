@@ -66,8 +66,9 @@ test("version bump rewrites every copy and keeps the validation baseline", () =>
 
 test("Runic.CommandLine has its own exact pin, independent of the SDK version", () => {
   const props = readFileSync(resolve(root, "Directory.Packages.props"), "utf8");
+  // A train candidate names its upstream commit after the version (TrainCommit="<SHA>", eng/train/README.md).
   const pins = ["Runic.CommandLine", "Runic.CommandLine.Spectre"].map(name =>
-    props.match(new RegExp(`<PackageVersion Include="${name.replaceAll(".", "\\.")}" Version="([^"]+)" />`))?.[1]);
+    props.match(new RegExp(`<PackageVersion Include="${name.replaceAll(".", "\\.")}" Version="([^"]+)"(?: [\\w]+="[^"]*")* />`))?.[1]);
   for (const pin of pins) assert.match(pin ?? "", /^\d+\.\d+\.\d+(?:-[\w.]+)?$/, "Runic.CommandLine pins must be exact released versions");
   assert.equal(pins[0], pins[1], "Runic.CommandLine and Runic.CommandLine.Spectre are released together");
 });

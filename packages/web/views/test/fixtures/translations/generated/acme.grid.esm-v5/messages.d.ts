@@ -7,3 +7,4 @@ export declare const m: Readonly<{
         readonly "table": string;
     }>, options?: MessageOptions) => string;
 }>;
+//# sourceMappingURL=messages.d.ts.map
