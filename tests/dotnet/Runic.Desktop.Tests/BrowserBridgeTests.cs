@@ -26,8 +26,12 @@ public sealed class BrowserBridgeTests
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
         var pageObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The page's requests as the server saw them, for a timeout's message: whether the browser or the server stalled.
+        var started = Stopwatch.StartNew();
+        var served = new System.Collections.Concurrent.ConcurrentQueue<string>();
         window.SetFileHandler(async (path, cancellationToken) =>
         {
+            served.Enqueue($"+{started.Elapsed.TotalSeconds:0.000}s {path}");
             if (path != "/startup.js") return null;
             if (delayedPageLoad)
             {
@@ -89,7 +93,14 @@ public sealed class BrowserBridgeTests
             using var devTools = new ClientWebSocket();
             await devTools.ConnectAsync(debuggerUrl, timeout.Token);
 
-            await WaitForBridgeResultAsync(devTools, "42:1,0,2:clicked:150000", timeout.Token, pageObserved);
+            try
+            {
+                await WaitForBridgeResultAsync(devTools, "42:1,0,2:clicked:150000", timeout.Token, pageObserved);
+            }
+            catch (TimeoutException exception)
+            {
+                throw new TimeoutException($"{exception.Message}; content requests the server saw: [{string.Join(", ", served)}]", exception);
+            }
 
             if (delayedPageLoad)
             {
@@ -388,6 +399,15 @@ public sealed class BrowserBridgeTests
         startInfo.ArgumentList.Add("--no-sandbox");
         startInfo.ArgumentList.Add("--disable-gpu");
         startInfo.ArgumentList.Add("--disable-dev-shm-usage");
+        // I-160: the switches WebUiBrowserHost passes a browser without the application's arguments. Without
+        // --no-proxy-server, Chromium waits for the system's proxy configuration before its first request, also one to
+        // a loopback address that it then sends directly; automatic detection (WPAD, on by default on Windows) can take
+        // seconds. The Windows and macOS sightings stayed about:blank, or loading a script, for the whole deadline. A
+        // fresh profile's first-run and background network tasks, such as component updates, compete with the page.
+        startInfo.ArgumentList.Add("--no-proxy-server");
+        startInfo.ArgumentList.Add("--no-first-run");
+        startInfo.ArgumentList.Add("--disable-background-networking");
+        startInfo.ArgumentList.Add("--disable-component-update");
         startInfo.ArgumentList.Add("--remote-debugging-port=0");
         startInfo.ArgumentList.Add($"--user-data-dir={profile}");
         startInfo.ArgumentList.Add(url.AbsoluteUri);
