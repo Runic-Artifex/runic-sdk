@@ -333,17 +333,22 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     internal bool IsWebContentFocused => IsWebContentFocusedIn(_window);
 
     // Whether the page announces DesktopWindow.AnnounceAsync (WebUiWindow.AnnounceAsync): the keyboard focus is in the
-    // page, or on this window itself while it is the foreground window. The window has no control of its own; it takes
-    // the focus when it is activated, such as when WebView2 activates it to carry out a UI Automation action from
-    // another process (I-185), and can keep it while the page's element stays the screen reader's focus. NVDA then drops
-    // the window's notification, which it speaks only from its focus object's process, WebView2's browser process
-    // (sdk#1181), but says the page's live region, which it accepts from any window inside the foreground window.
-    internal bool IsFocusOnPageOrWindow => IsWebContentFocused || IsForegroundFocus(_window);
+    // page, or on this window itself. The window has no control of its own; it takes the focus when it is activated,
+    // such as when WebView2 activates it to carry out a UI Automation action from another process (I-185), and can keep
+    // it while the page's element stays the screen reader's focus. NVDA then drops the window's notification, which it
+    // speaks only from its focus object's process, WebView2's browser process (sdk#1181), but says the page's live
+    // region, which it accepts from any window inside the foreground window.
+    // Read from the window's own thread, as IsWebContentFocusedIn does: its focus is the window only while the window is
+    // active, and Windows clears it when another application's window takes the foreground, so the window announces
+    // from the background as before. A session without a foreground window (the Windows arm64 runner) has none to read.
+    internal bool IsFocusOnPageOrWindow => IsWebContentFocused || IsOwnThreadFocus(_window);
 
-    private static bool IsForegroundFocus(nint window)
+    private static bool IsOwnThreadFocus(nint window)
     {
+        if (window == 0) return false;
+        var thread = Native.GetWindowThreadProcessId(window, out _);
         var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf<GuiThreadInfo>() };
-        return window != 0 && Native.GetGUIThreadInfo(0, ref info) && info.Focus == window;
+        return thread != 0 && Native.GetGUIThreadInfo(thread, ref info) && info.Focus == window;
     }
 
     // The same for any window that hosts a WebView2 controller, such as the child window of a WPF RunicWebView (I-203):
