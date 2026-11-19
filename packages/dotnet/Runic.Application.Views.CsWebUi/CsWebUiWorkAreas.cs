@@ -1,16 +1,15 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Runic.Desktop.Internal;
 
 namespace Runic.Application.Views.CsWebUi;
 
 // sdk#1149: the work areas of the monitors that exist now, in the units of WebUiWindow.TryGetPlacement, so a saved
-// placement is kept on one of them (WindowPlacementClamp, shared as source with Runic Desktop). Windows: each monitor's
+// placement is kept on one of them (CsWebUiPlacement.Fit, Runic Desktop's rule). Windows: each monitor's
 // rcWork in screen coordinates, read on any thread. Linux: GDK's monitor work areas on GTK's main loop, in GTK's logical
 // pixels; Wayland reports each monitor's full area. Nothing elsewhere, or before GTK has a display.
 internal static unsafe partial class CsWebUiWorkAreas
 {
-    internal static IReadOnlyList<ScreenRect> Read()
+    internal static WorkArea[] Read()
     {
         try
         {
@@ -23,13 +22,24 @@ internal static unsafe partial class CsWebUiWorkAreas
         return [];
     }
 
-    private static List<ScreenRect> ReadWindows()
+    // Up to MaximumMonitors monitors, which no desktop exceeds.
+    private const int MaximumMonitors = 32;
+
+    private sealed class Collected
     {
-        var areas = new List<ScreenRect>();
+        internal readonly WorkArea[] Areas = new WorkArea[MaximumMonitors];
+        internal int Count;
+
+        internal WorkArea[] ToArray() => Areas.AsSpan(0, Count).ToArray();
+    }
+
+    private static WorkArea[] ReadWindows()
+    {
+        var areas = new Collected();
         var handle = GCHandle.Alloc(areas);
         try { _ = EnumDisplayMonitors(0, null, &AddMonitor, GCHandle.ToIntPtr(handle)); }
         finally { handle.Free(); }
-        return areas;
+        return areas.ToArray();
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -38,8 +48,9 @@ internal static unsafe partial class CsWebUiWorkAreas
         var info = new MonitorInfo { Size = (uint)sizeof(MonitorInfo) };
         if (GetMonitorInfoW(monitor, &info) != 0)
         {
-            var areas = (List<ScreenRect>)GCHandle.FromIntPtr(data).Target!;
-            areas.Add(new ScreenRect(info.Work.Left, info.Work.Top, info.Work.Right - info.Work.Left, info.Work.Bottom - info.Work.Top));
+            var areas = (Collected)GCHandle.FromIntPtr(data).Target!;
+            if (areas.Count < MaximumMonitors)
+                areas.Areas[areas.Count++] = new WorkArea(info.Work.Left, info.Work.Top, info.Work.Right - info.Work.Left, info.Work.Bottom - info.Work.Top);
         }
         return 1;
     }
@@ -48,17 +59,33 @@ internal static unsafe partial class CsWebUiWorkAreas
     // which runs it at once on the loop's own thread or when no thread runs the loop.
     private static class Gtk
     {
-        private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
-        private static readonly Lazy<Api?> Loaded = new(Api.Load);
+        private const int TimeoutMilliseconds = 5_000;
 
-        internal static List<ScreenRect> Read()
+        // Loaded once; a race loads it twice, which is harmless. No Lazy<T>, which NativeAOT would instantiate for it.
+        private static Api? s_api;
+        private static volatile bool s_loaded;
+
+        private static Api? Loaded
         {
-            if (Loaded.Value is not { } api) return [];
+            get
+            {
+                if (!s_loaded)
+                {
+                    s_api = Api.Load();
+                    s_loaded = true;
+                }
+                return s_api;
+            }
+        }
+
+        internal static WorkArea[] Read()
+        {
+            if (Loaded is not { } api) return [];
             var request = new Request();
             var handle = GCHandle.Alloc(request);
             api.MainContextInvoke(null, &RunOnMainLoop, (void*)GCHandle.ToIntPtr(handle));
             // A request the loop never runs keeps its handle; that happens only once the application stopped GTK's loop.
-            return request.Done.Wait(Timeout) ? request.Areas : [];
+            return request.Done.Wait(TimeoutMilliseconds) ? request.Areas.ToArray() : [];
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -69,25 +96,25 @@ internal static unsafe partial class CsWebUiWorkAreas
             handle.Free();
             try
             {
-                var api = Loaded.Value;
+                var api = Loaded;
                 var display = api is null ? null : api.DisplayGetDefault();
                 if (api is not null && display is not null)
                 {
-                    var count = api.GetMonitorCount(display);
+                    var count = Math.Min(api.GetMonitorCount(display), MaximumMonitors);
                     for (var index = 0; index < count; index++)
                     {
                         var monitor = api.GetMonitor(display, index);
                         if (monitor is null) continue;
                         GdkRectangle area;
                         api.GetWorkArea(monitor, &area);
-                        request.Areas.Add(new ScreenRect(area.X, area.Y, area.Width, area.Height));
+                        request.Areas.Areas[request.Areas.Count++] = new WorkArea(area.X, area.Y, area.Width, area.Height);
                     }
                 }
             }
             catch
             {
                 // No managed exception may cross GTK's main loop.
-                request.Areas.Clear();
+                request.Areas.Count = 0;
             }
             finally
             {
@@ -98,7 +125,7 @@ internal static unsafe partial class CsWebUiWorkAreas
 
         private sealed class Request
         {
-            internal List<ScreenRect> Areas { get; } = [];
+            internal Collected Areas { get; } = new();
 
             internal ManualResetEventSlim Done { get; } = new();
         }

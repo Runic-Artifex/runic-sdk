@@ -296,18 +296,11 @@ static async Task ProbePlacementSeamsAsync(WebUiWindow native)
     var presentation = new CsWebUiWindowPresentation(native, webView: true, reportsPlacement: true)
     {
         IsShown = () => shown,
-        ReadPlacement = (out WebUiWindowPlacement placement) =>
-        {
-            placement = current;
-            return true;
-        },
-        WritePlacement = placement =>
+        Native = new SeamPlacement(() => current, placement =>
         {
             written.Add(placement);
             current = placement;
-            return true;
-        },
-        WorkAreas = () => [new Runic.Desktop.Internal.ScreenRect(0, 0, 1600, 900)],
+        }),
     };
     var changes = 0;
     presentation.PropertyChanged += (_, args) => changes += args.PropertyName == nameof(IRunicWindowPresentation.Placement) ? 1 : 0;
@@ -835,6 +828,24 @@ namespace CsWebUiWindowProbes
     public sealed partial class GuardedProbeViewModel : ObservableObject
     {
         [ObservableProperty] private bool dirty;
+    }
+
+    // The presentation's native placement, replaced for ProbePlacementSeamsAsync: a 1600 × 900 work area.
+    internal sealed class SeamPlacement(Func<WebUiWindowPlacement> read, Action<WebUiWindowPlacement> write) : CsWebUiWindowPresentation.NativePlacement(null)
+    {
+        internal override bool TryGet(out WebUiWindowPlacement placement)
+        {
+            placement = read();
+            return true;
+        }
+
+        internal override bool TrySet(WebUiWindowPlacement placement)
+        {
+            write(placement);
+            return true;
+        }
+
+        internal override WorkArea[] WorkAreas() => [new WorkArea(0, 0, 1600, 900)];
     }
 
     // Guards its close and answers CanCloseAsync with Answer, counting the calls.

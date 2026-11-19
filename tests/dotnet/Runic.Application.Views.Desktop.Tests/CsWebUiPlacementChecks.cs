@@ -3,14 +3,14 @@ using CsWebUi;
 using Runic.Application.Views;
 using TUnit.Core;
 using CsWebUiPlacement = cswebui::Runic.Application.Views.CsWebUi.CsWebUiPlacement;
-using ScreenRect = cswebui::Runic.Desktop.Internal.ScreenRect;
+using WorkArea = cswebui::Runic.Application.Views.CsWebUi.WorkArea;
 
 // sdk#1149: a CS-WebUI window's placement. The presentation's polling, maximize and restore run against a real window in
 // the probes' --probe-webview-placement; these check the arithmetic: the conversion, and that a saved placement stays on
 // a work area that exists now, by Runic Desktop's rule.
 internal sealed class CsWebUiPlacementChecks
 {
-    private static readonly ScreenRect Primary = new(0, 0, 1920, 1040), Left = new(-1280, 0, 1280, 984);
+    private static readonly WorkArea Primary = new(0, 0, 1920, 1040), Left = new(-1280, 0, 1280, 984);
 
     [Test]
     public void APlacementConvertsWithAndWithoutAPosition()

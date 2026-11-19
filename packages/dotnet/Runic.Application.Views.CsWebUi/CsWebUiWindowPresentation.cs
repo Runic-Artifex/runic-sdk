@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using CsWebUi;
-using Runic.Desktop.Internal;
 using Runic.Platform;
 
 namespace Runic.Application.Views.CsWebUi;
@@ -10,27 +9,31 @@ namespace Runic.Application.Views.CsWebUi;
 // to WebUI and cannot be hidden, so the Window reports no activity and counts as active and visible.
 // sdk#1149: a WebView window on Windows and Linux also reports and takes its placement (WebUiWindow.TryGetPlacement and
 // TrySetPlacement) and maximizes and restores. WebUI raises no event when the window moves or resizes, so the placement
-// is polled while the window is shown (see PollInterval), and read again when the window closes.
+// is polled while the window is shown (see PollMilliseconds), and read again when the window closes.
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
-    Justification = "StopPolling disposes the poll's source when the window closes; the presentation outlives it.")]
+    Justification = "StopPolling disposes the poll's timer when the window closes; the presentation outlives it.")]
 internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
 {
     private static readonly PlatformResult<PlatformUnit> Done = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private static readonly PlatformResult<PlatformUnit> Closed = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
     private static readonly PlatformResult<PlatformUnit> Unsupported = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-    private static readonly PlatformResult<PlatformUnit> NotPlaced = new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other,
+
+    // Made when it happens: a static would keep the type's initializer from running at compile time.
+    private static PlatformResult<PlatformUnit> NotPlaced() => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other,
         new PlatformDiagnostic("CS-WebUI", 0, "CS-WebUI could not read or place the window."));
 
     // How often a shown WebView window's placement is read. A Win32 subclass could report WM_WINDOWPOSCHANGED instead,
     // but only on the window's own thread, which runs WebUI's message loop, and GTK offers no other thread a signal: one
     // read on Windows is a few user32 calls, on Linux one turn of GTK's main loop.
-    internal static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    // A System.Threading.Timer, as the rest of the process uses already; a skipped tick waits for the next one.
+    internal const int PollMilliseconds = 500;
 
     private readonly bool _webView;
     private readonly bool _reportsPlacement;
     private readonly object _gate = new();
     private RunicWindowPlacement? _placement;
-    private CancellationTokenSource? _poll;
+    private Timer? _poll;
+    private int _polling;
 
     internal CsWebUiWindowPresentation(WebUiWindow window, bool webView)
         : this(window, webView, webView && (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()))
@@ -45,11 +48,19 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
         IsShown = () => window.IsShown;
         Focus = window.Focus;
         Minimize = window.Minimize;
-        ReadPlacement = window.TryGetPlacement;
-        WritePlacement = window.TrySetPlacement;
+        Native = new NativePlacement(window);
     }
 
-    internal delegate bool PlacementReader(out WebUiWindowPlacement placement);
+    // The native window's placement and the monitors' work areas; tests derive from it. One class rather than a delegate
+    // per call, which NativeAOT compiles with thunks for each delegate type.
+    internal class NativePlacement(WebUiWindow? window)
+    {
+        internal virtual bool TryGet(out WebUiWindowPlacement placement) => window!.TryGetPlacement(out placement);
+
+        internal virtual bool TrySet(WebUiWindowPlacement placement) => window!.TrySetPlacement(placement);
+
+        internal virtual WorkArea[] WorkAreas() => CsWebUiWorkAreas.Read();
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -59,9 +70,7 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
     internal Func<bool> IsShown { get; init; }
     internal Action Focus { get; init; }
     internal Action Minimize { get; init; }
-    internal PlacementReader ReadPlacement { get; init; }
-    internal Func<WebUiWindowPlacement, bool> WritePlacement { get; init; }
-    internal Func<IReadOnlyList<ScreenRect>> WorkAreas { get; init; } = CsWebUiWorkAreas.Read;
+    internal NativePlacement Native { get; init; }
 
     // Whether CS-WebUI reads and sets this window's placement.
     internal bool ReportsPlacement => _reportsPlacement;
@@ -104,37 +113,31 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
     internal void StartPolling()
     {
         if (!_reportsPlacement) return;
-        CancellationTokenSource poll;
         lock (_gate)
         {
             if (_poll is not null) return;
-            poll = _poll = new CancellationTokenSource();
+            _poll = new Timer(static state => ((CsWebUiWindowPresentation)state!).Poll(), this, PollMilliseconds, PollMilliseconds);
         }
         Refresh();
-        _ = PollAsync(poll.Token);
     }
 
     internal void StopPolling()
     {
-        CancellationTokenSource? poll;
+        Timer? poll;
         lock (_gate) (poll, _poll) = (_poll, null);
-        if (poll is null) return;
-        poll.Cancel();
-        poll.Dispose();
+        poll?.Dispose();
     }
 
-    private async Task PollAsync(CancellationToken cancellationToken)
+    // A tick while the previous read still waits for GTK's main loop is skipped.
+    private void Poll()
     {
-        using var timer = new PeriodicTimer(PollInterval);
+        if (Interlocked.Exchange(ref _polling, 1) != 0) return;
         try
         {
-            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
-            {
-                if (!IsShownSafely()) break;
-                Refresh();
-            }
+            if (IsShownSafely()) Refresh();
+            else StopPolling();
         }
-        catch (OperationCanceledException) { }
+        finally { Volatile.Write(ref _polling, 0); }
     }
 
     private bool IsShownSafely()
@@ -145,7 +148,7 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
 
     private bool TryRead(out WebUiWindowPlacement placement)
     {
-        try { return ReadPlacement(out placement); }
+        try { return Native.TryGet(out placement); }
         catch (ObjectDisposedException)
         {
             placement = default;
@@ -186,7 +189,7 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
         RunicWindowPlacement.Validate(placement);
         // CS-WebUI has no full screen, and Wayland gives the application no position: such a placement changes nothing.
         return Place(RunicWindowPresentationFeatures.Placement, current =>
-            placement.FullScreen || (placement.X is not null && !current.HasPosition) ? null : CsWebUiPlacement.Fit(placement, current, WorkAreas()),
+            placement.FullScreen || (placement.X is not null && !current.HasPosition) ? null : CsWebUiPlacement.Fit(placement, current, Native.WorkAreas()),
             cancellationToken);
     }
 
@@ -195,7 +198,7 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
     {
         if (!_reportsPlacement || !TryRead(out var current)) return false;
         if (!current.HasPosition) placement = placement with { X = null, Y = null };
-        var placed = WritePlacement(CsWebUiPlacement.Fit(placement, current, WorkAreas()));
+        var placed = Native.TrySet(CsWebUiPlacement.Fit(placement, current, Native.WorkAreas()));
         Refresh();
         return placed;
     }
@@ -208,9 +211,9 @@ internal sealed class CsWebUiWindowPresentation : IRunicWindowPresentation
         if (!Features.HasFlag(feature)) return ValueTask.FromResult(Unsupported);
         try
         {
-            if (!ReadPlacement(out var current)) return ValueTask.FromResult(NotPlaced);
+            if (!Native.TryGet(out var current)) return ValueTask.FromResult(NotPlaced());
             if (change(current) is not { } target) return ValueTask.FromResult(Unsupported);
-            if (!WritePlacement(target)) return ValueTask.FromResult(NotPlaced);
+            if (!Native.TrySet(target)) return ValueTask.FromResult(NotPlaced());
         }
         catch (ObjectDisposedException) { return ValueTask.FromResult(Closed); }
         Refresh();
