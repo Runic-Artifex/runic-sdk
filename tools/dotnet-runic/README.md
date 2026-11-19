@@ -590,7 +590,7 @@ build, as the debug configuration's `preLaunchTask`:
       "args": ["runic", "dev", "--no-window"],
       "isBackground": true,
       "problemMatcher": {
-        "base": "$msCompile",
+        // owner, applyTo, fileLocation and pattern as in the IDE contract's task: $msCompile after dev's label
         "background": { "activeOnStart": true, "beginsPattern": "^\\[dev\\] Evaluating", "endsPattern": "^\\[dev\\] Ready$" }
       }
     },
@@ -990,7 +990,8 @@ process it started: the shallowest process that runs the project's program
 by up to that long.
 
 A VS Code background task can wait for `Ready`, and the same task gets `dev`'s
-failures and the build's errors in the Problems panel:
+failures and the errors of the first build and of each rebuild in the Problems
+panel, as the template's `.vscode/tasks.json` does:
 
 ```jsonc
 // .vscode/tasks.json
@@ -1004,7 +1005,14 @@ failures and the build's errors in the Problems panel:
       "args": ["runic", "dev"],
       "isBackground": true,
       "problemMatcher": {
-        "base": "$msCompile",
+        // $msCompile's pattern after dev's optional child-process label
+        "owner": "msCompile",
+        "applyTo": "allDocuments",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "file": 1, "location": 2, "severity": 4, "code": 5, "message": 6
+        },
         "background": {
           "activeOnStart": true,
           "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",
@@ -1026,12 +1034,17 @@ canonical form before the usual fault text, on standard error:
 The origin is the project file, or `dotnet-runic` when `dev` failed before it
 found one (`RAPPDEV1002`). The build output that `dev` passes through has the
 same form with a line and column (`CounterViewModel.cs(18,5): error CS1002: …`,
-`RUNICBRIDGE` codes from the Bridge generator), so one regex matches both. VS
-Code's built-in `$msCompile` matches them, and so does this pattern, for other
-tools:
+`RUNICBRIDGE` codes from the Bridge generator), so one regex matches both. The
+first build's lines come as the build prints them. The lines of a process that
+`dev` starts, such as `dotnet watch` rebuilding after an edit, follow its label:
+`[host] /path/to/App/CounterViewModel.cs(18,5): error CS1002: ; expected`
+(`[app] ` with `--no-dotnet-watch`; the Vite development server's lines follow
+`[vite] `). VS Code's built-in `$msCompile` takes `[host] /path/…` for the
+file, so the task above uses its pattern after an optional label. This pattern
+matches all of them, for other tools:
 
 ```text
-^\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
+^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
 ```
 
 ### Session file
