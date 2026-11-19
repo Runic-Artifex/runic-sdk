@@ -22,7 +22,7 @@ internal static class Fixture
 
 // The checks, in order. Each reads or acts through the accessibility API only; the page reacts as it would to a user.
 // assertiveInPage: the fixture puts the focus on the window itself before the assertive message (WebView2,
-// sdk#1181), and the page must still announce it in its live region.
+// sdk#1181, and the WPF window of a RunicWebView, sdk#1203), and the page must still announce it in its live region.
 internal sealed class Scenario(AccessibilityClient client, Report report, Expectations expectations, bool assertiveInPage) : IDisposable
 {
     private static readonly TimeSpan EventTimeout = TimeSpan.FromSeconds(5);

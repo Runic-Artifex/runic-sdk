@@ -346,7 +346,14 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     // from the background as before. A session without a foreground window (the Windows arm64 runner) has none to read.
     // A window of this process inside the window counts too: WebView2 passes the focus through its own child window
     // there while it moves it from the window to the page (MoveFocus, ForwardFocusToPage, sdk#1204).
-    internal bool IsFocusOnPageOrWindow => IsWebContentFocused || IsOwnThreadFocus(_window, within: true);
+    internal bool IsFocusOnPageOrWindow => IsFocusOnPageOrWindowIn(_window);
+
+    // The same rule for any window that hosts a WebView2 controller (host), such as the child window of a WPF
+    // RunicWebView (sdk#1203): the focus is in the page, or on host or a window inside it on host's thread. window: the
+    // window that contains host, such as the WPF window, whose focus on itself counts too; 0 when it does not, as while
+    // one of its own controls has the focus.
+    internal static bool IsFocusOnPageOrWindowIn(nint host, nint window = 0) =>
+        IsWebContentFocusedIn(host) || IsOwnThreadFocus(host, within: true) || (window != 0 && IsOwnThreadFocus(window));
 
     // Window thread only: whether the side panel's page, rather than the window's, took the keyboard focus last.
     private bool _panelFocusedLast;

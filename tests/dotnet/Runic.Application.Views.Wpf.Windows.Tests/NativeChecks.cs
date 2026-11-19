@@ -15,8 +15,11 @@ using System.Windows.Input;
 using TUnit.Core;
 
 // The native WPF checks, after the portable cases (WpfDispatcherExecutor runs them on the dispatcher).
-internal sealed class NativeChecks
+internal sealed partial class NativeChecks
 {
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")] private static partial nint SetFocus(nint window);
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")] private static partial nint GetFocus();
+
     // #267: a WPF window is brought forward for a forwarded launch: shown when hidden or not shown yet, restored when
     // minimized, and reported closed once it closed. A CI desktop may keep another window in the foreground, which
     // flashes the taskbar button instead (PermissionDenied).
@@ -647,6 +650,22 @@ internal sealed class NativeChecks
             await Task.Delay(500);
             regions = await RegionsAsync();
             Program.Check(regions == Said, $"The page announced while the WPF window had the focus: {regions}.");
+
+            // The focus on the WPF window itself with no WPF element focused, where WebView2 leaves it for a moment after it
+            // activates the window for a UI Automation action (sdk#1203): the page announces. WPF may pass it on to the
+            // control's child window, which counts too.
+            Keyboard.ClearFocus();
+            var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            SetFocus(handle);
+            var onWindow = GetFocus();
+            Program.Check(onWindow == handle || onWindow == child.Handle,
+                $"The focus is not on the WPF window itself or the control's child window: {onWindow:x}.");
+            Program.Check(child.FocusedPageAnnouncer is not null, "The page did not announce while the focus was on the WPF window itself.");
+            Program.Check(await platform.AnnounceAsync("Activated", PlatformAnnouncementPriority.Assertive) is PlatformResult<PlatformUnit>.Success,
+                "The page did not announce while the focus was on the WPF window itself.");
+            const string Activated = "polite=Saved|Saved;assertive=The disk is full|Activated";
+            regions = await RegionsAsync(Activated);
+            Program.Check(regions == Activated, $"The page's assertive region did not receive the message: {regions}.");
             Console.WriteLine("WpfPlatformServices.ForWindow page announcement checks passed.");
         }
         finally { window.Close(); }
