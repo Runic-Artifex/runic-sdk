@@ -123,7 +123,7 @@ the release notes, which give the full detail and the pull requests:
    From 0.22, also remove every `RUNICDESK104` (side panel) and `RUNICDESK105`
    (close drain) suppression, and import `onBridgeDraining` from
    `@runic-artifex/views` instead of `@runic-artifex/views/experimental`, where
-   it is deprecated in 0.22 and removed in 0.23. From 0.22, also load
+   it is deprecated in 0.22 and removed in 0.23 ([From 0.22 to 0.23](#from-022-to-023)). From 0.22, also load
    `runic-views.js` in pages that load `runic-desktop-views.js` or
    `runic-cswebui.js`: that copy logs a console warning in 0.22, and from 0.23
    the build no longer copies it, so such a page gets no Bridge (warning
@@ -1662,3 +1662,17 @@ template:
 | Angular CLI build: `@angular/build` and `@angular/cli` 22.2.4 with a `vite` override (and for pnpm a `pnpm-workspace.yaml`) | 22.2.7 without the override: `@angular/build` now depends on Vite 8.3.5. After moving to `@angular/build` 22.2.5 or later, remove the `vite` override from `package.json`, and for pnpm from `pnpm-workspace.yaml`. `--angular-build vite` projects are unchanged |
 
 Details: 0.22.0 [Upgrading from 0.21](../eng/release/notes/0.22.0.md#upgrading-from-021).
+
+## From 0.22 to 0.23
+
+Update every Runic NuGet and npm package to 0.23.0 together and rebuild, so that the generated clients and Bridges are
+regenerated. 0.23.0 removes what 0.22.0 deprecated.
+
+### Removed in 0.23
+
+| 0.22 | 0.23 |
+| --- | --- |
+| A page loads `runic-desktop-views.js` (Runic Desktop) or `runic-cswebui.js` (CS-WebUI), which logged a deprecation warning | Load `runic-views.js` (`<script src="runic-views.js"></script>` after `webui.js`). The build no longer copies the host-named copy, so such a page gets no Bridge, and the build reports warning `RUNICBRIDGE019` naming the page |
+| `import { onBridgeDraining } from "@runic-artifex/views/experimental"`, deprecated | `import { onBridgeDraining } from "@runic-artifex/views"`, the same function. `./experimental` no longer exports it, so the old import fails to compile (TypeScript) or to bundle |
+
+Details: the [0.23.0 release notes](../eng/release/notes/0.23.0.md), "Upgrading".
