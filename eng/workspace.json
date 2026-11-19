@@ -115,6 +115,11 @@
       "project": "packages/dotnet/Runic.Application.Views.Translations/Runic.Application.Views.Translations.csproj"
     },
     {
+      "name": "Runic.Spelling",
+      "version": "0.23.0-preview.1",
+      "project": "packages/dotnet/Runic.Spelling/Runic.Spelling.csproj"
+    },
+    {
       "name": "Runic.Application.Templates",
       "project": "tools/Runic.Application.Templates/Runic.Application.Templates.csproj"
     },
@@ -394,6 +399,16 @@
         "tests/dotnet/Runic.Application.Views.Translations.Tests",
         "tests/fixtures/application/views-translations-consumer",
         "tests/fixtures/application/views-translations-vite"
+      ]
+    },
+    "spelling": {
+      "dependsOn": [
+        "desktop"
+      ],
+      "paths": [
+        "packages/dotnet/Runic.Spelling",
+        "tests/dotnet/Runic.Spelling.Tests",
+        "eng/spelling"
       ]
     },
     "vite": {

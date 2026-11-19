@@ -12,6 +12,9 @@
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <PackageVersion Include="GirCore.WebKit-6.0" Version="0.8.1" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <!-- Runic.Spelling's checker: Hunspell in managed code (MPL 1.1/GPL 2.0/LGPL 2.1, used unchanged under the MPL 1.1).
+         No public API exposes its types, so it is not bounded to a major. -->
+    <PackageVersion Include="WeCantSpell.Hunspell" Version="7.0.1" />
     <!-- Exposed third-party packages are bounded to the tested major (eng/release/README.md,
          "Third-party dependencies"). -->
     <PackageVersion Include="CsWebUi" Version="[2.5.0-beta.4.9, 3)" />
@@ -83,6 +86,7 @@
     <PackageVersion Include="Runic.Application.Views.ReactiveUI.Reactive" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Application.Views.CsWebUi" Version="$(RunicCsWebUiPackageVersion)" />
     <PackageVersion Include="Runic.Application.Views.Desktop" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Spelling" Version="$(RunicSpellingPackageVersion)" />
     <PackageVersion Include="Runic.Assets" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.Desktop" Version="$(RunicSdkVersion)" />

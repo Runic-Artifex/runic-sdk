@@ -124,6 +124,15 @@ See [MSBuild properties](../packages/dotnet/Runic.Desktop/README.md#msbuild-prop
 | --- | --- | --- |
 | `RunicDesktopMinimalHost` | `false` | Build each surface's listener from an empty ASP.NET Core builder. |
 
+## Runic.Spelling
+
+See [Build](../packages/dotnet/Runic.Spelling/README.md#build). Runic.Spelling is a preview package, outside the 1.0
+promise.
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `RunicSpellingBundledDictionaries` | `true` | `false` leaves the bundled English dictionaries out of the build and publish output (`dictionaries/`). |
+
 ## Runic.Platform and the privileged-action packages
 
 See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#declare-privileged-actions).

@@ -44,7 +44,10 @@ const cargoCopies = {
 };
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
 // The eng/Versions.props property that carries each separately versioned package's version.
-export const separateVersions = { "Runic.Application.Views.CsWebUi": "RunicCsWebUiPackageVersion" };
+export const separateVersions = {
+  "Runic.Application.Views.CsWebUi": "RunicCsWebUiPackageVersion",
+  "Runic.Spelling": "RunicSpellingPackageVersion",
+};
 const baselineVersion = /(<RunicPackageValidationBaselineVersion>)([^<]*)(<\/RunicPackageValidationBaselineVersion>)/;
 const core = version => version.split(/[-+]/)[0];
 const ownVersion = train => new RegExp(`^${escapeRegExp(core(train))}-preview\\.[1-9][0-9]*$`);

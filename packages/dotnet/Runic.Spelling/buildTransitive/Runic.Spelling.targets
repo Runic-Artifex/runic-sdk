@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Runic.Spelling's bundled English dictionaries (en_US and en_GB from SCOWL, with their licences and the licence of
+    WeCantSpell.Hunspell) go into the build and publish output as dictionaries/, where SpellingDictionaries looks for
+    the application's own dictionaries. `dotnet runic package macos` moves the folder into Contents/Resources.
+    Set RunicSpellingBundledDictionaries to false to leave them out, for example when the application ships its own
+    English dictionaries or checks only languages it downloads.
+  -->
+  <ItemGroup Condition="'$(RunicSpellingBundledDictionaries)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)../dictionaries/*" Exclude="$(MSBuildThisFileDirectory)../dictionaries/README.md"
+          Link="dictionaries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+          Pack="false" Visible="false" />
+  </ItemGroup>
+</Project>

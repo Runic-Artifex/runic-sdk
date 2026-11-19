@@ -27,6 +27,7 @@ an application whose environment is `Development` (`DOTNET_ENVIRONMENT` or
 | `RUNIC_BRIDGE_CODEGEN_FORCE` | Bridge generator | `1`, `true` or `yes` regenerates the client although the cache is current. | No |
 | `RUNIC_APPIMAGE_RUNTIME` | `dotnet runic package appimage` | The AppImage runtime file (type2-runtime's `runtime-<arch>`) when it is not beside `appimagetool`. See [packaging](packaging.md). | No |
 | `RUNIC_SIGNING_PASSWORD` | `dotnet runic package` (Windows) | The password of the signing certificate, so it stays out of the command line. See [packaging](packaging.md). | No |
+| `RUNIC_SPELLING_DICTIONARIES` | Runic.Spelling (preview) | A folder of Hunspell dictionaries (`<name>.dic` and `<name>.aff`) that comes before every other, as the application's own (`SpellingDictionaries.FolderVariable`). See [Runic.Spelling](../packages/dotnet/Runic.Spelling/README.md#where-dictionaries-come-from). | No |
 | `RUNIC_TEST_PLATFORM_DIRECTORY` | Runic.Application.Testing | The directory of a `RunicServeOnlyTestPlatform`, which the test sets for the application it starts (`RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable`). | No |
 
 `dotnet runic`, `runic-create` and the Runic Assets packer are built on Runic.CommandLine,

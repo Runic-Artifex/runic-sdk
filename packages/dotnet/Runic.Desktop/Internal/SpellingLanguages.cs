@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Runic.Platform;
@@ -7,7 +6,8 @@ namespace Runic.Desktop.Internal;
 
 // Resolves the BCP 47 tags of DesktopHostOptions.SpellCheckingLanguages to the dictionaries of a platform spell checker:
 // enchant's on Linux (WebKitGTK), named like de_CH or en_US, and NSSpellChecker's on macOS, named like de or en_GB. Both
-// checkers belong to the process, not to a window. Linked into Runic.Desktop.Gtk4.
+// checkers belong to the process, not to a window. Runic.Desktop.Gtk4 uses it through InternalsVisibleTo. Tags are parsed
+// and matched by SpellingDictionaryNames, which the preview Runic.Spelling shares as source.
 internal static class SpellingLanguages
 {
     // The dictionaries to load, in the order of the tags, and the tags no installed dictionary serves.
@@ -19,20 +19,12 @@ internal static class SpellingLanguages
     // choose the region of a tag without one, such as en for a user in en_GB.
     internal static Resolution Resolve(IReadOnlyList<string> tags, IReadOnlyList<string> userLanguages, IReadOnlyCollection<string>? installed)
     {
-        Dictionary<string, string>? available = null;
-        if (installed is not null)
-        {
-            available = new(StringComparer.Ordinal);
-            foreach (var name in installed.Order(StringComparer.Ordinal))
-            {
-                if (Parse(name) is { } parsed) available.TryAdd(Name(parsed), name);
-            }
-        }
+        var available = SpellingDictionaryNames.Index(installed);
         List<string> dictionaries = [];
         List<string> missing = [];
         foreach (var tag in tags)
         {
-            var names = ResolveOne(tag, userLanguages, available);
+            var names = SpellingDictionaryNames.Choose(tag, userLanguages, available, SpellingDictionaryMatch.SameRegion);
             if (names.Count == 0) missing.Add(tag);
             foreach (var name in names)
             {
@@ -84,111 +76,10 @@ internal static class SpellingLanguages
     }
 
     // The tags of the user's languages, for a checker told no languages: each once, without C and POSIX.
-    internal static string[] UserTags(IReadOnlyList<string> userLanguages)
-    {
-        List<string> tags = [];
-        foreach (var value in userLanguages)
-        {
-            if (Parse(value) is not { } parsed) continue;
-            var tag = parsed.Region is { } region ? $"{parsed.Language}-{region}" : parsed.Language;
-            if (!tags.Contains(tag, StringComparer.Ordinal)) tags.Add(tag);
-        }
-        return [.. tags];
-    }
+    internal static string[] UserTags(IReadOnlyList<string> userLanguages) => SpellingDictionaryNames.UserTags(userLanguages);
 
     // The name of a dictionary for a tag: language_REGION, or language_Script_REGION, as enchant and hunspell name them.
-    internal static string? DictionaryName(string tag) => Parse(tag) is { } parsed ? Name(parsed) : null;
-
-    private static List<string> ResolveOne(string tag, IReadOnlyList<string> userLanguages, Dictionary<string, string>? available)
-    {
-        if (Parse(tag) is not { } parsed) return [];
-        var language = parsed.Language;
-        if (available is null)
-        {
-            if (parsed.Region is not null) return [Name(parsed)];
-            // A bare language needs a region to name a hunspell dictionary: the user's, else the language's likely one.
-            var region = UserRegions(language, userLanguages).FirstOrDefault() ?? LikelyRegion(language);
-            return region is null ? [language] : [Name(parsed with { Region = region }), language];
-        }
-        if (parsed.Region is not null)
-        {
-            // The tag's region, or, as BCP 47 lookup does, the language alone; never another region's spelling.
-            if (Find(available, Name(parsed)) is { } exact) return [exact];
-            if (parsed.Script is not null && Find(available, Name(parsed with { Script = null })) is { } withoutScript) return [withoutScript];
-            return Find(available, language) is { } general ? [general] : [];
-        }
-        if (Find(available, Name(parsed)) is { } bare) return [bare];
-        foreach (var region in UserRegions(language, userLanguages))
-        {
-            if (Find(available, Name(parsed with { Region = region })) is { } user) return [user];
-        }
-        if (LikelyRegion(language) is { } likely && Find(available, Name(parsed with { Region = likely })) is { } common) return [common];
-        // Any region of the language, the same one each time.
-        string[] names = [.. available.Keys];
-        Array.Sort(names, StringComparer.Ordinal);
-        foreach (var name in names)
-        {
-            if (Parse(name) is { } candidate && candidate.Language == language && candidate.Script == parsed.Script) return [available[name]];
-        }
-        return [];
-    }
-
-    private static string? Find(Dictionary<string, string> available, string name) => available.GetValueOrDefault(name);
-
-    private static IEnumerable<string> UserRegions(string language, IReadOnlyList<string> userLanguages)
-    {
-        foreach (var value in userLanguages)
-        {
-            if (Parse(value) is { Region: { } region } user && user.Language == language) yield return region;
-        }
-    }
-
-    // The language's most common region from the culture data, such as US for en and DE for de; null without ICU.
-    private static string? LikelyRegion(string language)
-    {
-        try
-        {
-            var name = CultureInfo.CreateSpecificCulture(language).Name;
-            return Parse(name) is { Language: var found, Region: { } region } && found == language ? region : null;
-        }
-        catch (CultureNotFoundException)
-        {
-            return null;
-        }
-    }
-
-    private static string Name(Parsed parsed) =>
-        parsed.Script is { } script
-            ? parsed.Region is { } region ? $"{parsed.Language}_{script}_{region}" : $"{parsed.Language}_{script}"
-            : parsed.Region is { } onlyRegion ? $"{parsed.Language}_{onlyRegion}" : parsed.Language;
-
-    private readonly record struct Parsed(string Language, string? Script, string? Region);
-
-    // A BCP 47 tag (de-CH, sr-Latn-RS), a POSIX locale (de_CH.UTF-8@euro) or a dictionary name (en_US): its language,
-    // script and region; variants and extensions do not name a dictionary. Null for C, POSIX and what is not a language.
-    private static Parsed? Parse(string value)
-    {
-        var end = value.AsSpan().IndexOfAny('.', '@');
-        var subtags = (end < 0 ? value : value[..end]).Split('-', '_');
-        var language = subtags[0];
-        if (language.Length is < 2 or > 3 || !IsLetters(language)) return null;
-        string? script = null;
-        string? region = null;
-        var index = 1;
-        if (index < subtags.Length && subtags[index].Length == 4 && IsLetters(subtags[index]))
-        {
-            script = char.ToUpperInvariant(subtags[index][0]) + subtags[index][1..].ToLowerInvariant();
-            index++;
-        }
-        if (index < subtags.Length && ((subtags[index].Length == 2 && IsLetters(subtags[index])) ||
-            (subtags[index].Length == 3 && !subtags[index].AsSpan().ContainsAnyExceptInRange('0', '9'))))
-        {
-            region = subtags[index].ToUpperInvariant();
-        }
-        return new(language.ToLowerInvariant(), script, region);
-    }
-
-    private static bool IsLetters(string value) => value.All(char.IsAsciiLetter);
+    internal static string? DictionaryName(string tag) => SpellingDictionaryNames.DictionaryName(tag);
 
     // The dictionaries enchant has, through the libenchant-2 that WebKitGTK loaded: null when it cannot be listed.
     internal static unsafe string[]? EnchantDictionaries()

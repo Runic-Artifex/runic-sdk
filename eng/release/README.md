@@ -47,7 +47,11 @@ releases and their evidence remain historical records.
    Remove `<RunicPackageValidationBaselineMissing>` and `<RunicPackageFirstReleaseVersion>`
    from each package published for the first time (for example `Runic.Navigation` after
    0.7.0-preview.4), so its next release is validated against this one; the engineering
-   tests fail until you do. Likewise remove `<PackageValidationBaselineName>` from a
+   tests fail until you do. A preview package on a version of its own validates against
+   its own last release instead: after `Runic.Spelling`'s first release (0.23.0) add a
+   `RunicSpellingPackageValidationBaselineVersion` with its published version and set
+   it as the project's `PackageValidationBaselineVersion`, as
+   `Runic.Application.Views.CsWebUi` does. Likewise remove `<PackageValidationBaselineName>` from a
    package published for the first time under a new ID (the `Runic.Application.Views*`
    packages after 0.7.0-preview.7), which until then validates against its old ID.
    Also remove each RS0026 `SuppressMessage` attribute whose overload's line is now in
@@ -827,10 +831,13 @@ requirement, not a consumer one.
   `@runic-artifex/angular` for Angular guests in trusted component mode; 0.21
   moved trusted component mode of `@runic-artifex/views` and the `component`
   build target of `@runic-artifex/vite-plugin-runic` there.
-- **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
-  depends on the prerelease `CsWebUi`, so it ships with each release on a
+- **Preview:** `Runic.Application.Views.CsWebUi` and `Runic.Spelling` (an
+  application's own spell checker, since 0.23, D074.10) are the preview packages.
+  CsWebUi depends on the prerelease `CsWebUi`. Each ships with each release on a
   prerelease version, `<release major.minor.patch>-preview.N` with a counter of its
-  own, and may change in any release. `RunicCsWebUiPackageVersion` in
+  own, and may change in any release. `RunicSpellingPackageVersion` in
+  `eng/Versions.props` sets Runic.Spelling's version, and `version:bump` advances it
+  as CsWebUi's. `RunicCsWebUiPackageVersion` in
   `eng/Versions.props` sets that version; the `runic-app` template's
   `--host cswebui` references it. `bun run version:bump <version>` advances it, and
   `--cswebui <cswebui-version>` sets it explicitly (see
