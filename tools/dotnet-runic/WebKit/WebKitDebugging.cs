@@ -211,7 +211,7 @@ internal static class WebKitDebugging
         var hints = new List<string>
         {
             $"[dev] Debugging: JavaScript debuggers attach to the Window at http://127.0.0.1:{text}/ " +
-            $"(preview: WebKitGTK through Runic's CDP adapter; in VS Code an attach configuration with \"port\": {text}).{movedText}{inspector}",
+            $"(WebKitGTK through Runic's CDP adapter; in VS Code an attach configuration with \"port\": {text}).{movedText}{inspector}",
         };
         if (foreign)
         {
