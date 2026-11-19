@@ -146,6 +146,11 @@ internal sealed class HostConformanceTests
         private async Task FrameAsync(JsonObject frame)
         {
             var request = frame["request"]!.GetValue<string>();
+            if (request == "closed")
+            {
+                await PageClosedAsync("frame");
+                return;
+            }
             var launch = frame["url"]?.GetValue<string>() == "previous" ? _frameUrls[^2] : _frameUrls[^1];
             var surface = new Uri(launch, "../");
             var refused = frame["refused"] is not null;
@@ -204,6 +209,11 @@ internal sealed class HostConformanceTests
         private async Task ComponentAsync(JsonObject component)
         {
             var request = component["request"]!.GetValue<string>();
+            if (request == "closed")
+            {
+                await PageClosedAsync("component");
+                return;
+            }
             var origin = component["origin"]?.GetValue<string>() is { } named ? named == "embedder" ? _embedder! : named : _embedder!;
             var refused = component["refused"] is not null;
             int? expected = component["status"]?.GetValue<int>();
@@ -234,6 +244,27 @@ internal sealed class HostConformanceTests
             }
             Check(refused ? status is >= 400 and < 500 : status == expected,
                 $"The component {request} was answered {status}, not {(refused ? "refused" : expected)}.");
+        }
+
+        // closed: the guest closes the page that the latest 101 upgrade kept, as its region-detach does (host-protocol.md,
+        // region-detach), within the step's timeout. A push has no reply, so this is where a scenario sees that the guest
+        // applied a detach before it checks the revoked token or the refused module (#1224).
+        private async Task PageClosedAsync(string kind)
+        {
+            Check(_framePages.Count > 0, $"No {kind} page is connected.");
+            var page = _framePages[^1];
+            var buffer = new byte[4096];
+            using var timeout = new CancellationTokenSource(StepTimeout);
+            try
+            {
+                while ((await page.ReceiveAsync(buffer, timeout.Token)).MessageType != WebSocketMessageType.Close) { }
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                throw new InvalidOperationException($"The guest did not close the {kind} page within {StepTimeout.TotalSeconds} s.");
+            }
+            // The guest ended the connection without a close handshake.
+            catch (Exception error) when (error is WebSocketException or IOException) { }
         }
 
         // A component's upgrade: from origin, with the token as its subprotocol; after 101 its token check, whose packet

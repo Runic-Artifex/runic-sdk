@@ -1125,7 +1125,8 @@
                   "enum": [
                     "launch",
                     "bootstrap",
-                    "upgrade"
+                    "upgrade",
+                    "closed"
                   ]
                 },
                 "url": {
@@ -1163,12 +1164,47 @@
                 {
                   "required": [
                     "status"
-                  ]
+                  ],
+                  "properties": {
+                    "request": {
+                      "not": {
+                        "const": "closed"
+                      }
+                    }
+                  }
                 },
                 {
                   "required": [
                     "refused"
-                  ]
+                  ],
+                  "properties": {
+                    "request": {
+                      "not": {
+                        "const": "closed"
+                      }
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "request": {
+                      "const": "closed"
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "refused"
+                        ]
+                      }
+                    ]
+                  }
                 }
               ]
             },
@@ -1194,7 +1230,8 @@
                 "request": {
                   "enum": [
                     "module",
-                    "upgrade"
+                    "upgrade",
+                    "closed"
                   ]
                 },
                 "origin": {
@@ -1233,12 +1270,47 @@
                 {
                   "required": [
                     "status"
-                  ]
+                  ],
+                  "properties": {
+                    "request": {
+                      "not": {
+                        "const": "closed"
+                      }
+                    }
+                  }
                 },
                 {
                   "required": [
                     "refused"
-                  ]
+                  ],
+                  "properties": {
+                    "request": {
+                      "not": {
+                        "const": "closed"
+                      }
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "request": {
+                      "const": "closed"
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "refused"
+                        ]
+                      }
+                    ]
+                  }
                 }
               ]
             },

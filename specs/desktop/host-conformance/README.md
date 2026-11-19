@@ -301,6 +301,7 @@ New steps and actions the runners need:
   | `launch` | `GET` of the frame launch address, without following the redirect or sending a cookie. A `303` must redirect to the frame surface with `#runic-frame=<token>`, which binds `frame-token`, and carry `Content-Security-Policy: frame-ancestors <embedder>`, `Referrer-Policy: no-referrer` and no `X-Frame-Options` or `Set-Cookie` |
   | `bootstrap` | `GET` of the frame surface's `webui.js`, which must carry no session credential |
   | `upgrade` | The Bridge WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner sends the Bridge's token check, so the guest counts the page, and keeps the connection until the scenario ends |
+  | `closed` | No request: waits until the guest closes the page connection that the latest `101` kept, as a `region-detach` does, and fails after the runner's timeout. It takes no `status` or `refused` |
 
   For [`region-component/1`](../host-protocol.md#component-mode-region-component1), the step `component` makes one
   request of the latest component attach, with `origin` as its `Origin`: `"embedder"`, the default, for the latest
@@ -310,6 +311,12 @@ New steps and actions the runners need:
   | --- | --- |
   | `module` | `GET` of the bound `component-module`, without a cookie. A `200` must carry `Access-Control-Allow-Origin` with exactly the request's `Origin` and no `Set-Cookie` |
   | `upgrade` | The WebSocket upgrade of the bound `component-url`, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "component-token"}`). After `101` the runner sends the token check with a packet token of 0, so the guest counts the page, and keeps the connection until the scenario ends |
+  | `closed` | As for `frame`: waits until the guest closes the page that the latest `101` kept |
+
+  `region-detach` is a push without a reply, which the guest applies in its own time. A scenario checks a frame or
+  component request after one only once the guest showed that it applied it: after a `closed` step, or after a message
+  it received on the connection that sent the detach, since the guest handles its messages in order (#1224). The
+  corpus check (`eng/host-conformance.test.mjs`) rejects a scenario that does not.
 - **The host's user and the host application (host runner).** Actions that play the host page's
   [`hosted-regions/1`](../../application/README.md#hosted-regions) reports, with `window` naming a host window, which the
   runner opens with the page's first region: `declareRegion` (`name`, `sizing`), `removeRegion` (`name`, and `reason`

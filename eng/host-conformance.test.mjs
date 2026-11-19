@@ -2,7 +2,8 @@
 // - every scenario against its JSON Schema, and its id against its path;
 // - that every scenario is self-contained: it declares exactly the identifiers it uses, creates each connection,
 //   window and action before a step names it, sends a guest's item id only after a received message carried it, waits
-//   only for limits it arranges, and uses only the steps of its role.
+//   only for limits it arranges, and uses only the steps of its role;
+// - that a scenario checks a region page after region-detach only once the guest showed that it applied it (#1224).
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -147,6 +148,24 @@ export function scenarioProblems(scenario) {
   if (scenario.roles.includes("guest") && !scenario.arrange?.application)
     problems.push("arrange: a guest scenario names its application");
   if (scenario.roles.includes("host") && !scenario.arrange?.host) problems.push("arrange: a host scenario names its host");
+  problems.push(...detachProblems(scenario));
+  return problems;
+}
+
+// region-detach is a push without a reply, which the guest applies on its own time (#1224). A frame or component request
+// after it must come after the guest showed that it applied it: a `closed` step (the page it admitted is closed) or a
+// message received on the connection that sent the detach, since the guest handles its messages in order.
+function detachProblems(scenario) {
+  const problems = [];
+  let pending = null;
+  scenario.steps.forEach((step, index) => {
+    if (step.send?.kind === "region-detach") pending = { index, connection: step.connection };
+    else if (pending && (step.receive || step.receiveAll) && step.connection === pending.connection) pending = null;
+    else if (pending && (step.frame || step.component)) {
+      if ((step.frame ?? step.component).request === "closed") pending = null;
+      else problems.push(`step ${index} checks the page before the guest shows that it applied the region-detach of step ${pending.index} (a closed step or a received message)`);
+    }
+  });
   return problems;
 }
 
@@ -197,6 +216,12 @@ test("the self-containment check finds what it is for", () => {
   const invoke = { send: { kind: "menu-invoke", itemId: { $id: "i1" } }, connection: "c1" };
   assert.deepEqual(scenarioProblems({ ...items, steps: [start, { connect: "c1" }, open, menu, invoke, { expect: { action: "o", opened: true } }] }), []);
   assert.match(scenarioProblems({ ...items, steps: [start, { connect: "c1" }, open, invoke, menu, { expect: { action: "o", opened: true } }] }).join(), /sent before a received message/);
+  // #1224: a page check right after region-detach races the guest; after the page's closing it does not.
+  const detach = { send: { kind: "region-detach", window: { $id: "w1" }, reason: "removed" }, connection: "c1" };
+  const refused = { component: { request: "upgrade", refused: true } };
+  assert.match(scenarioProblems({ ...base, steps: [start, { connect: "c1" }, open, detach, refused] }).join(), /before the guest shows that it applied the region-detach/);
+  assert.doesNotMatch(scenarioProblems({ ...base, steps: [start, { connect: "c1" }, open, detach, { component: { request: "closed" } }, refused] }).join(), /region-detach/);
+  assert.doesNotMatch(scenarioProblems({ ...base, steps: [start, { connect: "c1" }, open, detach, { receive: {}, connection: "c1" }, { frame: { request: "launch", status: 303 } }] }).join(), /region-detach/);
   const host = { roles: ["host"], ids: {}, arrange: { host: { name: "h", version: "1" } } };
   assert.deepEqual(scenarioProblems({ ...host, steps: [{ start: { host: true } }, { user: { action: "closeWindow", window: "w1" } }] }), []);
   assert.match(scenarioProblems({ ...base, steps: [start, { user: { action: "closeWindow", window: "w1" } }] }).join(), /not a step of the guest role/);
