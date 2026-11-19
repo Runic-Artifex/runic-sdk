@@ -10,7 +10,7 @@ policy and pkexec.
 
 This document records the cross-platform investigation, the delivery matrix,
 the Linux design and its security review. The package guide,
-[Runic.Platform.Linux.Polkit](../../packages/dotnet/Runic.Platform.Linux.Polkit/README.md),
+[Runic.Platform.Linux.Polkit](../../../packages/dotnet/Runic.Platform.Linux.Polkit/README.md),
 describes the API.
 
 ## Delivery matrix — 2026-10-14
@@ -373,7 +373,7 @@ paths (`realpath`), checks the resolved path again and uses only it.
 ## Windows
 
 Runic.Platform.Windows.Elevation implements the provider; its
-[guide](../../packages/dotnet/Runic.Platform.Windows.Elevation/README.md)
+[guide](../../../packages/dotnet/Runic.Platform.Windows.Elevation/README.md)
 describes the API, outcomes and packaging. It is a small package beside
 Runic.Platform.Windows rather than part of it, so a NativeAOT helper references
 nothing but Runic.Platform. Runic.Platform.Administration.Windows performs
@@ -645,7 +645,7 @@ a macOS application ships as one bundle whose daemon is generated only when
 `RunicMacPrivilegedDaemonLabel` is set, so the opt-in is that property rather than
 a package reference, and the daemon's XPC server needs the bundle's code-signing
 identity that the provider package already checks (W319-003 mac-02). The
-[package guide](../../packages/dotnet/Runic.Platform.MacOS/README.md#privileged-actions)
+[package guide](../../../packages/dotnet/Runic.Platform.MacOS/README.md#privileged-actions)
 describes the API, the build properties and the packaging.
 
 ### Pieces

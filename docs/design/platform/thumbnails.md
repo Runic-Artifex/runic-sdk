@@ -147,11 +147,11 @@ Look queue, without an AppKit event loop. ImageIO's
 Cancellation calls `cancelRequest:`. The completion block uses the
 package's `MacDesktopBlock`, without runtime-generated delegates.
 
-## Out of scope for 1.0
+## Not planned
 
 - Running the desktop's `.thumbnailer` programs on Linux, sandboxed with
-  bubblewrap as GNOME does, where no Thumbnailer1 service runs. Until then
-  GNOME and KDE return only what their file managers cached.
+  bubblewrap as GNOME does, where no Thumbnailer1 service runs: on GNOME and
+  KDE, Runic returns only what their file managers cached.
 - Writing thumbnails to the Linux cache, and the shared repositories of
   removable media (`.sh_thumbnails`).
 - Requests for several files at once, which Thumbnailer1 can batch.

@@ -116,7 +116,7 @@ The shell starts a registered application with the URL or file as an argument;
 the running instance. The application's installer registers the URL scheme and
 file types per user under `HKCU\Software\Classes`, with the command
 `"C:\…\App.exe" "%1"` quoted so a URL cannot add arguments, or declares them in
-an MSIX manifest. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists the keys.
+an MSIX manifest. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/open-activation.md) lists the keys.
 
 An application without an installer registers itself with
 `WindowsPlatformProvider.CreateOpenRegistration(applicationId)`: a URL protocol
@@ -147,7 +147,7 @@ size and deletion time from its `$I` record; `RestoreAsync` runs the item's own
 `undelete` verb without UI after checking that nothing is at the original path
 (`Failed(Conflict)` otherwise), recreating a missing parent; `EmptyAsync` is
 `SHEmptyRecycleBinW` without confirmation, progress or sound. See the
-[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
+[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/trash.md).
 
 ## Thumbnails
 
@@ -156,7 +156,7 @@ shows, from the shell's thumbnail providers and cache, through
 `IShellItemImageFactory` with `SIIGBF_THUMBNAILONLY`: a file of a type without a
 thumbnail provider gets no thumbnail rather than its icon. WIC encodes it as
 PNG. See the
-[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/thumbnails.md).
 
 ## Volumes
 
@@ -183,7 +183,7 @@ as mount options do.
 A watch hears volume arrivals and removals (`CM_Register_Notification`) and
 lists again every two seconds for drive letters, labels and media changes that
 have no notification. See the
-[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/volumes.md).
 
 ## Desktop applications
 
@@ -203,7 +203,7 @@ command line. Windows lets only the user choose defaults, so
 `SetDefaultApplicationAsync` reports `PermissionDenied` with a diagnostic that
 points to `ms-settings:defaultapps`; the window's file launcher opens that page
 with `LaunchUriAsync(new Uri("ms-settings:defaultapps"))`. See the
-[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
+[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/desktop-applications.md).
 
 ## Secret storage
 
@@ -222,7 +222,7 @@ then holds a reference to the file and its SHA-256, so a replaced or damaged
 file reads as `Failed(InvalidData)`. Deleting the secret removes both. Like the
 credential, the file does not roam. `CreateSecretStore(DesktopSecretStoreOptions)`
 returns the same store: Credential Manager never prompts. See the
-[secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+[secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/secret-storage.md).
 
 ## Message boxes
 

@@ -189,7 +189,7 @@ Listing, restoring and emptying report `Unavailable(BackendUnavailable)`:
 macOS has no public API for them (Finder's Put Back only), and `~/.Trash` is
 protected by privacy consent.
 
-## Out of scope for 1.0
+## Not planned
 
 - Returning where the item went, for an application's own undo (D036.6).
 - Deleting one trashed item permanently.

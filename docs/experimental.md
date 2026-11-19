@@ -7,7 +7,9 @@ this page for the release you use. Suppressing the ID is the opt-in: it says
 your project accepts changes to that API before it is supported.
 
 One .NET API family is experimental: [`RUNICDESK103`](#RUNICDESK103), hosted
-application windows. It is listed here with its ID, API and packages. The side
+application windows. It is listed here with its ID, API and packages. It and the
+npm `./experimental` exports are the explicit exception that stays experimental
+after 1.0. The side
 panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`) graduated in 0.22.0
 ([graduated and retired IDs](#retired)).
 
@@ -50,8 +52,10 @@ Or suppress it where you use the API, for a file or a region of one:
 
 Hosted application windows (0.17): one Runic Desktop application shows another
 one's windows over the [Runic host protocol](../specs/desktop/host-protocol.md),
-`runic-host/1`. The protocol and its API stay experimental through 1.0, so they
-can change in a minor release, also after 1.0 (D055.8). Suppress the ID in the
+`runic-host/1`. The protocol and its API are the stated exception to the 1.0
+promise: they stay experimental after 1.0 and can change in any minor release
+until they graduate, together with the npm `./experimental` exports of hosted
+regions and components ([npm packages](#npm-packages); D055.8, D075.4). Suppress the ID in the
 guest application, the host application and their tests. Start with
 [hosted applications](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-applications)
 and the [hosted windows example](../examples/hosted-windows/README.md). Regions (0.18), a
@@ -115,6 +119,10 @@ experimental type. Graduation moves the export to the package's root entry.
 Before 1.0 it stays in `./experimental` for one more minor release as a
 deprecated re-export (from 0.22, D069.3), then it is removed; from 1.0 the
 experimental export remains as a deprecated alias until the next major.
+
+The exports below, hosted regions and components, belong to the
+[`RUNICDESK103`](#RUNICDESK103) family and stay experimental after 1.0, as it
+does (D055.8, D075.7).
 
 Experimental npm APIs:
 

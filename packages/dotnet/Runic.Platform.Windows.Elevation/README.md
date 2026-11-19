@@ -9,7 +9,7 @@ Preview API targeting .NET 10. The contract, `IDesktopPrivilegedActions`, and
 the declarations are in Runic.Platform; off Windows,
 `WindowsPrivilegedActions.Create` returns a provider that reports every request
 unavailable. The design, the per-platform decisions and the security review are
-in [privileged operations](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/privileged-operations.md).
+in [privileged operations](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/privileged-operations.md).
 
 ## Declare actions
 

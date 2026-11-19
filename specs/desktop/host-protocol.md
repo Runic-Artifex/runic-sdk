@@ -8,8 +8,9 @@ pages as it does in serve-only mode and shows no window of its own; for each of 
 window of its own process that loads the guest's page, and the guest controls that window over the **host channel**,
 a WebSocket that speaks this protocol.
 
-The protocol and the .NET API that implements it are experimental (`RUNICDESK103`, [experimental APIs](../../docs/experimental.md)):
-they may change in a minor release until they graduate, also after 1.0 (D055.8). The design, its use cases and the
+The protocol and the .NET API that implements it are experimental (`RUNICDESK103`, [experimental APIs](../../docs/experimental.md)).
+With the npm `./experimental` exports of hosted regions and components, they are the explicit exception that stays
+experimental after 1.0: they may change in any minor release until they graduate (D055.8, D075.4, D075.7). The design, its use cases and the
 decisions behind it are in the S11 design record; this document is the contract. The key words MUST, MUST NOT, SHOULD
 and MAY are used as in RFC 2119.
 

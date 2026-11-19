@@ -147,7 +147,7 @@ Undoing is best effort: an entry that cannot be removed or moved back stays.
 | Other native errors | `Failed(Other)` with the `errno` or `HRESULT` |
 | Caller cancellation | `OperationCanceledException`, within one block |
 
-## Out of scope for 1.0
+## Not planned
 
 - Copy acceleration: reflinks, `copy_file_range`, `CopyFileEx`, `clonefile`.
 - Keeping extended attributes, ACLs, owners, alternate data streams, resource

@@ -48,6 +48,11 @@ The [packaging guide](packaging.md) covers `dotnet runic package`: what each
 format needs, how you sign the packages with your own credentials, and the
 settings that make a NativeAOT executable smaller.
 
+The [platform service designs](design/platform/README.md) record how
+Runic.Platform's native services (privileged operations, secret storage, opening
+files and URLs, the trash, file transfers, volumes, desktop applications and
+thumbnails) work on each operating system, and what they leave out.
+
 The [MSBuild reference](msbuild.md) lists every MSBuild property and item that
 the SDK packages and tools read, with links to where each is described.
 
