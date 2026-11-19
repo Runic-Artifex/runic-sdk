@@ -477,12 +477,47 @@ internal sealed class BrowserEntry : IAsyncDisposable
     private static bool IsBridgeClose(ReadOnlySpan<byte> payload) => payload.Length == 9 && payload[0] == 221 && payload[7] == 250;
 
     /// <summary>
-    /// Relays the Window's WebSocket frames to the page, but for the Bridge's close command: the page would close and stop
-    /// reconnecting, also when <c>dotnet watch</c> only restarts the Window. It gets the token refusal instead
-    /// (<see cref="TurnAwayFrame"/>), reloads itself, and the reload goes to the Window that serves then. The Window
-    /// sends unmasked, uncompressed frames (the proxy offers no extension), each a whole Bridge packet.
+    /// The Bridge's navigation command (251: an 8-byte header, the URL, a terminating byte) with the URL moved from the
+    /// Window's own address (<paramref name="windowAuthority"/>, by name or as a loopback address at its port) to this
+    /// one's (<paramref name="entryHost"/>); null for any other packet. The page follows the command with
+    /// <c>location.replace</c>, so a navigation to the Window's own address, such as Runic Desktop's reload of live
+    /// assets, would take the tab off the session's address.
     /// </summary>
-    internal static async Task RelayBridgeAsync(Stream from, Stream to, CancellationToken cancellationToken, Action? closed = null)
+    internal static byte[]? MovedNavigation(ReadOnlySpan<byte> payload, string windowAuthority, string entryHost)
+    {
+        if (payload.Length < 9 || payload[0] != 221 || payload[7] != 251) return null;
+        ReadOnlySpan<byte> text = payload[8..];
+        int end = text.IndexOf((byte)0);
+        if (end >= 0) text = text[..end];
+        if (!Uri.TryCreate(Encoding.UTF8.GetString(text), UriKind.Absolute, out Uri? target) || target.Scheme != Uri.UriSchemeHttp ||
+            !(string.Equals(target.Authority, windowAuthority, StringComparison.OrdinalIgnoreCase) ||
+              (target.IsLoopback && target.Port == new Uri("http://" + windowAuthority).Port)))
+            return null;
+        byte[] moved = Encoding.UTF8.GetBytes($"http://{entryHost}{target.PathAndQuery}{target.Fragment}");
+        var packet = new byte[8 + moved.Length + 1];
+        payload[..8].CopyTo(packet);
+        moved.CopyTo(packet, 8);
+        return packet;
+    }
+
+    // An unmasked, final binary frame with the payload.
+    private static byte[] BinaryFrame(byte[] payload)
+    {
+        byte[] head = payload.Length < 126 ? [0x82, (byte)payload.Length]
+            : [0x82, 126, (byte)(payload.Length >> 8), (byte)payload.Length];
+        return [.. head, .. payload];
+    }
+
+    /// <summary>
+    /// Relays the Window's WebSocket frames to the page, but for two Bridge commands. The close command: the page would
+    /// close and stop reconnecting, also when <c>dotnet watch</c> only restarts the Window. It gets the token refusal
+    /// instead (<see cref="TurnAwayFrame"/>), reloads itself, and the reload goes to the Window that serves then. The
+    /// navigation command to the Window's own address (<paramref name="windowAuthority"/>) moves to this one's
+    /// (<see cref="MovedNavigation"/>). The Window sends unmasked, uncompressed frames (the proxy offers no extension),
+    /// each a whole Bridge packet.
+    /// </summary>
+    internal static async Task RelayBridgeAsync(Stream from, Stream to, CancellationToken cancellationToken, Action? closed = null,
+        string? windowAuthority = null, string? entryHost = null)
     {
         byte[] head = new byte[14];
         byte[] buffer = new byte[16 * 1024];
@@ -508,18 +543,25 @@ internal sealed class BrowserEntry : IAsyncDisposable
                 if (!await ReadFullyAsync(from, head.AsMemory(headLength, 4), cancellationToken).ConfigureAwait(false)) return;
                 headLength += 4;
             }
-            // A whole binary frame of a Bridge packet's size, unmasked: the close command is replaced.
-            if (head[0] == 0x82 && headLength == 2 && length == 9)
+            // A whole, unmasked binary frame that fits the buffer: a close or navigation command is replaced.
+            if (head[0] == 0x82 && (head[1] & 0x80) == 0 && length <= buffer.Length)
             {
-                if (!await ReadFullyAsync(from, buffer.AsMemory(0, 9), cancellationToken).ConfigureAwait(false)) return;
-                if (IsBridgeClose(buffer.AsSpan(0, 9)))
+                int size = (int)length;
+                if (!await ReadFullyAsync(from, buffer.AsMemory(0, size), cancellationToken).ConfigureAwait(false)) return;
+                if (IsBridgeClose(buffer.AsSpan(0, size)))
                 {
                     closed?.Invoke();
                     await to.WriteAsync(TurnAwayFrame, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
-                await to.WriteAsync(head.AsMemory(0, 2), cancellationToken).ConfigureAwait(false);
-                await to.WriteAsync(buffer.AsMemory(0, 9), cancellationToken).ConfigureAwait(false);
+                if (windowAuthority is not null && entryHost is not null &&
+                    MovedNavigation(buffer.AsSpan(0, size), windowAuthority, entryHost) is { } moved)
+                {
+                    await to.WriteAsync(BinaryFrame(moved), cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+                await to.WriteAsync(head.AsMemory(0, headLength), cancellationToken).ConfigureAwait(false);
+                await to.WriteAsync(buffer.AsMemory(0, size), cancellationToken).ConfigureAwait(false);
                 continue;
             }
             await to.WriteAsync(head.AsMemory(0, headLength), cancellationToken).ConfigureAwait(false);
@@ -904,7 +946,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
         await client.WriteAsync(Encoding.Latin1.GetBytes(response), done.Token).ConfigureAwait(false);
         // A Runic Desktop page's Bridge: the Window's close command becomes the token refusal (RelayBridgeAsync).
         Task download = upgrade && path.EndsWith("/" + BridgeSocketPath, StringComparison.Ordinal)
-            ? RelayBridgeAsync(server, client, done.Token, () => BridgeClosed(path))
+            ? RelayBridgeAsync(server, client, done.Token, () => BridgeClosed(path), authority, host ?? Host)
             : server.CopyToAsync(client, done.Token);
         await (upgrade ? Task.WhenAny(upload, download) : download).ConfigureAwait(false);
         await done.CancelAsync().ConfigureAwait(false);

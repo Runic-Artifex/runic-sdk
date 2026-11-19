@@ -823,6 +823,17 @@ and a tab keeps it across restarts:
   WebSocket connections, such as a page's Bridge, close. A request that only
   carries the code, and no such navigation, ends nothing. To move to another
   browser or profile, open the page (or the newest code) there.
+- **A client other than a browser.** The address is meant for a browser.
+  Browsers resolve names under `.localhost` to the loopback interface
+  themselves, and so does current curl (8.x). Programs that use the system's
+  resolver, such as Node's `fetch`, .NET's `HttpClient` or PowerShell, find
+  the name only where that resolver knows `.localhost` names: on Linux with
+  systemd's resolver or `nss-myhostname`, not on Windows 11 or on a Linux with
+  files and DNS alone (such as musl-based images). There, and on macOS, connect
+  to `127.0.0.1:<port>` and send `Host: <label>.localhost:<port>` (curl:
+  `--resolve <label>.localhost:9224:127.0.0.1`). Such a client is admitted as
+  a browser is: the request with the code gets the cookie, and a `GET` of `/`
+  with the cookie confirms it.
 - **A Window the application closes.** When the application closes a Window
   while its process keeps running, `/` opens the first Window that still serves,
   and `/windows/<n>` of the closed one says that it closed.

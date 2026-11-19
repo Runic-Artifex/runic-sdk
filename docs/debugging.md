@@ -285,7 +285,12 @@ code: the `[dev] Browser:` lines print the address with it (`http://<label>.loca
 `"file"`. The browser that opens it becomes the admitted one, and the previous browser's admission ends, with its open
 connections. The tab keeps the address when `dotnet watch` restarts the Window: a Runic Desktop page reloads itself onto
 the new Window, and its breakpoints stop again; reload a CS-WebUI tab. A configuration that matches the page by URL uses
-`http://*.localhost:9224/*`.
+`http://*.localhost:9224/*`. The address is meant for a browser: a program that uses the system's resolver, such as
+Node's `fetch` or PowerShell, may not find `<label>.localhost` (Windows 11 does not resolve it, nor does Linux without
+systemd's resolver or `nss-myhostname`); connect it to `127.0.0.1:9224` with `Host: <label>.localhost:9224`. Current
+curl resolves the name itself. See the dotnet-runic README's
+[Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser) for the admission such a
+client makes.
 
 Two differences from the Window: the page runs on **Chromium**, not on the Window's engine, so check WebKit- or
 WebView2-specific behaviour in the Window; and it has **no native window features**: file dialogs, menus and the

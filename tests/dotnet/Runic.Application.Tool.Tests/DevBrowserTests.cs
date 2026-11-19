@@ -253,7 +253,7 @@ internal sealed partial class ToolTests
         Equal(null, BrowserEntry.CookieValue($"a{BrowserEntry.CookieName}=x", BrowserEntry.CookieName));
     }
 
-    [Test, DisplayName("the browser entry relays the Window's Bridge frames and turns its close command into a reload")]
+    [Test, DisplayName("the browser entry relays the Window's Bridge frames, turns its close command into a reload and keeps navigations on its address")]
     public async Task BrowserEntryRelaysTheBridge()
     {
         byte[] close = [0x82, 9, 221, 1, 2, 3, 4, 0, 0, 250, 0];
@@ -267,6 +267,25 @@ internal sealed partial class ToolTests
         SequenceEqual([.. push, .. large, .. text, .. BrowserEntry.TurnAwayFrame, .. closing], to.ToArray());
         // The refusal is the Bridge's token check reply with a refused token: the page's client reloads on it.
         SequenceEqual(new byte[] { 0x82, 9, 221, 0, 0, 0, 0, 0, 0, 245, 0 }, BrowserEntry.TurnAwayFrame);
+
+        // The navigation command (251) to the Window's own address, as Runic Desktop's reload of live assets sends it,
+        // moves to the session's address, so the tab stays there; other navigations pass unchanged.
+        static byte[] Navigation(string url) => [221, 1, 2, 3, 4, 0, 0, 251, .. Encoding.UTF8.GetBytes(url), 0];
+        static byte[] Frame(byte[] payload) => payload.Length < 126 ? [0x82, (byte)payload.Length, .. payload]
+            : [0x82, 126, (byte)(payload.Length >> 8), (byte)payload.Length, .. payload];
+        byte[] own = Navigation("http://127.0.0.1:41234/surface-a/index.html?v=2#top");
+        byte[] foreign = Navigation("http://127.0.0.1:41235/other.html");
+        byte[] longOne = Navigation("http://127.0.0.1:41234/surface-a/" + new string('a', 200) + ".html");
+        SequenceEqual(Navigation($"http://{TestHost}/surface-a/index.html?v=2#top"),
+            BrowserEntry.MovedNavigation(own, "127.0.0.1:41234", TestHost)!);
+        SequenceEqual(Navigation($"http://{TestHost}/next"), BrowserEntry.MovedNavigation(Navigation("http://localhost:41234/next"), "127.0.0.1:41234", TestHost)!);
+        Equal(null, BrowserEntry.MovedNavigation(foreign, "127.0.0.1:41234", TestHost));
+        Equal(null, BrowserEntry.MovedNavigation(push.AsSpan(2), "127.0.0.1:41234", TestHost));
+        using var navigationsFrom = new MemoryStream([.. Frame(own), .. Frame(foreign), .. Frame(longOne), .. closing]);
+        using var navigationsTo = new MemoryStream();
+        await BrowserEntry.RelayBridgeAsync(navigationsFrom, navigationsTo, CancellationToken.None, null, "127.0.0.1:41234", TestHost);
+        SequenceEqual([.. Frame(Navigation($"http://{TestHost}/surface-a/index.html?v=2#top")), .. Frame(foreign),
+            .. Frame(Navigation($"http://{TestHost}/surface-a/" + new string('a', 200) + ".html")), .. closing], navigationsTo.ToArray());
     }
 
     [Test, DisplayName("the browser entry follows the serve-only lines of the Window process")]
