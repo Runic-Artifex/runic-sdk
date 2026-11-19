@@ -955,9 +955,13 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 
 **Stopping `dev`.** Stop `dev` as a terminal does, with Ctrl+C or SIGINT/SIGTERM.
 `dev` then stops the frontend and the Window, marks the session file
-`"stopped"`, deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
-exits with 130. A process killed by force does none of this: a build within 30
-seconds still keeps the development pages, and the session file keeps its state.
+`"stopped"`, replaces the development pages it wrote into the web root with a
+page that loads nothing (since 0.23; a page that a build replaced meanwhile
+stays), deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
+exits with 130. The next build copies the frontend's pages back. A process
+killed by force does none of this: its development pages stay until the next
+build, a build within 30 seconds still keeps them, and the session file keeps
+its state.
 On Windows, the frontend's development server or watcher runs in a Job object
 with everything it starts (the package manager, Node.js below it and the
 `runic-translations serve` that the Vite plugin starts), so the stop ends all of
