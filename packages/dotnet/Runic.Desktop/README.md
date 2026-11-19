@@ -1769,7 +1769,7 @@ VoiceOver on macOS, NVDA 2026.2 on Windows and Orca 46 on Linux (Ubuntu
 | `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event; Orca says "Fruit List with 3 items", then "Apple" | List; `Selection` patterns; selection event; NVDA says "Fruit list", then "Apple 1 of 3" | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
 | Focus moved by the screen reader | Focus event; Orca follows it and says the control | Focus event; NVDA follows it and says the control | VoiceOver follows it and says the control |
 | Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)); Orca says nothing | `LiveRegionChanged`; NVDA says it | VoiceOver says it |
-| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | `LiveRegionChanged` from the Bridge's live region while the page has the focus, else a notification event (below); NVDA says it | `AXAnnouncementRequested`; VoiceOver says it |
+| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | `LiveRegionChanged` from the Bridge's live region while the page or the window itself has the focus, else a notification event (below); NVDA says it | `AXAnnouncementRequested`; VoiceOver says it |
 | Native menu bar | None | The declared menus, a Win32 menu bar that Windows exposes to screen readers | Application, Edit, View and Window menus |
 
 Each cell is what a client of the API receives, then what the screen reader
@@ -1867,14 +1867,18 @@ every platform:
 | --- | --- | --- |
 | GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`); Orca says both (`Runic.Desktop.AccessibilityProbe --screen-reader orca`) |
 | GTK 4 | Calls `gtk_accessible_announce` (GTK 4.14 or later; an older GTK reports no `Announcements`). | As GTK 3 (`--announcement gtk4`) |
-| WebView2 | While the page has the keyboard focus, the page's Bridge (`webui.js`) adds the message to a visually hidden live region (`aria-live` with the priority) that it adds to the page on first use. Otherwise, or when no Bridge is connected, the window raises a UI Automation notification event from its own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both (`Runic.Desktop.AccessibilityProbe`); NVDA says both (`--screen-reader nvda`); not checked with Narrator |
+| WebView2 | While the page, or the window itself, has the keyboard focus, the page's Bridge (`webui.js`) adds the message to a visually hidden live region (`aria-live` with the priority) that it adds to the page on first use. Otherwise, or when no Bridge is connected, the window raises a UI Automation notification event from its own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both (`Runic.Desktop.AccessibilityProbe`); NVDA says both (`--screen-reader nvda`); not checked with Narrator |
 | WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | VoiceOver says both (`Runic.Desktop.AccessibilityProbe --screen-reader voiceover`) |
 
 **Why WebView2 announces through the page.** NVDA 2026.2 receives the
 window's notification event but speaks a notification only from the
 application that has the focus, and while the page has the focus, that is
 WebView2's browser process (`msedgewebview2.exe`), not the application. NVDA
-does say a live region in the page. The Bridge's live region needs no change to
+does say a live region in the page, from any window inside the foreground
+window. The window itself holds the focus after WebView2 activates it to carry
+out a UI Automation action from another process, such as a press of a button,
+and can keep it while the button stays NVDA's focus; the page announces then
+too ([#1181](https://github.com/Runic-Artifex/runic-sdk/issues/1181)). The Bridge's live region needs no change to
 the page or its Content-Security-Policy: the host sends the message as data, and
 the region is styled through the CSSOM. It is a `div` with
 `data-runic-announcer`, appended to `<body>`; a page that replaces its

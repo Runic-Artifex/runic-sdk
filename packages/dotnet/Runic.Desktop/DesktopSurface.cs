@@ -2067,8 +2067,8 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// platform. It is the native counterpart of an ARIA live region, which WebKitGTK does not report to Orca: on
     /// Linux the window's accessible object emits the AT-SPI <c>Announcement</c> event (ATK's <c>notification</c>
     /// signal with GTK 3, <c>gtk_accessible_announce</c> with GTK 4.14 or later), on Windows the window raises a
-    /// UI Automation notification event, or, while the page has the keyboard focus, the page's Bridge says the message
-    /// in a live region that it adds to the page, and on macOS it posts
+    /// UI Automation notification event, or, while the page or the window itself has the keyboard focus, the page's
+    /// Bridge says the message in a live region that it adds to the page, and on macOS it posts
     /// <c>NSAccessibilityAnnouncementRequestedNotification</c>. Whether and when the message is spoken is up to the
     /// screen reader. A browser cannot be asked: an installed browser, including one opened after a fallback, reports
     /// no such capability, so keep a live region in the page for it.

@@ -1195,11 +1195,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The window's accessibility API announces the message, except on WebView2 while the keyboard focus is in the page:
     // the focus is then in WebView2's browser process, and NVDA speaks a UI Automation notification only from the
     // focused object's process (I-184). The page's Bridge then announces it in a live region, which NVDA speaks from the
-    // page's process. Without a connected Bridge the window announces it.
+    // page's process. The same holds while the focus is on the window itself, which WebView2 leaves it on after it
+    // activates the window for a UI Automation action while NVDA stays on the page's control (sdk#1181). Without a
+    // connected Bridge the window announces it.
     internal async Task AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
     {
         var host = GetEmbeddedHost();
-        if (host is WindowsWebView2Host { IsWebContentFocused: true }
+        if (host is WindowsWebView2Host { IsFocusOnPageOrWindow: true }
             && await AnnounceInPageAsync(message, priority, cancellationToken).ConfigureAwait(false))
         {
             return;
