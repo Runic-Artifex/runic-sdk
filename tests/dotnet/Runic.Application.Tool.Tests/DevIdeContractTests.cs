@@ -78,6 +78,11 @@ internal sealed partial class ToolTests
         Equal("CS1002", rebuild.Groups["code"].Value);
         Equal("[host] /src/App/CounterViewModel.cs",
             Regex.Match("[host] /src/App/CounterViewModel.cs(18,5): error CS1002: ; expected", MsCompilePattern).Groups[1].Value);
+        // A frontend module that does not compile, from the Runic Vite plugin after dev's [vite] label (#1160).
+        Match frontend = Regex.Match("[vite] /src/App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.",
+            DocumentedDiagnosticPattern);
+        Equal(("/src/App/Frontend/src/App.tsx", "29", "50", "RUNICP008"),
+            (frontend.Groups["file"].Value, frontend.Groups["line"].Value, frontend.Groups["column"].Value, frontend.Groups["code"].Value));
         Match bridge = Regex.Match("/src/App/CounterViewModel.cs(12,17): error RUNICBRIDGE004: The command has two overloads.", DocumentedDiagnosticPattern);
         Equal("RUNICBRIDGE004", bridge.Groups["code"].Value);
         False(Regex.IsMatch(DevApplication.WindowStartedLine(1), DocumentedDiagnosticPattern), "A contract line was taken for a diagnostic.");
