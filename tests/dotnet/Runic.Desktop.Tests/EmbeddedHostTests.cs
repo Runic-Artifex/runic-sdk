@@ -161,6 +161,23 @@ public sealed class EmbeddedHostTests
 
         public nint NativeHandle => IsOpen ? 42 : 0;
 
+        // DesktopMenuItem.OpenDevToolsCommandId (#1188): whether the window's developer tools are on, and how often
+        // they were opened.
+        internal bool DevTools { get; set; }
+
+        internal int DevToolsOpened { get; private set; }
+
+        public bool CanOpenDevTools => DevTools;
+
+        public ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default)
+        {
+            if (!DevTools) return ValueTask.FromResult(false);
+            DevToolsOpened++;
+            return ValueTask.FromResult(true);
+        }
+
+        internal void MarkOpen() => IsOpen = true;
+
         internal Uri? Url { get; private set; }
 
         internal WebUiEmbeddedHostOptions? Options { get; private set; }

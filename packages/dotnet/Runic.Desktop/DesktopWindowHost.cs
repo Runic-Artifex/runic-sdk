@@ -702,6 +702,16 @@ internal interface IDesktopSidePanelWindowHost : IDesktopWindowHost
     ValueTask<Internal.WebUiSidePanelOpening> OpenSidePanelAsync(Internal.WebUiSidePanelRequest request, CancellationToken cancellationToken);
 }
 
+// #1188: a first-party custom window host whose page has developer tools that it opens on request (Runic.Desktop.Gtk4,
+// WebKit's Web Inspector). Other custom window hosts disable the menu item of DesktopMenuItem.OpenDevToolsCommandId.
+internal interface IDesktopDevToolsWindowHost : IDesktopWindowHost
+{
+    // On the window's thread: whether the window's web content policy turned its developer tools on.
+    bool CanOpenDevTools { get; }
+
+    ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken);
+}
+
 internal interface IDesktopPageAnnouncementHost : IDesktopWindowHost
 {
     Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? AnnounceInPage { set; }
@@ -745,6 +755,11 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public event EventHandler? ActivityChanged;
 
     public DesktopWindowActivity? Activity => _host is IDesktopActivityWindowHost activityHost ? activityHost.Activity : null;
+
+    public bool CanOpenDevTools => _host is IDesktopDevToolsWindowHost { CanOpenDevTools: true };
+
+    public ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default) =>
+        _host is IDesktopDevToolsWindowHost devToolsHost ? devToolsHost.OpenDevToolsAsync(cancellationToken) : ValueTask.FromResult(false);
 
     public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
         _host is IDesktopColorSchemeWindowHost schemeHost

@@ -1,1 +1,2 @@
 #nullable enable
+const Runic.Platform.DesktopMenuItem.OpenDevToolsCommandId = "runic.devtools.open" -> string!

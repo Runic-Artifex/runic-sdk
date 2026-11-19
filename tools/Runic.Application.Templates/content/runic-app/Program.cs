@@ -3,6 +3,7 @@ using Runic.Application.Views;
 #if (desktopHost)
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
+using Runic.Platform;
 #if (gtk4)
 using Runic.Desktop.Gtk4;
 #endif
@@ -18,25 +19,32 @@ await using var provider = new ServiceCollection().AddWorkspace().BuildServicePr
 });
 
 #if (desktopHost)
+var developing = string.Equals(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+// In Development, View ▸ Developer Tools opens the Window's developer tools: WebView2's DevTools on Windows, WebKit's
+// Web Inspector on Linux. macOS opens WKWebView's Web Inspector from Safari ▸ Develop instead, so it gets no item.
+DesktopMenu[] menuBar = developing && !OperatingSystem.IsMacOS()
+    ? [new DesktopMenu("View", [new DesktopMenuItem("Developer Tools", DesktopMenuItem.OpenDevToolsCommandId)])]
+    : [];
+
 // Fallbacks and limitations, such as a missing WebKitGTK runtime, are written to standard error and to
 // DiagnosticsLog.Path, since a Windows application has no console.
 #if (gtk4)
 // Linux embeds WebKitGTK 6 through GTK 4, with the application ID that the desktop entry is named after. Windows uses
 // WebView2 and macOS WKWebView.
-var options = new DesktopHostOptions { DiagnosticSink = ReportDiagnostic }.WithGtk4(ApplicationIdentity.Id);
+var options = new DesktopHostOptions { DiagnosticSink = ReportDiagnostic, MenuBar = menuBar }.WithGtk4(ApplicationIdentity.Id);
 #else
 // Linux embeds WebKitGTK 4.1 through GTK 3. Windows uses WebView2 and macOS WKWebView.
 var options = new DesktopHostOptions
 {
     Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
     DiagnosticSink = ReportDiagnostic,
+    MenuBar = menuBar,
 };
 #endif
 
 // Outside Development, the Window's pages get a Content-Security-Policy: scripts and connections only from the
 // application itself, no string evaluation, no plugins, no foreign <base> and no framing. The Views Bridge needs
 // nothing more: its state arrives as data. Development (dotnet runic dev and its development server) sends none.
-var developing = string.Equals(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 #if (frontend == "sveltekit")
 // SvelteKit starts the page with an inline script. vite.config.ts makes it add a policy of its own that allows
 // only that script by its hash; the browser enforces both policies. style-src-attr allows exactly the style attribute

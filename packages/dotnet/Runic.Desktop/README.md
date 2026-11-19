@@ -912,10 +912,26 @@ built-in hosts do.
 Since 0.21 a WebView2 window whose developer tools are on (in Development, by
 default) has an **Open DevTools** item in its system menu (Alt+Space, or a
 right click on the title bar), and `DesktopWindow.OpenDevToolsAsync` opens the
-same Edge DevTools window from code, for example from a menu item that the
-application declares only in Development. It returns `false` when the window's
-developer tools are off, as in production, and on WKWebView, WebKitGTK, an
-installed browser or a custom window host. A DevTools window that WebView2
+same Edge DevTools window from code. Since 0.23 it shows WebKit's Web Inspector
+in a WebKitGTK window (GTK 3 and GTK 4). It returns `false` when the window's
+developer tools are off, as in production, and on WKWebView, an installed
+browser or a custom window host.
+
+The menu bar has a standard command for it (since 0.23):
+`DesktopMenuItem.OpenDevToolsCommandId` (`runic.devtools.open`), the one id
+with the reserved `runic.` prefix that a menu bar item may name. Runic runs it
+for the key window before the window's and the application's command targets,
+which never see it, and the item is enabled only in Development, in a window
+whose developer tools are on, on WebView2 and WebKitGTK. It is disabled on
+macOS, in an installed browser, on CS-WebUI and in a custom window host, and
+context menus and status icon menus refuse it. The `runic-app` template
+declares it as View ▸ Developer Tools in Development, except on macOS:
+
+```csharp
+MenuBar = developing && !OperatingSystem.IsMacOS()
+    ? [new DesktopMenu("View", [new DesktopMenuItem("Developer Tools", DesktopMenuItem.OpenDevToolsCommandId)])]
+    : [],
+``` A DevTools window that WebView2
 fails to open from the system menu is reported to `DiagnosticSink` as
 `devtools-window-failed`.
 

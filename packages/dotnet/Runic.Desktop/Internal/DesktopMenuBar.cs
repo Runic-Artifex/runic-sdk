@@ -86,7 +86,7 @@ internal static class DesktopMenuBar
                 case DesktopMenuItem item:
                     DesktopMenuRules.Title(item.Title, $"An item of '{path}'");
                     var itemPath = path + " ▸ " + item.Title;
-                    DesktopMenuRules.Item(item, $"'{itemPath}'");
+                    DesktopMenuRules.Item(item, $"'{itemPath}'", standardCommands: true);
                     if (item.Shortcut is { Key.Length: > 0 } declared)
                     {
                         var shortcut = DesktopMenuPlanner.Normalize(declared, platform);
