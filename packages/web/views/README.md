@@ -286,7 +286,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
-| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), [components](#components-experimental), and until 0.23 a deprecated `onBridgeDraining` (import it from the root entry) |
+| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), [components](#components-experimental). `onBridgeDraining` is a root export; 0.23 removed its deprecated re-export here |
 
 Every entry has `types`, `development`, `import` and `default` conditions (see
 [Development build](#development-build)); the package is ESM only. Application code imports the root entry and `/mock`. The `/experimental`
