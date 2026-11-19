@@ -1533,7 +1533,7 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(item);
         DesktopMenuRules.Title(item.Title, "The menu item");
-        DesktopMenuRules.Item(item, $"the menu item '{item.Title}'");
+        DesktopMenuRules.Item(item, $"the menu item '{item.Title}'", standardCommands: true);
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(!IsOpen, this);
         return new ValueTask<bool>(_engine.TryExecuteMenuItemAsync(item, MenuCommands, cancellationToken));
@@ -2101,8 +2101,10 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// <see cref="DesktopHostOptions.DevToolsExtensions"/> appear as panels of that window.
     /// </para>
     /// <para>
-    /// WKWebView and WebKitGTK windows return <see langword="false"/>; open their inspector with Inspect Element. An
-    /// installed browser has its own developer tools.
+    /// WebKitGTK windows (GTK 3 and GTK 4) show WebKit's Web Inspector, as Inspect Element from the page's context menu
+    /// does (since 0.23). WKWebView windows return <see langword="false"/>: WKWebView opens its Web Inspector only from
+    /// Safari. An installed browser has its own developer tools. The menu bar item of
+    /// <see cref="Runic.Platform.DesktopMenuItem.OpenDevToolsCommandId"/> runs this for the key window.
     /// </para>
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>

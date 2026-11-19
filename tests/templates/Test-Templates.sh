@@ -533,7 +533,7 @@ verify_template() {
   fi
   # Only the GTK 4 variant selects GTK 4 and references its desktop package.
   if [[ "$linux_gtk" == 4 ]]; then
-    grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4(ApplicationIdentity.Id);' "$output/Program.cs"
+    grep -Fq 'DiagnosticSink = ReportDiagnostic, MenuBar = menuBar }.WithGtk4(ApplicationIdentity.Id);' "$output/Program.cs"
     grep -Fq '"Runic.Desktop.Gtk4"' "$output/$project_name.csproj"
   elif grep -nE 'Gtk4|Linux\.Portal' "$output/Program.cs" "$output/$project_name.csproj"; then
     echo "The $host project references the GTK 4 profile." >&2

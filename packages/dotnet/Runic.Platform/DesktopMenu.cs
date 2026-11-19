@@ -52,7 +52,8 @@ public sealed record DesktopMenu(string Title, ImmutableArray<DesktopMenuEntry> 
 /// </param>
 /// <param name="CommandId">
 /// The command the item runs: an application-owned routing key, never a command line. It has 1 to 64 ASCII letters,
-/// digits, dots, underscores or hyphens; ids starting with <c>runic.</c> are reserved for Runic's standard commands.
+/// digits, dots, underscores or hyphens; ids starting with <c>runic.</c> are reserved for Runic's standard commands, of
+/// which a menu bar item may name <see cref="OpenDevToolsCommandId"/>.
 /// </param>
 /// <remarks>
 /// In the menu bar the key window's command target, or the application's, runs the item, and the same command id may
@@ -62,6 +63,19 @@ public sealed record DesktopMenu(string Title, ImmutableArray<DesktopMenuEntry> 
 /// </remarks>
 public sealed record DesktopMenuItem(string Title, string CommandId) : DesktopMenuEntry
 {
+    /// <summary>
+    /// The standard command that opens the key window's developer tools: <c>runic.devtools.open</c>, the one command id
+    /// with the reserved <c>runic.</c> prefix that a menu bar item may name.
+    /// </summary>
+    /// <remarks>
+    /// Runic Desktop runs it itself, before the window's and the application's command targets: it opens WebView2's
+    /// DevTools window on Windows and WebKit's Web Inspector on Linux (GTK 3 and GTK 4). The item is disabled outside
+    /// Development, in a window whose developer tools are off (<c>DesktopWebContentPolicy.DevTools</c>), on macOS
+    /// (WKWebView opens its Web Inspector only from Safari), in an installed browser, on CS-WebUI and in a custom window
+    /// host. Context menus and status icon menus do not accept it.
+    /// </remarks>
+    public const string OpenDevToolsCommandId = "runic.devtools.open";
+
     /// <summary>Gets the item's keyboard shortcut, or <see langword="null"/> for none; status icon menus ignore it.</summary>
     /// <remarks>
     /// On the macOS menu bar it is the item's key equivalent. A shortcut of the standard Edit, Window or application

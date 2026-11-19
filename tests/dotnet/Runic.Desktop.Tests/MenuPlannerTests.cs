@@ -296,6 +296,48 @@ public sealed class MenuCommandChainTests
         Assert.Single(both.Executed);
     }
 
+    [Test]
+    public void TheDevToolsCommandIsTheWindowsAndOnlyInDevelopment()
+    {
+        // #1188 (D077.13): DesktopMenuItem.OpenDevToolsCommandId opens the window's developer tools before any target.
+        var item = new DesktopMenuItem("Developer Tools", DesktopMenuItem.OpenDevToolsCommandId);
+        var claiming = new Target(DesktopMenuItem.OpenDevToolsCommandId);
+        var host = new EmbeddedHostTests.RecordingHost { DevTools = true };
+        host.MarkOpen();
+        string? Development(string name) => name == "DOTNET_ENVIRONMENT" ? "Development" : null;
+        string? Production(string name) => null;
+
+        Assert.True(MenuCommandChain.CanExecute(item, claiming, claiming, null, host, Development));
+        Assert.True(MenuCommandChain.TryExecute(item, claiming, claiming, null, host, Development));
+        Assert.Equal(1, host.DevToolsOpened);
+        // A target that claims the id is never asked.
+        Assert.Empty(claiming.Executed);
+        // Disabled outside Development, with the developer tools off, without a host (macOS application menu, a hosted
+        // window), and when the item itself is disabled; the targets do not run it instead.
+        Assert.False(MenuCommandChain.CanExecute(item, claiming, claiming, null, host, Production));
+        Assert.False(MenuCommandChain.TryExecute(item, claiming, claiming, null, host, Production));
+        Assert.False(MenuCommandChain.CanExecute(item, claiming, claiming, null, null, Development));
+        Assert.False(MenuCommandChain.CanExecute(item with { IsEnabled = false }, claiming, claiming, null, host, Development));
+        host.DevTools = false;
+        Assert.False(MenuCommandChain.CanExecute(item, claiming, claiming, null, host, Development));
+        Assert.False(MenuCommandChain.TryExecute(item, claiming, claiming, null, host, Development));
+        Assert.Equal(1, host.DevToolsOpened);
+        Assert.Empty(claiming.Executed);
+    }
+
+    [Test]
+    public void OnlyTheMenuBarAcceptsTheDevToolsCommand()
+    {
+        var item = new DesktopMenuItem("Developer Tools", DesktopMenuItem.OpenDevToolsCommandId);
+        DesktopMenuBar.Check([new("View", [item])], macOS: false);
+        DesktopMenuBar.Check([new("View", [item])], macOS: true);
+        // Other runic. ids stay reserved everywhere, and context menus refuse this one too.
+        Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("View", [new DesktopMenuItem("X", "runic.devtools.close")])], macOS: false));
+        Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("View", [new DesktopMenuItem("X", "RUNIC.DEVTOOLS.OPEN")])], macOS: false));
+        Assert.Throws<ArgumentException>(() => WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            .ShowContextMenuAsync([item]).AsTask().GetAwaiter().GetResult());
+    }
+
     // B3: a check mark comes from the first target whose answer differs from the declaration, the window's first.
     private sealed class CheckTarget(Func<DesktopMenuItem, bool?> isChecked) : IDesktopMenuCommandTarget
     {

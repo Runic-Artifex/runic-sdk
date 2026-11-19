@@ -331,6 +331,24 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         if (SpellingLanguages.FirstReport(missing)) _options?.ReportDiagnostic?.Invoke(missing!);
     }
 
+    // GTK thread: the menu item of DesktopMenuItem.OpenDevToolsCommandId (MenuCommandChain), while the window's developer
+    // extras are on (DesktopWebContentPolicy.DevTools) and this WebKitGTK can show its Web Inspector.
+    public bool CanOpenDevTools => _webContent is { Rules.DevToolsEnabled: true } && _webView != 0 && Api.CanShowInspector;
+
+    // DesktopWindow.OpenDevToolsAsync: WebKit's Web Inspector for the page, docked or in its own window as WebKit last
+    // left it (#1188). False where the developer extras are off.
+    public async ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default)
+    {
+        var opened = false;
+        await InvokeWindowAsync(() =>
+        {
+            if (!CanOpenDevTools) return;
+            Api.ShowInspector(_webView);
+            opened = true;
+        }, cancellationToken).ConfigureAwait(false);
+        return opened;
+    }
+
     private ValueTask InvokeWindowAsync(Action action, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -1480,6 +1498,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkShowUriOnWindowPointer = Optional(_gtk, "gtk_show_uri_on_window");
                 WebKitWebViewGetSettingsPointer = Required(_webkit, "webkit_web_view_get_settings");
                 WebKitSettingsSetEnableDeveloperExtrasPointer = Required(_webkit, "webkit_settings_set_enable_developer_extras");
+                WebKitWebViewGetInspectorPointer = Optional(_webkit, "webkit_web_view_get_inspector");
+                WebKitWebInspectorShowPointer = Optional(_webkit, "webkit_web_inspector_show");
                 WebKitWebViewGetContextPointer = Required(_webkit, "webkit_web_view_get_context");
                 WebKitNavigationPolicyDecisionGetNavigationActionPointer = Required(_webkit, "webkit_navigation_policy_decision_get_navigation_action");
                 WebKitNavigationActionGetRequestPointer = Required(_webkit, "webkit_navigation_action_get_request");
@@ -1908,6 +1928,18 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkShowUriOnWindowPointer { get; }
         private nint WebKitWebViewGetSettingsPointer { get; }
         private nint WebKitSettingsSetEnableDeveloperExtrasPointer { get; }
+        private nint WebKitWebViewGetInspectorPointer { get; }
+        private nint WebKitWebInspectorShowPointer { get; }
+
+        internal bool CanShowInspector => WebKitWebViewGetInspectorPointer != 0 && WebKitWebInspectorShowPointer != 0;
+
+        // The view's WebKitWebInspector (owned by the view), shown; it needs the developer extras on.
+        internal void ShowInspector(nint webView)
+        {
+            var inspector = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetInspectorPointer)(webView);
+            if (inspector == 0) throw new InvalidOperationException("WebKitGTK did not provide the view's Web Inspector.");
+            ((delegate* unmanaged[Cdecl]<nint, void>)WebKitWebInspectorShowPointer)(inspector);
+        }
         private nint WebKitWebViewGetContextPointer { get; }
         private nint WebKitNavigationPolicyDecisionGetNavigationActionPointer { get; }
         private nint WebKitNavigationActionGetRequestPointer { get; }

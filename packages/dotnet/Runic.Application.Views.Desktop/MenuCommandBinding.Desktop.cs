@@ -68,7 +68,8 @@ namespace Runic.Application.Views.Desktop
         // that became runnable meanwhile would otherwise run there without the page's identity, in the window scope.
         public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, BridgeConnection invoker, CancellationToken cancellationToken)
         {
-            if (commands is not null && item.IsEnabled && commands.CanExecute(item))
+            // Runic's standard commands (DesktopMenuItem.OpenDevToolsCommandId) are the window's, never a ViewModel's.
+            if (commands is not null && item.IsEnabled && !Runic.Desktop.Internal.MenuCommandChain.IsStandard(item) && commands.CanExecute(item))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 commands.Execute(item, invoker);
