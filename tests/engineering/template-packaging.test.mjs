@@ -548,6 +548,9 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
         ["/src/Ide.App/WorkspaceViewModel.cs", "19,24", "error", "CS1002", "; expected [/src/Ide.App/Ide.App.csproj]"]],
       ["[app] /src/Ide.App/WorkspaceViewModel.cs(7,1): warning CS0168: The variable 'x' is declared but never used",
         ["/src/Ide.App/WorkspaceViewModel.cs", "7,1", "warning", "CS0168", "The variable 'x' is declared but never used"]],
+      // A frontend module that does not compile, from the Runic Vite plugin (#1160).
+      ["[vite] /src/Ide.App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.",
+        ["/src/Ide.App/Frontend/src/App.tsx", "29,50", "error", "RUNICP008", "[vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'."]],
     ];
     assert.equal(msCompile.regexp.exec(diagnostics[3][0])?.[1], "[host] /src/Ide.App/WorkspaceViewModel.cs");
     for (const label of ["runic: dev", "runic: dev --no-window", "runic: dev --browser"]) {

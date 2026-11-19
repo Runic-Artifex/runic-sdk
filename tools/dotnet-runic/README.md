@@ -950,6 +950,7 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Browser: Window serves at <url>` | With `--browser` (since 0.21), each time the Window process serves a Window: the first at `dev`'s root address, later ones at `/windows/<n>` ([Debug the page in Chrome](#debug-the-page-in-chrome---browser)). One form for every Window; match it with `^\[dev\] Browser: Window serves at (?<url>http://\S+)$`. Other `[dev] Browser:` lines are human text. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
 | `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
+| `[vite] [runic] Frontend errors cleared` | Since 0.23, after a frontend module that did not compile (a `RUNICP008` line, below) compiles again: the frontend errors printed since the last such line no longer apply. Printed by the Runic Vite plugin, so only for a Vite frontend. |
 | `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
 **Stopping `dev`.** Stop `dev` as a terminal does, with Ctrl+C or SIGINT/SIGTERM.
@@ -1040,8 +1041,22 @@ first build's lines come as the build prints them. The lines of a process that
 `[host] /path/to/App/CounterViewModel.cs(18,5): error CS1002: ; expected`
 (`[app] ` with `--no-dotnet-watch`; the Vite development server's lines follow
 `[vite] `). VS Code's built-in `$msCompile` takes `[host] /path/…` for the
-file, so the task above uses its pattern after an optional label. This pattern
-matches all of them, for other tools:
+file, so the task above uses its pattern after an optional label.
+
+Since 0.23, a frontend module that Vite cannot compile (a TSX syntax error, an
+import that does not resolve) is also one such line per error, from the Runic
+Vite plugin, besides Vite's own output and the page's overlay. The path is
+absolute and the position 1-based, as in the build's lines:
+
+```text
+[vite] /path/to/App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.
+```
+
+The message starts with the Vite plugin that failed. Once the modules that
+failed compile again, `[vite] [runic] Frontend errors cleared` follows, and an
+IDE removes the `RUNICP008` errors it took from the lines before. There is no
+type check: a type error that Vite compiles is not one. This pattern matches
+all of them, for other tools:
 
 ```text
 ^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$

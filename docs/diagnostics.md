@@ -2158,7 +2158,8 @@ an id.
 ## Vite plugin
 
 `@runic-artifex/vite-plugin-runic` reports these errors when Vite resolves its
-configuration. Numbers below `007` are not assigned. See the
+configuration, and while `dotnet runic dev` serves, a frontend module that does
+not compile. Numbers below `007` are not assigned. See the
 [plugin guide](../packages/web/vite-plugin-runic/README.md).
 
 ### RUNICP007
@@ -2172,3 +2173,19 @@ panel; it is not the browser's developer tools, which F12 or Inspect opens.)
 `runic-app` template's Vite starters do, or leave `devtools` at its default,
 `"auto"`, which shows the dock's Runic panel only when `DevTools()` is
 registered.
+
+### RUNICP008
+
+A frontend module does not compile in the Vite development server that
+`dotnet runic dev` runs: a syntax error in a `.ts`, `.tsx`, `.vue` or `.svelte`
+file, an import that does not resolve, or another Vite plugin's error. Since
+0.23 the plugin prints each such error as one line in MSBuild's form, with the
+module's absolute path and the 1-based position, and the name of the Vite plugin
+that failed at the start of the message, so that IDE error lists show it next to
+the build's errors (see [IDE contract](../tools/dotnet-runic/README.md#ide-contract)).
+`[runic] Frontend errors cleared` follows once the modules compile again. The
+plugin prints nothing when Vite serves without `dotnet runic dev`. There is no
+type check: a type error that Vite still compiles is not reported.
+
+**Fix:** correct the module at the line and column given; the page's error
+overlay and Vite's output show the same error with its code frame.
