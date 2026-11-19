@@ -86,7 +86,7 @@ reads the SDK's `ApplicationId`, `ApplicationTitle`, `Version`, `Description`,
 | `RunicApplicationFileTypes` | none | The file types the packages declare. |
 | `RunicApplicationWebLinkHosts` | none | The web link hosts the packages declare. |
 | `RunicApplicationDBusActivatable` | none | D-Bus activation of the Linux packages. |
-| `RunicPackageIcon` | `icons/icon.png` | The 512 px PNG icon. |
+| `RunicPackageIcon` | `icons/icon.png` | The 512 px PNG icon, the application's only icon: the build derives the Windows `.ico` and the macOS development bundle's icon from it too ([the application icon](packaging.md#the-application-icon)). |
 | `RunicPackageName` | the lower-cased assembly name | The deb and rpm package name. |
 | `RunicPackagingDirectory` | `packaging/` | Manifest overrides. |
 | `RunicMacSandbox` | `false` | Sign the macOS bundle for the App Sandbox. |
@@ -159,6 +159,7 @@ See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#dec
 | `RunicPrivilegedActionsNamespace` | property | `$(RootNamespace)` | Its namespace. |
 | `RunicPrivilegedActionsReservedNames` | property (read-only) | `All`, `MacOSDaemon`, `WindowsElevation` | Names an action cannot have. |
 | `RunicPrivilegedActionsDependsOn` | property | the platform packages' targets | The targets that run before the class is written. A platform package appends its own target, which depends on `RunicValidatePrivilegedActions`; with `RunicPrivilegedActionsReservedNames`, it is the protocol between Runic.Platform and the platform packages, not an application setting. |
+| `RunicApplicationIconGenerationEnabled` | property | `true` | `false` turns off the icons the build derives from `RunicPackageIcon` (since 0.23): the `.ico` it uses as `ApplicationIcon` when the project sets none, the PNG beside the executable that a Runic Desktop window shows on macOS outside a bundle, and the macOS development bundle's `icon.icns`. A project with its own `ApplicationIcon` (or `Win32Resource`) keeps it either way. See [the application icon](packaging.md#the-application-icon). |
 | `RunicPublishAllPlatformAssemblies` | property | `false` | `true` keeps every operating system's `Runic.Platform` providers and Linux-only libraries in a `dotnet publish -r` for a Windows, macOS or Linux RuntimeIdentifier. By default (since 0.22) such a publish, framework-dependent or self-contained without trimming, with or without ReadyToRun or single-file, ships only its own operating system's (`Runic.Desktop.Gtk4`, whose `WithGtk4()` runs on every operating system, stays; its GirCore bindings ship only for Linux), and code that calls another operating system's provider from a method that also runs on this one gets `FileNotFoundException`. Builds, `dotnet run`, publishes without `-r`, trimmed and NativeAOT publishes, and so every `dotnet runic package` output (NativeAOT), are not affected. |
 
 [Runic.Platform.Linux.Polkit](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md#declare-actions):

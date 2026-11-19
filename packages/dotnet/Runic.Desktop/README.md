@@ -2333,6 +2333,19 @@ loading them.
 The [provider contract of Runic.Platform.Runtime](../Runic.Platform.Runtime/README.md#provider-contract)
 describes the window owner the platform services receive for a window.
 
+## Window icon
+
+`DesktopWindowOptions.IconFile` sets a window's icon: an `.ico` on Windows, any
+image macOS reads, and a file GTK 3 loads; GTK 4 reports it unsupported. Since
+0.23 a window without it shows the application's icon on Windows and macOS: on
+Windows the executable's icon resource (`ApplicationIcon`, which Runic.Platform's
+build derives from the package icon when the project sets none), read from the
+application's assembly when the process is `dotnet app.dll`; on macOS outside a
+bundle with an icon, the package icon that the build copies beside the
+executable. Inside a bundle macOS shows the bundle's icon, and on Linux GTK takes
+the icon from the theme by the application ID, as before. See
+[the application icon](../../../docs/packaging.md#the-application-icon).
+
 ## MSBuild properties
 
 | Property | Default | Effect |

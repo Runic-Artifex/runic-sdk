@@ -634,6 +634,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
             Api.SendVoid(path, "release");
         }
+        else
+        {
+            ApplyApplicationIcon(_application);
+        }
 
         Hosts[_window] = this;
         Volatile.Write(ref _isOpen, 1);

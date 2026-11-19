@@ -628,6 +628,7 @@ static async Task ExerciseFirstWindowAsync(DesktopSurface surface, DesktopWindow
     {
         throw new InvalidOperationException("The embedded platform window did not open.");
     }
+    ApplicationIconSmoke.Check(window);
     if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) !=
         "Runic Desktop M6 smoke")
     {
