@@ -749,6 +749,41 @@ test("runic-cswebui.js continues a cancelled same-origin navigation", () => {
   expect(allowed).toBe(false);
 });
 
+// #1225, `dotnet runic dev --browser`: the page runs at dev's session address and its WebUI connection goes to the
+// Window's own port. The page's continued navigations keep the session address; one aimed at the Window's own address
+// (a link the application built from it, or WebUI's reload target after a restart) stays cancelled, so the tab keeps
+// the address and its admission.
+test("runic-cswebui.js keeps a --browser page on dev's session address", () => {
+  const actions = [];
+  let navigate;
+  const location = {
+    href: "http://k3x9a.localhost:9224/index.html#/notes", origin: "http://k3x9a.localhost:9224",
+    reload: () => actions.push(["reload"]),
+    assign: url => actions.push(["assign", url]),
+    replace: url => actions.push(["replace", url]),
+  };
+  const context = load(csWebUi, {
+    location, navigation: { addEventListener: (type, listener) => { if (type === "navigate") navigate = listener; } },
+    webui: { allowNavigation: () => {} },
+  });
+  const report = (url, navigationType) => {
+    const event = { destination: { url, key: "k" }, navigationType, formData: null, defaultPrevented: false };
+    navigate(event);
+    event.defaultPrevented = true;
+    context.__runicContinueNavigation();
+  };
+
+  report("http://k3x9a.localhost:9224/index.html#/notes", "reload");
+  report("http://k3x9a.localhost:9224/index.html#/settings", "push");
+  report("http://localhost:41837/index.html", "replace");
+  report("http://127.0.0.1:41837/index.html#/notes", "push");
+
+  expect(actions).toEqual([
+    ["reload"],
+    ["assign", "http://k3x9a.localhost:9224/index.html#/settings"],
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // CS-WebUI connection events. webui.js defines the WebuiBridge class and
 // creates window.webui when the document has loaded; WebUI reports CONNECTED

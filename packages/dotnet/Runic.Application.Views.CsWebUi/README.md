@@ -256,6 +256,34 @@ GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.
 
+Under `dotnet runic dev --browser`, `dev` serves the page at its session address,
+`http://<label>.localhost:9224`, and only pages go through it: the page's WebUI
+connection goes to the Window's own port (#1187). Nothing the host sends over
+that connection moves the tab off the address (#1225):
+
+- The host never sends WebUI a navigation. A serve-only Window only starts its
+  server, so WebUI's navigation command, which `WebUiWindow.Navigate` and a
+  second `Show` of a shown window send, never goes out.
+- The Views client routes in the URL's fragment (`#/…`), so a back or forward
+  navigation and a reload keep the document's own path.
+- `runic-views.js` repeats a navigation that WebUI cancelled only when it stays
+  on the page's own origin, the session address.
+- WebUI's redirect from `/` to the start page is relative, and `dev` moves
+  any redirect to the Window's own address onto the session address.
+- After a restart, reload the tab yourself: the page's WebUI connection ended
+  with the old Window, and the reload stays on the address.
+
+An application's own navigation can leave the address, as with any page served
+through a proxy. `WebUiWindow.Navigate` with an absolute URL of the Window's
+own address does, and so does a second `Show`, which navigates to WebUI's own
+address. Pass `Navigate` a path relative to the page instead, which the
+browser resolves against the session address. With a development server, a
+path that `www/` does not have is redirected to that server
+([#1085](https://github.com/Runic-Artifex/runic-sdk/issues/1085)). Views'
+fragment routing never requests one as a document, but an application router
+that keeps its routes in the URL's path does, on a reload. A published CS-WebUI
+application has no fallback for such a path either.
+
 ## Closing a window
 
 Since 0.23 (#1148) a `UseWebView` window asks before it closes on Windows and
