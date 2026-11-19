@@ -304,14 +304,16 @@ diagnostics that report grants a presentation cannot apply.
   changed. See
   [the browser's developer tools per engine](debugging.md#the-browsers-developer-tools-per-engine).
 - **CS-WebUI's DevTools Protocol port** is Runic's own switch, not the
-  engine's: Runic.Desktop adds `--remote-debugging-port` to an installed
-  Chromium browser's command line only in Development, when
-  `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for it (since 0.22). Outside
-  Development the variable is ignored, so a build started with it opens
-  nothing unless it also runs in Development: the gate is the environment, not
-  the build configuration. A `--remote-debugging-port`, or
-  `--remote-allow-origins`, in the application's own `BrowserArguments` applies
-  in every environment; do not ship either.
+  engine's: Runic.Desktop (since 0.22) and the CS-WebUI host (since 0.23,
+  #1221) add `--remote-debugging-port` to an installed Chromium browser's
+  command line only in Development, when `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`
+  asks for it, and only in an untrimmed build. Outside Development the
+  variable is ignored, so a build started with it opens nothing unless it also
+  runs in Development: the gate is the environment, not the build
+  configuration. A `--remote-debugging-port`, or `--remote-allow-origins`, in
+  the application's own `BrowserArguments` or CS-WebUI custom parameters
+  (`WebUiWindow.SetCustomParameters`) applies in every environment; do not
+  ship either.
 - **Failure detail** (exception type, message and stack) reaches the page only in
   Development, or when a window sets `IncludeFailureDetail`. Detail can contain
   paths and application data; do not enable it for a distributed build

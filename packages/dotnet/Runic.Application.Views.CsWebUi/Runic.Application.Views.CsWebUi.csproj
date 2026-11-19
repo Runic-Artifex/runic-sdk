@@ -36,6 +36,10 @@
     <Compile Include="../Runic.Application.Views.Desktop/MenuCommandBinding.cs" Link="Shared/MenuCommandBinding.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />
     <Compile Include="../Runic.Desktop/Internal/ShortcutModifierNames.cs" Link="Shared/ShortcutModifierNames.cs" />
+    <!-- sdk#1221: a browser window's Development DevTools Protocol endpoint, by Runic Desktop's rules and checks
+         (CsWebUiRemoteDebugging; WebContentRules.IsDevelopment is CsWebUiDevelopment.cs's). -->
+    <Compile Include="../Runic.Desktop/Internal/WebUiRemoteDebugging.cs" Link="Shared/WebUiRemoteDebugging.cs" />
+    <Compile Include="../Runic.Desktop/Internal/LoopbackPeerOwner.cs" Link="Shared/LoopbackPeerOwner.cs" />
     <Compile Include="../Runic.Application.Views.Desktop/FrontendArchive.Build.cs" Link="Shared/FrontendArchive.Build.cs" />
     <Compile Include="../Runic.Application.Views.Desktop/DevelopmentServerForwarding.cs" Link="Shared/DevelopmentServerForwarding.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />

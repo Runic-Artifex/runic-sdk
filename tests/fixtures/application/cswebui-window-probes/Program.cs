@@ -53,8 +53,13 @@ switch (args.SingleOrDefault())
     case "--probe-webview-placement":
         return WebViewProbe.RunPlacement();
 #endif
+#if RUNIC_DEBUG_ENDPOINT_PROBE
+    // DebugEndpointProbe.cs, a real browser window; the package smoke builds Program.cs alone.
+    case "--probe-debug-endpoint":
+        return DebugEndpointProbe.Run();
+#endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-debug-endpoint");
         return 2;
 }
 WebUiApplication.Clean();
