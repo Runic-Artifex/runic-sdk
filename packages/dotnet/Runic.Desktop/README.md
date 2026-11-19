@@ -912,10 +912,26 @@ built-in hosts do.
 Since 0.21 a WebView2 window whose developer tools are on (in Development, by
 default) has an **Open DevTools** item in its system menu (Alt+Space, or a
 right click on the title bar), and `DesktopWindow.OpenDevToolsAsync` opens the
-same Edge DevTools window from code, for example from a menu item that the
-application declares only in Development. It returns `false` when the window's
-developer tools are off, as in production, and on WKWebView, WebKitGTK, an
-installed browser or a custom window host. A DevTools window that WebView2
+same Edge DevTools window from code. Since 0.23 it shows WebKit's Web Inspector
+in a WebKitGTK window (GTK 3 and GTK 4). It returns `false` when the window's
+developer tools are off, as in production, and on WKWebView, an installed
+browser or a custom window host.
+
+The menu bar has a standard command for it (since 0.23):
+`DesktopMenuItem.OpenDevToolsCommandId` (`runic.devtools.open`), the one id
+with the reserved `runic.` prefix that a menu bar item may name. Runic runs it
+for the key window before the window's and the application's command targets,
+which never see it, and the item is enabled only in Development, in a window
+whose developer tools are on, on WebView2 and WebKitGTK. It is disabled on
+macOS, in an installed browser, on CS-WebUI and in a custom window host, and
+context menus and status icon menus refuse it. The `runic-app` template
+declares it as View ▸ Developer Tools in Development, except on macOS:
+
+```csharp
+MenuBar = developing && !OperatingSystem.IsMacOS()
+    ? [new DesktopMenu("View", [new DesktopMenuItem("Developer Tools", DesktopMenuItem.OpenDevToolsCommandId)])]
+    : [],
+``` A DevTools window that WebView2
 fails to open from the system menu is reported to `DiagnosticSink` as
 `devtools-window-failed`.
 
@@ -1277,7 +1293,8 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
   with a credential of its own (`IRunicConnections` lists it), so it binds
   to the same ViewModel tree as the page. It is not granted `navigation-path/1`:
   its address and history are its own. It may show hosted regions. Files dropped
-  on it are refused, `window.close()` in it closes the panel, and its title is
+  on it reach `FilesDropped` as the page's do, with `InSidePanel` set ([File
+  drops](#file-drops)), `window.close()` in it closes the panel, and its title is
   not the window's. A panel page that crashes reloads once; a second crash closes
   it with `DesktopSidePanelCloseReason.Crashed`.
 - **While it is open**, `State.Bounds` and `VisibleBounds` include the panel and
@@ -1582,6 +1599,12 @@ the nearest element under the drop that has one. The page reports it, so treat
 it as an untrusted routing label, never as a path and never for an access
 decision.
 
+A drop onto the window's side panel (`OpenSidePanelAsync`) raises the same
+event under the same rules, with `DesktopFileDropEventArgs.InSidePanel` set and
+the panel page's label in `Target`. The window sets `InSidePanel` from the view
+that received the drop, so it can be trusted. Drops of the page and the panel
+share one queue, in drop order.
+
 `DesktopFileDropEventArgs.Effect` says what the drop performed: `Copy` (the
 default), `Move` or `Link`, as the drag source, the user's modifier keys and the
 page agreed. A page marks where a drop copies, moves, links or is refused with
@@ -1762,7 +1785,7 @@ VoiceOver on macOS, NVDA 2026.2 on Windows and Orca 46 on Linux (Ubuntu
 | `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event; Orca says "Fruit List with 3 items", then "Apple" | List; `Selection` patterns; selection event; NVDA says "Fruit list", then "Apple 1 of 3" | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
 | Focus moved by the screen reader | Focus event; Orca follows it and says the control | Focus event; NVDA follows it and says the control | VoiceOver follows it and says the control |
 | Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)); Orca says nothing | `LiveRegionChanged`; NVDA says it | VoiceOver says it |
-| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | `LiveRegionChanged` from the Bridge's live region while the page has the focus, else a notification event (below); NVDA says it | `AXAnnouncementRequested`; VoiceOver says it |
+| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | `LiveRegionChanged` from the Bridge's live region while the page or the window itself has the focus, else a notification event (below); NVDA says it | `AXAnnouncementRequested`; VoiceOver says it |
 | Native menu bar | None | The declared menus, a Win32 menu bar that Windows exposes to screen readers | Application, Edit, View and Window menus |
 
 Each cell is what a client of the API receives, then what the screen reader
@@ -1860,14 +1883,18 @@ every platform:
 | --- | --- | --- |
 | GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`); Orca says both (`Runic.Desktop.AccessibilityProbe --screen-reader orca`) |
 | GTK 4 | Calls `gtk_accessible_announce` (GTK 4.14 or later; an older GTK reports no `Announcements`). | As GTK 3 (`--announcement gtk4`) |
-| WebView2 | While the page has the keyboard focus, the page's Bridge (`webui.js`) adds the message to a visually hidden live region (`aria-live` with the priority) that it adds to the page on first use. Otherwise, or when no Bridge is connected, the window raises a UI Automation notification event from its own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both (`Runic.Desktop.AccessibilityProbe`); NVDA says both (`--screen-reader nvda`); not checked with Narrator |
+| WebView2 | While the page, or the window itself, has the keyboard focus, the page's Bridge (`webui.js`) adds the message to a visually hidden live region (`aria-live` with the priority) that it adds to the page on first use. Otherwise, or when no Bridge is connected, the window raises a UI Automation notification event from its own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both (`Runic.Desktop.AccessibilityProbe`); NVDA says both (`--screen-reader nvda`); not checked with Narrator |
 | WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | VoiceOver says both (`Runic.Desktop.AccessibilityProbe --screen-reader voiceover`) |
 
 **Why WebView2 announces through the page.** NVDA 2026.2 receives the
 window's notification event but speaks a notification only from the
 application that has the focus, and while the page has the focus, that is
 WebView2's browser process (`msedgewebview2.exe`), not the application. NVDA
-does say a live region in the page. The Bridge's live region needs no change to
+does say a live region in the page, from any window inside the foreground
+window. The window itself holds the focus after WebView2 activates it to carry
+out a UI Automation action from another process, such as a press of a button,
+and can keep it while the button stays NVDA's focus; the page announces then
+too ([#1181](https://github.com/Runic-Artifex/runic-sdk/issues/1181)). The Bridge's live region needs no change to
 the page or its Content-Security-Policy: the host sends the message as data, and
 the region is styled through the CSSOM. It is a `div` with
 `data-runic-announcer`, appended to `<body>`; a page that replaces its
@@ -2321,6 +2348,19 @@ loading them.
 
 The [provider contract of Runic.Platform.Runtime](../Runic.Platform.Runtime/README.md#provider-contract)
 describes the window owner the platform services receive for a window.
+
+## Window icon
+
+`DesktopWindowOptions.IconFile` sets a window's icon: an `.ico` on Windows, any
+image macOS reads, and a file GTK 3 loads; GTK 4 reports it unsupported. Since
+0.23 a window without it shows the application's icon on Windows and macOS: on
+Windows the executable's icon resource (`ApplicationIcon`, which Runic.Platform's
+build derives from the package icon when the project sets none), read from the
+application's assembly when the process is `dotnet app.dll`; on macOS outside a
+bundle with an icon, the package icon that the build copies beside the
+executable. Inside a bundle macOS shows the bundle's icon, and on Linux GTK takes
+the icon from the theme by the application ID, as before. See
+[the application icon](../../../docs/packaging.md#the-application-icon).
 
 ## MSBuild properties
 

@@ -1591,3 +1591,19 @@ writes the class only after those targets succeeded. A platform package that
 generates its own part of the class uses a reserved property name, and adds any
 new one to `RunicPrivilegedActionsReservedNames`. These two properties are the
 protocol between Runic.Platform and the platform packages.
+
+## Application icon
+
+The package's build targets derive the Windows icon of every executable that
+references Runic.Platform from its package icon, `RunicPackageIcon` (by default
+`icons/icon.png`, a square PNG of at least 256 px), since 0.23. When the project
+sets no `ApplicationIcon` (or `Win32Resource`), the build writes
+`obj/<configuration>/<framework>/runic-icon/application.ico`, with 16 to 64 px as
+32-bit bitmaps and 256 px as PNG, and uses it as `ApplicationIcon`. The same
+managed code, in `buildTransitive/RunicApplicationIcon.cs`, writes the macOS
+development bundle's `icon.icns` for `Runic.Platform.MacOS`; it uses no native
+library or tool, so every operating system writes the same bytes. An unusable icon
+is a warning ([`RUNICICON001`](../../../docs/diagnostics.md#runicicon001) to
+[`RUNICICON003`](../../../docs/diagnostics.md#runicicon003)), and
+`RunicApplicationIconGenerationEnabled=false` turns the derived icons off. See
+[the application icon](../../../docs/packaging.md#the-application-icon).

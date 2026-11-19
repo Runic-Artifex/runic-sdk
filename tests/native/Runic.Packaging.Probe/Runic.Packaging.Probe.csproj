@@ -23,8 +23,9 @@
     <RunicApplicationDBusActivatable>true</RunicApplicationDBusActivatable>
     <!-- The template's ApplicationIdentity.cs with its Desktop part. -->
     <DefineConstants>$(DefineConstants);desktopHost</DefineConstants>
-    <ApplicationIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.ico</ApplicationIcon>
-    <!-- The template's icons; the package uses icon.png and, on Linux, the icon.svg beside it. -->
+    <!-- The template's icons; the package uses icon.png and, on Linux, the icon.svg beside it. Without an ApplicationIcon,
+         the build derives the executable's icon and the development bundle's icon.icns from it (sdk#1207), which the
+         Windows and macOS packaging legs check. -->
     <RunicPackageIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.png</RunicPackageIcon>
   </PropertyGroup>
   <ItemGroup>

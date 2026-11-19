@@ -109,8 +109,8 @@ public static class RunicViewsTranslations
 
     /// <summary>
     /// The <see cref="DesktopPlatformTexts"/> in the context's current locale: Linux dialog titles, the untitled file name,
-    /// the macOS Choose an application title, the Linux keyring label, shortcut key names, a browser window's error pages
-    /// and the title of a Windows window while WebView2 starts.
+    /// the macOS Choose an application title, the Linux keyring label, shortcut key names, a browser window's error pages,
+    /// the title of a Windows window while WebView2 starts, and a CS-WebUI window's error pages and connection banners.
     /// </summary>
     /// <param name="context">A Translations context with <see cref="CatalogRegistration"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
@@ -138,6 +138,12 @@ public static class RunicViewsTranslations
             ResourceUnavailableTitle = text.platform_resource_unavailable_title,
             ResourceUnavailableMessage = text.platform_resource_unavailable,
             LoadingTitle = text.platform_loading_title,
+            ServerErrorTitle = text.platform_server_error_title,
+            ServerErrorMessage = text.platform_server_error,
+            ConnectionErrorLabel = text.platform_connection_error_label,
+            ConnectionFailedMessage = text.platform_connection_failed,
+            ConnectionLostMessage = text.platform_connection_lost,
+            WebSocketUnsupportedMessage = text.platform_websocket_unsupported,
         };
     }
 

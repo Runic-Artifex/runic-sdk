@@ -14,7 +14,10 @@ targets around MSBuild's (`AfterTargets="Build"`), except for the three extensio
 points that Runic.Application.Views documents, `RunicViewsGenerateBridge`,
 `RunicViewsBuildFrontend` and `RunicViewsCopyFrontend`
 ([Build properties](../packages/dotnet/Runic.Application.Views/README.md#build-properties)).
-Internal properties and items start with `_Runic`. The `RunicTranslationsGeneratedFile` item is
+Internal properties and items start with `_Runic`. Two exceptions predate that rule:
+Runic.Desktop still reads `RunicDesktopKestrelReferenced` and `RunicDesktopNativeServerReferenced`, the markers
+that the server packages of 0.20 and earlier set (since 0.21 they set `_RunicDesktopKestrelReferenced` and
+`_RunicDesktopNativeServerReferenced`); they are internal, not settings. The `RunicTranslationsGeneratedFile` item is
 the handshake between Runic Translations' build, which adds the files it
 generates, and Runic.Application.Views, which mirrors them into the frontend
 (`RunicApplicationFrontendTranslations`); it is not a setting either, and the
@@ -53,6 +56,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendDocumentationEnabled` | property | `true` | XML documentation for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | property | `false` | Marks the Window project that `dotnet runic dev` and `doctor` run. |
 | `RunicApplicationFrontendBootstrap` | property (read-only) | set by the targets | `true` only in the bootstrap pass. |
+| `RunicDevelopmentOnlyViews` | property | `auto` | `auto` leaves [development-only views and members](packaging.md#development-only-views-and-members) (`[RunicDevelopmentOnly]`) out of trimmed and NativeAOT publishes; `true` keeps them in every publish (since 0.22). Builds, `dotnet run` and untrimmed publishes always keep them. |
 | `RunicApplicationFrontendInput` | item | none | An input outside the frontend directory that rebuilds it. |
 | `RunicApplicationFrontendBuildEnvironment` | item | none | An environment variable that changes the built frontend. |
 
@@ -82,7 +86,7 @@ reads the SDK's `ApplicationId`, `ApplicationTitle`, `Version`, `Description`,
 | `RunicApplicationFileTypes` | none | The file types the packages declare. |
 | `RunicApplicationWebLinkHosts` | none | The web link hosts the packages declare. |
 | `RunicApplicationDBusActivatable` | none | D-Bus activation of the Linux packages. |
-| `RunicPackageIcon` | `icons/icon.png` | The 512 px PNG icon. |
+| `RunicPackageIcon` | `icons/icon.png` | The 512 px PNG icon, the application's only icon: the build derives the Windows `.ico` and the macOS development bundle's icon from it too ([the application icon](packaging.md#the-application-icon)). |
 | `RunicPackageName` | the lower-cased assembly name | The deb and rpm package name. |
 | `RunicPackagingDirectory` | `packaging/` | Manifest overrides. |
 | `RunicMacSandbox` | `false` | Sign the macOS bundle for the App Sandbox. |
@@ -122,7 +126,17 @@ See [MSBuild properties](../packages/dotnet/Runic.Desktop/README.md#msbuild-prop
 
 | Property | Default | Purpose |
 | --- | --- | --- |
+| `RunicDesktopServer` | the referenced server package: `Native` with `Runic.Desktop.NativeServer` (also when both are referenced), else `Kestrel` with `Runic.Desktop.Kestrel` | The presentation server: `Native`, `Kestrel`, or `None` for an executable that opens no Runic Desktop window. A trimmed or NativeAOT build keeps only the selected server, and none for `None`. Diagnostics [`RUNICDESK003`](diagnostics.md#runicdesk003), [`RUNICDESK004`](diagnostics.md#runicdesk004) and [`RUNICDESK007`](diagnostics.md#runicdesk007) report a wrong value or a missing or unused server package. |
 | `RunicDesktopMinimalHost` | `false` | Build each surface's listener from an empty ASP.NET Core builder. |
+
+## Runic.Desktop.NativeServer
+
+See [NativeAOT and an application's own Rust library](../packages/dotnet/Runic.Desktop.NativeServer/README.md#nativeaot-and-an-applications-own-rust-library).
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `RunicDesktopNativeServerLinkage` | `Static` | How a NativeAOT publish gets the server: `Static` links the static library of `Runic.Desktop.NativeServer.Static.<rid>` into the executable, `Shared` puts the shared library beside it, and `Application` leaves the server to the application's own Rust library, which links the `runic-server` crate. Other builds always use the shared library. |
+| `RunicDesktopNativeServerLibraryDirectory` | none | A directory whose `librunic_server.so`, `.dylib` or `.a`, or `runic_server.dll` or `.lib`, replaces the package's, such as a library built from source ([Nix builder](../nix/README.md)). |
 
 ## Runic.Spelling
 
@@ -144,6 +158,8 @@ See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#dec
 | `RunicPrivilegedActionsClassName` | property | `PrivilegedActions` | The generated class. |
 | `RunicPrivilegedActionsNamespace` | property | `$(RootNamespace)` | Its namespace. |
 | `RunicPrivilegedActionsReservedNames` | property (read-only) | `All`, `MacOSDaemon`, `WindowsElevation` | Names an action cannot have. |
+| `RunicPrivilegedActionsDependsOn` | property | the platform packages' targets | The targets that run before the class is written. A platform package appends its own target, which depends on `RunicValidatePrivilegedActions`; with `RunicPrivilegedActionsReservedNames`, it is the protocol between Runic.Platform and the platform packages, not an application setting. |
+| `RunicApplicationIconGenerationEnabled` | property | `true` | `false` turns off the icons the build derives from `RunicPackageIcon` (since 0.23): the `.ico` it uses as `ApplicationIcon` when the project sets none, the PNG beside the executable that a Runic Desktop window shows on macOS outside a bundle, and the macOS development bundle's `icon.icns`. A project with its own `ApplicationIcon` (or `Win32Resource`) keeps it either way. See [the application icon](packaging.md#the-application-icon). |
 | `RunicPublishAllPlatformAssemblies` | property | `false` | `true` keeps every operating system's `Runic.Platform` providers and Linux-only libraries in a `dotnet publish -r` for a Windows, macOS or Linux RuntimeIdentifier. By default (since 0.22) such a publish, framework-dependent or self-contained without trimming, with or without ReadyToRun or single-file, ships only its own operating system's (`Runic.Desktop.Gtk4`, whose `WithGtk4()` runs on every operating system, stays; its GirCore bindings ship only for Linux), and code that calls another operating system's provider from a method that also runs on this one gets `FileNotFoundException`. Builds, `dotnet run`, publishes without `-r`, trimmed and NativeAOT publishes, and so every `dotnet runic package` output (NativeAOT), are not affected. |
 
 [Runic.Platform.Linux.Polkit](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md#declare-actions):

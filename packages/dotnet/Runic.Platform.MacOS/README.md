@@ -86,6 +86,7 @@ generate when `dotnet run` computes the command:
 ```text
 obj/<configuration>/<framework>/runic-macos/<AssemblyName>.app
   Contents/Info.plist        generated from the project
+  Contents/Resources/icon.icns    the application icon, derived from the package icon
   Contents/MacOS/<AssemblyName>   a copy of the application host
   Contents/MacOS/*           links to the rest of the build output
 ```
@@ -98,7 +99,11 @@ with the `Alternate` rank, `RunicMacCameraUsageDescription` and
 `Contents/Resources/<tag>.lproj` for each language of `RunicApplicationLocales`
 and the `RunicApplicationLocale` items
 ([Languages](../../../docs/packaging.md#languages)), in the canonical case
-(`pt_br` is `pt-BR`); the folder of a language removed from the list is deleted. The bundle is signed ad hoc, without the
+(`pt_br` is `pt-BR`); the folder of a language removed from the list is deleted. Since 0.23 it also has
+`CFBundleIconFile`, so the Dock shows the application's icon: `icon.icns` is written from the package icon
+(`RunicPackageIcon`, by default `icons/icon.png`) by Runic.Platform's managed icon task, without `sips` or `iconutil`,
+with the PNG sizes `iconutil` writes up to the icon's size
+([the application icon](../../../docs/packaging.md#the-application-icon)). The bundle is signed ad hoc, without the
 hardened runtime and entitlements, so the debugger, hot reload and the JIT work
 as before. The links keep the output in one place: `AppContext.BaseDirectory`
 is still the build output, and a rebuild or a frontend that `dotnet runic dev`

@@ -202,7 +202,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             _configuration.ProjectDirectory,
             arguments,
             CreateDevelopmentEnvironment(_configuration, _developmentEnvironment, environment: _options.Environment,
-                debugEnvironment: _options.DebugEnvironment, browser: _options.Browser,
+                debugEnvironment: _options.DebugEnvironment, browser: _options.Browser, browserOrigin: _options.BrowserOrigin,
                 devToolsExtension: _options.WindowDevToolsExtension),
             SuppressLine,
             _options.Browser || _debugEndpointLine is not null ? ObserveProtocolLine : null,
@@ -317,7 +317,8 @@ internal sealed class HostProcessController : IAsyncDisposable
         IReadOnlyList<KeyValuePair<string, string>>? environment = null,
         IReadOnlyList<KeyValuePair<string, string>>? debugEnvironment = null,
         bool browser = false,
-        string? devToolsExtension = null)
+        string? devToolsExtension = null,
+        string? browserOrigin = null)
     {
         readEnvironment ??= Environment.GetEnvironmentVariable;
         var variables = new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -379,6 +380,9 @@ internal sealed class HostProcessController : IAsyncDisposable
         if (browser)
         {
             variables[BrowserEntry.ServeOnlyVariable] = "1";
+            // The Window admits --browser's address as an origin of its pages, and a Runic Desktop page's Bridge connects
+            // through it (D077.14).
+            variables[BrowserEntry.ServeOriginVariable] = browserOrigin;
         }
         return variables;
     }

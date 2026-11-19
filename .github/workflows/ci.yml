@@ -2085,7 +2085,10 @@ jobs:
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
       # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes and
-      # blobs-probe its blobs and uploads (blobs/1) from Chromium.
+      # blobs-probe its blobs and uploads (blobs/1) from Chromium. The --probe-webview-* probes open a real WebView2 or
+      # WebKitGTK window (sdk#1148, sdk#1149; placement under Openbox, which maximizes) and report themselves skipped on
+      # macOS. --probe-debug-endpoint shows a window in the runner's Chrome or Edge and checks that the NativeAOT publish
+      # opens no DevTools Protocol endpoint (sdk#1221).
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
@@ -2096,6 +2099,11 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-guard
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+              'openbox & exec ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-placement'
+            # Google Chrome: the x64 runner has it, the arm64 one no Chromium-based browser.
+            if [[ "${{ matrix.rid }}" == linux-x64 ]]; then GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-debug-endpoint; fi
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
@@ -2108,6 +2116,9 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-guard
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-placement
+            if [[ "$RUNNER_OS" == Windows ]]; then ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-debug-endpoint; fi
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
@@ -2260,6 +2271,11 @@ jobs:
               $result.payload.identity.id -ne 'org.runic.tests.PackagingProbe') { Get-Content "$env:RUNNER_TEMP\package.json"; throw 'Unexpected package payload' }
           if ((Get-Content "$env:RUNNER_TEMP\package.json" -Raw).Contains($password)) { throw 'The payload holds the signing password' }
 
+          # sdk#1207: the probe sets no ApplicationIcon, so the published executable's icon is the one the build derived
+          # from its package icon.
+          bun eng/ci/windows-icon-check.mjs artifacts\package\windows\msix\Runic.Packaging.Probe.exe
+          if ($LASTEXITCODE -ne 0) { throw 'The published executable has no application icon' }
+
           # The published WinExe outside the package: diagnostics reach a redirected standard error and the log.
           $receipt = "$env:RUNNER_TEMP\unpackaged.json"
           $probe = Start-Process -FilePath artifacts\package\windows\msix\Runic.Packaging.Probe.exe -Wait -PassThru `
@@ -2368,6 +2384,13 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw "$bundle/Contents/Info.plist")" = org.runic.tests.PackagingProbe
           test "$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$bundle/Contents/Info.plist")" = runic-packaging-probe
           test "$(plutil -extract CFBundleDocumentTypes.0.LSHandlerRank raw "$bundle/Contents/Info.plist")" = Alternate
+          # sdk#1207: the icon.icns written from the package icon by managed code, which Apple's iconutil reads back.
+          test "$(plutil -extract CFBundleIconFile raw "$bundle/Contents/Info.plist")" = icon.icns
+          iconutil -c iconset "$bundle/Contents/Resources/icon.icns" -o "$RUNNER_TEMP/development-icon.iconset"
+          for image in icon_16x16.png icon_16x16@2x.png icon_32x32@2x.png icon_128x128.png icon_256x256@2x.png icon_512x512.png; do
+            test -f "$RUNNER_TEMP/development-icon.iconset/$image"
+          done
+          test "$(sips -g pixelWidth "$RUNNER_TEMP/development-icon.iconset/icon_512x512.png" | awk '/pixelWidth/ { print $2 }')" = 512
           codesign --verify --verbose=2 "$bundle"
           codesign --display --verbose=2 "$bundle" 2>&1 | tee "$RUNNER_TEMP/development-signature.txt"
           grep -qx 'Identifier=org.runic.tests.PackagingProbe' "$RUNNER_TEMP/development-signature.txt"

@@ -965,14 +965,22 @@ test("a runic-views.js that no host copies any more is deleted, on build and pub
   }
 });
 
-// Review of #256: an application that loads a host's own client chooses its host at run time.
-test("several hosts without RunicApplicationHost are silent when the page loads a host's own client", () => {
-  for (const script of ["runic-cswebui.js", "runic-desktop-views.js"]) {
-    const project = hostProject(`runtime-host-${script}`, ["Desktop", "CsWebUi"], script);
-    const result = copyHost(project);
+// D072.11: 0.23 copies no host-named client, so a page that still loads one gets no Bridge and RUNICBRIDGE019 names the
+// fix, with one host or several; a frontend that supplies its own copy under that name is left alone.
+test("RUNICBRIDGE019: a page that loads a removed host-named client", () => {
+  for (const [script, hosts] of [["runic-cswebui.js", ["CsWebUi"]], ["runic-desktop-views.js", ["Desktop"]],
+    ["runic-desktop-views.js", ["Desktop", "CsWebUi"]]]) {
+    const project = hostProject(`host-named-${hosts.length}-${script}`, hosts, script);
+    let result = copyHost(project);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(existsSync(join(project, `bin/www/${script}`)), false, result.output);
+    assert.equal(result.warnings.length, 1, result.output);
+    assert.match(result.warnings[0], /The page index\.html of App loads runic-desktop-views\.js or runic-cswebui\.js, which Runic 0\.23 no longer copies to www\/, so the page gets no Bridge\. Load runic-views\.js instead/);
+
+    writeFileSync(join(project, `frontend/dist/${script}`), "// the application's own copy\n");
+    result = copyHost(project);
     assert.equal(result.status, 0, result.output);
     assert.deepEqual(result.warnings, [], result.output);
-    assert.ok(existsSync(join(project, `bin/www/${script}`)));
   }
 });
 
@@ -1353,7 +1361,7 @@ test("RunicApplicationFrontendDelivery=Embedded stages www/ for Runic.Assets and
   assert.equal(result.status, 0, result.output);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.www, undefined, result.output);
-  assert.deepEqual(result.staged, ["assets/app.js", "index.html", "runic-desktop-views.js", "runic-views.js"]);
+  assert.deepEqual(result.staged, ["assets/app.js", "index.html", "runic-views.js"]);
   assert.equal(readFileSync(join(project, "obj/runic-www/runic-views.js"), "utf8"), hostClient("Desktop"));
   assert.ok(result.packed, result.output);
   assert.equal(resolve(result.packed[0]), resolve(project, "obj/runic-www"), result.packed.join(" "));
@@ -1363,12 +1371,12 @@ test("RunicApplicationFrontendDelivery=Embedded stages www/ for Runic.Assets and
   // The staged tree mirrors the frontend: a file the frontend no longer has is gone.
   rmSync(join(project, "frontend/dist/assets/app.js"));
   result = buildDelivery(project);
-  assert.deepEqual(result.staged, ["index.html", "runic-desktop-views.js", "runic-views.js"]);
+  assert.deepEqual(result.staged, ["index.html", "runic-views.js"]);
 
   // Files, the default, copies www/ and packs nothing.
   result = buildDelivery(deliveryProject("files", ["Desktop"]));
   assert.equal(result.status, 0, result.output);
-  assert.deepEqual(result.www, ["assets/app.js", "index.html", "runic-desktop-views.js", "runic-views.js"]);
+  assert.deepEqual(result.www, ["assets/app.js", "index.html", "runic-views.js"]);
   assert.equal(result.packed, undefined);
   assert.doesNotMatch(result.output, /FrontendArchive/);
 });
@@ -1381,9 +1389,7 @@ test("RunicApplicationFrontendDelivery=Embedded stages the CS-WebUI client", () 
     assert.equal(result.status, 0, result.output);
     assert.deepEqual(result.warnings, [], name);
     assert.equal(result.www, undefined, `${name}: ${result.output}`);
-    assert.deepEqual(result.staged, hosts.length === 1
-      ? ["assets/app.js", "index.html", "runic-cswebui.js", "runic-views.js"]
-      : ["assets/app.js", "index.html", "runic-cswebui.js", "runic-desktop-views.js", "runic-views.js"], name);
+    assert.deepEqual(result.staged, ["assets/app.js", "index.html", "runic-views.js"], name);
     assert.equal(readFileSync(join(result.project, "obj/runic-www/runic-views.js"), "utf8"), hostClient("CsWebUi"), name);
     assert.ok(result.packed, result.output);
     assert.match(result.output, /RUNTIME_OPTION=Runic\.Application\.FrontendArchive=Runic\.Assets\.StaticFiles/, name);

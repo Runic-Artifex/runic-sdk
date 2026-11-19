@@ -261,7 +261,13 @@ public sealed class RunicInteractionCancelledException : OperationCanceledExcept
     }
 }
 
-/// <summary>Raised when a browser interaction exceeded its configured lifetime.</summary>
+/// <summary>Raised when a page did not answer a browser interaction within its lifetime.</summary>
+/// <remarks>
+/// The lifetime is two minutes unless the interaction sets another: a ReactiveUI <c>Interaction</c> with
+/// <see cref="RunicInteractionTimeoutAttribute"/>, a <see cref="ViewQuestion{TInput, TOutput}"/> with its constructor's
+/// <c>timeout</c>. An interaction without a deadline (<see cref="Timeout.InfiniteTimeSpan"/>) never raises it. The page's
+/// handler is aborted (its <c>signal</c>) at the same time.
+/// </remarks>
 public sealed class RunicInteractionTimeoutException : TimeoutException
 {
     /// <summary>Creates the exception with a default message.</summary>
@@ -355,12 +361,19 @@ public sealed class BridgeInteractionRouter : IDisposable
     /// Registers a typed interaction surface for one generated bridge route.
     /// The route lease is normally owned by the generated bridge attachment.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="timeout"/> is checked as <see cref="TryRequest{TInput, TOutput}(string, string, string, TInput, Func{TInput, string}, Func{JsonElement, TOutput}, TimeSpan?)"/>
+    /// checks it; each request still names its own.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="timeout"/> is not positive or exceeds 24 hours, and is not <see cref="Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
     public IDisposable Register<TInput, TOutput>(string route, string name, string contract,
         Func<TInput, string> encodeInput, Func<JsonElement, TOutput> decodeOutput,
         int priority = 0, TimeSpan? timeout = null)
     {
         ValidateDefinition(route, name, contract, encodeInput, decodeOutput);
-        _ = ResolveTimeout(timeout);
+        _ = InteractionLifetime.Resolve(timeout, nameof(timeout));
         var key = new DefinitionKey(route, name, contract);
         lock (_gate)
         {
@@ -522,7 +535,17 @@ public sealed class BridgeInteractionRouter : IDisposable
     /// of the page that the shell's Back leaves. The window scope (a close decision, a menu-bar command,
     /// <see cref="RunicInteractionInvocation.EnterWindow"/>) reaches the one presentation of the window that handles
     /// the interaction.
+    /// <para>
+    /// <paramref name="timeout"/> is how long the page may take to answer: by default two minutes, at most 24 hours, or
+    /// <see cref="Timeout.InfiniteTimeSpan"/> for no deadline. When it passes, the request fails with
+    /// <see cref="RunicInteractionTimeoutException"/>. Without a deadline the request ends only as every request also
+    /// does: when the invocation's command or navigation is cancelled, its presentation closes, its connection closes or
+    /// the window closes, each with <see cref="RunicInteractionCancelledException"/>.
+    /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="timeout"/> is not positive or exceeds 24 hours, and is not <see cref="Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
     public Task<TOutput>? TryRequest<TInput, TOutput>(string route, string name, string contract,
         TInput input, Func<TInput, string> encodeInput, Func<JsonElement, TOutput> decodeOutput,
         TimeSpan? timeout = null) =>
@@ -547,7 +570,7 @@ public sealed class BridgeInteractionRouter : IDisposable
             return Task.FromCanceled<TOutput>(invocation.CancellationToken);
         if (hook.IsCancellationRequested) return Task.FromCanceled<TOutput>(hook);
         if (callerCancellation.IsCancellationRequested) return Task.FromCanceled<TOutput>(callerCancellation);
-        var lifetime = ResolveTimeout(timeout);
+        var lifetime = InteractionLifetime.Resolve(timeout, nameof(timeout));
 
         string inputJson;
         try
@@ -577,7 +600,8 @@ public sealed class BridgeInteractionRouter : IDisposable
             var key = new DefinitionKey(presentation.Route, name, contract);
             var request = new PendingRequest(requestId, key, presentation.Id, presentation.Key,
                 presentation.ConnectionKey, presentation.ClientKey, 0, inputJson,
-                value => decodeOutput(value), lifetime, _session.TimeProvider.GetUtcNow().Add(lifetime));
+                value => decodeOutput(value), lifetime,
+                lifetime == Timeout.InfiniteTimeSpan ? null : _session.TimeProvider.GetUtcNow().Add(lifetime));
             _pending.Add(requestId, request);
             presentation.Pending.Enqueue(requestId);
             var cancellation = RegisterCancellation(requestId, request.Timeout, invocation.CancellationToken, hook, callerCancellation);
@@ -595,7 +619,10 @@ public sealed class BridgeInteractionRouter : IDisposable
     }
 
     // A presentation of the route opened by the connection; its requests are pushed to that connection.
-    internal void OnPresentationMounted(string route, string presentationId, string? clientKey, string? connectionKey)
+    // openEndedInteractions: the connection uses open-ended-interactions/1, so a request without a deadline is pushed
+    // without expiresAt.
+    internal void OnPresentationMounted(string route, string presentationId, string? clientKey, string? connectionKey,
+        bool openEndedInteractions = false)
     {
         if (presentationId.Length > MaximumPresentationLength) return;
         lock (_gate)
@@ -608,7 +635,7 @@ public sealed class BridgeInteractionRouter : IDisposable
                 if (existing.Matches(route, connectionKey, clientKey)) return;
                 ReleasePresentation(key, "The browser presentation was replaced.");
             }
-            _presentations[key] = new Presentation(route, presentationId, clientKey, connectionKey);
+            _presentations[key] = new Presentation(route, presentationId, clientKey, connectionKey, openEndedInteractions);
         }
     }
 
@@ -839,7 +866,12 @@ public sealed class BridgeInteractionRouter : IDisposable
                 continue;
             }
             request.OwnerEpoch = ++presentation.Generation;
-            Push(presentation, EncodeInteractionPush(request));
+            // A request without a deadline names none to a page that uses open-ended-interactions/1. Another page needs
+            // an instant (specs/application/README.md, "Interactions"): the latest a finite timeout can reach, 24 hours
+            // from now. A page of @runic-artifex/views before 0.23 ends the request after ten minutes regardless.
+            var expiresAt = request.ExpiresAt ?? (presentation.OpenEndedInteractions
+                ? null : _session.TimeProvider.GetUtcNow().Add(InteractionLifetime.Maximum));
+            Push(presentation, EncodeInteractionPush(request, expiresAt));
         }
     }
 
@@ -881,11 +913,13 @@ public sealed class BridgeInteractionRouter : IDisposable
 
     private static CancellationToken NavigationHookCancellation() => Runic.Navigation.RunicNavigator.HookCancellationToken;
 
+    // Timeout.InfiniteTimeSpan arms no timer: the request then ends only with its scope, presentation, connection or window.
     private CancellationLease RegisterCancellation(string requestId, TimeSpan timeout, CancellationToken cancellationToken,
         CancellationToken hookCancellation, CancellationToken callerCancellation)
     {
-        var source = new CancellationTokenSource(timeout, _session.TimeProvider);
-        var linked = CancellationTokenSource.CreateLinkedTokenSource([cancellationToken, hookCancellation, callerCancellation, source.Token]);
+        var source = timeout == Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource(timeout, _session.TimeProvider);
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            [cancellationToken, hookCancellation, callerCancellation, source?.Token ?? CancellationToken.None]);
         var registration = linked.Token.Register(() =>
         {
             Exception error = cancellationToken.IsCancellationRequested
@@ -934,16 +968,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         using var _ = JsonDocument.Parse(json);
     }
 
-    private static TimeSpan ResolveTimeout(TimeSpan? timeout)
-    {
-        var value = timeout ?? TimeSpan.FromMinutes(2);
-        if (value <= TimeSpan.Zero || value > TimeSpan.FromMinutes(10))
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Interaction timeouts must be between zero and ten minutes.");
-        return value;
-    }
-
-    // {"kind":"interaction", route, presentation, requestId, ownerEpoch, name, contract, expiresAt, input}
-    private static byte[] EncodeInteractionPush(PendingRequest request) => BridgeMessages.Write(writer =>
+    // {"kind":"interaction", route, presentation, requestId, ownerEpoch, name, contract, expiresAt?, input}: expiresAt is
+    // absent only for a request without a deadline on a connection that uses open-ended-interactions/1.
+    private static byte[] EncodeInteractionPush(PendingRequest request, DateTimeOffset? expiresAt) => BridgeMessages.Write(writer =>
     {
         writer.WriteStartObject();
         writer.WriteString("kind", "interaction");
@@ -953,7 +980,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         writer.WriteNumber("ownerEpoch", request.OwnerEpoch);
         writer.WriteString("name", request.Key.Name);
         writer.WriteString("contract", request.Key.Contract);
-        writer.WriteString("expiresAt", OffsetDateTime(request.ExpiresAt));
+        if (expiresAt is { } deadline) writer.WriteString("expiresAt", OffsetDateTime(deadline));
         writer.WritePropertyName("input");
         writer.WriteRawValue(request.InputJson);
         writer.WriteEndObject();
@@ -1057,8 +1084,10 @@ public sealed class BridgeInteractionRouter : IDisposable
         public string Contract { get; } = contract;
         public string InputJson { get; } = inputJson;
     }
-    private sealed class Presentation(string route, string id, string? clientKey, string? connectionKey)
+    private sealed class Presentation(string route, string id, string? clientKey, string? connectionKey, bool openEndedInteractions)
     {
+        // Whether the presentation's connection uses open-ended-interactions/1.
+        public bool OpenEndedInteractions { get; } = openEndedInteractions;
         public string Route { get; } = route;
         public string Id { get; } = id;
         public string Key { get; } = PresentationKey(route, id);
@@ -1082,16 +1111,16 @@ public sealed class BridgeInteractionRouter : IDisposable
     {
         private readonly TaskCompletionSource<object?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Func<JsonElement, object?> _decodeOutput;
-        public PendingRequest(string requestId, DefinitionKey key, string presentationId, string presentationKey, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout, DateTimeOffset expiresAt)
+        public PendingRequest(string requestId, DefinitionKey key, string presentationId, string presentationKey, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout, DateTimeOffset? expiresAt)
         { RequestId = requestId; Key = key; PresentationId = presentationId; PresentationKey = presentationKey; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = expiresAt; _decodeOutput = decodeOutput; }
         public string PresentationKey { get; }
         public object? Decode(JsonElement value) => _decodeOutput(value);
-        public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset ExpiresAt { get; } public CancellationLease? Cancellation { get; set; }
+        public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset? ExpiresAt { get; } public CancellationLease? Cancellation { get; set; }
         public Task<T> AsTask<T>() => _completion.Task.ContinueWith(task => (T)task.GetAwaiter().GetResult()!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         public void CompleteOutput(object? value) => _completion.TrySetResult(value); public void CompleteException(Exception error) => _completion.TrySetException(error); public bool Matches(InteractionReply reply, string? connectionKey, string? clientKey) => reply.RequestId == RequestId && reply.Route == Key.Route && reply.PresentationId == PresentationId && reply.OwnerEpoch == OwnerEpoch && reply.Name == Key.Name && reply.Contract == Key.Contract && string.Equals(ConnectionKey,connectionKey,StringComparison.Ordinal) && string.Equals(ClientKey,clientKey,StringComparison.Ordinal); public void Dispose() => Cancellation?.Dispose();
     }
     private sealed class CancellationLease(CancellationTokenRegistration registration, CancellationTokenSource linked,
-        CancellationTokenSource timeout) : IDisposable
+        CancellationTokenSource? timeout) : IDisposable
     {
         private CancellationTokenRegistration _registration = registration;
         private CancellationTokenSource? _linked = linked;

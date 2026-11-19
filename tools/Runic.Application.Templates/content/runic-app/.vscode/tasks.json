@@ -11,7 +11,7 @@
     },
     {
       // dotnet runic dev: the development server and the Window, restarted after each C# edit. Its failures (RAPPDEV)
-      // and the build's errors go to the Problems panel; the task is ready at each [dev] Ready.
+      // and the errors of the first build and of each rebuild go to the Problems panel; the task is ready at each [dev] Ready.
       "label": "runic: dev",
       "detail": "dotnet runic dev",
       "type": "process",
@@ -20,7 +20,19 @@
       "dependsOn": ["dotnet: tool restore"],
       "isBackground": true,
       "problemMatcher": {
-        "base": "$msCompile",
+        // VS Code's $msCompile, after an optional "[host] ", "[app] " or "[vite] ": dev puts its child process's label
+        // before each of that process's lines, so a rebuild's errors read "[host] /path/File.cs(18,5): error CS1002: ...".
+        "owner": "msCompile",
+        "applyTo": "allDocuments",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "file": 1,
+          "location": 2,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        },
         "background": {
           "activeOnStart": true,
           "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",
@@ -38,7 +50,19 @@
       "dependsOn": ["dotnet: tool restore"],
       "isBackground": true,
       "problemMatcher": {
-        "base": "$msCompile",
+        // VS Code's $msCompile, after an optional "[host] ", "[app] " or "[vite] ": dev puts its child process's label
+        // before each of that process's lines, so a rebuild's errors read "[host] /path/File.cs(18,5): error CS1002: ...".
+        "owner": "msCompile",
+        "applyTo": "allDocuments",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "file": 1,
+          "location": 2,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        },
         "background": {
           "activeOnStart": true,
           "beginsPattern": "^\\[dev\\] Evaluating",
@@ -56,7 +80,19 @@
       "dependsOn": ["dotnet: tool restore"],
       "isBackground": true,
       "problemMatcher": {
-        "base": "$msCompile",
+        // VS Code's $msCompile, after an optional "[host] ", "[app] " or "[vite] ": dev puts its child process's label
+        // before each of that process's lines, so a rebuild's errors read "[host] /path/File.cs(18,5): error CS1002: ...".
+        "owner": "msCompile",
+        "applyTo": "allDocuments",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "file": 1,
+          "location": 2,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        },
         "background": {
           "activeOnStart": true,
           "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",

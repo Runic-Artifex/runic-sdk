@@ -29,6 +29,9 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             BridgeSupportFiles.Use(BridgeSupportFiles.Toolkit, SupportFile);
     }
 
+    // The progress reporter of the running operation, which a command that takes IProgress<double> receives (#1180).
+    internal const string OperationProgress = "global::Runic.Application.Views.RunicOperationProgress.Current";
+
     // The class of SupportFile, in the Bridges' namespace (ToolkitCommandInspector.DescriptorFor's lambdas call it too).
     private const string GeneratedCommands = "RunicToolkitCommands";
 
@@ -115,13 +118,14 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
     {
         internal override bool IsAsync => contract.IsAsync;
         internal override string? AvailabilityMember => canExecute;
-        internal override Type? Input => contract.Input;
+        // A progress parameter is bound by the Bridge, not sent by the page.
+        internal override Type? Input => contract.HasInput ? contract.Input : null;
         internal override Type? Result => contract.Result;
 
         // The method's Task<T> carries the result's annotations.
         internal override NullabilityInfo? ResultNullability(PropertyInfo command, NullabilityInfoContext context) =>
             contract.Source is { } source && context.Create(source.ReturnParameter).GenericTypeArguments is [var result] ? result : null;
-        internal override Type[] ContractArguments => contract.Input is { } input ? [input] : [];
+        internal override Type[] ContractArguments => contract.HasInput ? [contract.Input!] : [];
 
         // The Toolkit generator documents its properties in C# terms ("Gets an
         // ICommand instance that can be used to cancel SaveCommand"). Describe the
@@ -153,7 +157,10 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             command.Return("Subscribe", $"new {GeneratedCommands}.Running(vm.{property.Name}, changed)");
             // RunicToolkitCommands checks the token, registers Cancel, starts the command here and awaits it. A command
             // with a parameter starts through its typed ExecuteAsync(T).
-            command.Return("Start", contract.HasInput
+            // A command that takes IProgress<double> receives the operation's progress (RunicOperationProgress.Current).
+            command.Return("Start", contract.TakesProgress
+                ? $"((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.IProgress<double>>)command).ExecuteAsync({OperationProgress})"
+                : contract.HasInput
                 ? $"((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<{toolkitType}>)command).ExecuteAsync(({toolkitType})argument!)"
                 : "((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)command).ExecuteAsync(null)");
             if (plan.ResultGraph is { } result)

@@ -12,6 +12,7 @@
 // With --launch, js-debug instead launches Chrome at that address, as the template's `"request": "launch"` configuration
 // "Window in Chrome" does for `dotnet runic dev --browser` (#1031): the same scenarios on Chromium.
 //        node dap-scenarios.mjs --jsdebug <js-debug dir> --launch <url> --frontend <Frontend dir> [--browser <executable>] …
+// --launch-file instead launches Chrome at a local page, as the configuration's "file" does: dev --browser's code file (#1187).
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -32,6 +33,8 @@ const { values: a } = parseArgs({ options: {
   type: { type: "string", default: "pwa-chrome" },
   // A launch configuration's url, and the Chrome or Chromium it starts: js-debug's installed Chrome ("stable") by default.
   launch: { type: "string" }, browser: { type: "string" },
+  // A launch configuration's file instead of its url.
+  "launch-file": { type: "string" },
 } });
 const app = `${a.frontend}/src/App.tsx`;
 const counterPage = `${a.frontend}/src/pages/CounterPage.tsx`;
@@ -133,11 +136,12 @@ async function attachIde() {
   }; });
   const parentInitialized = parent.wait("initialized", () => true, 120000);
   await parent.send("initialize", init);
-  const launch = a.launch && !launched;
+  const launch = (a.launch || a["launch-file"]) && !launched;
   launched = true;
   const pa = launch
     // Headless without a display; --no-sandbox for CI runners whose kernel refuses Chrome's sandbox.
-    ? parent.send("launch", { type: a.type, request: "launch", name: "browser", url: a.launch, webRoot: a.frontend, timeout: 30000,
+    ? parent.send("launch", { type: a.type, request: "launch", name: "browser", ...(a["launch-file"] ? { file: a["launch-file"] } : { url: a.launch }),
+      webRoot: a.frontend, timeout: 30000,
       perScriptSourcemaps: a["per-script-sourcemaps"], runtimeExecutable: a.browser ?? "stable", runtimeArgs: ["--headless=new", "--no-sandbox"],
       ...(a.trace ? { trace: { logFile: a.trace } } : {}) })
     : parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
@@ -439,8 +443,22 @@ const scenarios = {
     // A mark in this Window's page: the restarted Window's page does not have it.
     await c.send("evaluate", { expression: "globalThis.__webkitCdpBeforeRestart = true", context: "repl" });
     fs.appendFileSync(a["restart-file"], `\n// webkit-cdp scenario: restart ${Date.now()}\n`);
-    // The same js-debug session, without a new attach: the adapter continues it on the new Window's page.
-    await until(`!globalThis.__webkitCdpBeforeRestart && ${counterReady}`, "the restarted Window's page", 300000);
+    // The same js-debug session, without a new attach: the adapter continues it on the new Window's page. In Chrome
+    // (--launch, dev --browser) the page outlives the Window: it renders again when its connection drops, which stops at
+    // the breakpoint (Chrome binds it to the line's JSX), and it reloads itself once it reaches dev's address again.
+    // Continue those stops, as a developer would, until the reloaded page is there.
+    let continued = 0;
+    const resume = setInterval(() => {
+      if (!current.stopped) return;
+      continued++;
+      c.send("continue", { threadId: current.stopped.threadId }).catch(() => {});
+    }, 250);
+    try {
+      await until(`!globalThis.__webkitCdpBeforeRestart && ${counterReady}`, "the restarted Window's page", 300000);
+    } finally {
+      clearInterval(resume);
+    }
+    if (continued > 0) log(`window-restart: continued ${continued} stop(s) of the page before it reloaded`);
     const s = c.wait("stopped", () => true, 15000);
     await click(counter);
     const st = await s.catch(() => null);

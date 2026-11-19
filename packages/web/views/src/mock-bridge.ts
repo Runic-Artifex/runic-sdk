@@ -6,7 +6,10 @@ import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
 import { canonicalLanguageCase, clientLanguagesFeature, isClientLanguageTag } from "./client-languages.js";
-import { clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
+import {
+  clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, openEndedInteractionsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature,
+  requestSessionFeature, viewRequestsFeature,
+} from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { appearanceFeature } from "./appearance-push.js";
@@ -360,6 +363,12 @@ export type MockInteractionReply =
 export interface MockInteractionOptions {
   /** Cancels the request, as .NET does when its interaction is cancelled. */
   readonly signal?: AbortSignal;
+  /**
+   * How long the page may take to answer, in milliseconds, as the .NET interaction's lifetime (`[RunicInteractionTimeout]`):
+   * by default two minutes, `Infinity` for none. The push carries it as `expiresAt`; a request without a deadline has none
+   * (open-ended-interactions/1). The mock does not time the request out itself.
+   */
+  readonly timeout?: number;
 }
 
 /** Which requests `failNext` answers: a request kind of a route, optionally of one member. */
@@ -574,8 +583,12 @@ const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVe
 const mockFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature,
+  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature, openEndedInteractionsFeature,
 ];
+// A .NET interaction's default lifetime, and the deadline a request without one names to a page without
+// open-ended-interactions/1: the latest a finite timeout reaches (specs/application/README.md, "Interactions").
+const defaultInteractionTimeout = 120_000;
+const maximumInteractionTimeout = 86_400_000;
 const defaultUploadBytes = 256 * 1_048_576;
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -1480,9 +1493,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         message: "The interaction was cancelled." });
       request.reply.resolve({ kind: "cancelled" });
     }, { once: true });
+    const timeout = options.timeout ?? defaultInteractionTimeout;
+    const lifetime = Number.isFinite(timeout) ? timeout : connection.features.has(openEndedInteractionsFeature) ? undefined : maximumInteractionTimeout;
     pushMessage({
       kind: "interaction", route: view.route, presentation: presentation.id, requestId: request.requestId, ownerEpoch: 1, name,
-      contract: handler.contract, expiresAt: new Date(Date.now() + 120_000).toISOString().replace(/\.\d{3}Z$/, "Z"), input,
+      contract: handler.contract, ...(lifetime === undefined ? {} : { expiresAt: new Date(Date.now() + lifetime).toISOString().replace(/\.\d{3}Z$/, "Z") }),
+      input,
     });
     return request.reply.promise;
   }

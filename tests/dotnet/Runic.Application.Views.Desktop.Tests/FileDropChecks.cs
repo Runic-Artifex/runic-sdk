@@ -6,7 +6,8 @@ using Runic.Desktop;
 using TUnit.Core;
 
 // W315-006: files dropped onto a Runic Desktop window reach the Window's root ViewModel when it implements
-// IRunicFileDropTarget, one drop after another with their native paths; a failing drop is logged.
+// IRunicFileDropTarget, one drop after another with their native paths; a failing drop is logged. A drop onto the side
+// panel (#1189) joins the same queue, marked InSidePanel.
 internal sealed class FileDropChecks
 {
     [Test, NotInParallel(Order = 19)]
@@ -32,7 +33,7 @@ internal sealed class FileDropChecks
                 var native = factory.Hosts[0];
                 native.Drop(new DesktopFileDropEventArgs([file, root.FullName], "folder-7"));
                 native.Drop(new DesktopFileDropEventArgs([file], "fail"));
-                native.Drop(new DesktopFileDropEventArgs([file]));
+                native.Drop(new DesktopFileDropEventArgs([file]) { InSidePanel = true });
                 await viewModel.Third.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
                 Require(viewModel.Drops.Count == 3, $"Expected three drops, got {viewModel.Drops.Count}.");
                 var first = viewModel.Drops[0];
@@ -41,6 +42,8 @@ internal sealed class FileDropChecks
                     && first.Files[0].Name == "notes.txt",
                     "The first drop did not carry its paths, directory flags and label.");
                 Require(viewModel.Drops[1].Target == "fail" && viewModel.Drops[2].Target is null, "Drops did not arrive in order.");
+                Require(!first.InSidePanel && !viewModel.Drops[1].InSidePanel && viewModel.Drops[2].InSidePanel,
+                    "The side panel's drop was not told apart from the page's.");
                 Require(viewModel.Overlapped == 0, "Two drops ran at the same time.");
                 Require(logs.Messages.Any(static message => message.Contains("DropViewModel failed with System.InvalidOperationException to handle 1 dropped files", StringComparison.Ordinal)),
                     "A failing drop was not logged as WindowFileDropFailed.");

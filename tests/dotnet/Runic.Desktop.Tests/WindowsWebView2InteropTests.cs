@@ -151,6 +151,19 @@ public sealed partial class WindowsWebView2InteropTests
     }
 
     [Test]
+    public async Task ACompletionsInnerExceptionFollowsItsHresultNotTheThreadsStaleErrorInfo()
+    {
+        // On Windows, GetHRForException leaves its exception as the thread's COM error info, as a managed handler that
+        // throws through a generated COM event does; the completion must still report the exception of its own HRESULT
+        // (#1208).
+        _ = Marshal.GetHRForException(new InvalidOperationException("Stale error info."));
+        var failed = new WebViewBrowserExtensionCompletion();
+        Assert.Equal(0, failed.Invoke(unchecked((int)0x80070002), 0));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => failed.Task);
+        Assert.IsType<FileNotFoundException>(error.InnerException);
+    }
+
+    [Test]
     public async Task BrowserExtensionCompletionReportsFailuresAndAMissingExtension()
     {
         var failed = new WebViewBrowserExtensionCompletion();

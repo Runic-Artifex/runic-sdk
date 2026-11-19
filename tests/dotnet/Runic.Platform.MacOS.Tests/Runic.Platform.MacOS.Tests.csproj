@@ -11,6 +11,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <DefineConstants>$(DefineConstants);RUNIC_APPLICATION_ICON_CODEC</DefineConstants>
     <!-- Program.cs also runs the executable as the privileged daemon that the NativePrivilegedRoot case installs. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- The launch daemon generated from the items below; PrivilegedGenerationTests reads it and MacOSDaemon. -->
@@ -40,4 +41,9 @@
   <!-- A package consumer gets these targets from the packages' buildTransitive folders. -->
   <Import Project="../../../packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets" />
   <Import Project="../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/Runic.Platform.MacOS.targets" />
+  <!-- The application icon codec of Runic.Platform's targets, without its MSBuild task (sdk#1207). After the import,
+       whose targets take the task's source out of a consumer's Compile items. -->
+  <ItemGroup>
+    <Compile Include="../../../packages/dotnet/Runic.Platform/buildTransitive/RunicApplicationIcon.cs" Link="ApplicationIcon/RunicApplicationIcon.cs" />
+  </ItemGroup>
 </Project>

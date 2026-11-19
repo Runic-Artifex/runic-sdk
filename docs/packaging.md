@@ -188,6 +188,52 @@ They vary by application, platform and .NET version, so measure your own
 | `OptimizationPreference=Size` | 213 KB | The compiler optimizes for size rather than speed, so hot code can run slower. Measure the application's own hot paths. |
 | `UseSystemResourceKeys=true` | none measurable in the reference application; larger applications may save more | .NET's own exception and error messages become resource keys, such as `Arg_NullReferenceException`, instead of sentences. The application's own messages and Runic's are unchanged. |
 
+#### The smallest NativeAOT executable
+
+Every choice and setting that makes a Runic NativeAOT executable smaller, with
+what it saved where it was measured: linux-x64, Release, .NET SDK 10.0.403, on
+the 0.22 development line, mostly in the size fixtures of
+[`tests/scaling/aot-size`](../tests/scaling/aot-size) and their budgets
+(`aot/` in [`budgets.json`](../tests/scaling/budgets.json)). Each figure is for
+that application alone; they do not add up exactly, and your application's will
+differ, so measure it ([below](#measuring-your-own-application)).
+
+| Choice or setting | Default | Saving | Where it is described |
+| --- | --- | ---: | --- |
+| The native server (`Runic.Desktop.NativeServer`) instead of `Runic.Desktop.Kestrel` | the native server in new applications | 3.1 MB (Desktop template: 12.4 instead of 15.5 MB) | [Size and cost of each publish mode](#size-and-cost-of-each-publish-mode), [Runic.Desktop.NativeServer](../packages/dotnet/Runic.Desktop.NativeServer/README.md) |
+| `RunicDesktopServer=None` for an executable that opens no Runic Desktop window | the referenced server | 46 KB without a server package; 4.6 MB when `Runic.Desktop.Kestrel` is referenced | [MSBuild](msbuild.md#runicdesktop) |
+| GTK 3 instead of `Runic.Desktop.Gtk4` (`--linux-gtk 4`) | GTK 3 | 1.5 MB (13.9 instead of 12.4 MB) | [Size and cost of each publish mode](#size-and-cost-of-each-publish-mode) |
+| `RunicDesktopRegionHost=false` for pages without hosted regions | `true` | 17 KB | [MSBuild](msbuild.md#runicapplicationviewsdesktop), [Hosted regions](hosted-regions.md) |
+| An application that never starts as a hosted guest (`RunicGuestOptions.FromStandardInput()`) leaves the guest out | automatic | 509 KB | [Hosted applications](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-applications) |
+| `dotnet runic dev`'s live frontend directory (`Runic.Application.Views.Desktop.DevelopmentAssets`) is off in a publish | automatic | 155 KB | [above](#making-the-executable-smaller) |
+| Runic Desktop's CS-WebUI remote-debugging endpoint (`Runic.Desktop.WebUiRemoteDebugging`) is off in a publish | automatic | 50 KB | [above](#making-the-executable-smaller) |
+| `[RunicDevelopmentOnly]` on a ViewModel that only development needs (`RunicDevelopmentOnlyViews`) | nothing marked | 15 KB per ViewModel | [Development-only views and members](#development-only-views-and-members) |
+| An application that never creates a Runic Translations overlay leaves overlays out | automatic | 280 KB | [Ship translation updates without a release](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/docs/guides/translations/ota.md) |
+| `StackTraceSupport=false` | `true` | 574 KB | [above](#making-the-executable-smaller) |
+| `InvariantGlobalization=true` | `false` | 222 KB | [above](#making-the-executable-smaller), [Startup](#startup-readytorun-and-invariant-globalization) |
+| `OptimizationPreference=Size` | none (speed) | 213 KB | [above](#making-the-executable-smaller) |
+| `UseSystemResourceKeys=true` | `false` | none measurable in the reference application | [above](#making-the-executable-smaller) |
+
+The automatic rows need nothing from you as long as the application does not
+use the feature; the others cost what their sections say. For the smallest
+Runic Desktop executable, combine them:
+
+```xml
+<PropertyGroup>
+  <PublishAot>true</PublishAot>
+  <!-- Runic: only when the pages declare no hosted regions. -->
+  <RunicDesktopRegionHost>false</RunicDesktopRegionHost>
+  <!-- .NET: each gives something up, see the table above. -->
+  <StackTraceSupport>false</StackTraceSupport>
+  <InvariantGlobalization>true</InvariantGlobalization>
+  <OptimizationPreference>Size</OptimizationPreference>
+  <UseSystemResourceKeys>true</UseSystemResourceKeys>
+</PropertyGroup>
+```
+
+with a reference to `Runic.Desktop.NativeServer` rather than `Runic.Desktop.Kestrel`, as the
+template has.
+
 #### Development-only views and members
 
 A view that only development needs, such as a mock-control or diagnostics
@@ -328,6 +374,36 @@ fields. Once it sets the languages, the command fails with `RAPPPKG1006`,
 names the override file and the field, and says where to add it, rather than shipping a package that declares English
 only. Runic Translations will fill `RunicApplicationLocales` from `runic.json`;
 until then, set it by hand to the catalog's locales.
+
+## The application icon
+
+An application supplies one icon: `RunicPackageIcon`, by default
+`icons/icon.png`, a square PNG of 512 px (at least 256 px; 1024 px for the Mac
+App Store), with an optional `icon.svg` beside it for Linux. The packages make
+their icons from it, and since 0.23 the build derives the rest:
+
+| Where | What Runic derives | When |
+| --- | --- | --- |
+| Windows executable | `obj/<configuration>/<framework>/runic-icon/application.ico` with 16, 20, 24, 32, 40, 48 and 64 px as 32-bit bitmaps and 256 px as PNG, used as `ApplicationIcon`: the icon in Explorer and on the taskbar, embedded in the managed assembly, the application host and the NativeAOT executable | Every build of an executable whose project sets no `ApplicationIcon` or `Win32Resource` |
+| Windows windows | A Runic Desktop window without `IconFile` takes its large and small icon from the executable's icon resource, or from the application's assembly when the process is `dotnet app.dll`; nothing is shipped for it | At run time |
+| macOS development bundle | `Contents/Resources/icon.icns` with `CFBundleIconFile`, PNG entries of the sizes `iconutil` writes, up to the icon's size, so the Dock shows the icon during `dotnet run` | `dotnet run` on a Mac ([development bundle](../packages/dotnet/Runic.Platform.MacOS/README.md#development-bundle)) |
+| macOS outside a bundle | A Runic Desktop window without `IconFile` sets the PNG, copied beside the executable as `runic-application-icon.png`, as the application's icon when the process has no bundle icon, such as `dotnet app.dll` | Builds that can run on macOS (no `RuntimeIdentifier`, or `osx-*`) |
+
+The `.ico` and `.icns` are written by managed code in `Runic.Platform`'s build
+files, without native libraries or tools such as ImageMagick, `sips` or
+`iconutil`, so a Linux build, a Windows build, a Mac and a Nix build write the
+same bytes. Every standard PNG works: each colour type and bit depth, palette
+transparency (`tRNS`) and interlaced images. The sizes are scaled down with an
+area filter in premultiplied alpha, so transparent pixels add no colour to the
+edges. An icon that is not square, smaller than 256 px or no readable PNG is a
+build warning ([`RUNICICON001`](diagnostics.md#runicicon001) to
+[`RUNICICON003`](diagnostics.md#runicicon003)), and the build goes on without
+it.
+
+GTK takes a window's icon from the icon theme by the application ID, as before:
+the installed packages put the icon there. To use an `.ico` of your own, set
+`ApplicationIcon`; `RunicApplicationIconGenerationEnabled=false` turns all of
+the above off.
 
 ## Windows
 

@@ -7,7 +7,7 @@ import { clock, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
-  clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, invalidResponse, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush,
+  clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, invalidResponse, openEndedInteractionsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush,
   viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
@@ -79,6 +79,7 @@ export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
   translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature, hostedRegionsFeature,
+  openEndedInteractionsFeature,
   // Development tools (calls.ts): only the development build lists them, and a request carries their members only while
   // a reader of the Bridge-call channel follows its call. The production build's hello is the same as without them.
   ...__RUNIC_DEVELOPMENT__ ? [traceContextFeature, handlerTimingFeature] : [],

@@ -453,8 +453,12 @@ test("the Vite starters register the Vite DevTools dock on a line of its own, an
 
 // tasks.json and launch.json are JSONC; the template's own comments are whole lines.
 const parseJsonc = text => JSON.parse(text.split("\n").filter(line => !/^\s*\/\//.test(line)).join("\n"));
-// VS Code's built-in $msCompile pattern (tests/dotnet/Runic.Application.Tool.Tests/DevIdeContractTests.cs).
-const msCompile = /^\s*(?:\s*\d+>)?(\S.*?)(?:\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\))?\s*:\s+(?:(\S+)\s+)?((?:fatal +)?error|warning|info)\s+(\w+\d+)?\s*:\s*(.*)$/;
+// VS Code's built-in $msCompile matcher (src/vs/workbench/contrib/tasks/common/problemMatcher.ts; also
+// tests/dotnet/Runic.Application.Tool.Tests/DevIdeContractTests.cs).
+const msCompile = {
+  regexp: /^\s*(?:\s*\d+>)?(\S.*?)(?:\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\))?\s*:\s+(?:(\S+)\s+)?((?:fatal +)?error|warning|info)\s+(\w+\d+)?\s*:\s*(.*)$/,
+  owner: "msCompile", applyTo: "allDocuments", fileLocation: "absolute", fields: { file: 1, location: 2, severity: 4, code: 5, message: 6 },
+};
 
 // #961 (D066.25): every project has launch profiles for Visual Studio, Rider and dotnet run; --editor vscode adds
 // .vscode/ for the dotnet runic dev IDE contract (#959) and the IDE-run Window (#960); ide.host.json and an icon for
@@ -527,18 +531,46 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.deepEqual(task["runic: window"].dependsOn, ["runic: dev --no-window", "build"]);
     assert.equal(task["runic: window"].dependsOrder, "sequence");
 
-    // The background tasks: $msCompile for dev's RAPPDEV lines and the build's, ready at each [dev] Ready (#959).
+    // The background tasks: dev's RAPPDEV lines and the build's errors, ready at each [dev] Ready (#959). $msCompile's
+    // pattern after an optional label (#1161): dev prints a rebuild's errors after "[host] " (dotnet watch), "[app] "
+    // (dotnet run) or "[vite] ", and $msCompile itself takes the label for part of the file. The CS1002 and RAPPDEV1006
+    // lines are as dev 0.22 printed them.
     const diagnostics = [
-      ["/src/Ide.App/Ide.App.csproj : error RAPPDEV1007: The vite development server exited unexpectedly with code 1.", "RAPPDEV1007"],
-      ["dotnet-runic : error RAPPDEV1014: --no-window cannot be combined with --no-dotnet-watch.", "RAPPDEV1014"],
-      ["/src/Ide.App/WorkspaceViewModel.cs(18,5): error CS1002: ; expected [/src/Ide.App/Ide.App.csproj]", "CS1002"],
+      // The first build, unlabeled.
+      ["/src/Ide.App/WorkspaceViewModel.cs(19,24): error CS1002: ; expected [/src/Ide.App/Ide.App.csproj]",
+        ["/src/Ide.App/WorkspaceViewModel.cs", "19,24", "error", "CS1002", "; expected [/src/Ide.App/Ide.App.csproj]"]],
+      ["/src/Ide.App/Ide.App.csproj : error RAPPDEV1006: The initial build failed: 'dotnet build' exited with code 1.",
+        ["/src/Ide.App/Ide.App.csproj", undefined, "error", "RAPPDEV1006", "The initial build failed: 'dotnet build' exited with code 1."]],
+      ["dotnet-runic : error RAPPDEV1014: --no-window cannot be combined with --no-dotnet-watch.",
+        ["dotnet-runic", undefined, "error", "RAPPDEV1014", "--no-window cannot be combined with --no-dotnet-watch."]],
+      // A rebuild by dotnet watch after an edit, and one by dotnet run (--no-dotnet-watch).
+      ["[host] /src/Ide.App/WorkspaceViewModel.cs(19,24): error CS1002: ; expected [/src/Ide.App/Ide.App.csproj]",
+        ["/src/Ide.App/WorkspaceViewModel.cs", "19,24", "error", "CS1002", "; expected [/src/Ide.App/Ide.App.csproj]"]],
+      ["[app] /src/Ide.App/WorkspaceViewModel.cs(7,1): warning CS0168: The variable 'x' is declared but never used",
+        ["/src/Ide.App/WorkspaceViewModel.cs", "7,1", "warning", "CS0168", "The variable 'x' is declared but never used"]],
+      // A frontend module that does not compile, from the Runic Vite plugin (#1160).
+      ["[vite] /src/Ide.App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.",
+        ["/src/Ide.App/Frontend/src/App.tsx", "29,50", "error", "RUNICP008", "[vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'."]],
     ];
+    assert.equal(msCompile.regexp.exec(diagnostics[3][0])?.[1], "[host] /src/Ide.App/WorkspaceViewModel.cs");
     for (const label of ["runic: dev", "runic: dev --no-window", "runic: dev --browser"]) {
-      const { isBackground, problemMatcher: { base, background } } = task[label];
+      const { isBackground, problemMatcher: { base, owner, applyTo, fileLocation, pattern, background } } = task[label];
       assert.equal(isBackground, true, label);
-      assert.equal(base, "$msCompile", label);
+      assert.equal(base, undefined, label);
+      assert.deepEqual([owner, applyTo, fileLocation], [msCompile.owner, msCompile.applyTo, msCompile.fileLocation], label);
+      const { regexp, ...fields } = pattern;
+      assert.deepEqual(fields, msCompile.fields, label);
+      assert.equal(regexp, "^(?:\\[(?:host|app|vite)\\] )?" + msCompile.regexp.source.slice(1), label);
+      const matcher = new RegExp(regexp);
+      for (const [line, expected] of diagnostics) {
+        const match = matcher.exec(line);
+        assert.deepEqual([match?.[fields.file], match?.[fields.location], match?.[fields.severity], match?.[fields.code], match?.[fields.message]],
+          expected, `${label}: ${line}`);
+      }
+      for (const line of ["[host] dotnet watch ❌ Exited with error code 1", "[host] The build failed. Fix the build errors and run again.",
+        "[dev] Window exited: process 4242", "[dev] Ready"])
+        assert.doesNotMatch(line, matcher, `${label}: ${line}`);
       assert.equal(background.activeOnStart, true, label);
-      for (const [line, code] of diagnostics) assert.equal(msCompile.exec(line)?.[5], code, line);
       const begins = new RegExp(background.beginsPattern), ends = new RegExp(background.endsPattern);
       assert.match("[dev] Evaluating Views Window project...", begins, label);
       assert.match("[dev] Ready", ends, label);
@@ -549,7 +581,7 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.match("[dev] Reloading the Runic Views Window application.", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
     // --browser: after a restart the task is ready again once the new Window serves (dev's Ready follows its first page).
     assert.match("[dev] Window exited: process 4242", new RegExp(task["runic: dev --browser"].problemMatcher.background.beginsPattern));
-    assert.doesNotMatch("[dev] Browser: Window serves at http://127.0.0.1:9224/", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
+    assert.doesNotMatch("[dev] Browser: Window serves at http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224/?code=Zm9v", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
 
     const launch = parseJsonc(vscode[".vscode/launch.json"]);
     assert.equal(launch.version, "0.2.0");
@@ -566,13 +598,14 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     });
     assert.equal(configuration["Attach to the Window (dotnet runic dev)"].request, "attach");
     assert.equal(configuration["Attach to the Window (dotnet runic dev)"].preLaunchTask, "runic: dev");
-    // #1031: js-debug launches Chrome at dev --browser's fixed entry address (tools/dotnet-runic/BrowserEntry.cs), which
-    // sends it to the serve-only Window's page; the same webRoot as the attach configuration.
-    const browserPort = Number(/internal const int DefaultPort = (\d+);/
-      .exec(readFileSync(resolve(root, "tools/dotnet-runic/BrowserEntry.cs"), "utf8"))?.[1]);
+    // #1031, #1187: js-debug launches Chrome at the page dev --browser writes in the session directory
+    // (tools/dotnet-runic/BrowserEntry.cs), which opens its entry address with the one-time code; the same webRoot as the
+    // attach configuration.
+    const codeFile = /internal const string CodeFileName = "([^"]+)";/
+      .exec(readFileSync(resolve(root, "tools/dotnet-runic/BrowserEntry.cs"), "utf8"))?.[1];
     assert.deepEqual(configuration["Window in Chrome"], {
       name: "Window in Chrome", type: "chrome", request: "launch", preLaunchTask: "runic: dev --browser",
-      url: `http://127.0.0.1:${browserPort}/`, webRoot: "${workspaceFolder}/Frontend",
+      file: `\${workspaceFolder}/obj/runic/${codeFile}`, webRoot: "${workspaceFolder}/Frontend",
     });
     // Windows: the Window with WebView2's DevTools Protocol for script debugging (D066.25 3), and js-debug on its port.
     // WebView2 appends the variable to Runic's own AdditionalBrowserArguments.

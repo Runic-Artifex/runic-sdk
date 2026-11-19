@@ -133,11 +133,18 @@ debugger ends when `dotnet watch` restarts the Window after a C# edit.
 
 To set breakpoints in the page's JavaScript on any operating system, run
 `dotnet runic dev --browser`. The Window then serves its page without a native
-window, and `http://127.0.0.1:9224/` opens it in a browser; open that address
-from your IDE's JavaScript debugger with Chrome or Edge. The page runs on
-Chromium rather than the Window's WebView (WebKit on Linux and macOS), and native
-window features such as file dialogs and menus are unavailable there. Open the
-address again after `dotnet watch` restarts the Window.
+window, at an address of its own for each run, `http://<label>.localhost:9224/`,
+in one browser admitted with the one-time code of the `[dev] Browser:` line.
+Your IDE's JavaScript debugger opens it with Chrome or Edge through
+`obj/runic/dev-browser.html`, a page that only you can read and that carries the
+address and the current code, as the "Window in Chrome" launch configuration
+does. Keep the address to yourself: its label and code admit a browser to the
+Window. Chromium browsers (Chrome, Edge) and Firefox open names under
+`.localhost`. The page runs on Chromium rather than the Window's WebView
+(WebKit on Linux and macOS), and native window features such as file dialogs and
+menus are unavailable there. The tab keeps its address when `dotnet watch`
+restarts the Window: a Runic Desktop page reloads itself, and a CS-WebUI page
+needs a reload.
 <!--#if (host == "cswebui") -->
 
 `dotnet runic dev --debug-endpoint`, for an IDE to pass when it starts `dev`, opens the
@@ -163,7 +170,7 @@ Kit is not needed. Choose a configuration in Run and Debug:
 | `Window in Chrome` | Every OS: runs the `runic: dev --browser` task until `[dev] Ready` and opens the Window's page in Chrome under VS Code's JavaScript debugger, so breakpoints in `Frontend/src` stop on Linux and macOS too. The page runs on Chromium, without native window features. For Edge, change its `type` to `msedge`. |
 <!--#if (desktopHost) -->
 | `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Elevated Windows get no port, as for the launch profile. |
-| `Window + WebKitGTK (Linux)` | Linux (preview): the same with WebKitGTK. The Window starts with WebKit's inspector on port 9223, and `dotnet runic dev --no-window` serves it to the JavaScript debugger on port 9222. |
+| `Window + WebKitGTK (Linux)` | Linux: the same with WebKitGTK. The Window starts with WebKit's inspector on port 9223, and `dotnet runic dev --no-window` serves it to the JavaScript debugger on port 9222. |
 | `Attach to the page (JavaScript)` | Attaches VS Code's JavaScript debugger to port 9222 alone: on Linux to the Window that `dotnet runic dev` started (the `runic: dev` task), on Windows to a WebView2 Window started with the port. Breakpoints in `Frontend/src`, stepping, the console and the page's variables work; on Linux the debugger stays attached when `dotnet watch` restarts the Window. |
 <!--#endif -->
 
@@ -186,12 +193,12 @@ describes the lines and the `obj/runic/dev-session.json` file that tasks and
 extensions read.
 <!--#if (desktopHost) -->
 On Linux, `dotnet runic dev` serves the Window's WebKitGTK page to JavaScript
-debuggers on port 9222, as WebView2 does on Windows (preview): VS Code's
+debuggers on port 9222, as WebView2 does on Windows: VS Code's
 `Attach to the page (JavaScript)` works on both, and `[dev] Debugging:` and the
 session file's `debugEndpoints` name the port. Turn it off with
-`dotnet runic dev --no-debug-endpoint`. Rider's JavaScript debugger attaches to
-such a port too, but that is not verified yet; Visual Studio debugs the page on
-Windows only. On macOS the page has Safari's Web Inspector (Safari ▸ Develop)
+`dotnet runic dev --no-debug-endpoint`. Rider's JavaScript debugger speaks the same
+protocol, but Runic does not test it; Visual Studio debugs the page on Windows
+only. On macOS the page has Safari's Web Inspector (Safari ▸ Develop)
 and no endpoint for IDE debuggers.
 <!--#endif -->
 
@@ -390,7 +397,7 @@ and the component build target.
 <!--#if (editor == "vscode") -->
 | `.vscode/` | VS Code tasks for `dotnet runic dev`, debug configurations and the recommended extensions. See [VS Code](#vs-code). |
 <!--#endif -->
-| `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
+| `icons/` | The application's placeholder icon: `icon.svg` and `icon.png` (512 px), from which the build derives the Windows and macOS icons. |
 <!--#if (packaging) -->
 | `packaging/` | The manifests `dotnet runic package` fills, which replace its built-in ones: MSIX on Windows, `.app` on macOS, the desktop entry, AppStream metadata and Flatpak manifest on Linux. See [Package it](#package-it). |
 <!--#endif -->
@@ -631,7 +638,6 @@ The project file declares the application's identity once:
 | `ApplicationId` | `__RUNIC_APPLICATION_ID__` | The desktop entry, icon and Flatpak ID on Linux, the bundle identifier on macOS, the package name and AppUserModelID on Windows. |
 | `ApplicationTitle` | `__RUNIC_APPLICATION_NAME__` | The name users see. |
 | `Version` | `1.0.0` | The application's version. |
-| `ApplicationIcon` | `icons/icon.ico` | The executable's icon in Explorer and the taskbar. |
 
 Choose the ID before you ship: a reverse-DNS name for a domain you control,
 such as `org.example.Notes` (`dotnet new runic-app --application-id org.example.Notes`
@@ -650,13 +656,27 @@ AppUserModelID or an MSIX package, a macOS bundle).
 <!--#endif -->
 
 The icon in `icons/` is a neutral placeholder. Replace `icons/icon.svg` with
-your own square icon, then render `icon.png` (512 px) and `icon.ico` from it,
-for example with ImageMagick:
+your own square icon, then render `icon.png` (512 px) from it, for example with
+ImageMagick:
 
 ```sh
 magick -background none -density 384 icons/icon.svg -resize 512x512 icons/icon.png
-magick icons/icon.png -define icon:auto-resize=256,128,64,48,32,24,16 icons/icon.ico
 ```
+
+`icons/icon.png` is the application's only icon; Runic derives the rest from it:
+
+- **Windows.** The build writes `obj/<configuration>/<framework>/runic-icon/application.ico`
+  (16 to 256 px) and uses it as `ApplicationIcon`, the executable's icon in Explorer
+  and on the taskbar. Windows without an `IconFile` show the same icon.
+- **macOS.** `dotnet run` starts the application from a development bundle with
+  the icon as `icon.icns`, so the Dock shows it; outside a bundle a window sets it
+  as the application's icon.
+- **Packages.** `dotnet runic package` makes each package's icons from it.
+
+The icon must be a square PNG of at least 256 px; another one is a warning
+(`RUNICICON001` to `RUNICICON003`) and the build goes on without the derived
+icon. To use an `.ico` of your own, set `ApplicationIcon`; to turn the derived
+icons off, set `RunicApplicationIconGenerationEnabled` to `false`.
 
 ## Publish
 

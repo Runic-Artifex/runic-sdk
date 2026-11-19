@@ -185,6 +185,12 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// </summary>
     ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
 
+    /// <summary>
+    /// Whether <see cref="OpenDevToolsAsync"/> would open the developer tools now, from the window's web content policy;
+    /// the menu item of DesktopMenuItem.OpenDevToolsCommandId is enabled by it (MenuCommandChain).
+    /// </summary>
+    bool CanOpenDevTools => false;
+
     /// <summary>Applies DesktopHost.SetSpellCheckingLanguagesAsync; a host whose checker has no languages ignores it.</summary>
     ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;

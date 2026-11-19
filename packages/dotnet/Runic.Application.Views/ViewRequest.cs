@@ -250,17 +250,27 @@ public sealed class ViewQuestion<TInput, TOutput>
 
     /// <summary>Creates a view question.</summary>
     /// <param name="fallback">Answers when no page can; without one, an unanswered question fails.</param>
-    /// <param name="timeout">How long a page may take to answer; at most ten minutes, by default two.</param>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeout"/> is not positive or exceeds ten minutes.</exception>
+    /// <param name="timeout">
+    /// How long a page may take to answer: at most 24 hours, by default two minutes, or
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> for no deadline, as for a question a person answers. Without a
+    /// deadline the question still ends when <see cref="AskAsync"/>'s token or the asking command is cancelled, when the
+    /// page unmounts or disconnects and when the Window closes. A page of <c>@runic-artifex/views</c> before 0.23 aborts its
+    /// handler after ten minutes regardless.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="timeout"/> is not positive or exceeds 24 hours, and is not <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>.
+    /// </exception>
     public ViewQuestion(Func<TInput, CancellationToken, ValueTask<TOutput>>? fallback = null, TimeSpan? timeout = null)
     {
-        if (timeout is { } value && (value <= TimeSpan.Zero || value > TimeSpan.FromMinutes(10)))
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Interaction timeouts must be between zero and ten minutes.");
+        InteractionLifetime.Resolve(timeout, nameof(timeout));
         _fallback = fallback;
         Timeout = timeout;
     }
 
-    /// <summary>How long a page may take to answer, or <see langword="null"/> for the default of two minutes.</summary>
+    /// <summary>
+    /// How long a page may take to answer, <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> for no deadline, or
+    /// <see langword="null"/> for the default of two minutes.
+    /// </summary>
     public TimeSpan? Timeout { get; }
 
     /// <summary>Asks the page and returns its answer, or the fallback's when no page can answer.</summary>
@@ -269,7 +279,7 @@ public sealed class ViewQuestion<TInput, TOutput>
     /// <returns>The answer.</returns>
     /// <exception cref="RunicInteractionUnhandledException">No page can answer and there is no fallback.</exception>
     /// <exception cref="RunicInteractionCancelledException">The page cancelled, or its presentation closed.</exception>
-    /// <exception cref="RunicInteractionTimeoutException">The page did not answer in time.</exception>
+    /// <exception cref="RunicInteractionTimeoutException">The page did not answer within <see cref="Timeout"/>.</exception>
     /// <exception cref="RunicInteractionOutputException">The page's answer does not match the contract.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async Task<TOutput> AskAsync(TInput input, CancellationToken cancellationToken = default)

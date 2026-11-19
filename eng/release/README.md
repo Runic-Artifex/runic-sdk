@@ -11,7 +11,10 @@ releases and their evidence remain historical records.
    `eng/release/notes/<version>/`), run `bun eng/release/notes.mjs assemble <version>`,
    which writes `eng/release/notes/<version>.md` from the fragments and removes them
    (see [Release notes](#release-notes)), review the assembled notes, and commit them
-   with the [migration guide](../../docs/migration-1.0.md). Do the
+   with the [migration guide](../../docs/migration-1.0.md). Check that every
+   fragment in `known-issues/` is still true, and restate each limitation the
+   previous release listed that is still true and has no fragment, so that no known
+   issue drops out of the notes until it is fixed. Do the
    [rechecks](#rechecks-before-each-release) and record their results in the pull
    request's description.
    `main` already carries the version, set after the previous release (step 6);
@@ -65,6 +68,11 @@ releases and their evidence remain historical records.
    Translations do after their releases (D063.6, D066.13). Add
    `eng/release/notes/0.(y+1).0/_intro.md` with its title and install lines; changes
    add their notes beside it as fragments (see [Release notes](#release-notes)).
+   Carry the known issues forward: copy each entry of the released notes'
+   `## Known issues` into `eng/release/notes/0.(y+1).0/known-issues/` as a fragment
+   of its own, with relative links to the current docs rather than the release tag. The pull
+   request that fixes one removes its fragment and says so under Fixes; the release
+   pull request checks the rest are still true (step 1).
    The candidate stays until a pull request schedules the first
    release candidate (see [Release candidates and 1.0.0](#release-candidates-and-100)).
    Install instructions in the guides keep naming the published release, or no
@@ -103,6 +111,8 @@ accepts, only when the check says so.
 | --- | --- | --- | --- |
 | Angular component mode replaces Angular's private `ɵSHARED_STYLES_HOST` | `packages/web/angular/src/component.ts` | For the Angular versions the `@runic-artifex/angular` peer range admits, and for a new major before widening it: the token is still exported with the same interface; Angular's bundles still have no `adoptedStyleSheets` support; the status of angular/angular#59429 and #68691; the component-mode browser test passes. | If Angular gains a public way, move to it. If the token changes, adapt it or use the public-API `RendererFactory2` fallback in local-planning's `design/dx-0.21/ANGULAR-SHADOW-STYLES.md`. Component mode stays experimental while it uses the token. |
 | The `--angular-build vite` starter overrides `vite` | the `runic-app` `angular-vite` frontend and its `--translations` variant (`overrides`), the Angular frontend's `pnpm-workspace.yaml`, which only those projects receive | Whether the variant still uses `@angular/build` 22.2.4, which pins Vite 8.3.0; 22.2.5 and later depend on Vite 8.3.5, with the GHSA-587h-7wmj-h5pm fix (D072.3 keeps the variant as it is for now). | When the variant moves to such an `@angular/build`, remove its overrides and the `pnpm-workspace.yaml`, and regenerate the starter locks (`eng/dependencies/README.md`, Angular 22.2.7 row). |
+| Bits UI 2.20 runs a menu's open auto-focus again when its props change after it opened, which moves focus from an item reached with the arrow keys back to the first item (#581, I-199) | `keepFocus` in `examples/notes-view-first/Svelte/src/MenuBar.svelte`; `bits-ui` pinned to `2.20.0` in `examples/notes-view-first/Svelte/package.json` | Whether a Bits UI release after 2.20.0 still mounts the menu content's `FocusScope` again (and so re-runs `onOpenAutoFocus`) when the content's props change during its open transition; the status of the upstream report, which the maintainer files. Run `examples/notes-view-first/menu-bar-smoke.mjs` without `keepFocus` against the newer release. | When a release fixes it, remove `keepFocus` and its `onOpenAutoFocus` handlers, move the pin to that release (`eng/dependencies/README.md`), and remove this row. |
+| The .NET 11 SDK's native `dotnet` entry point does not forward SIGTERM to a local tool such as `dotnet runic dev` on Linux (dotnet/sdk#57091; #1175) | the known issue in `tools/dotnet-runic/README.md` ("Stopping `dev`"), `docs/debugging.md` (IDE contract) and `eng/release/notes/<version>/known-issues/sdk-11-sigterm.md` | Whether dotnet/sdk#57091 is fixed and in which SDK release (dotnet/sdk#56332 may fix it), and whether the SDK that `dotnet runic doctor` certifies has it: with that SDK on Linux, start a local tool that logs SIGTERM as `setsid dotnet <tool>` and send SIGTERM to the `dotnet` process only; the tool must log it and exit. | Once the certified SDK forwards it, name the first fixed SDK in the docs' known issue, drop the `DOTNET_CLI_ENABLEAOT=0` advice for it, and remove this row with the last uncertified affected SDK. |
 | WebKitGTK's HTTP inspector accepts any origin (WebKit bug 330602) | the version gate in `tools/dotnet-runic/WebKit/WebKitDebugging.cs` | Which WebKitGTK release contains the fix. The gate assumes 2.54.3. | Correct the gate and the docs' version; the HTTP inspector then opens by default where WebKit allows it (D066.38). |
 
 Add a row when new code starts relying on internals or on a pending upstream fix, and
@@ -131,7 +141,7 @@ One directory per section, one file per entry:
 | `features/` | One `## Title (#issue)` section per file, after Upgrading. |
 | `fixes/` | `## Fixes`, a list. |
 | `ci/` | `## CI and tests`, a list. |
-| `known-issues/` | `## Known issues`, a list. |
+| `known-issues/` | `## Known issues`, a list. Starts as a copy of the previous release's known issues ([step 6](#routine-preview-release)); an entry leaves when its fix lands. |
 
 - **Names.** Name an entry by its issue or pull request: `features/951.md`,
   `fixes/965.md`; add words when one number has several entries in a section
@@ -606,6 +616,7 @@ of the same major without changes by its author. That includes:
   | `RUNICEL` | The Runic.Platform.Windows.Elevation build targets |
   | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |
   | `RUNICDESK` | The Runic.Desktop build targets; experimental Desktop APIs |
+  | `RUNICICON` | The application icon: the build targets of Runic.Platform and Runic.Platform.MacOS (since 0.23) |
   | `RUNICPLAT` | The Runic.Platform analyzers (since 0.14) |
   | `RUNICASSETS` | Experimental APIs of Runic.Assets |
   | `RUNICNAV` | The Runic.Navigation.ReactiveUI build targets (since 0.11); `RUNICNAV001`, the graduated experimental Navigation ID, is retired |
@@ -712,7 +723,7 @@ Third-party packages:
   | `ReactiveUI.Binding`, `ReactiveUI.Binding.Reactive` | `[9.1.0, 10)` | The `*.ReactiveUI*` packages |
   | `ReactiveUI.Primitives`, `ReactiveUI.Primitives.Reactive`, `ReactiveUI.Disposables` | `[9.0.0, 10)` | The `*.ReactiveUI*` packages |
   | `System.Reactive` | `[7.0.0, 8)` | The `*.ReactiveUI.Reactive` packages |
-  | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.9, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
+  | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.10, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
   | `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) | `[10.10.0, 11)` | `Runic.Application.Testing` |
   | `effect` (npm) | `^4.0.1` | `@runic-artifex/views-effect` |
   | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.14.0, 0.15.0-0.0)` | `Runic.Application.Views.Translations` |
@@ -827,7 +838,8 @@ requirement, not a consumer one.
   experimental APIs only from its `./experimental` subpath, which may change in
   a minor release; graduation moves an export to the root entry. 0.10.0 removed
   every `./experimental` entry; 0.18 added new ones for hosted regions, 0.19
-  `onBridgeDraining` for the close drain (in the root entry since 0.22), and 0.20 `runicComponentMount` in
+  `onBridgeDraining` for the close drain (in the root entry since 0.22, and
+  only there since 0.23), and 0.20 `runicComponentMount` in
   `@runic-artifex/angular` for Angular guests in trusted component mode; 0.21
   moved trusted component mode of `@runic-artifex/views` and the `component`
   build target of `@runic-artifex/vite-plugin-runic` there.

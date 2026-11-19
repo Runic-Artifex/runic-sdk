@@ -39,6 +39,12 @@ public sealed class KeyCoverageTests
         [nameof(DesktopPlatformTexts.ResourceUnavailableTitle)] = "platform_resource_unavailable_title",
         [nameof(DesktopPlatformTexts.ResourceUnavailableMessage)] = "platform_resource_unavailable",
         [nameof(DesktopPlatformTexts.LoadingTitle)] = "platform_loading_title",
+        [nameof(DesktopPlatformTexts.ServerErrorTitle)] = "platform_server_error_title",
+        [nameof(DesktopPlatformTexts.ServerErrorMessage)] = "platform_server_error",
+        [nameof(DesktopPlatformTexts.ConnectionErrorLabel)] = "platform_connection_error_label",
+        [nameof(DesktopPlatformTexts.ConnectionFailedMessage)] = "platform_connection_failed",
+        [nameof(DesktopPlatformTexts.ConnectionLostMessage)] = "platform_connection_lost",
+        [nameof(DesktopPlatformTexts.WebSocketUnsupportedMessage)] = "platform_websocket_unsupported",
     };
 
     internal static IReadOnlyList<(string Name, TranslationKey Key)> Messages() =>

@@ -10,6 +10,12 @@ namespace Runic.Desktop.Internal;
 // or assembly-location discovery are needed by NativeAOT applications.
 internal static partial class WindowsWebView2Interop
 {
+    // The exception for a WebView2 completion's failed HRESULT. -1 ignores the thread's current COM error info: an
+    // earlier failed COM call on this thread (a managed handler that threw through a COM event, for example) can leave
+    // IErrorInfo behind, and GetExceptionForHR would otherwise return that stale exception instead of this HRESULT's
+    // (#1208).
+    internal static Exception? ExceptionFor(int errorCode) => Marshal.GetExceptionForHR(errorCode, (nint)(-1));
+
     internal const int SettingsSlot = 3;
     internal const int NavigateSlot = 5;
     internal const int NavigationStartingSlot = 7;
@@ -55,9 +61,6 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerCloseSlot = 24;
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
-    // ICoreWebView2Controller4::put_AllowExternalDrop.
-    internal static readonly Guid Controller4Interface = new("97d418d5-a426-4e49-a151-e1a10f327d9e");
-    internal const int ControllerAllowExternalDropSlot = 37;
     internal const int EnvironmentCreateControllerSlot = 3;
     internal const int EnvironmentBrowserVersionSlot = 5;
     internal const int PermissionUriSlot = 3;
@@ -438,18 +441,6 @@ internal sealed class WindowsWebView2Controller : IDisposable
         return new WindowsWebView2Controller(_environment, controller);
     }
 
-    // ICoreWebView2Controller4::put_AllowExternalDrop (WebView2 runtime 1.0.1185): false refuses files and other content
-    // dragged from outside the WebView, so a drop neither navigates the view nor reaches the page. An older runtime
-    // keeps its default.
-    internal void RefuseExternalDrops()
-    {
-        nint controller4;
-        try { controller4 = WindowsWebView2Interop.Query(_controller, WindowsWebView2Interop.Controller4Interface); }
-        catch (InvalidCastException) { return; }
-        try { WindowsWebView2Interop.SetInteger(controller4, WindowsWebView2Interop.ControllerAllowExternalDropSlot, 0); }
-        finally { WindowsWebView2Interop.Release(controller4); }
-    }
-
     // The kind of every process failure the WebView reports (COREWEBVIEW2_PROCESS_FAILED_KIND).
     internal void RegisterProcessFailed(Action<int> failed) =>
         AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
@@ -723,8 +714,9 @@ internal sealed class WindowsWebView2Controller : IDisposable
     // (FileDropSupport.WebView2Script). The top-level document and the frames of the presented origin are heard, with the
     // script's token; a frame's messages arrive on the frame (ICoreWebView2Frame2), which FrameCreated hands over. A
     // drop in an attached region's frame goes to its guest (RegionFrames; D059.3), never to the window; every other
-    // frame of another origin is not heard.
-    internal async Task EnableFileDropsAsync(Uri presentedUrl, Action<DesktopFileDropEventArgs> dropped, RegionFrames? regions = null)
+    // frame of another origin is not heard. A side panel's controller reports its drops with InSidePanel (sidePanel).
+    internal async Task EnableFileDropsAsync(Uri presentedUrl, Action<DesktopFileDropEventArgs> dropped, RegionFrames? regions = null,
+        bool sidePanel = false)
     {
         var token = Guid.NewGuid().ToString("N");
         void Receive(nint args)
@@ -732,9 +724,9 @@ internal sealed class WindowsWebView2Controller : IDisposable
             var source = GetString(args, WindowsWebView2Interop.WebMessageSourceSlot);
             if (PresentationSecurityPolicy.IsSameOrigin(presentedUrl, source))
             {
-                if (ReadFileDrop(args, token) is { } drop) dropped(drop);
+                if (ReadFileDrop(args, token, sidePanel) is { } drop) dropped(drop);
             }
-            else if (regions?.Find(source) is { } region && ReadFileDrop(args, token) is { } regionDrop)
+            else if (regions?.Find(source) is { } region && ReadFileDrop(args, token, sidePanel) is { } regionDrop)
             {
                 region.Dropped(regionDrop);
             }
@@ -746,7 +738,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
     }
 
     // The drop of a message whose source was checked: its paths come from the File objects WebView2 hands over.
-    internal static DesktopFileDropEventArgs? ReadFileDrop(nint args, string token)
+    internal static DesktopFileDropEventArgs? ReadFileDrop(nint args, string token, bool sidePanel = false)
     {
         string? message;
         try { message = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
@@ -779,7 +771,10 @@ internal sealed class WindowsWebView2Controller : IDisposable
                     }
                     finally { WindowsWebView2Interop.Release(value); }
                 }
-                return paths.Count == 0 ? null : new DesktopFileDropEventArgs(paths, envelope.Target) { Effect = envelope.Effect };
+                return paths.Count == 0 ? null : new DesktopFileDropEventArgs(paths, envelope.Target)
+                {
+                    Effect = envelope.Effect, InSidePanel = sidePanel,
+                };
             }
             finally { WindowsWebView2Interop.Release(objects); }
         }
@@ -1180,7 +1175,7 @@ internal sealed partial class WebViewDevToolsCompletion : IWebViewDevToolsComple
     public int Invoke(int errorCode, nint result)
     {
         if (errorCode < 0)
-            _completion.TrySetException(new InvalidOperationException("The DevTools protocol call failed.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("The DevTools protocol call failed.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else
             _completion.TrySetResult(Marshal.PtrToStringUni(result) ?? string.Empty);
         return 0;
@@ -1195,7 +1190,7 @@ internal sealed partial class WebViewCompletion : IWebViewEnvironmentCompleted, 
     public int Invoke(int errorCode, nint result)
     {
         if (errorCode < 0 || result == 0)
-            _completion.TrySetException(new InvalidOperationException("WebView2 creation failed.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 creation failed.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else
         {
             WindowsWebView2Interop.AddRef(result);
@@ -1219,7 +1214,7 @@ internal sealed partial class WebViewBrowserExtensionCompletion : IWebViewBrowse
     {
         if (errorCode < 0)
         {
-            _completion.TrySetException(new InvalidOperationException("WebView2 did not install the browser extension.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 did not install the browser extension.", WindowsWebView2Interop.ExceptionFor(errorCode)));
             return 0;
         }
         string? id = null;
@@ -1256,7 +1251,7 @@ internal sealed partial class WebViewBrowserExtensionList(IReadOnlyCollection<st
     {
         if (errorCode < 0)
         {
-            _completion.TrySetException(new InvalidOperationException("WebView2 did not list the profile's browser extensions.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 did not list the profile's browser extensions.", WindowsWebView2Interop.ExceptionFor(errorCode)));
             return 0;
         }
         try
@@ -1293,7 +1288,7 @@ internal sealed partial class WebViewBrowserExtensionRemoval : IWebViewBrowserEx
     internal Task Task => _completion.Task;
     public int Invoke(int errorCode)
     {
-        if (errorCode < 0) _completion.TrySetException(new InvalidOperationException("WebView2 did not remove the browser extension.", Marshal.GetExceptionForHR(errorCode)));
+        if (errorCode < 0) _completion.TrySetException(new InvalidOperationException("WebView2 did not remove the browser extension.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else _completion.TrySetResult();
         return 0;
     }
@@ -1311,7 +1306,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
     public int Invoke(int errorCode, nint id)
     {
         if (errorCode < 0)
-            _completion.TrySetException(new InvalidOperationException("WebView2 rejected the document-start script.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 rejected the document-start script.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else
             _completion.TrySetResult();
         return 0;

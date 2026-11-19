@@ -135,13 +135,13 @@ Experimental npm APIs:
 | `@runic-artifex/angular` | `runicComponentMount` and `RunicComponentMountOptions`: the mount function of an Angular guest's component build in [trusted component mode](hosted-regions.md#component-mode), with its styles in the element's shadow root ([components](../packages/web/angular/README.md#components-experimental)). Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.20.0 |
 
 The APIs below graduated. 0.10.0 removed the `./experimental` entries of all six
-packages then; 0.22.0 deprecated `onBridgeDraining` in `@runic-artifex/views/experimental`, which keeps it
-for one minor and 0.23.0 removes it.
+packages then; 0.22.0 deprecated `onBridgeDraining` in `@runic-artifex/views/experimental`, which kept it
+for one minor, and 0.23.0 removed it there.
 Import them from the package root.
 
 | Package | Graduated exports | Graduated in |
 |---|---|---|
-| `@runic-artifex/views` | `onBridgeDraining`, the close drain's flag (`closing` with `draining: true`, [window close](../specs/application/README.md#window-close)); `./experimental` keeps a deprecated re-export until 0.23.0. Its .NET side is [`RUNICDESK105`](#RUNICDESK105). | 0.22.0 |
+| `@runic-artifex/views` | `onBridgeDraining`, the close drain's flag (`closing` with `draining: true`, [window close](../specs/application/README.md#window-close)); `./experimental` kept a deprecated re-export in 0.22.0; 0.23.0 removed it. Its .NET side is [`RUNICDESK105`](#RUNICDESK105). | 0.22.0 |
 | `@runic-artifex/views` | `collectionViewport`, `createCollectionViewportController`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions`. The viewport keeps a fixed row height; `createQueryViewportController` (0.16) lays out query collections with variable heights. | 0.10.0 |
 | `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState`. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation` wrap it, and the [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer) is its sample. | 0.10.0 |
 | `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | 0.10.0 |

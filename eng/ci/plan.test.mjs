@@ -8,7 +8,7 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
-  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, matchesPath } from './platforms.mjs';
+  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, matchesPath } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -310,8 +310,9 @@ test('component dependencies cover every project reference and workspace npm dep
 // generated output, pack staging or an external checkout (DynamicData fork,
 // CsWebUi), not another component's source. AotSizeModelsDirectory is the scaling suite's generated NativeAOT
 // fixture models under artifacts/ (tests/scaling/aot-size). _RunicDevTools* is dotnet-runic's stamped DevTools extension
-// manifest under obj/ (Runic.Application.Tool.csproj).
-const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|AotSizeModelsDirectory|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|RunicPackagingProbeExtraFiles\w*|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*|_?RunicDevTools\w*|_?RunicPrivileged\w*|_?RunicDesktopNativeServer\w*|_?RunicNativeServer\w*)\))/;
+// manifest under obj/ (Runic.Application.Tool.csproj). _RunicDesktopApplicationIcon is the consuming application's own
+// package icon (Runic.Desktop.targets, sdk#1207).
+const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|_RunicDesktopApplicationIcon|AotSizeModelsDirectory|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|RunicPackagingProbeExtraFiles\w*|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*|_?RunicDevTools\w*|_?RunicPrivileged\w*|_?RunicDesktopNativeServer\w*|_?RunicNativeServer\w*)\))/;
 
 test('component dependencies cover MSBuild imports and cross-directory items', () => {
   for (const file of tracked('*.csproj', '*.props', '*.targets')) {
@@ -464,6 +465,18 @@ test('dotnet runic\'s Windows file replace plans the native Windows x64 leg', ()
     assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
   }
   assert.deepEqual(plan(['tools/dotnet-runic/FrontendCompilerHotReloadCoordinator.cs']).platforms, []);
+});
+
+// #1187: dev --browser's code file and its check of the Windows access list plan the native Windows x64 leg, which runs
+// that check.
+test('dotnet runic dev --browser\'s private code file plans the native Windows x64 leg', () => {
+  assert.deepEqual(windowsPrivateFilePaths,
+    ['tools/dotnet-runic/BrowserEntry.cs', 'tests/dotnet/Runic.Application.Tool.Tests/DevBrowserCodeFileTests.cs']);
+  for (const file of windowsPrivateFilePaths) {
+    assert.ok(existsSync(resolve(root, file)), file);
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  }
+  assert.deepEqual(plan(['tests/dotnet/Runic.Application.Tool.Tests/DevBrowserTests.cs']).platforms, []);
 });
 
 // The narrow rule above holds only while every process start of the tool goes through CommandRunner, whose callers pass
@@ -882,6 +895,7 @@ test('the CI scripts of platform steps belong to the component whose job runs th
     ['eng/ci/hdiutil.sh', 'packaging', ['osx-arm64'], ['packaging']],
     ['eng/ci/packaging-probe-check.mjs', 'packaging', platforms, ['packaging']],
     ['eng/ci/packaging-rpm.sh', 'packaging', [], ['packaging']],
+    ['eng/ci/windows-icon-check.mjs', 'packaging', platforms, ['packaging']],
   ]) {
     assert.deepEqual(ownedBy(file), [component], file);
     const result = plan([file]);

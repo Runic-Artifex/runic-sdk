@@ -8,15 +8,16 @@
 //     [--only <scenario,…>] [--modules <count>] [--per-script-sourcemaps auto|yes|no] [--trace <js-debug log file>]
 //
 // With --browser (#1031), the project's "Window in Chrome" launch configuration instead (it is generated with --editor
-// vscode): `dotnet runic dev --browser` without a display, the entry address in its output and session file and its
-// refusal of web pages, and js-debug launching Chrome at the configuration's url with the same scenarios on Chromium.
+// vscode): `dotnet runic dev --browser` without a display, the entry address in its output and session file, its code file
+// and one-time code (#1187), its refusal of other clients and web pages, and js-debug launching Chrome at the configuration's
+// file with the same scenarios on Chromium, a Window restart among them: the page reloads itself onto the new Window.
 // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH selects the browser; otherwise js-debug finds the installed Chrome.
 //
 // RUNIC_DEV_TOOL_DLL=<path to dotnet-runic.dll> runs a locally built dev instead of the project's dotnet-runic tool.
 // The project's dotnet-runic must be restored. Needs Xvfb, dbus-run-session and the WebKitGTK of the project's GTK.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -179,36 +180,85 @@ async function checkBrowser() {
       if (waited > startTimeout) throw new Error("dotnet runic dev --browser was not ready in time");
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    const url = /^\[dev\] Browser: Window serves at (http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(output)?.[1];
-    if (!url) throw new Error("dotnet runic dev --browser printed no [dev] Browser: line for the Window");
-    if (url !== configuration.url) throw new Error(`dev serves the Window at ${url}, the launch configuration opens ${configuration.url}`);
+    // The per-session origin (D077.15): http://<label>.localhost:<port>, a label of lowercase letters and digits.
+    const line = /^\[dev\] Browser: Window serves at (http:\/\/([a-z0-9]{26})\.localhost:(\d+)\/)\?code=([\w-]+)$/m.exec(output);
+    if (!line) throw new Error("dotnet runic dev --browser printed no [dev] Browser: line for the Window");
+    const [, url, sessionLabel, port, printedCode] = line;
+    const publicUrl = `http://*.localhost:${port}/`;
+    // The launch configuration opens the code file, which only this user can read and which opens the address with the code.
+    const codeFile = configuration.file?.replace("${workspaceFolder}", project);
     const session = JSON.parse(readFileSync(join(project, "obj/runic/dev-session.json"), "utf8"));
-    if (session.browser?.url !== url || session.browser.windows[0]?.url !== url) throw new Error(`The session file lists ${JSON.stringify(session.browser)}`);
+    // The session file has * for the label: like the code, the label is a secret, and the file is not owner-only.
+    if (session.browser?.url !== publicUrl || session.browser.windows[0]?.url !== publicUrl) throw new Error(`The session file lists ${JSON.stringify(session.browser)}`);
+    if (readFileSync(join(project, "obj/runic/dev-session.json"), "utf8").includes(sessionLabel)) throw new Error("The session file carries the session label");
+    if (session.browser.codeFile !== codeFile) throw new Error(`The session file names ${session.browser.codeFile}, the launch configuration opens ${codeFile}`);
+    if (JSON.stringify(session).includes(printedCode)) throw new Error("The session file carries the one-time code");
     if (session.debugEndpoints.length !== 0) throw new Error(`--browser listed debugging endpoints: ${JSON.stringify(session.debugEndpoints)}`);
+    if ((statSync(codeFile).mode & 0o777) !== 0o600) throw new Error(`${codeFile} has mode ${(statSync(codeFile).mode & 0o777).toString(8)}, not 600`);
+    const codeOf = () => /\?code=([\w-]+)/.exec(readFileSync(codeFile, "utf8"))?.[1];
+    if (codeOf() !== printedCode) throw new Error("The code file does not open the address with the printed code");
     // The surface's own address carries its credential: dev does not print it.
     if (/RUNIC_APPLICATION_(URL|WINDOW)=/.test(output)) throw new Error("dotnet runic dev --browser printed the Window's surface address");
-    console.log(`DEV_BROWSER_ENTRY|${url}`);
+    console.log(`DEV_BROWSER_ENTRY|${url}|${codeFile}`);
 
-    // The browser's own navigation is sent to the Window; a web page's, a foreign Origin or a DNS-rebound name is not.
-    const status = headers => spawnSync("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}",
-      ...headers.flatMap(header => ["-H", header]), url], { encoding: "utf8" }).stdout;
-    for (const [headers, expected] of [[["Sec-Fetch-Site: none"], "302"], [["Sec-Fetch-Site: cross-site"], "403"],
-      [["Origin: https://example.com"], "403"], [[`Host: example.com:${new URL(url).port}`], "403"]]) {
-      const actual = status(headers);
-      if (actual !== expected) throw new Error(`${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
+    // Only the code admits a browser, also from the code file's page (file:, so cross-site), with dev's cookie; then only
+    // that browser's own requests reach the Window: not another client, a web page, a foreign Origin or a DNS-rebound name.
+    // curl reaches <label>.localhost on the loopback interface (--resolve), as a browser resolves it itself.
+    const request = (headers, target = url) => {
+      const run = spawnSync("curl", ["-s", "--resolve", `${sessionLabel}.localhost:${port}:127.0.0.1`, "-D", "-", "-w", "\n%{http_code}",
+        ...headers.flatMap(header => ["-H", header]), target], { encoding: "utf8" });
+      return { status: run.stdout.slice(-3), cookie: /^set-cookie: ([^\r\n]*)/im.exec(run.stdout)?.[1], text: run.stdout };
+    };
+    const check = (label, headers, expected, target) => {
+      const actual = request(headers, target).status;
+      if (actual !== expected) throw new Error(`${label} ${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
+    };
+    check("no code", ["Sec-Fetch-Site: none"], "403");
+    // Another name, with the code too, is refused without the label: 127.0.0.1, plain localhost, another label.
+    for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `other.localhost:${port}`]) {
+      for (const target of [url, `${url}?code=${printedCode}`]) {
+        const answer = request([`Host: ${host}`, "Sec-Fetch-Site: none"], target);
+        if (answer.status !== "403" || answer.text.includes(sessionLabel) || answer.cookie || /^location:/im.test(answer.text))
+          throw new Error(`Host ${host}: HTTP ${answer.status}${answer.text.includes(sessionLabel) ? ", the answer names the label" : ""}`);
+      }
     }
-    console.log("DEV_BROWSER_SECURITY_OK|browser navigation 302|cross-site 403|foreign Origin 403|foreign Host 403");
+    check("a wrong code", ["Sec-Fetch-Site: none"], "403", `${url}?code=guess`);
+    const admitted = request(["Sec-Fetch-Site: cross-site"], `${url}?code=${printedCode}`);
+    if (admitted.status !== "200" || !/; HttpOnly; SameSite=Strict$/.test(admitted.cookie ?? "")) throw new Error(`The code's admission: ${JSON.stringify(admitted)}`);
+    const cookie = `Cookie: ${admitted.cookie.split(";")[0]}`;
+    if (codeOf() === printedCode) throw new Error("The admission did not replace the code in the code file");
+    check("the used code", ["Sec-Fetch-Site: none"], "403", `${url}?code=${printedCode}`);
+    check("the admitted browser", [cookie, "Sec-Fetch-Site: none"], "302");
+    check("a cross-site request", [cookie, "Sec-Fetch-Site: cross-site"], "403");
+    check("a foreign Origin", [cookie, "Origin: https://example.com"], "403");
+    check("a foreign Host", [cookie, `Host: example.com:${port}`], "403");
+    check("127.0.0.1 with the cookie", [cookie, `Host: 127.0.0.1:${port}`], "403");
+    if (/;\s*domain=/i.test(admitted.cookie)) throw new Error(`dev's cookie is not host-only: ${admitted.cookie}`);
+    console.log("DEV_BROWSER_SECURITY_OK|no code 403|other names 403 without the label|code admits 200 host-only HttpOnly SameSite=Strict|used code 403|admitted 302|cross-site 403|foreign Origin 403|foreign Host 403");
 
-    // The page in Chrome under js-debug, as VS Code runs the configuration. A restart needs the address opened again, so
-    // the Window restart scenario is left out.
+    // The page in Chrome under js-debug, as VS Code runs the configuration: its file. The Window restarts under the same
+    // session, and the page reloads itself onto the new Window, where the breakpoint stops again.
+    // Run without blocking this process, which keeps reading dev's output: a full pipe would stop dev and dotnet watch.
     const browser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-    const run = spawnSync(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--launch", configuration.url,
-      "--frontend", webRoot, ...(browser ? ["--browser", browser] : []),
-      "--only", "step-in-out,conditional,logpoint,exception,uncaught-output,console-levels,set-variable,reload,hmr"],
-      { encoding: "utf8", timeout: scaled(900_000) });
-    process.stdout.write(run.stdout);
-    process.stderr.write(run.stderr);
+    const run = await new Promise(resolve => {
+      const child = spawn(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--launch-file", codeFile,
+        "--frontend", webRoot, "--restart-file", csharp, ...(browser ? ["--browser", browser] : []),
+        "--only", values.only ?? "step-in-out,conditional,logpoint,exception,uncaught-output,console-levels,set-variable,reload,window-restart,hmr",
+        ...(values.trace ? ["--trace", values.trace] : [])], { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      const timer = setTimeout(() => child.kill("SIGKILL"), scaled(900_000));
+      child.stdout.on("data", chunk => { stdout += chunk; process.stdout.write(chunk); });
+      child.stderr.on("data", chunk => process.stderr.write(chunk));
+      child.on("exit", (status, signal) => { clearTimeout(timer); resolve({ status, signal, stdout }); });
+    });
     if (run.status !== 0) throw new Error(`js-debug scenarios in Chrome failed (exit ${run.status ?? run.signal})`);
+    if (!values.only && !/^\[[\d.]+s\] PASS window-restart: after the Window restarted: stopped at /m.test(run.stdout))
+      throw new Error("The window-restart scenario did not pass");
+    // Chrome's admission replaced the code: dev printed the next one.
+    if (!/^\[dev\] Browser: a browser used the code\. The next one is http:\/\/[a-z0-9]+\.localhost:\d+\/\?code=[\w-]+; /m.test(output))
+      throw new Error("dotnet runic dev --browser printed no line for the browser it admitted");
+    // One bound browser: Chrome's admission ended curl's.
+    check("the earlier browser", [cookie, "Sec-Fetch-Site: none"], "403");
     console.log(`DEV_BROWSER_OK|${/^\[[\d.]+s\] (\d+\/\d+) passed$/m.exec(run.stdout)?.[1] ?? "?"}`);
   } catch (error) {
     console.error(tail(output));

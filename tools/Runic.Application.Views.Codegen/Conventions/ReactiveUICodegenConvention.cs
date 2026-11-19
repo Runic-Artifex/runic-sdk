@@ -147,7 +147,9 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             var keyType = plan.InputGraph?.RootCSharpType() ?? inputType;
             var typed = $"({CommandType(plan)})vm.{property.Name}";
             var helper = Helper(contract.Flavor);
-            var input = contract.HasInput ? $"({inputType})argument!" : Void(contract.Input);
+            // A command that takes IProgress<double> receives the operation's progress (RunicOperationProgress.Current).
+            var input = contract.TakesProgress ? ToolkitCodegenConvention.OperationProgress
+                : contract.HasInput ? $"({inputType})argument!" : Void(contract.Input);
             if (contract.HasInput)
             {
                 command.Return("ReadInput", $"{property.Name}InputCodec.Read(input)");
@@ -187,7 +189,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             var commandType = CommandType(plan);
             var helper = Helper(contract.Flavor);
             if (!plan.HasArgument)
-                yield return ($"can{name}", $"{helper}.CanExecute(({commandType})vm.{command.Name}, {Void(contract.Input)})");
+                yield return ($"can{name}", $"{helper}.CanExecute(({commandType})vm.{command.Name}, {(contract.TakesProgress ? ToolkitCodegenConvention.OperationProgress : Void(contract.Input))})");
             yield return ($"is{name}Executing", $"{helper}.IsExecuting(({commandType})vm.{command.Name})");
         }
     }
@@ -203,7 +205,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             var adapterNamespace = contract.Flavor is ReactiveUiFlavor.SystemReactive
                 ? "global::Runic.Application.Views.ReactiveUI.Reactive.Generated"
                 : "global::Runic.Application.Views.ReactiveUI.Generated";
-            return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
+            return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element){(plan.Timeout is { } timeout ? $", timeout: {timeout}" : "")})";
         }
     }
 }

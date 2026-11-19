@@ -112,14 +112,43 @@ What differs from the window's page:
   drives the window's navigation path, and its Back does not navigate the window.
 - **`window.close()`** in the panel's page closes the panel, never the window.
 - **Its `<title>`** does not rename the window. Its zoom is its own.
-- **Drops are refused.** Files dropped on the panel do not reach the
-  application; drops go to the window's page only.
+- **Drops** work as on the page, through the same API and rules: files dropped
+  on the panel reach the root ViewModel's `IRunicFileDropTarget` (or
+  `DesktopWindow.FilesDropped`) in the same queue as the page's, with native
+  paths, the panel page's `data-runic-drop-target` label and
+  `RunicFileDrop.InSidePanel` (`DesktopFileDropEventArgs.InSidePanel`) set. The
+  window sets that flag from the view that received the drop, so unlike the
+  label it is trusted. Text and other content reach the panel page's own `drop`
+  event, as on the page. See [Dropped files on the panel](#dropped-files-on-the-panel).
 - **Hosted regions** may be shown in the panel, as in the page.
 - **A crash** of the panel's renderer reloads the panel once; a second crash
   closes it with `RunicSidePanelCloseReason.Crashed` and the window shrinks back.
   A reload of either page creates a new connection for that page only.
 - **Storage.** The panel shares the page's profile: cookies and `localStorage`
   are the same, `sessionStorage` is per page.
+
+## Dropped files on the panel
+
+The panel's page binds to the window's ViewModel tree, so the root ViewModel
+receives its drops; route them by `InSidePanel` and the label:
+
+```csharp
+public async ValueTask OnFilesDroppedAsync(RunicFileDrop drop, CancellationToken cancellationToken)
+{
+    if (drop.InSidePanel && drop.Target == "attachments")
+        await SidePanel.AttachAsync(drop.Files, cancellationToken);
+    else
+        await OpenAsync(drop.Files, cancellationToken);
+}
+```
+
+The policy is the window's, not a second one: the paths come from the native
+drop, never from the page; a frame of another origin gets none; a drop onto a
+hosted region's frame in the panel goes to that region's guest;
+`data-runic-drop-effect` chooses the effect; macOS file promises arrive as
+`PromisedFiles`; in a macOS App Sandbox the drop grants access to the files while
+the application runs, and in Flatpak they are document-portal paths. Dropping a
+file never navigates the panel's page.
 
 ## When the window cannot grow
 
@@ -192,9 +221,6 @@ The enum is open: treat a reason you do not know as `Unsupported`.
   compositor.
 - **Transparent GTK 3 windows** refuse the panel with `Unsupported`, which keeps
   their transparency exactly as before.
-- **Drops** on the panel are refused on every platform. On GTK 4 the panel has no
-  drop target at all, so a drag inside the panel's own page is refused too; on
-  GTK 3 and macOS only drags from outside the panel are.
 - **No address or history sync** for the panel's page (above).
 - **Snapped detection** uses the operating system where it reports snapping, and
   geometry (halves and quarters of the work area) where it does not, such as macOS
@@ -207,6 +233,9 @@ The enum is open: treat a reason you do not know as `Unsupported`.
   shadow DOM are skipped then, and an element focused this way may not show
   `:focus-visible`.
 - **Not verified by CI:**
+  - on Windows on Arm (win-arm64), drops onto the panel, like the page's
+    (#391);
+  - on macOS, drops onto the panel (and the page), which no CI runner can drag;
   - on Windows on Arm (win-arm64), the frame capture and Tab between the views,
     because the runner's desktop shows GDI nothing and delivers no `SendInput`;
   - on macOS, whether the window's frame and the views' frames change in the same

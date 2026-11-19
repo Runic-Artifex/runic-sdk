@@ -119,9 +119,18 @@ internal sealed partial class ToolTests
         Write(session.StoppedStampPath, string.Empty);
         File.SetLastWriteTimeUtc(session.StoppedStampPath, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         DateTime beforeStop = DateTime.UtcNow - TimeSpan.FromSeconds(2);
+        // A build replaced one page meanwhile; the other is still dev's.
+        Write(Path.Combine(configuration.RuntimeWebRoot, "pages", "settings.html"), "built");
         session.Stop();
         False(File.Exists(session.FrontendMarkerPath), "The frontend marker outlived the session.");
         False(Directory.Exists(session.PagesDirectory), "The development pages outlived the session.");
+        // DEV-SEC-48 (#1178): dev's page no longer loads script from the stopped server's port, which another process
+        // could take; a page that a build wrote is left as it is.
+        string retired = File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "index.html"));
+        Equal(DevSession.StoppedPage, retired);
+        DoesNotContain(retired, "127.0.0.1");
+        Contains(retired, "default-src 'none'");
+        Equal("built", File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "pages", "settings.html")));
         True(File.Exists(session.Path), "The stopped session file was removed.");
         Equal(Path.Combine(configuration.SessionDirectory, DevSession.StoppedStampName), session.StoppedStampPath);
         True(File.GetLastWriteTimeUtc(session.StoppedStampPath) >= beforeStop, "dev did not touch the stop stamp.");
