@@ -100,7 +100,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             configuration.WorkspaceRoot,
             arguments,
             CreateEnvironment(configuration, session),
-            observeLine: conflict.Observe);
+            observeLine: conflict.Observe,
+            // The package manager, Node.js below it, and the runic-translations serve that Vite's plugin starts.
+            endTreeAtStop: true);
         var server = new ViteDevelopmentServer(
             process,
             origin,
