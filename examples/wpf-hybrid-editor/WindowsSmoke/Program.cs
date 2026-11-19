@@ -43,7 +43,7 @@ internal static class Program
         window.Show();
         try
         {
-            await regions.Main.ResetAsync<NotesListViewModel>();
+            regions.Main.Start(NavigationTarget.Create<NotesListViewModel>()); // throws if the list cannot be created
             await regions.Main.PushAsync<EditorViewModel, int>(1);
             var model = (EditorViewModel)regions.Main.Current!;
             var entry = regions.Main.CurrentEntry;

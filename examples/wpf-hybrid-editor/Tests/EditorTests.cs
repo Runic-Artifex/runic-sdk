@@ -276,7 +276,7 @@ internal sealed class TestApp : IAsyncDisposable
     public static async Task<TestApp> OpenAsync(INoteStore? storage = null)
     {
         var app = new TestApp(storage);
-        await app.Regions.Main.ResetAsync<NotesListViewModel>();
+        app.Regions.Main.Start(NavigationTarget.Create<NotesListViewModel>()); // throws if the list cannot be created
         await app.Regions.Main.PushAsync<EditorViewModel, int>(1);
         app.Editor = (EditorViewModel)app.Regions.Main.Current!;
         return app;
