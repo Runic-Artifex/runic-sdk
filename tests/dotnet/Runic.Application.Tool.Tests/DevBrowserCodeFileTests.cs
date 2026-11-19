@@ -24,9 +24,9 @@ internal sealed partial class ToolTests
         {
             RequirePrivate(codeFile);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
-            using HttpResponseMessage admitted = await client.GetAsync(new Uri(BrowserEntry.CodeUrl(entry.Port, 0, entry.Code)));
+            using HttpResponseMessage admitted = await GetFromEntry(client, entry, "/?code=" + entry.Code);
             Equal(HttpStatusCode.OK, admitted.StatusCode);
-            Contains(File.ReadAllText(codeFile), BrowserEntry.CodeUrl(entry.Port, 0, entry.Code));
+            Contains(File.ReadAllText(codeFile), BrowserEntry.CodeUrl(entry.Origin, 0, entry.Code));
             RequirePrivate(codeFile);
         }
         finally

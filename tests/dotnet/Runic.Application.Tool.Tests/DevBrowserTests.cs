@@ -21,6 +21,18 @@ internal sealed partial class ToolTests
 {
     private const string SurfaceUrl = "http://127.0.0.1:41234/?credential=secret";
 
+    // A session label as BrowserEntry.NewLabel makes them (D077.15), and the address's host for the decision tests.
+    private const string TestLabel = "k3v9q2m8x4c7w1z5r6t0y2b8n4";
+    private const string TestHost = TestLabel + ".localhost:9224";
+
+    // A request to the entry as a browser sends it: to the loopback interface, with the session's host name.
+    private static Task<HttpResponseMessage> GetFromEntry(HttpClient client, BrowserEntry entry, string target, string? host = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"http://127.0.0.1:{entry.Port}{target}"));
+        request.Headers.Host = host ?? entry.Host;
+        return client.SendAsync(request);
+    }
+
     [Test, DisplayName("--browser conflicts with --no-window and --webkit-inspector")]
     public async Task BrowserOptionConflicts()
     {
@@ -55,10 +67,10 @@ internal sealed partial class ToolTests
         // RUNIC_APPLICATION_SERVE_ONLY=1 whatever -e says; without --browser, -e decides.
         IReadOnlyDictionary<string, string?> served = HostProcessController.CreateDevelopmentEnvironment(desktop,
             new Dictionary<string, string?>(), static _ => null, [new(BrowserEntry.ServeOnlyVariable, "0"), new(BrowserEntry.ServeOriginVariable, "http://127.0.0.1:1")],
-            browser: true, browserOrigin: "http://127.0.0.1:9224");
+            browser: true, browserOrigin: "http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224");
         Equal("1", served[BrowserEntry.ServeOnlyVariable]);
         // The Window admits --browser's address, and a Runic Desktop page's Bridge connects through it (#1187, D077.14).
-        Equal("http://127.0.0.1:9224", served[BrowserEntry.ServeOriginVariable]);
+        Equal("http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224", served[BrowserEntry.ServeOriginVariable]);
         IReadOnlyDictionary<string, string?> chosen = HostProcessController.CreateDevelopmentEnvironment(desktop,
             new Dictionary<string, string?>(), static _ => null, [new(BrowserEntry.ServeOnlyVariable, "1")]);
         Equal("1", chosen[BrowserEntry.ServeOnlyVariable]);
@@ -71,7 +83,7 @@ internal sealed partial class ToolTests
     private const string DesktopSurfaceUrl = "http://127.0.0.1:41234/surface-a/index.html";
     private const string RestartedSurfaceUrl = "http://127.0.0.1:41236/surface-b/index.html";
 
-    private static BrowserEntry.Request BrowserRequest(string target = "/", string? host = "127.0.0.1:9224", string? origin = null,
+    private static BrowserEntry.Request BrowserRequest(string target = "/", string? host = TestHost, string? origin = null,
         string? site = "none", string? cookie = BrowserEntry.CookieName + "=bound", string method = "GET", bool upgrade = false) =>
         new(method, target, host, origin, site, cookie, upgrade);
 
@@ -79,7 +91,7 @@ internal sealed partial class ToolTests
     public void BrowserEntryPolicy()
     {
         Uri[] targets = [new(SurfaceUrl), new("http://127.0.0.1:41235/?credential=other")];
-        var state = new BrowserEntry.State("the-code", "bound", targets, new Dictionary<string, int>());
+        var state = new BrowserEntry.State("the-code", "bound", targets, new Dictionary<string, int>(), Host: TestHost);
         BrowserEntry.Decision Decide(BrowserEntry.Request request, BrowserEntry.State? with = null) => BrowserEntry.Decide(request, with ?? state);
 
         // The code admits a browser, also from the code file's page (a file: document, so cross-site) and without a cookie.
@@ -111,8 +123,20 @@ internal sealed partial class ToolTests
             Decide(BrowserRequest("/app.js", site: "same-origin")));
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Forward, Authority: "127.0.0.1:41234", Path: "/"),
             Decide(BrowserRequest(), state with { Windows = [new("http://127.0.0.1:41234/")] }));
-        Equal(BrowserEntry.Outcome.Forward, Decide(BrowserRequest("/?credential=secret", host: "localhost:9224", site: "same-origin")).Outcome);
-        Equal(BrowserEntry.Outcome.Forward, Decide(BrowserRequest("/?credential=secret", site: null, origin: "http://127.0.0.1:9224")).Outcome);
+        Equal(BrowserEntry.Outcome.Forward, Decide(BrowserRequest("/?credential=secret", host: TestHost.ToUpperInvariant(), site: "same-origin")).Outcome);
+        // Only this session's name (D077.15): 127.0.0.1, plain localhost and another label are refused, the code too,
+        // with a refusal that names no label.
+        foreach (string other in new[] { "127.0.0.1:9224", "localhost:9224", "other.localhost:9224", TestLabel + ".localhost:9225",
+            "a." + TestHost, TestLabel + ".localhost.evil:9224", "[::1]:9224" })
+        {
+            foreach (BrowserEntry.Request refused in new[] { BrowserRequest(host: other), BrowserRequest("/?code=the-code", host: other, cookie: null) })
+            {
+                BrowserEntry.Decision decision = Decide(refused);
+                Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Refuse, 403, "Forbidden"), decision);
+            }
+        }
+        Equal(403, Decide(BrowserRequest(), state with { Host = null }).Status);
+        Equal(BrowserEntry.Outcome.Forward, Decide(BrowserRequest("/?credential=secret", site: null, origin: "http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224")).Outcome);
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Redirect, Location: "http://127.0.0.1:41235/?credential=other"),
             Decide(BrowserRequest("/windows/2")));
         var desktop = state with { Windows = [new(DesktopSurfaceUrl)] };
@@ -120,7 +144,7 @@ internal sealed partial class ToolTests
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Forward, Authority: "127.0.0.1:41234", Path: "/surface-a/app.js?v=1"),
             Decide(BrowserRequest("/surface-a/app.js?v=1", site: "same-origin"), desktop));
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Forward, Authority: "127.0.0.1:41234", Path: "/surface-a/_webui_ws_connect"),
-            Decide(BrowserRequest("/surface-a/_webui_ws_connect", origin: "http://127.0.0.1:9224", site: "same-origin", upgrade: true), desktop));
+            Decide(BrowserRequest("/surface-a/_webui_ws_connect", origin: "http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224", site: "same-origin", upgrade: true), desktop));
         Equal(404, Decide(BrowserRequest("/surface-z/app.js"), desktop).Status);
         // Before the Window serves: a page that reloads itself.
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Wait), Decide(BrowserRequest(), state with { Windows = [] }));
@@ -135,7 +159,7 @@ internal sealed partial class ToolTests
             StaleBases = new Dictionary<string, int> { ["/surface-a/"] = 0, ["/surface-c/"] = 1 },
         };
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.TurnAway),
-            Decide(BrowserRequest("/surface-a/_webui_ws_connect", origin: "http://127.0.0.1:9224", site: "same-origin", upgrade: true), restarted));
+            Decide(BrowserRequest("/surface-a/_webui_ws_connect", origin: "http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224", site: "same-origin", upgrade: true), restarted));
         Equal(BrowserEntry.Outcome.TurnAway, Decide(BrowserRequest("/surface-a/_webui_ws_connect", upgrade: true), restarted with { Windows = [] }).Outcome);
         Equal(404, Decide(BrowserRequest("/surface-a/other", upgrade: true), restarted).Status);
         // Only the bound browser's: another client's gets nothing.
@@ -188,10 +212,10 @@ internal sealed partial class ToolTests
     public void BrowserEntryForwardsHeaders()
     {
         HttpRequestHead head = HttpRequestHead.Parse(
-            "GET /surface-a/app.js HTTP/1.1\r\nHost: 127.0.0.1:9224\r\nConnection: keep-alive\r\nOrigin: http://127.0.0.1:9224\r\n" +
+            "GET /surface-a/app.js HTTP/1.1\r\nHost: k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224\r\nConnection: keep-alive\r\nOrigin: http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224\r\n" +
             $"Cookie: theme=dark; {BrowserEntry.CookieName}=bound; webui_auth=1\r\nAccept: */*\r\nAccept: text/html\r\nKeep-Alive: 5\r\n\r\n")!;
         string forwarded = BrowserEntry.ForwardedHead(head, upgrade: false, "127.0.0.1:41234", "/surface-a/app.js");
-        Equal("GET /surface-a/app.js HTTP/1.1\r\nHost: 127.0.0.1:41234\r\nOrigin: http://127.0.0.1:9224\r\n" +
+        Equal("GET /surface-a/app.js HTTP/1.1\r\nHost: 127.0.0.1:41234\r\nOrigin: http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224\r\n" +
             "Cookie: theme=dark; webui_auth=1\r\nAccept: */*\r\nAccept: text/html\r\nConnection: close\r\n\r\n", forwarded);
         HttpRequestHead only = HttpRequestHead.Parse(
             $"GET /surface-a/_webui_ws_connect HTTP/1.1\r\nHost: localhost:9224\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nCookie: {BrowserEntry.CookieName}=bound\r\n" +
@@ -202,15 +226,15 @@ internal sealed partial class ToolTests
 
         // A Location on the Window's own address, by IP or by localhost, comes back on the entry's; others stay.
         string Location(string location) => BrowserEntry.ForwardedResponseHead(
-            $"HTTP/1.1 302 Found\r\nLocation: {location}\r\nConnection: keep-alive\r\n\r\n", upgrade: false, "127.0.0.1:41234", "127.0.0.1:9224");
-        Equal("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9224/surface-a/next?x=1#top\r\nConnection: close\r\n\r\n",
+            $"HTTP/1.1 302 Found\r\nLocation: {location}\r\nConnection: keep-alive\r\n\r\n", upgrade: false, "127.0.0.1:41234", "k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224");
+        Equal("HTTP/1.1 302 Found\r\nLocation: http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224/surface-a/next?x=1#top\r\nConnection: close\r\n\r\n",
             Location("http://127.0.0.1:41234/surface-a/next?x=1#top"));
-        Contains(Location("http://localhost:41234/next"), "Location: http://127.0.0.1:9224/next\r\n");
+        Contains(Location("http://localhost:41234/next"), "Location: http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224/next\r\n");
         Contains(Location("/surface-a/next"), "Location: /surface-a/next\r\n");
         Contains(Location("https://example.com/"), "Location: https://example.com/\r\n");
         Contains(Location("http://127.0.0.1:41235/other"), "Location: http://127.0.0.1:41235/other\r\n");
         Equal("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n", BrowserEntry.ForwardedResponseHead(
-            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n", upgrade: true, "127.0.0.1:41234", "127.0.0.1:9224"));
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n", upgrade: true, "127.0.0.1:41234", "k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224"));
 
         // The turn-away selects the page's offered subprotocol, without which a browser fails the handshake.
         Equal("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
@@ -220,7 +244,7 @@ internal sealed partial class ToolTests
 
         // The upgrade offers no compression to the Window, so the proxy can read the Bridge's frames.
         HttpRequestHead compressed = HttpRequestHead.Parse(
-            "GET /surface-a/_webui_ws_connect HTTP/1.1\r\nHost: 127.0.0.1:9224\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n")!;
+            "GET /surface-a/_webui_ws_connect HTTP/1.1\r\nHost: k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n")!;
         DoesNotContain(BrowserEntry.ForwardedHead(compressed, upgrade: true, "127.0.0.1:41234", "/surface-a/_webui_ws_connect"), "Extensions");
 
         Equal(null, BrowserEntry.WithoutOwnCookie($"{BrowserEntry.CookieName}=bound"));
@@ -249,8 +273,10 @@ internal sealed partial class ToolTests
     public async Task BrowserEntryFollowsTheWindow()
     {
         await using BrowserEntry entry = BrowserEntry.TryStart(0)!;
-        string root = entry.Url;
-        Equal($"http://127.0.0.1:{entry.Port}/", root);
+        string root = BrowserEntry.PublicWindowUrl(entry.Port, 0);
+        Equal($"http://*.localhost:{entry.Port}/", root);
+        Equal($"http://{entry.Label}.localhost:{entry.Port}/", entry.Url);
+        Equal(root, entry.PublicUrl);
         Equal(null, entry.Observe("[host] something else"));
         // Only the Window's own loopback page is a target.
         Equal(null, entry.Observe("RUNIC_APPLICATION_URL=http://example.com/"));
@@ -281,11 +307,12 @@ internal sealed partial class ToolTests
         try
         {
             entry.CodeChanged += () => { lock (codes) codes.Add(entry.Code); };
-            string root = entry.Url;
-            string host = $"127.0.0.1:{entry.Port}";
+            string root = $"http://127.0.0.1:{entry.Port}/";
+            string host = entry.Host;
+            True(Regex.IsMatch(entry.Label, "^[a-z2-7]{26}$"), entry.Label);
             // The code file opens the address with the current code; only this user can read it.
             string firstCode = entry.Code;
-            Contains(File.ReadAllText(codeFile), BrowserEntry.CodeUrl(entry.Port, 0, firstCode));
+            Contains(File.ReadAllText(codeFile), BrowserEntry.CodeUrl(entry.Origin, 0, firstCode));
             RequirePrivate(codeFile);
             entry.Observe($"RUNIC_APPLICATION_URL=http://127.0.0.1:{first.Port}/surface-a/index.html");
 
@@ -297,9 +324,23 @@ internal sealed partial class ToolTests
                 if (cookie is not null) request.Headers.Add("Cookie", cookie);
                 if (site is not null) request.Headers.Add("Sec-Fetch-Site", site);
                 if (origin is not null) request.Headers.Add("Origin", origin);
-                if (hostHeader is not null) request.Headers.Host = hostHeader;
+                request.Headers.Host = hostHeader ?? host;
                 return await client.SendAsync(request);
             }
+
+            // Another name gets nothing and learns nothing: not the label, not where to go.
+            foreach (string other in new[] { $"127.0.0.1:{entry.Port}", $"localhost:{entry.Port}", $"other.localhost:{entry.Port}" })
+            {
+                foreach (string target in new[] { "/", "/?code=" + firstCode, "/surface-a/index.html" })
+                {
+                    using HttpResponseMessage elsewhere = await Send(target, site: "none", hostHeader: other);
+                    Equal(HttpStatusCode.Forbidden, elsewhere.StatusCode);
+                    DoesNotContain(await elsewhere.Content.ReadAsStringAsync(), entry.Label);
+                    Equal(null, elsewhere.Headers.Location);
+                    False(elsewhere.Headers.Contains("Set-Cookie"), $"{other} was admitted");
+                }
+            }
+            Equal(firstCode, entry.Code);
 
             // Nothing without the code.
             using (HttpResponseMessage refused = await Send("/", site: "none"))
@@ -315,6 +356,8 @@ internal sealed partial class ToolTests
                 string setCookie = admitted.Headers.GetValues("Set-Cookie").Single();
                 StartsWith(setCookie, BrowserEntry.CookieName + "=");
                 Contains(setCookie, "; Path=/; HttpOnly; SameSite=Strict");
+                // Host-only: no Domain, so the cookie goes to this session's name only.
+                DoesNotContain(setCookie, "Domain");
                 cookie = setCookie[..setCookie.IndexOf(';', StringComparison.Ordinal)];
                 True(admitted.Headers.CacheControl?.NoStore == true, "the admission is not cached");
                 // A same-origin navigation, which carries the SameSite=Strict cookie, where a redirect from file: would not.
@@ -323,7 +366,7 @@ internal sealed partial class ToolTests
             string secondCode = entry.Code;
             True(secondCode != firstCode, "an admission replaces the code");
             lock (codes) SequenceEqual([secondCode], codes);
-            Contains(File.ReadAllText(codeFile), BrowserEntry.CodeUrl(entry.Port, 0, secondCode));
+            Contains(File.ReadAllText(codeFile), BrowserEntry.CodeUrl(entry.Origin, 0, secondCode));
             DoesNotContain(File.ReadAllText(codeFile), firstCode);
             RequirePrivate(codeFile);
             using (HttpResponseMessage used = await Send("/?code=" + firstCode, site: "none"))
@@ -372,7 +415,7 @@ internal sealed partial class ToolTests
                 Equal("/", reload.Headers.Location?.OriginalString);
             using (HttpResponseMessage closing = await Send("/", cookie, site: "none"))
                 Contains(await closing.Content.ReadAsStringAsync(), "starting the Window");
-            Equal(new BrowserEntry.ServedWindow(0, root, null), entry.Windows.Single());
+            Equal(new BrowserEntry.ServedWindow(0, entry.PublicUrl, null), entry.Windows.Single());
 
             // The Window restarts: the old page's Bridge reconnects to the new Window, and its reload goes to the entry.
             entry.Clear();
@@ -606,9 +649,8 @@ internal sealed partial class ToolTests
             Equal("dev", starting.RootElement.GetProperty("window").GetProperty("owner").GetString());
         }
         string codeFile = Path.Combine(workspace.Root, "obj", "runic", BrowserEntry.CodeFileName);
-        session.BrowserStarted("http://127.0.0.1:9224/", codeFile);
-
         var entry = BrowserEntry.TryStart(0, codeFile: codeFile)!;
+        session.BrowserStarted(entry.PublicUrl, codeFile);
         try
         {
             var seen = new List<string>();
@@ -617,7 +659,7 @@ internal sealed partial class ToolTests
                 using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(session.Path));
                 JsonElement root = document.RootElement;
                 string windows = string.Join(",", root.GetProperty("browser").GetProperty("windows").EnumerateArray()
-                    .Select(window => $"{window.GetProperty("url").GetString()![entry.Url.Length..]}={window.GetProperty("type").GetString() ?? "?"}"));
+                    .Select(window => $"{window.GetProperty("url").GetString()![entry.PublicUrl.Length..]}={window.GetProperty("type").GetString() ?? "?"}"));
                 seen.Add($"{line.Replace(entry.Url, "<entry>/", StringComparison.Ordinal).Replace(entry.Code, "<code>", StringComparison.Ordinal)} | " +
                     $"{root.GetProperty("state").GetString()} | [{windows}]");
             }
@@ -647,9 +689,11 @@ internal sealed partial class ToolTests
             string text = File.ReadAllText(session.Path);
             DoesNotContain(text, "credential");
             DoesNotContain(text, entry.Code);
+            // Nor the label (D077.15): the file may be readable by other users, and the label is a secret like the code.
+            DoesNotContain(text, entry.Label);
             using (JsonDocument ready = JsonDocument.Parse(File.ReadAllBytes(session.Path)))
             {
-                Equal("http://127.0.0.1:9224/", ready.RootElement.GetProperty("browser").GetProperty("url").GetString());
+                Equal(entry.PublicUrl, ready.RootElement.GetProperty("browser").GetProperty("url").GetString());
                 Equal(codeFile, ready.RootElement.GetProperty("browser").GetProperty("codeFile").GetString());
             }
             session.Stop();
@@ -672,36 +716,61 @@ internal sealed partial class ToolTests
     [Test, DisplayName("the --browser hint names the address with its code, the code file and a moved port")]
     public void BrowserHints()
     {
-        string hint = DevApplication.BrowserHint(BrowserEntry.DefaultPort, "abc");
+        const string codeUrl = "http://" + TestHost + "/?code=abc";
+        string hint = DevApplication.BrowserHint(BrowserEntry.DefaultPort, codeUrl);
         Contains(hint, "[dev] Browser: ");
-        Contains(hint, "http://127.0.0.1:9224/?code=abc");
+        Contains(hint, codeUrl);
         Contains(hint, "obj/runic/dev-browser.html");
         Contains(hint, "a CS-WebUI page needs a reload");
         Contains(hint, "Chromium, not the Window's WebView");
         DoesNotContain(hint, "was taken");
-        Contains(DevApplication.BrowserHint(40001, "abc"), "http://127.0.0.1:40001/?code=abc");
-        Contains(DevApplication.BrowserHint(40001, "abc"), "Port 9224 was taken");
-        Contains(DevApplication.BrowserAdmittedLine(9224, "next"), "The next one is http://127.0.0.1:9224/?code=next; the browser that opens it becomes the admitted one.");
-        Equal("[dev] Browser: Window serves at http://127.0.0.1:9224/?code=abc",
-            DevApplication.BrowserServedLine(new BrowserEntry.ServedWindow(0, "http://127.0.0.1:9224/", null), "abc"));
-        string page = BrowserEntry.CodePage(9224, "a&b");
-        Contains(page, "http-equiv=\"refresh\" content=\"0;url=http://127.0.0.1:9224/?code=a&amp;b\"");
+        Contains(DevApplication.BrowserHint(40001, $"http://{TestLabel}.localhost:40001/?code=abc"), "Port 9224 was taken");
+        Contains(DevApplication.BrowserAdmittedLine("http://" + TestHost + "/?code=next"),
+            $"The next one is http://{TestHost}/?code=next; the browser that opens it becomes the admitted one.");
+        Equal($"[dev] Browser: Window serves at {codeUrl}", DevApplication.BrowserServedLine(codeUrl));
+        string page = BrowserEntry.CodePage("http://" + TestHost, "a&b");
+        Contains(page, $"http-equiv=\"refresh\" content=\"0;url=http://{TestHost}/?code=a&amp;b\"");
         Contains(page, "name=\"referrer\" content=\"no-referrer\"");
+        // The peer refusal, a [dev] Warning: line that may end up in an IDE's log, names the port and not the label.
+        DoesNotContain(BrowserEntry.RefusedPeerMessage(9224, 1001), "localhost");
+    }
+
+    [Test, DisplayName("each dev run gets a new session label, which a Window restart keeps")]
+    public async Task BrowserSessionLabels()
+    {
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        for (int index = 0; index < 64; index++)
+        {
+            string label = BrowserEntry.NewLabel();
+            // One DNS label of lowercase letters and digits, 130 random bits.
+            True(Regex.IsMatch(label, "^[a-z2-7]{26}$"), label);
+            True(labels.Add(label), "a label came twice");
+        }
+        await using BrowserEntry first = BrowserEntry.TryStart(0)!;
+        await using BrowserEntry second = BrowserEntry.TryStart(0)!;
+        True(first.Label != second.Label, "two dev runs share a label");
+        string before = first.Origin;
+        first.Observe("RUNIC_APPLICATION_URL=" + SurfaceUrl);
+        first.Clear();
+        first.Observe("RUNIC_APPLICATION_URL=http://127.0.0.1:41236/");
+        Equal(before, first.Origin);
+        Equal($"http://{first.Label}.localhost:{first.Port}", first.Origin);
+        Equal($"{first.Label}.localhost:{first.Port}", first.Host);
     }
 
     [Test, DisplayName("the [dev] Browser contract line has one form for every Window, which the documented regex matches")]
     public void BrowserContractLineHasOneForm()
     {
         Equal(DocumentedBrowserLinePattern, DevApplication.BrowserServedPattern);
-        foreach ((int index, string url) in new[] { (0, "http://127.0.0.1:9224/"), (1, "http://127.0.0.1:9224/windows/2"), (0, "http://127.0.0.1:40001/") })
+        foreach (string url in new[] { $"http://{TestHost}/", $"http://{TestHost}/windows/2", $"http://{TestLabel}.localhost:40001/" })
         {
-            Match match = Regex.Match(DevApplication.BrowserServedLine(new BrowserEntry.ServedWindow(index, url, null), "c0de_-x"), DocumentedBrowserLinePattern);
+            Match match = Regex.Match(DevApplication.BrowserServedLine(url + "?code=c0de_-x"), DocumentedBrowserLinePattern);
             True(match.Success, url);
             Equal(url + "?code=c0de_-x", match.Groups["url"].Value);
         }
         // The other [dev] Browser: lines are human text and do not match.
-        False(Regex.IsMatch(DevApplication.BrowserHint(9224, "c"), DocumentedBrowserLinePattern), "the hint");
-        False(Regex.IsMatch(DevApplication.BrowserAdmittedLine(9224, "c"), DocumentedBrowserLinePattern), "the admission");
+        False(Regex.IsMatch(DevApplication.BrowserHint(9224, $"http://{TestHost}/?code=c"), DocumentedBrowserLinePattern), "the hint");
+        False(Regex.IsMatch(DevApplication.BrowserAdmittedLine($"http://{TestHost}/?code=c"), DocumentedBrowserLinePattern), "the admission");
         False(Regex.IsMatch(BrowserEntry.RefusedPeerMessage(9224, 1001), DocumentedBrowserLinePattern), "the refusal");
         Contains(File.ReadAllText(Path.Combine(RepositoryRoot(), "tools", "dotnet-runic", "README.md")),
             "`" + DocumentedBrowserLinePattern + "`");
@@ -737,7 +806,7 @@ internal sealed partial class ToolTests
         using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
         for (int attempt = 0; attempt < 2; attempt++)
         {
-            using HttpResponseMessage refused = await client.GetAsync(new Uri(BrowserEntry.CodeUrl(entry.Port, 0, entry.Code)));
+            using HttpResponseMessage refused = await GetFromEntry(client, entry, "/?code=" + entry.Code);
             Equal(HttpStatusCode.Forbidden, refused.StatusCode);
             string body = await refused.Content.ReadAsStringAsync();
             DoesNotContain(body, "credential");
@@ -755,7 +824,7 @@ internal sealed partial class ToolTests
         await using BrowserEntry entry = BrowserEntry.TryStart(0, LoopbackSockets.Current, line => { lock (reported) reported.Add(line); })!;
         entry.Observe("RUNIC_APPLICATION_URL=" + SurfaceUrl);
         using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
-        using HttpResponseMessage admitted = await client.GetAsync(new Uri(BrowserEntry.CodeUrl(entry.Port, 0, entry.Code)));
+        using HttpResponseMessage admitted = await GetFromEntry(client, entry, "/?code=" + entry.Code);
         Equal(HttpStatusCode.OK, admitted.StatusCode);
         True(admitted.Headers.Contains("Set-Cookie"), "the developer's browser is admitted");
         lock (reported) Equal(0, reported.Count);

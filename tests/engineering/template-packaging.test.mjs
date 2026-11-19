@@ -578,7 +578,7 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.match("[dev] Reloading the Runic Views Window application.", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
     // --browser: after a restart the task is ready again once the new Window serves (dev's Ready follows its first page).
     assert.match("[dev] Window exited: process 4242", new RegExp(task["runic: dev --browser"].problemMatcher.background.beginsPattern));
-    assert.doesNotMatch("[dev] Browser: Window serves at http://127.0.0.1:9224/?code=Zm9v", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
+    assert.doesNotMatch("[dev] Browser: Window serves at http://k3v9q2m8x4c7w1z5r6t0y2b8n4.localhost:9224/?code=Zm9v", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
 
     const launch = parseJsonc(vscode[".vscode/launch.json"]);
     assert.equal(launch.version, "0.2.0");

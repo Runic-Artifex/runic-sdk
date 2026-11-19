@@ -76,7 +76,7 @@ internal sealed record DevOptions(
     internal IReadOnlyList<KeyValuePair<string, string>> DebugEnvironment { get; init; } = [];
 
     /// <summary>
-    /// With <c>--browser</c>, the origin of its address (<c>http://127.0.0.1:9224</c>), which the serve-only Window admits
+    /// With <c>--browser</c>, the origin of its address (<c>http://&lt;label&gt;.localhost:9224</c>), which the serve-only Window admits
     /// for its pages (<c>RUNIC_APPLICATION_SERVE_ORIGIN</c>); decided once the address listens.
     /// </summary>
     internal string? BrowserOrigin { get; init; }

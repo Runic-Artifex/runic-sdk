@@ -455,46 +455,61 @@ On a machine that you share with other users, run `dev` with
 debugging profiles there. `--no-debug-endpoint` wins over `--debug-endpoint`.
 
 `dotnet runic dev --browser` serves the Window's pages to a browser through a
-proxy on `http://127.0.0.1:9224/`
+proxy on port 9224
 ([the page in Chrome](debugging.md#the-page-in-chrome-dotnet-runic-dev---browser)).
 Whoever it admits uses the Window as you do, Bridge included. Since 0.23
 (#1187):
 
+- **An origin for each session** (D077.15). The address is
+  `http://<label>.localhost:9224/`, with 26 random lowercase letters and digits
+  (130 bits) as the label, new for each `dev` run and the same across its
+  Window restarts. So the pages, service workers, storage and cookie of an
+  earlier session or another project, a script that a compromised npm
+  dependency left behind for example, are another origin's and do not reach a
+  later session's code, bootstrap or Bridge. Chromium browsers and Firefox
+  resolve names under `.localhost` to the loopback interface themselves.
+
 - **One browser, by a one-time code.** A request with the current code admits
   its browser, also from another site: the code page that `dev` writes is a
   `file:` document. The code is compared in constant time. The admitted browser
-  gets a new cookie of `dev`'s (`HttpOnly`, `SameSite=Strict`, random per
-  admission), and the code is replaced. The cookie takes over when that
+  gets a new cookie of `dev`'s (host-only, with no `Domain`; `HttpOnly`,
+  `SameSite=Strict`, random per admission), and the code is replaced. The cookie takes over when that
   browser's next navigation, which the admission's page makes, presents it:
   then the previous browser's cookie ends and the proxy closes its open
   WebSocket connections. A request that only carries the code (a `file:` page
   that frames or opens the code page, for example) ends no admission.
-- **Where the code is.** In `dev`'s terminal output, and in
-  `obj/runic/dev-browser.html`, readable only by you: mode 0600 on Linux and
+- **Where the code and the label are.** In `dev`'s `[dev] Browser:` output, and
+  in `obj/runic/dev-browser.html`, readable only by you: mode 0600 on Linux and
   macOS, an access list of your account alone with no inherited entries on
   Windows. `dev` writes it atomically, rewrites it after each admission and
-  deletes it when it stops. The session file names that page, not the code,
-  because other users may be able to read the session file.
-- **Every other request** needs the admitted browser's cookie, a `Host` that is
-  an IP address or `localhost` (against DNS rebinding), no `Origin` other than
-  the address's own, and a `Sec-Fetch-Site` of `none` or `same-origin` when it
-  has one. So a web page in a browser cannot reach the Window through it, and a
-  local process without the code or the cookie gets 403. On Linux the address
-  also refuses connections of other users (`/proc/net/tcp`).
-- **The cookie is a bearer credential for every loopback port.** Browsers do not
-  scope cookies by port, so the admitted browser sends `dev`'s cookie with every
-  request to any `http://127.0.0.1:<port>` it loads, and `SameSite=Strict` does
-  not hold it back there (it is the same site). Whoever listens on such a port
-  receives it and can replay it to 9224 from outside a browser, where requests
-  carry no `Origin` or `Sec-Fetch-Site`. On Linux the peer check refuses that
-  replay from another user; macOS and Windows cannot tell a loopback
-  connection's user, so on a machine shared with other users, use `--browser` on
-  Linux only.
+  deletes it when it stops. The session file names that page, and lists the
+  address with `*` for the label, because other users may be able to read it.
+  The label is in no process argument and no other `dev` line; the Window gets
+  it in its environment, which other users cannot read.
+- **Every other request** needs the session's own `Host`,
+  `<label>.localhost:<port>` (which also keeps out DNS rebinding), the admitted
+  browser's cookie, no `Origin` other than the address's own, and a
+  `Sec-Fetch-Site` of `none` or `same-origin` when it has one. A request to
+  `127.0.0.1:9224`, `localhost:9224` or another label gets 403, which names no
+  label. So a web page in a browser cannot reach the Window through it, and a
+  local process without the label and the code or the cookie gets 403. On Linux
+  the address also refuses connections of other users (`/proc/net/tcp`).
+- **The label, the code and the cookie are bearer secrets.** Browsers do not
+  scope cookies by port: the admitted browser sends `dev`'s cookie with every
+  request to `<label>.localhost` on any port, and `SameSite=Strict` does not hold
+  it back there (it is the same site). Someone who knew the label could get your
+  browser to load `<label>.localhost` on a port of theirs, collect the cookie and
+  replay it to 9224 from outside a browser, where requests carry no `Origin` or
+  `Sec-Fetch-Site`. That is why the label is kept like the code. On Linux the
+  peer check also refuses another user's replay; macOS and Windows cannot tell a
+  loopback connection's user, so there the secrets alone keep other local users
+  out.
 - **What the Window admits.** `dev` tells the serve-only Window the address's
   origin (`RUNIC_APPLICATION_SERVE_ORIGIN`). Runic Desktop admits that origin
   for its surfaces and connects their Bridge through the proxy; Runic's
   CS-WebUI host admits it at its upload endpoint. Each host takes the variable
-  only in serve-only mode and only as an `http` loopback origin with a port.
+  only in serve-only mode, not in a guest, and only as an `http` origin on
+  `localhost` or one label under `.localhost`, with a port and nothing after it.
   The proxy passes `Origin` on unchanged, gives the Window its own `Host`, and
   keeps its own cookie out of what it forwards. On a Runic Desktop page's Bridge
   socket it offers the Window no compression and replaces the Window's close

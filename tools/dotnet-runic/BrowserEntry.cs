@@ -16,9 +16,13 @@ using Runic.Application.Tool.WebKit;
 namespace Runic.Application.Tool;
 
 /// <summary>
-/// The stable loopback address of <c>dotnet runic dev --browser</c>, <c>http://127.0.0.1:9224/</c> (#1187, D077.12,
-/// D077.14): a proxy to the pages of the serve-only Window process that runs now, so a browser tab keeps its address
-/// when <c>dotnet watch</c> restarts the Window. <c>/</c> is the Window's first page, <c>/windows/&lt;n&gt;</c> the n-th
+/// The stable address of <c>dotnet runic dev --browser</c>, <c>http://&lt;label&gt;.localhost:9224/</c> (#1187, D077.12,
+/// D077.14, D077.15): a proxy to the pages of the serve-only Window process that runs now, so a browser tab keeps its
+/// address when <c>dotnet watch</c> restarts the Window. The label is random for each dev run and the same across its
+/// restarts, so each session is an origin of its own: an earlier session's pages, service workers, storage and cookie do
+/// not reach it. The label is a secret like the code: an attacker who knew it could have the browser send dev's
+/// host-only cookie to <c>&lt;label&gt;.localhost</c> on a port of theirs, since cookies are not scoped by port. Only the
+/// <c>[dev] Browser:</c> lines and the code file carry it; the session file has <c>*</c> in its place. <c>/</c> is the Window's first page, <c>/windows/&lt;n&gt;</c> the n-th
 /// Window the process opened; until a Window serves, a page that reloads itself every second.
 /// <para>
 /// Admission: the first request carries a one-time code (<c>?code=…</c>), which dev prints in the
@@ -84,18 +88,31 @@ internal sealed class BrowserEntry : IAsyncDisposable
     // How long after its close command a Window's address waits for a successor, as when dotnet watch restarts it.
     internal static readonly TimeSpan ClosingGrace = TimeSpan.FromSeconds(5);
 
-    private BrowserEntry(TcpListener listener, LoopbackSockets? sockets, Action<string> report, string? codeFile)
+    private BrowserEntry(TcpListener listener, LoopbackSockets? sockets, Action<string> report, string? codeFile, string label)
     {
         _listener = listener;
         _sockets = sockets;
         _report = report;
         CodeFile = codeFile;
+        Label = label;
     }
 
     internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
     /// <summary>The address of the Window's first page, without the code.</summary>
-    internal string Url => RootUrl(Port);
+    internal string Url => Origin + "/";
+
+    /// <summary>This session's DNS label: 26 lowercase letters and digits, 130 random bits (<see cref="NewLabel"/>).</summary>
+    internal string Label { get; }
+
+    /// <summary>The only <c>Host</c> the address answers: <c>&lt;label&gt;.localhost:&lt;port&gt;</c>.</summary>
+    internal string Host => $"{Label}.localhost:{Port.ToString(CultureInfo.InvariantCulture)}";
+
+    /// <summary>The address's origin, which the serve-only Window admits (<c>RUNIC_APPLICATION_SERVE_ORIGIN</c>).</summary>
+    internal string Origin => "http://" + Host;
+
+    /// <summary>The address with <c>*</c> for the label, for the session file, which other users may be able to read.</summary>
+    internal string PublicUrl => PublicWindowUrl(Port, 0);
 
     /// <summary>The page that opens the address with the current code, readable only by this user; null when none is written.</summary>
     internal string? CodeFile { get; }
@@ -109,14 +126,44 @@ internal sealed class BrowserEntry : IAsyncDisposable
     /// <summary>Raised after an admission replaced the code (and rewrote <see cref="CodeFile"/>), for dev's line.</summary>
     internal event Action? CodeChanged;
 
-    internal static string RootUrl(int port) => $"http://127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)}/";
+    /// <summary>The entry path of the Window opened <paramref name="index"/>-th (0-based) since the Window process started.</summary>
+    internal static string EntryPath(int index) => index == 0 ? "/" : $"/windows/{(index + 1).ToString(CultureInfo.InvariantCulture)}";
 
-    /// <summary>The entry address of the Window opened <paramref name="index"/>-th (0-based) since the Window process started.</summary>
-    internal static string WindowUrl(int port, int index) =>
-        index == 0 ? RootUrl(port) : $"{RootUrl(port)}windows/{(index + 1).ToString(CultureInfo.InvariantCulture)}";
+    /// <summary>The entry address of a Window on <paramref name="origin"/> (<c>http://&lt;label&gt;.localhost:&lt;port&gt;</c>).</summary>
+    internal static string WindowUrl(string origin, int index) => origin + EntryPath(index);
 
     /// <summary>The entry address with a one-time code, which admits a browser.</summary>
-    internal static string CodeUrl(int port, int index, string code) => $"{WindowUrl(port, index)}?{CodeParameter}={code}";
+    internal static string CodeUrl(string origin, int index, string code) => $"{WindowUrl(origin, index)}?{CodeParameter}={code}";
+
+    /// <summary>This session's entry address of a Window with the current code, for the <c>[dev] Browser:</c> lines.</summary>
+    internal string CodeUrlFor(int index) => CodeUrl(Origin, index, Code);
+
+    /// <summary>The entry address with <c>*</c> for the label, which the session file lists.</summary>
+    internal static string PublicWindowUrl(int port, int index) => $"http://*.localhost:{port.ToString(CultureInfo.InvariantCulture)}{EntryPath(index)}";
+
+    /// <summary>
+    /// A new session label: 26 characters of lowercase letters and the digits 2 to 7 (base32 of 16 random bytes plus two
+    /// bits), one DNS label under <c>.localhost</c>.
+    /// </summary>
+    internal static string NewLabel()
+    {
+        const string alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+        Span<byte> bytes = stackalloc byte[17];
+        RandomNumberGenerator.Fill(bytes);
+        var label = new StringBuilder(26);
+        int buffer = 0, bits = 0;
+        foreach (byte value in bytes)
+        {
+            buffer = (buffer << 8) | value;
+            bits += 8;
+            while (bits >= 5 && label.Length < 26)
+            {
+                label.Append(alphabet[(buffer >> (bits - 5)) & 31]);
+                bits -= 5;
+            }
+        }
+        return label.ToString();
+    }
 
     /// <summary>
     /// Listens on 127.0.0.1:<paramref name="port"/> (0 for any free port); null when the port is taken.
@@ -124,7 +171,8 @@ internal sealed class BrowserEntry : IAsyncDisposable
     /// receives the <c>[dev]</c> line for each user whose request it refused; <paramref name="codeFile"/> is the page
     /// that opens the address with the current code (<see cref="CodeFileName"/> in the session directory), or null.
     /// </summary>
-    internal static BrowserEntry? TryStart(int port, LoopbackSockets? sockets = null, Action<string>? report = null, string? codeFile = null)
+    internal static BrowserEntry? TryStart(int port, LoopbackSockets? sockets = null, Action<string>? report = null, string? codeFile = null,
+        string? label = null)
     {
         var listener = new TcpListener(IPAddress.Loopback, port);
         try
@@ -136,13 +184,16 @@ internal sealed class BrowserEntry : IAsyncDisposable
             listener.Dispose();
             return null;
         }
-        var entry = new BrowserEntry(listener, sockets, report ?? Console.Error.WriteLine, codeFile);
+        var entry = new BrowserEntry(listener, sockets, report ?? Console.Error.WriteLine, codeFile, label ?? NewLabel());
         entry.WriteCodeFile();
         entry._accepting = Task.Run(entry.AcceptAsync);
         return entry;
     }
 
-    /// <summary>A Window the running Window process serves: its entry address (without the code) and, once its line arrived, its type.</summary>
+    /// <summary>
+    /// A Window the running Window process serves: its entry address with <c>*</c> for the label (<see cref="PublicWindowUrl"/>)
+    /// and, once its line arrived, its type.
+    /// </summary>
     internal sealed record ServedWindow(int Index, string EntryUrl, string? Type);
 
     // Closed: the Window sent its page the Bridge's close command (RelayBridgeAsync); its address waits for a successor.
@@ -159,7 +210,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
             lock (_gate)
             {
                 var windows = new List<ServedWindow>(_windows.Count);
-                for (int index = 0; index < _windows.Count; index++) windows.Add(new(index, WindowUrl(Port, index), _windows[index].Type));
+                for (int index = 0; index < _windows.Count; index++) windows.Add(new(index, PublicWindowUrl(Port, index), _windows[index].Type));
                 return windows;
             }
         }
@@ -183,7 +234,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
             {
                 if (LoopbackHttp(line[UrlPrefix.Length..].Trim()) is not { } target) return null;
                 _windows.Add(new(target, BasePath(target), null));
-                return new(_windows.Count - 1, WindowUrl(Port, _windows.Count - 1), null);
+                return new(_windows.Count - 1, PublicWindowUrl(Port, _windows.Count - 1), null);
             }
             if (line.StartsWith(WindowPrefix, StringComparison.Ordinal))
             {
@@ -193,7 +244,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
                 int index = _windows.FindLastIndex(window => window.Target == target);
                 if (index < 0) return null;
                 _windows[index] = _windows[index] with { Type = fields[1] };
-                return new(index, WindowUrl(Port, index), fields[1]);
+                return new(index, PublicWindowUrl(Port, index), fields[1]);
             }
             return null;
         }
@@ -274,7 +325,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
     /// of the pending admission, as the decision sees them.
     /// </summary>
     internal sealed record State(string Code, string? BrowserCookie, IReadOnlyList<Uri?> Windows, IReadOnlyDictionary<string, int> StaleBases,
-        string? PendingCookie = null, IReadOnlySet<int>? Closing = null);
+        string? PendingCookie = null, IReadOnlySet<int>? Closing = null, string? Host = null);
 
     internal const string WaitingPage =
         "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"1\">" +
@@ -291,7 +342,8 @@ internal sealed class BrowserEntry : IAsyncDisposable
         CodeFileName + ", as your IDE's launch configuration does.";
 
     /// <summary>
-    /// Decides a request (#1187, D077.12). The Host must be an IP literal or <c>localhost</c> (DNS rebinding). A request
+    /// Decides a request (#1187, D077.12, D077.15). The Host must be this session's, <c>&lt;label&gt;.localhost:&lt;port&gt;</c>
+    /// (<see cref="State.Host"/>), which also keeps out DNS rebinding. A request
     /// with the current code (<c>GET</c> or <c>HEAD</c> of an entry address) admits its browser, also from another site,
     /// such as the page of <see cref="CodeFile"/> (a <c>file:</c> document); every other request needs the bound browser's
     /// cookie, an <c>Origin</c> of this address if any, and a <c>Sec-Fetch-Site</c> of <c>none</c> or <c>same-origin</c>
@@ -303,7 +355,9 @@ internal sealed class BrowserEntry : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(state);
-        if (!CdpRequestPolicy.IsLoopbackOrLiteralHost(request.Host)) return Refused(403, "Forbidden");
+        // Only this session's name, <label>.localhost:<port>: 127.0.0.1, plain localhost, another label and a rebound name
+        // get a refusal that says nothing about the label.
+        if (state.Host is null || !string.Equals(request.Host, state.Host, StringComparison.OrdinalIgnoreCase)) return Refused(403, "Forbidden");
         string target = request.Target;
         int question = target.IndexOf('?', StringComparison.Ordinal);
         string path = question < 0 ? target : target[..question];
@@ -612,9 +666,9 @@ internal sealed class BrowserEntry : IAsyncDisposable
     }
 
     /// <summary>The page that opens the address with <paramref name="code"/>: a refresh to it, and the address to type.</summary>
-    internal static string CodePage(int port, string code)
+    internal static string CodePage(string origin, string code)
     {
-        string url = WebUtility.HtmlEncode(CodeUrl(port, 0, code));
+        string url = WebUtility.HtmlEncode(CodeUrl(origin, 0, code));
         return "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\">" +
             $"<meta http-equiv=\"refresh\" content=\"0;url={url}\"><title>dotnet runic dev --browser</title>" +
             $"<p>Opening the Window served by dotnet runic dev: <a href=\"{url}\">{url}</a></p></html>\n";
@@ -626,7 +680,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
     {
         if (CodeFile is not { } path) return;
         string content;
-        lock (_gate) content = CodePage(Port, _code);
+        lock (_gate) content = CodePage(Origin, _code);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -681,9 +735,9 @@ internal sealed class BrowserEntry : IAsyncDisposable
     }
 
     internal static string RefusedPeerMessage(int port, uint? owner) => owner is { } uid
-        ? $"[dev] Warning: refused a request to {RootUrl(port)} from another user (uid {uid.ToString(CultureInfo.InvariantCulture)}); " +
+        ? $"[dev] Warning: refused a request to --browser's address on port {port.ToString(CultureInfo.InvariantCulture)} from another user (uid {uid.ToString(CultureInfo.InvariantCulture)}); " +
           "--browser's address answers only the user who runs dotnet runic dev."
-        : $"[dev] Warning: refused a request to {RootUrl(port)} whose user could not be determined from /proc/net/tcp; " +
+        : $"[dev] Warning: refused a request to --browser's address on port {port.ToString(CultureInfo.InvariantCulture)} whose user could not be determined from /proc/net/tcp; " +
           "--browser's address answers only the user who runs dotnet runic dev.";
 
     internal const string RefusedPeerBody = "Forbidden: this address answers only the user who runs dotnet runic dev.";
@@ -745,7 +799,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
                 {
                     state = new(_code, _cookie, [.. _windows.Select(static window => window.Closed ? null : window.Target)],
                         new Dictionary<string, int>(_staleBases), _pendingCookie,
-                        Enumerable.Range(0, _windows.Count).Where(index => now - _windows[index].ClosedAt < ClosingGrace).ToHashSet());
+                        Enumerable.Range(0, _windows.Count).Where(index => now - _windows[index].ClosedAt < ClosingGrace).ToHashSet(), Host);
                 }
                 var request = new Request(head.Method, head.Path, head.Header("Host"), head.Header("Origin"), head.Header("Sec-Fetch-Site"),
                     head.Header("Cookie"), head.IsWebSocketUpgrade(out string webSocketKey));
@@ -846,7 +900,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
         Task upload = upgrade ? client.CopyToAsync(server, done.Token) : CopyBodyAsync(client, server, head, done.Token);
         byte[]? answer = await ReadHeadAsync(server, done.Token).ConfigureAwait(false);
         if (answer is null) return;
-        string response = ForwardedResponseHead(Encoding.Latin1.GetString(answer), upgrade, authority, host ?? $"127.0.0.1:{Port.ToString(CultureInfo.InvariantCulture)}");
+        string response = ForwardedResponseHead(Encoding.Latin1.GetString(answer), upgrade, authority, host ?? Host);
         await client.WriteAsync(Encoding.Latin1.GetBytes(response), done.Token).ConfigureAwait(false);
         // A Runic Desktop page's Bridge: the Window's close command becomes the token refusal (RelayBridgeAsync).
         Task download = upgrade && path.EndsWith("/" + BridgeSocketPath, StringComparison.Ordinal)

@@ -150,7 +150,7 @@ Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the
 
 | Option | Effect |
 | --- | --- |
-| `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://127.0.0.1:9224/` for the one browser that its one-time code admits (`obj/runic/dev-browser.html` opens it), so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
+| `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://<label>.localhost:9224/`, an origin of its own for each run, for the one browser that its one-time code admits (`obj/runic/dev-browser.html` opens it), so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
 
 Since 0.22, for CS-WebUI (see [Debug a CS-WebUI page's JavaScript](#debug-a-cs-webui-pages-javascript)):
 
@@ -783,24 +783,35 @@ and the window's own commands report `OwnerUnavailable`, a Window with
 
 The Window's own address changes with every start and carries its server's
 credential, so `dev` does not print it. Instead it serves the Window's pages at
-a stable address, `http://127.0.0.1:9224/` (another free port when 9224 is
-taken; the lines say which), for one browser that a one-time code admits.
+a stable address of its own, `http://<label>.localhost:9224/` (another free
+port when 9224 is taken; the lines say which), for one browser that a one-time
+code admits. `<label>` is 26 random lowercase letters and digits, new for each
+`dev` run and the same across its Window restarts. Chromium browsers (Chrome,
+Edge) and Firefox resolve names under `.localhost` to the loopback interface
+themselves.
 `/` is the Window's first page, `/windows/2` and so on the Windows the
 application opens after it. Until the Window serves, and while `dotnet watch`
 restarts it, the address shows a page that reloads itself every second.
 
 ```text
-[dev] Browser: the Window serves without a native window (--browser). Open http://127.0.0.1:9224/?code=… in Chrome or Edge, or the page obj/runic/dev-browser.html, …
-[dev] Browser: Window serves at http://127.0.0.1:9224/?code=…
+[dev] Browser: the Window serves without a native window (--browser). Open http://<label>.localhost:9224/?code=… in Chrome or Edge, or the page obj/runic/dev-browser.html, …
+[dev] Browser: Window serves at http://<label>.localhost:9224/?code=…
 [dev] Ready
 ```
 
 Since 0.23 (#1187), the address is a proxy to the Window's own loopback server,
 and a tab keeps it across restarts:
 
+- **An origin for each session.** Each `dev` run is an origin of its own, so
+  pages, service workers, storage and cookies of an earlier session or another
+  project, such as a script that an npm dependency left there, do not reach it.
+  The address answers only its own name: a request to `127.0.0.1:9224`,
+  `localhost:9224` or another label gets 403, which names no label.
+
 - **The code.** The `[dev] Browser:` lines carry the current one-time code, and
   `dev` writes a page that opens the address with it,
-  `obj/runic/dev-browser.html` (the session file's `browser.codeFile`). Only you
+  `obj/runic/dev-browser.html` (the session file's `browser.codeFile`), with
+  the label. Only you
   can read that page: mode 0600 on Linux and macOS, an access list of your account
   alone on Windows. Opening the address with the code gives that browser a new
   cookie of `dev`'s (`HttpOnly`, `SameSite=Strict`), replaces the code and
@@ -824,7 +835,8 @@ and a tab keeps it across restarts:
   A CS-WebUI page's WebUI connection goes to the Window's own port, so reload a
   CS-WebUI tab after a restart; the address stays the same.
 - **The Window's side.** `dev` sets `RUNIC_APPLICATION_SERVE_ORIGIN` to the
-  address's origin for the Window: Runic Desktop admits the pages from it and
+  address's origin, `http://<label>.localhost:<port>`, in the Window's
+  environment, which other users cannot read: Runic Desktop admits the pages from it and
   connects their Bridge through it, and Runic's CS-WebUI host admits it at its
   upload endpoint. Requests keep their `Origin`; `dev` gives the Window its own
   `Host` and moves the Window's redirects onto the address.
@@ -851,7 +863,9 @@ the port, so the configuration needs no change when 9224 is taken:
 ```
 
 Before 0.23, the configuration opened `"url": "http://127.0.0.1:9224/"`; a
-project generated earlier needs the `"file"` line instead.
+project generated earlier needs the `"file"` line instead. A configuration that
+matches the page by URL, such as an attach configuration's `urlFilter`, uses
+`http://*.localhost:9224/*`.
 
 Breakpoints in the frontend's sources, stepping, conditions, logpoints,
 exceptions, the console, the page's variables, reloads and HMR updates work as
@@ -860,30 +874,32 @@ restart. Other IDEs open the same page from their own JavaScript debug
 configuration, such as Rider's "JavaScript Debug" with its `file://` URL, or the
 address with the code from the `[dev] Browser:` line.
 
-- **Security.** The address listens on 127.0.0.1 only. A request with the
-  current code (a `GET` of `/` or `/windows/<n>`) is admitted from any site,
-  since the code page is a `file:` document; every other request needs the
-  admitted browser's cookie, a `Host` that is an IP address or `localhost`, no
-  `Origin` other than the address's own, and a `Sec-Fetch-Site` of `none` or
-  `same-origin` when it has one, so a web page in a browser cannot reach the
-  Window through it. The code is compared in constant time, and its answers
-  are not cached and send no referrer. `dev`'s cookie stays out of the requests
-  it passes to the Window.
-- **The cookie is a bearer credential for every loopback port.** Browsers do
-  not scope cookies by port, so your browser sends `dev`'s cookie with every
-  request to any `http://127.0.0.1:<port>` it loads, and `SameSite=Strict` does
-  not hold it back there (it is the same site). Whoever listens on such a port
-  receives it and can send it to 9224 from outside a browser, without an
-  `Origin` or `Sec-Fetch-Site`.
-- **Other users on the machine.** Loopback ports admit every local account. The
-  code is in the terminal's output and in a page that only you can read, not in
-  the session file. On Linux, `dev` also looks up the owner of each connection's
-  other end in `/proc/net/tcp`, as for the CDP adapter, answers 403 when that is
-  another user, and says so once per user in a `[dev] Warning:` line. macOS and
-  Windows cannot tell a loopback connection's user: there another local user's
-  server on 127.0.0.1 that your browser loads receives the cookie and can reach
-  the Window with it. On a machine that you share with other users, use
-  `--browser` on Linux only.
+- **Security.** The address listens on 127.0.0.1 only and answers only its
+  own `Host`, `<label>.localhost:<port>`, which also keeps out DNS rebinding. A
+  request with the current code (a `GET` of `/` or `/windows/<n>`) is admitted
+  from any site, since the code page is a `file:` document; every other request
+  needs the admitted browser's cookie, no `Origin` other than the address's own,
+  and a `Sec-Fetch-Site` of `none` or `same-origin` when it has one, so a web
+  page in a browser cannot reach the Window through it. The code is compared in
+  constant time, and its answers are not cached and send no referrer. `dev`'s
+  cookie is host-only (no `Domain`) and stays out of the requests it passes to
+  the Window.
+- **The label, the code and the cookie are bearer secrets.** Whoever has the
+  code, or the admitted browser's cookie together with the label, uses the
+  Window as you do. Browsers do not scope cookies by port, so your browser sends
+  the cookie with every request to `<label>.localhost` on any port: someone who
+  knew the label could have it send the cookie to a port of theirs. So `dev`
+  keeps the label where it keeps the code: in its `[dev] Browser:` output and
+  the code page, which only you can read. The session file has `*` in its place,
+  and neither appears in process arguments or `dev`'s other lines. Do not paste
+  the address where others can read it.
+- **Other users on the machine.** Loopback ports admit every local account,
+  but without the label and the code or cookie another user's process gets
+  403. On Linux, `dev` also looks up the owner of each connection's other end
+  in `/proc/net/tcp`, as for the CDP adapter, answers 403 when that is another
+  user, and says so once per user in a `[dev] Warning:` line. macOS and Windows
+  cannot tell a loopback connection's user, so there only the secrets keep
+  another user out.
 - **Standard input.** A serve-only Window stops serving at a line on its
   standard input, so `dev` gives it an empty pipe instead of the terminal.
 - **The .NET debugger.** Attach it to the process that
@@ -1169,13 +1185,15 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   },
   // With --browser (since 0.21): dev's address for a browser, and the Windows the running Window process serves,
   // each at its address there (not the Windows' own addresses, which carry their credential); null without --browser.
-  // Since 0.23 the address admits one browser by a one-time code, which this file leaves out: codeFile is the page,
-  // readable only by the user who runs dev, that opens the address with the newest code.
+  // Since 0.23 the address is http://<label>.localhost:9224/ with a session label, and it admits one browser by a
+  // one-time code. This file has neither: the URLs have * for the label (a pattern for a launch configuration's
+  // urlFilter), and codeFile is the page, readable only by the user who runs dev, that opens the address with the newest
+  // code.
   "browser": {
-    "url": "http://127.0.0.1:9224/",
+    "url": "http://*.localhost:9224/",
     "codeFile": "/path/to/App/obj/runic/dev-browser.html",
     "windows": [
-      { "url": "http://127.0.0.1:9224/", "type": "App.MainWindow" } // type: the Window's class, null until the host names it
+      { "url": "http://*.localhost:9224/", "type": "App.MainWindow" } // type: the Window's class, null until the host names it
     ]
   },
   "debugEndpoints": [
