@@ -32,8 +32,15 @@ internal static class CsWebUiServeOnlyStop
         }
         try
         {
-            // A drain reports its failures to its Window's close; here only its end counts.
-            Task.WhenAll(drains.Select(static drain => Task.Run(drain))).ContinueWith(static _ => { }, TaskScheduler.Default).Wait();
+            // A drain reports its failures to its Window's close; here only its end counts. A loop, not LINQ, keeps
+            // System.Linq's generic instantiations out of a NativeAOT build.
+            var running = new Task[drains.Length];
+            for (var index = 0; index < drains.Length; index++) running[index] = Task.Run(drains[index]);
+            foreach (var drain in running)
+            {
+                try { drain.Wait(); }
+                catch (AggregateException) { }
+            }
         }
         finally
         {

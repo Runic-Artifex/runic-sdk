@@ -139,7 +139,7 @@ internal sealed class CsWebUiUserClose
         if (Drain is { } drain)
         {
             // The close is decided: RequestCloseAsync returns now, and the window closes when the drain ends.
-            _ = DrainThenCloseAsync(drain);
+            DrainThenClose(drain);
             return true;
         }
         if (userClose) _closeWindow();
@@ -147,13 +147,17 @@ internal sealed class CsWebUiUserClose
         return true;
     }
 
-    private async Task DrainThenCloseAsync(Func<Task> drain)
+    // The Window's close reports a failed drain; the window closed with it. A continuation rather than an async method,
+    // whose state machine NativeAOT would compile.
+    private void DrainThenClose(Func<Task> drain)
     {
-        try { await drain().ConfigureAwait(false); }
-        catch (Exception) { /* The Window's close reports a failed drain; the window closed with it. */ }
-        finally
+        Task drained;
+        try { drained = drain(); }
+        catch (Exception error) { drained = Task.FromException(error); }
+        _ = drained.ContinueWith(static (_, state) =>
         {
-            lock (_gate) _draining = false;
-        }
+            var close = (CsWebUiUserClose)state!;
+            lock (close._gate) close._draining = false;
+        }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }
