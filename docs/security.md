@@ -454,6 +454,42 @@ On a machine that you share with other users, run `dev` with
 `--no-debug-endpoint`, which opens none of these, and do not use the script
 debugging profiles there. `--no-debug-endpoint` wins over `--debug-endpoint`.
 
+`dotnet runic dev --browser` serves the Window's pages to a browser through a
+proxy on `http://127.0.0.1:9224/`
+([the page in Chrome](debugging.md#the-page-in-chrome-dotnet-runic-dev---browser)).
+Whoever it admits uses the Window as you do, Bridge included. Since 0.23
+(#1187):
+
+- **One browser, by a one-time code.** A request with the current code admits
+  its browser, also from another site: the code page that `dev` writes is a
+  `file:` document. The code is compared in constant time. The admitted browser
+  gets `dev`'s cookie (`HttpOnly`, `SameSite=Strict`, random per admission). Each
+  admission replaces the code and ends the previous browser's cookie.
+- **Where the code is.** In `dev`'s terminal output, and in
+  `obj/runic/dev-browser.html`, readable only by you: mode 0600 on Linux and
+  macOS, an access list of your account alone with no inherited entries on
+  Windows. `dev` writes it atomically, rewrites it after each admission and
+  deletes it when it stops. The session file names that page, not the code,
+  because other users may be able to read the session file.
+- **Every other request** needs the admitted browser's cookie, a `Host` that is
+  an IP address or `localhost` (against DNS rebinding), no `Origin` other than
+  the address's own, and a `Sec-Fetch-Site` of `none` or `same-origin` when it
+  has one. So a web page in a browser cannot reach the Window through it, and a
+  local process without the code gets 403. On Linux the address also refuses
+  connections of other users (`/proc/net/tcp`).
+- **What the Window admits.** `dev` tells the serve-only Window the address's
+  origin (`RUNIC_APPLICATION_SERVE_ORIGIN`). Runic Desktop admits that origin
+  for its surfaces and connects their Bridge through the proxy; Runic's
+  CS-WebUI host admits it at its upload endpoint. Each host takes the variable
+  only in serve-only mode and only as an `http` loopback origin with a port.
+  The proxy passes `Origin` on unchanged, gives the Window its own `Host`, and
+  keeps its own cookie out of what it forwards. On a Runic Desktop page's Bridge
+  socket it offers the Window no compression and replaces the Window's close
+  command with the Bridge's token refusal, and it answers a Bridge socket of a
+  Window that has gone with that refusal itself: the page reloads, and the new
+  Window admits it as any page, with its own credential. A CS-WebUI page's WebUI
+  connection goes to the Window's port directly, as before.
+
 ## Hosted application windows
 
 A Runic Desktop application can show another Runic Desktop application's windows: the **host** starts the

@@ -133,11 +133,15 @@ debugger ends when `dotnet watch` restarts the Window after a C# edit.
 
 To set breakpoints in the page's JavaScript on any operating system, run
 `dotnet runic dev --browser`. The Window then serves its page without a native
-window, and `http://127.0.0.1:9224/` opens it in a browser; open that address
-from your IDE's JavaScript debugger with Chrome or Edge. The page runs on
-Chromium rather than the Window's WebView (WebKit on Linux and macOS), and native
-window features such as file dialogs and menus are unavailable there. Open the
-address again after `dotnet watch` restarts the Window.
+window, and `http://127.0.0.1:9224/` opens it in one browser, admitted with the
+one-time code of the `[dev] Browser:` line. Your IDE's JavaScript debugger opens
+it with Chrome or Edge through `obj/runic/dev-browser.html`, a page that only you
+can read and that carries the current code, as the "Window in Chrome" launch
+configuration does. The page runs on Chromium rather than the Window's WebView
+(WebKit on Linux and macOS), and native window features such as file dialogs and
+menus are unavailable there. The tab keeps its address when `dotnet watch`
+restarts the Window: a Runic Desktop page reloads itself, and a CS-WebUI page
+needs a reload.
 <!--#if (host == "cswebui") -->
 
 `dotnet runic dev --debug-endpoint`, for an IDE to pass when it starts `dev`, opens the

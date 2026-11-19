@@ -270,18 +270,23 @@ debugger configuration with a web root there, or the Vite build of the Angular f
 ## The page in Chrome (`dotnet runic dev --browser`)
 
 Since 0.21, `dotnet runic dev --browser` serves the Window without a native window, and your IDE's JavaScript
-debugger opens its page in Chrome or Edge at `http://127.0.0.1:9224/`, which `dev` redirects to the Window's own
-address (it changes with every start and carries the Window's credential). This works the same on Windows, Linux and
-macOS, so it is the IDE route to breakpoints in `Frontend/src` on macOS, where WKWebView has no DevTools Protocol
-endpoint. The template's `Window in Chrome` configuration (`--editor vscode`) runs it: breakpoints through the
-development server's source maps, stepping, conditions, logpoints, exceptions, the console, reloads and HMR.
+debugger opens its page in Chrome or Edge at `http://127.0.0.1:9224/`, a stable address where `dev` serves the
+Window's pages (the Window's own address changes with every start and carries its credential). This works the same on
+Windows, Linux and macOS, so it is the IDE route to breakpoints in `Frontend/src` on macOS, where WKWebView has no
+DevTools Protocol endpoint. The template's `Window in Chrome` configuration (`--editor vscode`) runs it: breakpoints
+through the development server's source maps, stepping, conditions, logpoints, exceptions, the console, reloads and HMR.
+
+Since 0.23 (#1187), the address admits one browser by a one-time code: the `[dev] Browser:` lines print it
+(`http://127.0.0.1:9224/?code=…`), and `obj/runic/dev-browser.html`, a page only you can read, opens the address with
+the newest one, as `Window in Chrome` does with `"file"`. A new admission ends the previous browser's. The tab keeps
+the address when `dotnet watch` restarts the Window: a Runic Desktop page reloads itself onto the new Window, and its
+breakpoints stop again; reload a CS-WebUI tab.
 
 Two differences from the Window: the page runs on **Chromium**, not on the Window's engine, so check WebKit- or
 WebView2-specific behaviour in the Window; and it has **no native window features**: file dialogs, menus and the
-window's commands report `OwnerUnavailable`, and there is no side panel. On Linux the address answers only the user who
-runs `dev`; macOS and Windows cannot tell a loopback connection's user, so on a shared machine another local user's
-process can follow it there. The Window admits one browser, and after
-`dotnet watch` restarts it, open the address again. Attach the .NET debugger to the process that
+window's commands report `OwnerUnavailable`, and there is no side panel. Without the code or the admitted browser's
+cookie the address answers 403, and on Linux it also answers only the user who runs `dev`. Attach the .NET debugger
+to the process that
 `[dev] Window started` names, as without `--browser`. See the dotnet-runic README's
 [Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).
 

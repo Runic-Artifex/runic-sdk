@@ -74,6 +74,12 @@ internal sealed record DevOptions(
     /// the options are read. A Window that the IDE starts (<c>--no-window</c>) gets them from the session file.
     /// </summary>
     internal IReadOnlyList<KeyValuePair<string, string>> DebugEnvironment { get; init; } = [];
+
+    /// <summary>
+    /// With <c>--browser</c>, the origin of its address (<c>http://127.0.0.1:9224</c>), which the serve-only Window admits
+    /// for its pages (<c>RUNIC_APPLICATION_SERVE_ORIGIN</c>); decided once the address listens.
+    /// </summary>
+    internal string? BrowserOrigin { get; init; }
 }
 
 /// <summary>Reads and checks the option values that dev and size pass on to dotnet and MSBuild.</summary>
