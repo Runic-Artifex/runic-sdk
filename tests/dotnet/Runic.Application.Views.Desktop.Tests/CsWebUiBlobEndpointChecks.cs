@@ -66,6 +66,55 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         Require(blobs.UploadCount == loopbacks.Count, $"The window holds {blobs.UploadCount} uploads.");
     }
 
+    // The endpoint's preflight policy, over each loopback address, for the upload and a blob. Before the page is shown,
+    // nothing is granted. Then a preflight of the page's origin (localhost, 127.0.0.1 or [::1] on the page's port) gets 204
+    // with the methods and headers of the path; one of any other origin, or without one, gets 403 with the page's grant
+    // only, which names neither a method nor a header. The endpoint never answers a preflight with 200: the answers that
+    // failed blobs-probe.mjs (#1185, "Another origin's preflight: {"status":200}") came from another process on ::1.
+    [Test]
+    public async Task APreflightIsGrantedToThePageOriginOnly()
+    {
+        using var work = new Work();
+        using var blobs = work.Blobs();
+        var pagePort = 0;
+        using var endpoint = BlobEndpoint.Start(blobs, () => pagePort, NullLogger.Instance, new Ports().Next)
+            ?? throw new InvalidOperationException("The endpoint did not start.");
+        var page = $"http://localhost:{PagePort}";
+        (string Path, string Method, string Methods)[] paths =
+            [("/_runic/upload", "POST", "POST"), ("/_runic/blobs/0123456789abcdef0123456789abcdef", "GET", "GET, HEAD")];
+        string?[] foreign =
+        [
+            null, "null", "http://attacker.example", $"http://localhost:{PagePort + 1}", $"https://localhost:{PagePort}",
+            $"http://localhost.attacker.example:{PagePort}", $"http://127.0.0.2:{PagePort}", $"http://localhost:{PagePort}/page",
+            "not an origin",
+        ];
+        string[] pageOrigins = [page, $"http://127.0.0.1:{PagePort}", $"http://[::1]:{PagePort}"];
+        var failures = new List<string>();
+        foreach (var address in Loopbacks())
+        foreach (var (path, method, methods) in paths)
+        {
+            pagePort = 0;
+            var unshown = await PreflightAsync(address, endpoint.Port, path, page, method);
+            if (unshown is not { Status: 403, Allow: null, Methods: null, Headers: null })
+                failures.Add($"{address} {path}, before the page is shown: {unshown}");
+            pagePort = PagePort;
+            foreach (var origin in foreign)
+            {
+                var refused = await PreflightAsync(address, endpoint.Port, path, origin, method);
+                if (refused is not { Status: 403, Methods: null, Headers: null, Credentials: "true" } || refused.Allow != page)
+                    failures.Add($"{address} {path}, Origin {origin ?? "(none)"}: {refused}");
+            }
+            foreach (var origin in pageOrigins)
+            {
+                var granted = await PreflightAsync(address, endpoint.Port, path, origin, method);
+                if (granted is not { Status: 204, Credentials: "true" } || granted.Allow != origin || granted.Methods != methods
+                    || granted.Headers?.Contains(BridgeBlobs.UploadTokenHeader, StringComparison.OrdinalIgnoreCase) != true)
+                    failures.Add($"{address} {path}, the page's Origin {origin}: {granted}");
+            }
+        }
+        Require(failures.Count == 0, $"Preflights answered against the policy:\n{string.Join("\n", failures)}");
+    }
+
     // A foreign server on [::1]:A (127.0.0.1:A free) and one on 127.0.0.1:B ([::1]:B free), each answering like the
     // server the CI runs met, 200 without a CORS grant; and two that pass connections on to the other address, where the
     // window's listener will be. The endpoint is offered A to D first and uses none of them, on every OS: it moves on to
@@ -536,6 +585,34 @@ internal sealed partial class CsWebUiBlobEndpointChecks
             id = json.RootElement.GetProperty("upload").GetProperty("id").GetString();
         }
         return new Answer((int)response.StatusCode, body, id);
+    }
+
+    private sealed record PreflightAnswer(int Status, string? Allow, string? Credentials, string? Methods, string? Headers);
+
+    // A CORS preflight to localhost:port, connected to one address, with origin (none when null), asking for method and
+    // the upload token's header.
+    private static async Task<PreflightAnswer> PreflightAsync(IPAddress address, int port, string path, string? origin, string method)
+    {
+        using var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (_, cancellationToken) =>
+            {
+                var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                try { await socket.ConnectAsync(new IPEndPoint(address, port), cancellationToken); }
+                catch { socket.Dispose(); throw; }
+                return new NetworkStream(socket, ownsSocket: true);
+            },
+            PooledConnectionLifetime = TimeSpan.Zero,
+        };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+        using var request = new HttpRequestMessage(HttpMethod.Options, new Uri($"http://localhost:{port}{path}"));
+        if (origin is not null) request.Headers.TryAddWithoutValidation("Origin", origin);
+        request.Headers.TryAddWithoutValidation("Access-Control-Request-Method", method);
+        request.Headers.TryAddWithoutValidation("Access-Control-Request-Headers", BridgeBlobs.UploadTokenHeader.ToLowerInvariant());
+        using var response = await client.SendAsync(request);
+        string? Header(string name) => response.Headers.TryGetValues(name, out var values) ? string.Join(", ", values) : null;
+        return new PreflightAnswer((int)response.StatusCode, Header("Access-Control-Allow-Origin"), Header("Access-Control-Allow-Credentials"),
+            Header("Access-Control-Allow-Methods"), Header("Access-Control-Allow-Headers"));
     }
 
     private enum Kind { Answer, Proxy, Stall }

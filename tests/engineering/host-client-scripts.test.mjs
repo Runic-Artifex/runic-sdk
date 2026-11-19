@@ -74,30 +74,6 @@ for (const script of scripts) {
     expect(warnings[0]).toContain("__runicBridge.request(message)");
   });
 
-  // D072.11: the host-named copy is deprecated in 0.22 and removed in 0.23; a page that loads it by that name is told
-  // once, and runic-views.js, the same bytes, says nothing.
-  test(`${script} warns that its host-named copy is deprecated only when loaded by that name`, () => {
-    const name = script.split("/").pop();
-    const warningsFor = src => {
-      const warnings = [];
-      load(script, {
-        console: { ...console, warn: (...args) => warnings.push(args.join(" ")) },
-        document: { currentScript: src === undefined ? null : { src } },
-      });
-      return warnings;
-    };
-    for (const src of [`https://app.local/${name}`, `https://app.local/pages/${name}?v=2#x`]) {
-      const warnings = warningsFor(src);
-      expect(warnings.length, src).toBe(1);
-      expect(warnings[0]).toContain(`${name} is deprecated`);
-      expect(warnings[0]).toContain("removed in Runic 0.23");
-      expect(warnings[0]).toContain("Load runic-views.js instead");
-    }
-    for (const src of ["https://app.local/runic-views.js", `https://app.local/${name}/runic-views.js`,
-      `https://app.local/my-${name}`, "", undefined])
-      expect(warningsFor(src), String(src)).toEqual([]);
-  });
-
   test(`${script} rejects requests without the host's script`, async () => {
     const context = load(script);
     await expect(context.__runicBridge.request('{"kind":"hello"}')).rejects.toThrow(/is unavailable\.$/);

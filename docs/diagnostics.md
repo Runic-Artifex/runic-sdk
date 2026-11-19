@@ -325,9 +325,15 @@ read-only, non-nullable collection of DTO rows, or its key is not a non-nullable
 
 ### RUNICBRIDGE011
 
-A ReactiveUI interaction has no public getter or has a public setter.
+A ReactiveUI interaction has no public getter or has a public setter. Since
+0.23 also: its `[RunicInteractionTimeout]` is not a timeout, neither
+`Timeout.Infinite` nor 1 to 86 400 000 milliseconds (24 hours). The generator
+reports this one; the analyzer does not.
 
-**Fix:** expose the interaction as a get-only property.
+**Fix:** expose the interaction as a get-only property, and give
+`[RunicInteractionTimeout]` a timeout in that range, or `Timeout.Infinite` for
+none. See
+[Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime).
 
 ### RUNICBRIDGE012
 
@@ -454,13 +460,21 @@ no Bridge. It is reported when an application references more than one host
 adapter (`Runic.Application.Views.Desktop` or `Runic.Application.Views.Wpf`, and
 `Runic.Application.Views.CsWebUi`) without `RunicApplicationHost` and a page it
 copies to `www/` loads `runic-views.js`, or when `RunicApplicationHost` names a
-host that the application does not reference. Pages that load the
-deprecated `runic-desktop-views.js` or `runic-cswebui.js` directly (removed in
-0.23) choose their host at run time and report nothing; libraries and test projects report nothing either.
+host that the application does not reference. Libraries and test projects
+report nothing.
+
+Since 0.23 it is also reported when a page that the build copies to `www/`
+loads `runic-desktop-views.js` or `runic-cswebui.js`, the host-named copies of
+the client that 0.22 deprecated and 0.23 no longer copies (D072.11): the page
+then gets a 404 for the script and no Bridge, whichever hosts the application
+references. A frontend that ships its own file under that name reports nothing
+for it.
 
 **Fix:** set `RunicApplicationHost` to `desktop` or `cswebui` in the project or
 on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,
-to the host that the application runs on.
+to the host that the application runs on. For a page that loads a host-named
+copy, load `runic-views.js` instead (`<script src="runic-views.js"></script>`
+after `webui.js`).
 
 ### RUNICBRIDGE020
 
@@ -733,9 +747,15 @@ A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` member of a ViewModel
 attaches the instance it reads when the ViewModel is presented, so a replaced
 instance would never reach the page.
 
+Since 0.23 also: a `ViewQuestion<TInput, TOutput>` has
+`[RunicInteractionTimeout]`, which applies to ReactiveUI interactions only. The
+generator reports this one; the analyzer does not.
+
 **Fix:** expose the member as a get-only property, such as
 `public ViewRequest<FocusTarget> Focus { get; } = new();`. See
-[View requests](../specs/application/README.md#view-requests).
+[View requests](../specs/application/README.md#view-requests). Give a view
+question its lifetime in its constructor instead:
+`new ViewQuestion<Request, bool>(timeout: Timeout.InfiniteTimeSpan)`.
 
 ### RUNICBRIDGE036
 

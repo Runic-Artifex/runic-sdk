@@ -50,9 +50,45 @@ const squat = async (address, port) => {
   const shared = await squatOnce(address, port, true);
   return plain === "listening" || shared === "listening" ? "listening" : plain;
 };
+// The sockets that listen on a TCP port: [{ address, pid }], address without the port and brackets, pid undefined where
+// the tool names no process (on Linux, a socket of another user). Windows lists http.sys's listeners, the endpoint's
+// there, under the System process (PID 4). Throws when the tool fails, so a caller that retries tries again.
+const owners = port => {
+  const run = (command, args) => execFileSync(command, args, { encoding: "utf8", timeout: 5_000 });
+  const bare = local => local.replace(/:\d+$/, "").replace(/^\[(.*)\]$/, "$1");
+  if (process.platform === "win32") {
+    // Proto, local, foreign, state, PID; a listening socket's foreign address is 0.0.0.0:0 or [::]:0 (the state is
+    // localized).
+    return run("netstat", ["-ano"]).split("\n").map(line => line.trim().split(/\s+/))
+      .filter(fields => fields[0] === "TCP" && fields[1]?.endsWith(`:${port}`) && (fields[2] === "0.0.0.0:0" || fields[2] === "[::]:0"))
+      .map(fields => ({ address: bare(fields[1]), pid: Number(fields[4]) }));
+  }
+  if (process.platform === "darwin") {
+    // -F pn: a p line per process, then an n line per socket. lsof exits with 1 when nothing listens.
+    let text;
+    try { text = run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fpn"]); }
+    catch (error) { if (error.status === 1 && !error.stderr) return []; throw error; }
+    const found = [];
+    let pid;
+    for (const line of text.split("\n")) {
+      if (line.startsWith("p")) pid = Number(line.slice(1));
+      else if (line.startsWith("n")) found.push({ address: bare(line.slice(1)), pid });
+    }
+    return found;
+  }
+  // State, Recv-Q, Send-Q, local, peer, process.
+  return run("ss", ["-ltnpH", `sport = :${port}`]).split("\n").filter(line => line.trim() !== "").map(line => ({
+    address: bare(line.trim().split(/\s+/)[3]), pid: Number(line.match(/pid=(\d+)/)?.[1]) || undefined }));
+};
+// Whether a listener of owners() is the window's: the probe's process, or http.sys on Windows.
+const isWindows = owner => owner.pid === host.pid || (process.platform === "win32" && owner.pid === 4);
+// Whether a listener of owners() takes connections to a loopback address: on it, or on its family's wildcard (http.sys
+// may list its listener so; lsof names a wildcard *).
+const covers = (owner, address) => owner.address === address || owner.address === "*"
+  || (address === "127.0.0.1" && owner.address === "0.0.0.0") || (address === "::1" && owner.address === "::");
 // What listens on a TCP port, for a failure's report.
 const listeners = port => {
-  const command = process.platform === "win32" ? ["netstat", ["-ano", "-p", "TCP"]]
+  const command = process.platform === "win32" ? ["netstat", ["-ano"]]
     : process.platform === "darwin" ? ["lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"]]
     : ["ss", ["-ltnpH", `sport = :${port}`]];
   try {
@@ -132,30 +168,57 @@ try {
   const blobPath = new URL(avatar.url).pathname;
   const evil = "http://attacker.example";
   // Another process cannot listen on either loopback address of the endpoint's port.
-  for (const address of endpoint.address === "localhost" ? ["127.0.0.1", "::1"] : [endpoint.address]) {
+  const loopbacks = endpoint.address === "localhost" ? ["127.0.0.1", "::1"] : [endpoint.address];
+  const missing = new Set();
+  for (const address of loopbacks) {
     const outcome = await squat(address, endpoint.port);
-    check(outcome === "EADDRINUSE" || outcome === "EACCES" || (address === "::1" && (outcome === "EADDRNOTAVAIL" || outcome === "EAFNOSUPPORT")),
+    if (address === "::1" && (outcome === "EADDRNOTAVAIL" || outcome === "EAFNOSUPPORT")) missing.add(address);
+    check(outcome === "EADDRINUSE" || outcome === "EACCES" || missing.has(address),
       `Another process listening on ${address}:${endpoint.port}`, outcome);
   }
+  // A held address is not yet the window's: 0.16.0's endpoint held 127.0.0.1 alone, and the answers of another process
+  // on ::1 of the same port, 200 without the page's grant, failed this probe (#1185). So the probe waits until the
+  // window's own sockets listen on every loopback address of the port, and requires that no other process's does: every
+  // answer below then comes from the window's endpoint (on Windows, http.sys, which serves it).
+  const held = loopbacks.filter(address => !missing.has(address));
+  const holdsAll = found => held.every(address => found.some(owner => covers(owner, address) && isWindows(owner)));
+  // Until the window holds every address, or another process's listener shows, which fails at once.
+  const listening = await retry(() => {
+    const found = owners(endpoint.port);
+    return (holdsAll(found) || !found.every(isWindows)) && found;
+  }, `the window's listeners on ${held.join(" and ")} port ${endpoint.port}`);
+  check(listening.every(isWindows), `A listener on port ${endpoint.port} that is not the window's (process ${host.pid})`, listening);
+  check(holdsAll(listening), `The window's listeners on ${held.join(" and ")} port ${endpoint.port}`, listening);
+  step(`foreign requests: port ${endpoint.port} listeners ${listening.map(owner => `${owner.address} (${owner.pid})`).join(", ")}`);
+  // A request that the window's endpoint answered: on its port, from a loopback address of the family asked for.
+  const answeredBy = (answer, family) => {
+    const separator = answer.answered?.lastIndexOf(":") ?? -1;
+    const address = answer.answered?.slice(0, separator).replace(/^::ffff:/, ""), port = Number(answer.answered?.slice(separator + 1));
+    return port === endpoint.port && (family === 4 ? address === "127.0.0.1" : family === 6 ? address === "::1" : held.includes(address));
+  };
   const families = endpoint.address === "localhost" ? [undefined, 4, 6] : [undefined];
   for (const family of families) {
     const via = family === undefined ? endpoint.address : `${endpoint.address} over IPv${family}`;
     const preflight = await raw(endpoint.address, endpoint.port, { method: "OPTIONS", path: upload.pathname, family,
       headers: { Origin: evil, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-runic-upload-token" } });
     // A machine without IPv6 loopback refuses ::1, where no process can listen either.
-    if (family === 6 && preflight.error !== undefined) {
+    if (family === 6 && missing.has("::1")) {
+      check(preflight.error !== undefined, `An answer over ::1, which this machine does not have (${via})`, preflight);
       step(`foreign requests: ${via}: ${preflight.error}`);
       continue;
     }
     step(`foreign requests: ${via} answered from ${preflight.answered}`);
-    check(preflight.status === 403 && preflight.allow === pageOrigin, `Another origin's preflight (${via})`, preflight);
+    check(answeredBy(preflight, family), `Another origin's preflight answered elsewhere than the window's endpoint (${via})`, preflight);
+    // Refused, with the page's grant only, and with no grant of the method or headers asked for.
+    check(preflight.status === 403 && preflight.allow === pageOrigin && preflight.headers["access-control-allow-methods"] === undefined
+      && preflight.headers["access-control-allow-headers"] === undefined, `Another origin's preflight (${via})`, preflight);
     const foreignHost = await raw(endpoint.address, endpoint.port, { path: blobPath, family, headers: { Host: `rebound.example:${endpoint.port}` } });
-    check(foreignHost.status >= 400 && foreignHost.status < 500, `A blob request with a foreign Host (${via})`, foreignHost);
+    check(answeredBy(foreignHost, family) && foreignHost.status >= 400 && foreignHost.status < 500, `A blob request with a foreign Host (${via})`, foreignHost);
     const crossPost = await raw(endpoint.address, endpoint.port, { method: "POST", path: upload.pathname, family,
       headers: { Origin: evil, "X-Runic-Upload-Token": hello.blobs.token, "Content-Type": "text/plain", "Content-Length": "4" }, body: "evil" });
-    check(crossPost.status === 403 && crossPost.allow === pageOrigin, `Another origin's upload with the token (${via})`, crossPost);
+    check(answeredBy(crossPost, family) && crossPost.status === 403 && crossPost.allow === pageOrigin, `Another origin's upload with the token (${via})`, crossPost);
     const crossGet = await raw(endpoint.address, endpoint.port, { path: blobPath, family, headers: { Origin: evil } });
-    check(crossGet.status === 403 && crossGet.allow === pageOrigin, `Another origin's fetch of a blob (${via})`, crossGet);
+    check(answeredBy(crossGet, family) && crossGet.status === 403 && crossGet.allow === pageOrigin, `Another origin's fetch of a blob (${via})`, crossGet);
   }
   const lan = Object.values(networkInterfaces()).flat().find(entry => entry && entry.family === "IPv4" && !entry.internal)?.address;
   if (lan !== undefined) {

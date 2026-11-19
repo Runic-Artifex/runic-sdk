@@ -71,8 +71,26 @@ type InteractionHandler = {
 };
 type InteractionRequest = Extract<Push, { kind: "interaction" }>;
 
-// An interaction expires after at most ten minutes (README, "Interactions").
-const maximumExpiry = 600_000;
+// The longest delay a browser timer takes: 2^31 - 1 ms, about 24.8 days. A longer one would fire at once, so a later
+// deadline is reached in steps of at most this long.
+const maximumTimer = 2_147_483_647;
+
+/**
+ * Aborts `controller` at `expiresAt` (milliseconds since the epoch), and returns what stops that. A deadline that has
+ * passed aborts at once; none arms no timer (open-ended-interactions/1: the producer ends the request).
+ */
+function abortAt(controller: AbortController, expiresAt: number | undefined): () => void {
+  if (expiresAt === undefined) return () => {};
+  let timer: unknown;
+  const arm = () => {
+    timer = undefined;
+    const remaining = expiresAt - clock.now();
+    if (remaining <= 0) controller.abort();
+    else timer = clock.set(arm, Math.min(remaining, maximumTimer));
+  };
+  arm();
+  return () => { if (timer !== undefined) clock.clear(timer); };
+}
 
 /**
  * The browser half of the interaction protocol for one presentation. It registers only active handlers, so an
@@ -225,10 +243,10 @@ class InteractionRuntime implements InteractionSession {
     const handler = this.registered.get(identity(request.name, request.contract));
     if (this.disposed || !handler || !this.scope.live()) { await this.reply(request, "cancelled"); return; }
     const controller = new AbortController();
-    const expiresAt = Date.parse(request.expiresAt);
-    const remaining = Number.isFinite(expiresAt) ? expiresAt - clock.now() : maximumExpiry;
-    const deadline = remaining > 0 ? clock.set(() => controller.abort(), Math.min(remaining, maximumExpiry)) : undefined;
-    if (remaining <= 0) controller.abort();
+    // The producer's deadline, however distant (specs/application/README.md, "Interactions"); a request without one runs until it is answered
+    // or cancelled. A date that does not parse is treated as none: the producer still times the request out.
+    const expiresAt = request.expiresAt === undefined ? Number.NaN : Date.parse(request.expiresAt);
+    const stopDeadline = abortAt(controller, Number.isFinite(expiresAt) ? expiresAt : undefined);
     const abortFromHandler = () => controller.abort();
     handler.controller.signal.addEventListener("abort", abortFromHandler, { once: true });
     this.active.set(request.requestId, controller);
@@ -251,7 +269,7 @@ class InteractionRuntime implements InteractionSession {
       await this.reply(request, controller.signal.aborted ? "cancelled" : "failed");
     } finally {
       handler.controller.signal.removeEventListener("abort", abortFromHandler);
-      if (deadline !== undefined) clock.clear(deadline);
+      stopDeadline();
       if (this.active.get(request.requestId) === controller) this.active.delete(request.requestId);
     }
   }

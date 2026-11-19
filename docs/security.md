@@ -253,8 +253,9 @@ needs it:
   evaluate script and need `'unsafe-eval'`. CS-WebUI serves `SetRootFolder`
   files without headers of its own, so give such a page a
   `<meta http-equiv="Content-Security-Policy">` policy; a `<meta>` policy cannot
-  carry `frame-ancestors`. Keep `runic-cswebui.js` copies current: a copy from
-  before 0.11.0 receives no state under any policy.
+  carry `frame-ancestors`. Keep any copy of the CS-WebUI client (`runic-views.js`)
+  that the application keeps itself current: a copy from before 0.11.0 receives
+  no state under any policy.
 
 `'self'` matches the same-origin `ws:` connection of the Bridge in current
 WebView2, WKWebView, WebKitGTK, Chromium and Firefox. An older WebKitGTK that

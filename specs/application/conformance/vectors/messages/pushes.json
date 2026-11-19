@@ -264,6 +264,45 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.pushes.interaction-without-deadline",
+      "description": "open-ended-interactions/1: a request without expiresAt has no deadline; the page aborts its handler only when the producer cancels the request.",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "input": {"question":"Clear?"}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.interaction-distant-deadline",
+      "description": "A deadline further away than a browser timer reaches (2^31 - 1 ms, about 24.8 days) is valid; the client waits for it without arming a longer timer.",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "expiresAt": "9999-12-31T23:59:59Z",
+          "input": {"question":"Clear?"}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
       "id": "messages.pushes.interaction-expiry-without-offset",
       "operation": "read-push",
       "input": {

@@ -402,7 +402,7 @@ static int ProbeShowFailure()
 // The in-page menu bar (D036.14): the host serves its bar on the Window's reserved routes, and menu-bar-probe.mjs drives
 // them from Chromium (the state reaches the page, enabled follows CanExecuteChanged, invoke answers executed, disabled
 // and stale, SetMenuBar reaches the page, the shortcut lease). The Window serves a page that loads only webui.js and
-// runic-cswebui.js; the probe prints its URL, waits for a line on standard input and then checks what the commands ran.
+// runic-views.js; the probe prints its URL, waits for a line on standard input and then checks what the commands ran.
 static int ProbeMenuBar()
 {
     if (new RunicCsWebUiHostOptions().MenuBar.Count != 0) throw new InvalidOperationException("RunicCsWebUiHostOptions.MenuBar is not empty by default.");
@@ -420,10 +420,10 @@ static int ProbeMenuBar()
     var root = Directory.CreateTempSubdirectory("runic-cswebui-menu-");
     try
     {
-        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-cswebui.js"), Path.Combine(root.FullName, "runic-cswebui.js"));
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-views.js"), Path.Combine(root.FullName, "runic-views.js"));
         File.WriteAllText(Path.Combine(root.FullName, "index.html"),
             "<!doctype html><html><head><meta charset=\"utf-8\"><title>Menu bar probe</title>" +
-            "<script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body></body></html>");
+            "<script src=\"/webui.js\"></script><script src=\"runic-views.js\"></script></head><body></body></html>");
         var services = new ServiceCollection();
         services.AddSingleton<MenuProbe>();
         services.AddScoped<MenuProbeViewModel>();
@@ -458,10 +458,10 @@ static int ProbeBlobs()
     var root = Directory.CreateTempSubdirectory("runic-cswebui-blobs-");
     try
     {
-        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-cswebui.js"), Path.Combine(root.FullName, "runic-cswebui.js"));
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-views.js"), Path.Combine(root.FullName, "runic-views.js"));
         File.WriteAllText(Path.Combine(root.FullName, "index.html"),
             "<!doctype html><html><head><meta charset=\"utf-8\"><title>Blob probe</title>" +
-            "<script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body></body></html>");
+            "<script src=\"/webui.js\"></script><script src=\"runic-views.js\"></script></head><body></body></html>");
         var services = new ServiceCollection();
         services.AddScoped<BlobProbeViewModel>();
         services.AddRunicViews();
