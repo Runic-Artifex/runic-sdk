@@ -120,6 +120,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private nint _window;
     private nint _provider;
     private nint _icon;
+    private nint _smallIcon;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
@@ -823,6 +824,16 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     Native.SendMessage(_window, WmSetIcon, IconBig, _icon);
                 }
             }
+            else
+            {
+                // Without IconFile, the application's own icon (sdk#1207).
+                (_icon, _smallIcon) = WindowsApplicationIcon.Load(Native.GetDpiForWindow(_window));
+                if (_icon != 0)
+                {
+                    Native.SendMessage(_window, WmSetIcon, IconSmall, _smallIcon);
+                    Native.SendMessage(_window, WmSetIcon, IconBig, _icon);
+                }
+            }
 
             SynchronizationContext.SetSynchronizationContext(new WindowSynchronizationContext(this));
             ScheduleLoadingSurface(options);
@@ -850,6 +861,11 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 {
                     Native.DestroyIcon(_icon);
                     _icon = 0;
+                }
+                if (_smallIcon != 0)
+                {
+                    Native.DestroyIcon(_smallIcon);
+                    _smallIcon = 0;
                 }
                 if (_selfHandle.IsAllocated)
                 {

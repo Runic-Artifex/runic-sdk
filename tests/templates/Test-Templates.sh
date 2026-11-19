@@ -696,6 +696,8 @@ verify_template() {
 
   # A plain build installs the frontend packages with the selected manager.
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
+  # The executable's icon, written from icons/icon.png because the project sets no ApplicationIcon (sdk#1207).
+  test -f "$output/obj/Release/net10.0/runic-icon/application.ico"
   test -d "$output/Frontend/node_modules"
   test -f "$output/Frontend/dist/index.html"
   # The frontend's packages and build output are not project items.
@@ -1232,12 +1234,17 @@ check_application_id() {
     echo "Project '$project_name' declared application ID '$generated', expected '$expected'." >&2
     exit 1
   fi
-  for icon in icon.svg icon.png icon.ico; do
+  for icon in icon.svg icon.png; do
     if ! cmp -s "$repository_root/tools/Runic.Application.Templates/content/runic-app/icons/$icon" "$output/icons/$icon"; then
       echo "Project '$project_name' did not get icons/$icon unchanged." >&2
       exit 1
     fi
   done
+  # The build derives the Windows icon from icon.png (sdk#1207); the project has no .ico of its own.
+  if [[ -e "$output/icons/icon.ico" ]] || grep -q '<ApplicationIcon>' "$output/$project_name.csproj"; then
+    echo "Project '$project_name' still has a hand-made icons/icon.ico or an ApplicationIcon." >&2
+    exit 1
+  fi
 }
 
 # angular-vite is --frontend angular --angular-build vite.

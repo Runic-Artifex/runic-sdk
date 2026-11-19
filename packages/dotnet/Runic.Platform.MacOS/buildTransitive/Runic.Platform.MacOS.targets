@@ -339,6 +339,9 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
                                  (by extension, with the Alternate rank), RunicMacCameraUsageDescription and
                                  RunicMacMicrophoneUsageDescription, and CFBundleLocalizations for RunicApplicationLocales.
         Contents/Resources/<tag>.lproj  an empty folder per locale of RunicApplicationLocales; others are removed
+        Contents/Resources/icon.icns    the application icon (CFBundleIconFile), which Runic.Platform's
+                                 RunicWriteApplicationIcon task writes from the package icon (RunicPackageIcon, else
+                                 icons/icon.png) unless RunicApplicationIconGenerationEnabled is false (sdk#1207)
         Contents/MacOS/<name>    a copy of the application host, which the bundle's signature covers
         Contents/MacOS/*         links to every other file and directory of the build output, so a rebuild or a
                                  frontend written to www/ needs no copy
@@ -371,6 +374,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
       <CameraUsageDescription ParameterType="System.String" />
       <MicrophoneUsageDescription ParameterType="System.String" />
       <Locales ParameterType="System.String" />
+      <IconFile ParameterType="System.String" />
       <Changed ParameterType="System.Boolean" Output="true" />
     </ParameterGroup>
     <Task>
@@ -396,6 +400,7 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
     public string CameraUsageDescription { get; set; } = "";
     public string MicrophoneUsageDescription { get; set; } = "";
     public string Locales { get; set; } = "";
+    public string IconFile { get; set; } = "";
     [Output] public bool Changed { get; set; }
 
     public override bool Execute()
@@ -453,6 +458,24 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
             Changed = true;
         }
 
+        // The application icon: a copy of the .icns written from the package icon, or none, when there is no icon.
+        string icon = Path.Combine(resources, "icon.icns");
+        if (!string.IsNullOrEmpty(IconFile))
+        {
+            byte[] bytes = File.ReadAllBytes(IconFile);
+            if (!File.Exists(icon) || !bytes.SequenceEqual(File.ReadAllBytes(icon)))
+            {
+                Directory.CreateDirectory(resources);
+                File.WriteAllBytes(icon, bytes);
+                Changed = true;
+            }
+        }
+        else if (File.Exists(icon))
+        {
+            File.Delete(icon);
+            Changed = true;
+        }
+
         string info = Path.Combine(contents, "Info.plist");
         string text = InfoPlist();
         if (!File.Exists(info) || File.ReadAllText(info) != text)
@@ -478,6 +501,7 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
         Entry(text, "CFBundleDisplayName", name);
         Entry(text, "CFBundleExecutable", Escape(Executable));
         Entry(text, "CFBundlePackageType", "APPL");
+        if (!string.IsNullOrEmpty(IconFile)) Entry(text, "CFBundleIconFile", "icon.icns");
         string version = NumericVersion(Version);
         Entry(text, "CFBundleShortVersionString", version);
         Entry(text, "CFBundleVersion", version);
@@ -570,13 +594,40 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
     </Task>
   </UsingTask>
 
-  <Target Name="RunicMacDevelopmentBundle" AfterTargets="ComputeRunArguments"
+  <!-- The development bundle's icon: the package icon resolved as dotnet runic package does, written as an .icns in obj/
+       when it changed, with the task of Runic.Platform's targets. -->
+  <Target Name="_RunicMacResolveDevelopmentIcon">
+    <PropertyGroup>
+      <_RunicMacDevelopmentIconSource>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(RunicPackageIcon)', 'icons/icon.png'))'))</_RunicMacDevelopmentIconSource>
+      <_RunicMacDevelopmentIconSource Condition="!Exists('$(_RunicMacDevelopmentIconSource)') or '$(_RunicPlatformTargetsImported)' != 'true' or '$(RunicApplicationIconGenerationEnabled)' != 'true'"></_RunicMacDevelopmentIconSource>
+      <_RunicMacDevelopmentIcns>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'runic-icon', 'icon.icns'))</_RunicMacDevelopmentIcns>
+    </PropertyGroup>
+  </Target>
+  <Target Name="_RunicMacWriteDevelopmentIcon" Condition="'$(_RunicMacDevelopmentIconSource)' != ''"
+          Inputs="$(_RunicMacDevelopmentIconSource);$(_RunicApplicationIconTaskSource)" Outputs="$(_RunicMacDevelopmentIcns)">
+    <RunicWriteApplicationIcon Source="$(_RunicMacDevelopmentIconSource)" Destination="$(_RunicMacDevelopmentIcns)" Format="icns">
+      <Output TaskParameter="Problem" PropertyName="_RunicMacDevelopmentIconProblem" />
+      <Output TaskParameter="Detail" PropertyName="_RunicMacDevelopmentIconDetail" />
+    </RunicWriteApplicationIcon>
+    <Warning Code="RUNICICON001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicicon001"
+             Condition="'$(_RunicMacDevelopmentIconProblem)' == 'unreadable'"
+             Text="The application icon $(_RunicMacDevelopmentIconSource) is not a PNG that Runic can read: $(_RunicMacDevelopmentIconDetail) The development bundle has no icon. Save it as a PNG again, or set RunicPackageIcon to another file." />
+    <Warning Code="RUNICICON002" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicicon002"
+             Condition="'$(_RunicMacDevelopmentIconProblem)' == 'not-square'"
+             Text="The application icon $(_RunicMacDevelopmentIconSource) is $(_RunicMacDevelopmentIconDetail); it must be square. The development bundle has no icon." />
+    <Warning Code="RUNICICON003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicicon003"
+             Condition="'$(_RunicMacDevelopmentIconProblem)' == 'too-small'"
+             Text="The application icon $(_RunicMacDevelopmentIconSource) is $(_RunicMacDevelopmentIconDetail); it must be at least 256 px (512 px recommended). The development bundle has no icon." />
+  </Target>
+
+  <Target Name="RunicMacDevelopmentBundle" AfterTargets="ComputeRunArguments" DependsOnTargets="_RunicMacResolveDevelopmentIcon;_RunicMacWriteDevelopmentIcon"
           Condition="'$(RunicMacDevelopmentBundle)' != 'false' and '$(_RunicMacDevelopmentBundleHost)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(UseAppHost)' == 'true' and '$(ApplicationId)$(RunicMacBundleIdentifier)' != '' and '$(IsTestProject)' != 'true' and '$(RunicMacPrivilegedDaemon)' != 'true' and ('$(RuntimeIdentifier)' == '' or $(RuntimeIdentifier.StartsWith('osx')))">
     <PropertyGroup>
       <_RunicMacDevelopmentBundleIdentifier>$([MSBuild]::ValueOrDefault('$(RunicMacBundleIdentifier)', '$(ApplicationId)'))</_RunicMacDevelopmentBundleIdentifier>
       <_RunicMacDevelopmentBundleDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'runic-macos'))</_RunicMacDevelopmentBundleDirectory>
       <_RunicMacDevelopmentBundle>$(_RunicMacDevelopmentBundleDirectory)$(AssemblyName).app</_RunicMacDevelopmentBundle>
       <_RunicMacDevelopmentExecutable>$(AssemblyName)$(_NativeExecutableExtension)</_RunicMacDevelopmentExecutable>
+      <_RunicMacDevelopmentBundleIcon Condition="'$(_RunicMacDevelopmentIconSource)' != '' and Exists('$(_RunicMacDevelopmentIcns)')">$(_RunicMacDevelopmentIcns)</_RunicMacDevelopmentBundleIcon>
     </PropertyGroup>
     <Message Importance="high" Condition="!Exists('$(TargetDir)$(_RunicMacDevelopmentExecutable)')"
              Text="Runic: $(TargetDir)$(_RunicMacDevelopmentExecutable) does not exist, so the application runs without its development bundle. Build it first." />
@@ -591,7 +642,8 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
                                     FileTypes="$(RunicApplicationFileTypes)"
                                     CameraUsageDescription="$(RunicMacCameraUsageDescription)"
                                     MicrophoneUsageDescription="$(RunicMacMicrophoneUsageDescription)"
-                                    Locales="$(RunicApplicationLocales);@(RunicApplicationLocale)">
+                                    Locales="$(RunicApplicationLocales);@(RunicApplicationLocale)"
+                                    IconFile="$(_RunicMacDevelopmentBundleIcon)">
       <Output TaskParameter="Changed" PropertyName="_RunicMacDevelopmentBundleChanged" />
     </RunicWriteMacDevelopmentBundle>
     <!-- Ad hoc, without the hardened runtime. A failed signature leaves the bundle unsigned: the application still runs,

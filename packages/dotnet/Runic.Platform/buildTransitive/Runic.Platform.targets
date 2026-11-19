@@ -449,4 +449,74 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
       <_GeneratePublishDependencyFilePropertyInputsCacheToHash Include="RunicPlatformAssembliesLeftOut=$(_RunicPlatformAssembliesLeftOut)" />
     </ItemGroup>
   </Target>
+
+  <!--
+    The application icon (runic-sdk#1207, D078.1). An application supplies one icon, the package icon of
+    dotnet runic package: RunicPackageIcon, by default icons/icon.png, a square PNG of at least 256 px (512 px
+    recommended). When the project sets no ApplicationIcon (and no Win32Resource), the build writes the Windows icon
+    from it, $(IntermediateOutputPath)runic-icon/application.ico with 16, 20, 24, 32, 40, 48, 64 and 256 px, and uses
+    it as ApplicationIcon, so the executable and the managed assembly carry it as their icon resource on every
+    operating system. Runic.Platform.MacOS writes the development bundle's .icns with the same task, and
+    Runic.Desktop's windows use the application's icon when they set no IconFile.
+
+    The task is managed code only (RunicApplicationIcon.cs beside this file): the same bytes on Linux, Windows, macOS
+    and in Nix builds. A PNG it cannot read, an icon that is not square or one smaller than 256 px is a warning
+    (RUNICICON001 to RUNICICON003), and the build goes on without the generated icon.
+    RunicApplicationIconGenerationEnabled=false turns all of it off.
+  -->
+  <PropertyGroup>
+    <RunicApplicationIconGenerationEnabled Condition="'$(RunicApplicationIconGenerationEnabled)' == ''">true</RunicApplicationIconGenerationEnabled>
+    <_RunicApplicationIconTaskSource>$(MSBuildThisFileDirectory)RunicApplicationIcon.cs</_RunicApplicationIconTaskSource>
+  </PropertyGroup>
+
+  <UsingTask TaskName="RunicWriteApplicationIcon" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+      <Format ParameterType="System.String" Required="true" />
+      <Problem ParameterType="System.String" Output="true" />
+      <Detail ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs" Source="$(MSBuildThisFileDirectory)RunicApplicationIcon.cs" />
+    </Task>
+  </UsingTask>
+
+  <!-- The package icon as dotnet runic package resolves it: RunicPackageIcon relative to the project, else icons/icon.png. -->
+  <Target Name="_RunicResolveApplicationIcon">
+    <PropertyGroup>
+      <_RunicApplicationIconSource>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(RunicPackageIcon)', 'icons/icon.png'))'))</_RunicApplicationIconSource>
+      <_RunicApplicationIconSource Condition="!Exists('$(_RunicApplicationIconSource)')"></_RunicApplicationIconSource>
+      <_RunicApplicationIconFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'runic-icon', 'application.ico'))</_RunicApplicationIconFile>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RunicGenerateApplicationIcon" BeforeTargets="CoreCompile" DependsOnTargets="_RunicResolveApplicationIcon;_RunicWriteWindowsIcon"
+          Condition="'$(RunicApplicationIconGenerationEnabled)' == 'true' and '$(ApplicationIcon)' == '' and '$(Win32Resource)' == '' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(IsTestProject)' != 'true'">
+    <PropertyGroup Condition="'$(_RunicApplicationIconSource)' != '' and Exists('$(_RunicApplicationIconFile)')">
+      <ApplicationIcon>$(_RunicApplicationIconFile)</ApplicationIcon>
+    </PropertyGroup>
+  </Target>
+
+  <!-- Incremental: the icon is written again only when the PNG or the task changed. A refused icon leaves no file, so the
+       warning returns with every build until the icon is fixed. -->
+  <Target Name="_RunicWriteWindowsIcon" Condition="'$(_RunicApplicationIconSource)' != ''" Inputs="$(_RunicApplicationIconSource);$(_RunicApplicationIconTaskSource)" Outputs="$(_RunicApplicationIconFile)">
+    <RunicWriteApplicationIcon Source="$(_RunicApplicationIconSource)" Destination="$(_RunicApplicationIconFile)" Format="ico">
+      <Output TaskParameter="Problem" PropertyName="_RunicApplicationIconProblem" />
+      <Output TaskParameter="Detail" PropertyName="_RunicApplicationIconDetail" />
+    </RunicWriteApplicationIcon>
+    <Warning Code="RUNICICON001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicicon001"
+             Condition="'$(_RunicApplicationIconProblem)' == 'unreadable'"
+             Text="The application icon $(_RunicApplicationIconSource) is not a PNG that Runic can read: $(_RunicApplicationIconDetail) The build uses no generated icon. Save it as a PNG again, or set RunicPackageIcon to another file." />
+    <Warning Code="RUNICICON002" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicicon002"
+             Condition="'$(_RunicApplicationIconProblem)' == 'not-square'"
+             Text="The application icon $(_RunicApplicationIconSource) is $(_RunicApplicationIconDetail); it must be square. The build uses no generated icon." />
+    <Warning Code="RUNICICON003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicicon003"
+             Condition="'$(_RunicApplicationIconProblem)' == 'too-small'"
+             Text="The application icon $(_RunicApplicationIconSource) is $(_RunicApplicationIconDetail); it must be at least 256 px (512 px recommended). The build uses no generated icon." />
+    <ItemGroup Condition="'$(_RunicApplicationIconProblem)' == ''">
+      <FileWrites Include="$(_RunicApplicationIconFile)" />
+    </ItemGroup>
+  </Target>
 </Project>

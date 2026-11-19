@@ -445,7 +445,8 @@
         "tests/fixtures/flathub",
         "eng/ci/hdiutil.sh",
         "eng/ci/packaging-probe-check.mjs",
-        "eng/ci/packaging-rpm.sh"
+        "eng/ci/packaging-rpm.sh",
+        "eng/ci/windows-icon-check.mjs"
       ]
     },
     "templates": {

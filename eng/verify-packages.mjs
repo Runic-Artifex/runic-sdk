@@ -157,7 +157,8 @@ export const packageLayouts = {
   // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
   // carry their help links (W300-004).
   // The RUNICPLAT analyzers and their code fixes ship under analyzers/ (0.14).
-  "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets",
+  // RunicApplicationIcon.cs is the source of the application icon task, which the targets compile (sdk#1207).
+  "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets", "buildTransitive/RunicApplicationIcon.cs",
     "analyzers/dotnet/cs/Runic.Platform.Analyzers.dll", "analyzers/dotnet/cs/Runic.Platform.Analyzers.CodeFixes.dll"] },
   // The macOS targets generate the launch daemon's property list; the props carry their help links (W300-026).
   "Runic.Platform.MacOS": { includes: ["buildTransitive/Runic.Platform.MacOS.props", "buildTransitive/Runic.Platform.MacOS.targets"] },

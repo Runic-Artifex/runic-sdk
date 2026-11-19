@@ -615,6 +615,7 @@ of the same major without changes by its author. That includes:
   | `RUNICEL` | The Runic.Platform.Windows.Elevation build targets |
   | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |
   | `RUNICDESK` | The Runic.Desktop build targets; experimental Desktop APIs |
+  | `RUNICICON` | The application icon: the build targets of Runic.Platform and Runic.Platform.MacOS (since 0.23) |
   | `RUNICPLAT` | The Runic.Platform analyzers (since 0.14) |
   | `RUNICASSETS` | Experimental APIs of Runic.Assets |
   | `RUNICNAV` | The Runic.Navigation.ReactiveUI build targets (since 0.11); `RUNICNAV001`, the graduated experimental Navigation ID, is retired |

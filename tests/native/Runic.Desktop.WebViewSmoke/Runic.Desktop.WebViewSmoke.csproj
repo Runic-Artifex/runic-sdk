@@ -5,6 +5,8 @@
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
+    <!-- The application icon (sdk#1207): without an ApplicationIcon, the build derives the window icons from it. -->
+    <RunicPackageIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.png</RunicPackageIcon>
   </PropertyGroup>
 
   <ItemGroup>

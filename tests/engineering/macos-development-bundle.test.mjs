@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
@@ -12,6 +12,9 @@ import { root } from "../../eng/run.mjs";
 // script in place of codesign, and check the bundle, its Info.plist, the links to the build output and when it is
 // signed again. The macOS packaging leg runs the probe through dotnet run on a Mac.
 const targets = resolve(root, "packages/dotnet/Runic.Platform.MacOS/buildTransitive/Runic.Platform.MacOS.targets");
+// Runic.Platform's targets, which every consumer of Runic.Platform.MacOS also gets, bring the icon task (sdk#1207).
+const platformTargets = resolve(root, "packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets");
+const templateIcon = resolve(root, "tools/Runic.Application.Templates/content/runic-app/icons/icon.png");
 const windows = process.platform === "win32";
 let directory;
 
@@ -53,6 +56,7 @@ function fixture(name, properties = "") {
 ${properties}
   </PropertyGroup>
   <Target Name="ComputeRunArguments" />
+  <Import Project="${platformTargets}" />
   <Import Project="${targets}" />
 </Project>
 `);
@@ -205,4 +209,39 @@ test("dotnet run starts the build output without the development bundle when it 
   rmSync(output);
   assert.equal(runCommand(app), output);
   assert.equal(existsSync(join(app.bundle, "Contents", "MacOS", "Notes")), false);
+});
+
+test("the development bundle has the application icon as icon.icns, written from the package icon", { skip: windows && "symbolic links need privileges on Windows" }, () => {
+  const app = fixture("icon");
+  mkdirSync(join(app.project, "icons"));
+  copyFileSync(templateIcon, join(app.project, "icons", "icon.png"));
+  const icns = join(app.bundle, "Contents", "Resources", "icon.icns");
+  const info = () => readFileSync(join(app.bundle, "Contents", "Info.plist"), "utf8");
+  runCommand(app);
+  // The PNG entries of a 512 px icon, as iconutil writes them, without the 1024 px ic10.
+  const data = readFileSync(icns);
+  assert.equal(data.toString("latin1", 0, 4), "icns");
+  assert.equal(data.readUInt32BE(4), data.length);
+  const types = [];
+  for (let offset = 8; offset < data.length; offset += data.readUInt32BE(offset + 4)) {
+    types.push(data.toString("latin1", offset, offset + 4));
+    assert.equal(data.readUInt32BE(offset + 8), 0x89504e47, "a PNG entry");
+  }
+  assert.deepEqual(types, ["icp4", "ic11", "icp5", "ic12", "ic07", "ic13", "ic08", "ic14", "ic09"]);
+  assert.ok(info().includes("<key>CFBundleIconFile</key><string>icon.icns</string>"), info());
+  assert.equal(signatures(app).length, 1);
+  // An unchanged icon is neither written nor signed again.
+  runCommand(app);
+  assert.equal(signatures(app).length, 1);
+  // RunicApplicationIconGenerationEnabled=false, and an application without an icon, have none.
+  runCommand(app, ["RunicApplicationIconGenerationEnabled=false"]);
+  assert.equal(existsSync(icns), false);
+  assert.ok(!info().includes("CFBundleIconFile"), info());
+  assert.equal(signatures(app).length, 2);
+  runCommand(app);
+  assert.equal(existsSync(icns), true);
+  rmSync(join(app.project, "icons"), { recursive: true });
+  runCommand(app);
+  assert.equal(existsSync(icns), false);
+  assert.equal(signatures(app).length, 4);
 });

@@ -11,6 +11,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <DefineConstants>$(DefineConstants);RUNIC_APPLICATION_ICON_CODEC</DefineConstants>
     <!-- Program.cs also runs the executable as the privileged daemon that the NativePrivilegedRoot case installs. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- The launch daemon generated from the items below; PrivilegedGenerationTests reads it and MacOSDaemon. -->
@@ -27,6 +28,8 @@
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
     <!-- The thumbnail cases share the Windows suite's test images and PNG check. -->
     <Compile Include="../Runic.Platform.Windows.Tests/ThumbnailImages.cs" Link="ThumbnailImages.cs" />
+    <!-- The application icon codec of Runic.Platform's targets, without its MSBuild task (sdk#1207). -->
+    <Compile Include="../../../packages/dotnet/Runic.Platform/buildTransitive/RunicApplicationIcon.cs" Link="ApplicationIcon/RunicApplicationIcon.cs" />
     <!-- The generation tests also build small projects against the shipped targets. -->
     <None Include="../../../packages/dotnet/Runic.Platform/buildTransitive/*;../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/*" Link="privileged-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <RunicPrivilegedAction Include="eu.runic.tests.activate" Program="/usr/libexec/runic-tests/helper" Verb="activate"

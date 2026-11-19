@@ -101,8 +101,8 @@ export const platformRules = [
     "eng/build/desktop.props", "eng/branding/desktop", "tools/Runic.Application.Templates/content/runic-app/packaging",
     "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs", "tools/Runic.Application.Templates/content/runic-app/icons",
     "tests/native/Runic.Packaging.Probe", "tools/dotnet-runic/Packaging",
-    // The packaging job's receipt check, which its Windows and macOS legs run too.
-    "eng/ci/packaging-probe-check.mjs"] },
+    // The packaging job's receipt check and the executable's icon check (sdk#1207), which its Windows and macOS legs run too.
+    "eng/ci/packaging-probe-check.mjs", "eng/ci/windows-icon-check.mjs"] },
   // The managed Windows and View runtime, its NativeAOT apps, probes and file watching, the development asset source,
   // and the test host whose tests
   // run there (Runic.Application.Views.Wpf.Windows.Tests references it too): x64 Windows and macOS.
