@@ -2086,9 +2086,9 @@ jobs:
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
       # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes and
       # blobs-probe its blobs and uploads (blobs/1) from Chromium. The --probe-webview-* probes open a real WebView2 or
-      # WebKitGTK window (sdk#1148, sdk#1149; placement under Openbox, which maximizes) and report themselves skipped on
-      # macOS. --probe-debug-endpoint shows a window in the runner's Chrome or Edge and checks that the NativeAOT publish
-      # opens no DevTools Protocol endpoint (sdk#1221).
+      # WebKitGTK window (sdk#1148, sdk#1149, sdk#1190; placement under Openbox, which maximizes) and report themselves
+      # skipped on macOS; --probe-serve-only-drain runs everywhere. --probe-debug-endpoint shows a window in the
+      # runner's Chrome or Edge and checks that the NativeAOT publish opens no DevTools Protocol endpoint (sdk#1221).
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
@@ -2100,6 +2100,8 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-guard
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-drain
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-serve-only-drain
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
               'openbox & exec ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-placement'
             # Google Chrome: the x64 runner has it, the arm64 one no Chromium-based browser.
@@ -2117,6 +2119,8 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-guard
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-drain
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-serve-only-drain
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-placement
             if [[ "$RUNNER_OS" == Windows ]]; then ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-debug-endpoint; fi
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge

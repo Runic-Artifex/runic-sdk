@@ -115,6 +115,53 @@ internal static partial class WebViewProbe
         return 0;
     }
 
+    // sdk#1190, --probe-webview-close-drain: with a close drain, the user's close keeps the window open while the Window's
+    // accepted work runs, a second close is ignored, and the window closes once the work has ended.
+    internal static int RunCloseDrain()
+    {
+        if (!Prepare(out var root)) return 0;
+        var log = new RecordingLoggerFactory();
+        var services = new ServiceCollection();
+        services.AddScoped<ProbeViewModel>();
+        services.AddRunicViews();
+        services.AddRunicWindowService();
+        services.AddSingleton<ILoggerFactory>(log);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        var options = new RunicCsWebUiHostOptions { UseWebView = true, CloseDrain = RunicCloseDrain.For(TimeSpan.FromSeconds(60)) };
+        var result = RunicCsWebUiHost.Run(provider, options, async host =>
+        {
+            var window = await host.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = root, Width = 640, Height = 480 });
+            var native = CsWebUiPlatformServices.GetWebUiWindow(window) ?? throw new InvalidOperationException("The Window has no WebUI window.");
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var work = new AcceptedWorkScope();
+            _ = work.RunAsync(() => release.Task);
+            using var drained = window.Services.GetRequiredService<IRunicWindowContext>().DrainOnClose(work);
+            var windows = window.Services.GetRequiredService<IRunicWindowService>();
+            var closed = window.WaitForCloseAsync().AsTask();
+
+            RequestUserClose(native);
+            await Until(() => !windows.Windows.Contains(window), "The decided close did not take the Window out of IRunicWindowService.Windows.");
+            await Task.Delay(1000);
+            Check(native.IsShown && !closed.IsCompleted, "The window closed while its work was draining.");
+            RequestUserClose(native);
+            await Task.Delay(500);
+            Check(native.IsShown && !closed.IsCompleted, "A second user close during the drain closed the window.");
+
+            release.SetResult();
+            await closed.WaitAsync(Limit);
+            // WebUI closes the window on its own thread; a drained Window has released it.
+            await Until(() => !Shown(native), "The window stayed open after its work had drained.");
+            await window.DisposeAsync();
+            return 7;
+        });
+        Check(result == 7, $"Run returned {result} instead of the application's result.");
+        lock (log.Entries)
+            Check(!log.Entries.Any(static entry => entry.EventId.Id == 1055),
+                "A WebView Window with a close drain logged event 1055:\n" + string.Join('\n', log.Entries.Select(static entry => entry.ToString())));
+        Console.WriteLine("CSWEBUI_WEBVIEW_CLOSE_DRAIN_OK");
+        return 0;
+    }
+
     // The same bounds and state; Wayland reports no position, so there only the size and state count.
     private static bool Same(RunicWindowPlacement? actual, RunicWindowPlacement expected) =>
         actual is not null && actual.Width == expected.Width && actual.Height == expected.Height && actual.Maximized == expected.Maximized
@@ -151,6 +198,12 @@ internal static partial class WebViewProbe
     }
 
     private static string Root { get; set; } = "";
+
+    private static bool Shown(WebUiWindow window)
+    {
+        try { return window.IsShown; }
+        catch (ObjectDisposedException) { return false; }
+    }
 
     private static async Task Until(Func<bool> condition, string message)
     {

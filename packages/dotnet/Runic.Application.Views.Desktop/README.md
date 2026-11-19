@@ -171,8 +171,13 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `DesktopHost.ShutdownStarting`, drain such windows visibly for up to
   `DesktopHostOptions.ShutdownDrainTimeout` and then cancel `ShutdownRequested`
   ([closing after the work has drained](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#closing-after-the-work-has-drained)).
-  An installed browser and serve-only mode close at once and log event 1055
+  An installed browser closes at once and logs event 1055
   `WindowCloseDrainUnavailable`; the Window's scope still waits for durable work.
+  In serve-only mode (since 0.23, #1190) the end of serving, a line on standard
+  input, is the Window's close: with a drain the surface keeps serving its
+  pages, still connected, until the work has ended, and only then does
+  `WaitForCloseAsync` return. A closing browser tab is no close. A termination
+  signal ends serving and the drain at once.
 - `DesktopPlatformServices.AnnounceAsync(window, message, priority)` asks the screen
   reader to speak a status message for a Window, such as "Saved", through its
   embedded window (`DesktopWindow.AnnounceAsync`; see

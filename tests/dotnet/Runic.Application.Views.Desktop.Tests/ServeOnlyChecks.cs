@@ -90,6 +90,71 @@ internal sealed class ServeOnlyChecks
         }
     }
 
+    // sdk#1190: the end of serving is the serve-only Window's close. With a close drain the surface keeps serving, and
+    // WaitForCloseAsync returns once the Window's drained work has ended; the Window leaves IRunicWindowService.Windows
+    // when serving ends. No event 1055.
+    [Test, NotInParallel(Order = 1)]
+    public async Task AServeOnlyWindowDrainsWhenServingEnds()
+    {
+        string? serveOnly = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY");
+        var console = Console.Out;
+        var input = Console.In;
+        var lines = new LineReader();
+        var output = new StringWriter();
+        try
+        {
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
+            Console.SetIn(lines);
+            Console.SetOut(output);
+
+            var services = new ServiceCollection();
+            services.AddScoped<OrderedCollectionModel>();
+            services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+                _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+            services.AddRunicWindowService();
+            var log = new RecordingLoggerFactory();
+            services.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(log);
+            await using var provider = services.BuildServiceProvider();
+            await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = new NativeDispatchFactory(),
+                WaitForConnection = false,
+            });
+            await using var window = await TestWindows.EmbeddedHtml(provider, desktop)
+                .OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { CloseDrain = RunicCloseDrain.UntilDrained });
+            var host = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var work = new AcceptedWorkScope();
+            _ = work.RunAsync(() => release.Task);
+            using var drained = window.Services.GetRequiredService<IRunicWindowContext>().DrainOnClose(work);
+            var windows = window.Services.GetRequiredService<IRunicWindowService>();
+
+            var closed = window.WaitForCloseAsync().AsTask();
+            lines.Send("\n");
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (windows.Windows.Contains(window))
+            {
+                Check(DateTime.UtcNow < deadline, "The end of serving did not take the Window out of IRunicWindowService.Windows.");
+                await Task.Delay(20);
+            }
+            await Task.Delay(300);
+            Check(!closed.IsCompleted, "WaitForCloseAsync returned while the Window's work was draining.");
+            using (var client = new HttpClient())
+            using (var page = await client.GetAsync(host.Surface.Url))
+                Check(page.IsSuccessStatusCode, $"The draining surface did not serve its page: {page.StatusCode}.");
+            release.SetResult();
+            await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
+            Check(log.Entries.All(static entry => entry.EventId != 1055), "A serve-only Window with a close drain logged event 1055.");
+        }
+        finally
+        {
+            lines.Send(null);
+            Console.SetOut(console);
+            Console.SetIn(input);
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", serveOnly);
+        }
+    }
+
     // A1: RunicDesktopHostOptions.ServeOnly serves as the environment variable does, without setting it, and Run then
     // starts no window toolkit loop, so a headless machine reports no display diagnostics.
     [Test, NotInParallel(Order = 1)]
