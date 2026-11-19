@@ -10,6 +10,12 @@ namespace Runic.Desktop.Internal;
 // or assembly-location discovery are needed by NativeAOT applications.
 internal static partial class WindowsWebView2Interop
 {
+    // The exception for a WebView2 completion's failed HRESULT. -1 ignores the thread's current COM error info: an
+    // earlier failed COM call on this thread (a managed handler that threw through a COM event, for example) can leave
+    // IErrorInfo behind, and GetExceptionForHR would otherwise return that stale exception instead of this HRESULT's
+    // (#1208).
+    internal static Exception? ExceptionFor(int errorCode) => Marshal.GetExceptionForHR(errorCode, (nint)(-1));
+
     internal const int SettingsSlot = 3;
     internal const int NavigateSlot = 5;
     internal const int NavigationStartingSlot = 7;
@@ -1169,7 +1175,7 @@ internal sealed partial class WebViewDevToolsCompletion : IWebViewDevToolsComple
     public int Invoke(int errorCode, nint result)
     {
         if (errorCode < 0)
-            _completion.TrySetException(new InvalidOperationException("The DevTools protocol call failed.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("The DevTools protocol call failed.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else
             _completion.TrySetResult(Marshal.PtrToStringUni(result) ?? string.Empty);
         return 0;
@@ -1184,7 +1190,7 @@ internal sealed partial class WebViewCompletion : IWebViewEnvironmentCompleted, 
     public int Invoke(int errorCode, nint result)
     {
         if (errorCode < 0 || result == 0)
-            _completion.TrySetException(new InvalidOperationException("WebView2 creation failed.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 creation failed.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else
         {
             WindowsWebView2Interop.AddRef(result);
@@ -1208,7 +1214,7 @@ internal sealed partial class WebViewBrowserExtensionCompletion : IWebViewBrowse
     {
         if (errorCode < 0)
         {
-            _completion.TrySetException(new InvalidOperationException("WebView2 did not install the browser extension.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 did not install the browser extension.", WindowsWebView2Interop.ExceptionFor(errorCode)));
             return 0;
         }
         string? id = null;
@@ -1245,7 +1251,7 @@ internal sealed partial class WebViewBrowserExtensionList(IReadOnlyCollection<st
     {
         if (errorCode < 0)
         {
-            _completion.TrySetException(new InvalidOperationException("WebView2 did not list the profile's browser extensions.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 did not list the profile's browser extensions.", WindowsWebView2Interop.ExceptionFor(errorCode)));
             return 0;
         }
         try
@@ -1282,7 +1288,7 @@ internal sealed partial class WebViewBrowserExtensionRemoval : IWebViewBrowserEx
     internal Task Task => _completion.Task;
     public int Invoke(int errorCode)
     {
-        if (errorCode < 0) _completion.TrySetException(new InvalidOperationException("WebView2 did not remove the browser extension.", Marshal.GetExceptionForHR(errorCode)));
+        if (errorCode < 0) _completion.TrySetException(new InvalidOperationException("WebView2 did not remove the browser extension.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else _completion.TrySetResult();
         return 0;
     }
@@ -1300,7 +1306,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
     public int Invoke(int errorCode, nint id)
     {
         if (errorCode < 0)
-            _completion.TrySetException(new InvalidOperationException("WebView2 rejected the document-start script.", Marshal.GetExceptionForHR(errorCode)));
+            _completion.TrySetException(new InvalidOperationException("WebView2 rejected the document-start script.", WindowsWebView2Interop.ExceptionFor(errorCode)));
         else
             _completion.TrySetResult();
         return 0;
