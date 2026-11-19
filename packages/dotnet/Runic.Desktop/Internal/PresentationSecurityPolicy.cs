@@ -75,4 +75,8 @@ internal sealed record PresentationSurfaceRuntimeOptions(
 
     // The clock of the connection deadline and the Bridge handshake; tests replace it.
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
+    // DesktopSurfaceOptions.ServedThrough: the loopback origin that serves the surface's pages to a browser, whose port
+    // the page's Bridge connects to (WebUiWindow.GetBootstrapScript).
+    internal Uri? ServedThrough { get; init; }
 }

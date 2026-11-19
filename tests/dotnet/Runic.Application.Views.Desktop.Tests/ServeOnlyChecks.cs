@@ -14,6 +14,20 @@ using TUnit.Core;
 // input. It takes precedence over RUNIC_APPLICATION_CLOSE_AFTER_OPEN.
 internal sealed class ServeOnlyChecks
 {
+    // #1187 (D077.14): RUNIC_APPLICATION_SERVE_ORIGIN names dotnet runic dev --browser's loopback address; anything but a
+    // loopback http origin with an explicit port is ignored.
+    [Test]
+    public void ServeOriginIsALoopbackHttpOriginOrNothing()
+    {
+        Check(RunicDesktopHost.ServedThrough("http://127.0.0.1:9224") == new Uri("http://127.0.0.1:9224/"), "127.0.0.1");
+        Check(RunicDesktopHost.ServedThrough("http://127.0.0.1:9224/") == new Uri("http://127.0.0.1:9224/"), "127.0.0.1/");
+        Check(RunicDesktopHost.ServedThrough("http://localhost:41000") == new Uri("http://localhost:41000/"), "localhost");
+        Check(RunicDesktopHost.ServedThrough("http://[::1]:9224") == new Uri("http://[::1]:9224/"), "[::1]");
+        foreach (var value in new[] { null, "", "https://127.0.0.1:9224", "http://example.com:9224", "http://192.168.1.2:9224",
+            "http://127.0.0.1", "http://127.0.0.1:9224/path", "http://127.0.0.1:9224/?x=1", "http://user@127.0.0.1:9224", "127.0.0.1:9224" })
+            Check(RunicDesktopHost.ServedThrough(value) is null, $"'{value}' was taken as a serve origin.");
+    }
+
     [Test, NotInParallel(Order = 1)]
     public async Task ServeOnlySwitchServesWithoutAWindowUntilAnInputLine()
     {

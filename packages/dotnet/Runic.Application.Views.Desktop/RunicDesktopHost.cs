@@ -588,6 +588,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             }
             if (surfaceOptions.ContentSecurityPolicy is null && _contentSecurityPolicy is not null)
                 surfaceOptions = surfaceOptions with { ContentSecurityPolicy = _contentSecurityPolicy };
+            // dotnet runic dev --browser serves the Window's pages through its own loopback address (#1187, D077.14).
+            if (ServeOnly && _guestOptions is null && ServedThrough(Environment.GetEnvironmentVariable(ServeOriginEnvironmentVariable)) is { } servedThrough)
+                surfaceOptions = surfaceOptions with { ServedThrough = servedThrough };
             surface = await Desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
             development?.Attach(surface);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
@@ -1014,6 +1017,26 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         };
 
     internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
+
+    /// <summary>
+    /// The loopback origin that serves a serve-only Window's pages to a browser, <c>http://127.0.0.1:&lt;port&gt;</c>, which
+    /// <c>dotnet runic dev --browser</c> sets (#1187, D077.14): the surface admits it as one of its origins, and the
+    /// page's Bridge connects to its port (DesktopSurfaceOptions.ServedThrough).
+    /// </summary>
+    internal const string ServeOriginEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ORIGIN";
+
+    // Only an http origin on a loopback IP literal or localhost, with an explicit port and nothing after it; anything else
+    // is ignored, and the Window serves as without the variable.
+    internal static Uri? ServedThrough(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || !Uri.TryCreate(value, UriKind.Absolute, out var origin)) return null;
+        var authority = origin.GetLeftPart(UriPartial.Authority);
+        return origin.Scheme == Uri.UriSchemeHttp && origin.IsLoopback && !origin.IsDefaultPort && origin.UserInfo.Length == 0 &&
+            (origin.AbsolutePath == "/" && origin.Query.Length == 0 && origin.Fragment.Length == 0) &&
+            value.TrimEnd('/').Equals(authority, StringComparison.OrdinalIgnoreCase)
+                ? new Uri(authority + "/")
+                : null;
+    }
 
     internal static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
 
