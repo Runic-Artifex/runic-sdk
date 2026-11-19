@@ -454,13 +454,21 @@ no Bridge. It is reported when an application references more than one host
 adapter (`Runic.Application.Views.Desktop` or `Runic.Application.Views.Wpf`, and
 `Runic.Application.Views.CsWebUi`) without `RunicApplicationHost` and a page it
 copies to `www/` loads `runic-views.js`, or when `RunicApplicationHost` names a
-host that the application does not reference. Pages that load the
-deprecated `runic-desktop-views.js` or `runic-cswebui.js` directly (removed in
-0.23) choose their host at run time and report nothing; libraries and test projects report nothing either.
+host that the application does not reference. Libraries and test projects
+report nothing.
+
+Since 0.23 it is also reported when a page that the build copies to `www/`
+loads `runic-desktop-views.js` or `runic-cswebui.js`, the host-named copies of
+the client that 0.22 deprecated and 0.23 no longer copies (D072.11): the page
+then gets a 404 for the script and no Bridge, whichever hosts the application
+references. A frontend that ships its own file under that name reports nothing
+for it.
 
 **Fix:** set `RunicApplicationHost` to `desktop` or `cswebui` in the project or
 on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,
-to the host that the application runs on.
+to the host that the application runs on. For a page that loads a host-named
+copy, load `runic-views.js` instead (`<script src="runic-views.js"></script>`
+after `webui.js`).
 
 ### RUNICBRIDGE020
 
