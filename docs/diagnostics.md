@@ -325,9 +325,15 @@ read-only, non-nullable collection of DTO rows, or its key is not a non-nullable
 
 ### RUNICBRIDGE011
 
-A ReactiveUI interaction has no public getter or has a public setter.
+A ReactiveUI interaction has no public getter or has a public setter. Since
+0.23 also: its `[RunicInteractionTimeout]` is not a timeout, neither
+`Timeout.Infinite` nor 1 to 86 400 000 milliseconds (24 hours). The generator
+reports this one; the analyzer does not.
 
-**Fix:** expose the interaction as a get-only property.
+**Fix:** expose the interaction as a get-only property, and give
+`[RunicInteractionTimeout]` a timeout in that range, or `Timeout.Infinite` for
+none. See
+[Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime).
 
 ### RUNICBRIDGE012
 
@@ -741,9 +747,15 @@ A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` member of a ViewModel
 attaches the instance it reads when the ViewModel is presented, so a replaced
 instance would never reach the page.
 
+Since 0.23 also: a `ViewQuestion<TInput, TOutput>` has
+`[RunicInteractionTimeout]`, which applies to ReactiveUI interactions only. The
+generator reports this one; the analyzer does not.
+
 **Fix:** expose the member as a get-only property, such as
 `public ViewRequest<FocusTarget> Focus { get; } = new();`. See
-[View requests](../specs/application/README.md#view-requests).
+[View requests](../specs/application/README.md#view-requests). Give a view
+question its lifetime in its constructor instead:
+`new ViewQuestion<Request, bool>(timeout: Timeout.InfiniteTimeSpan)`.
 
 ### RUNICBRIDGE036
 

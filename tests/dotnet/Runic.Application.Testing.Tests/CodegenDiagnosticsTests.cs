@@ -741,6 +741,25 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PromptWindow : RunicWindow<PromptViewModel>;
                 """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
                 "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
+            // sdk#1146: a [RunicInteractionTimeout] that is not a timeout, and one on a view question, which takes its own.
+            foreach (var (name, milliseconds) in new[] { ("ZeroInteractionTimeout", "0"), ("NegativeInteractionTimeout", "-2"),
+                ("LongInteractionTimeout", "86400001") })
+                await RejectAt(name, $$"""
+                    public sealed class {{name}}ViewModel : FixtureModel
+                    {
+                        [RunicInteractionTimeout({{milliseconds}})] public ReactiveUI.Binding.Interaction<string, bool> Confirm { get; } = new();
+                    }
+                    public sealed partial class {{name}}Window : RunicWindow<{{name}}ViewModel>;
+                    """, "RUNICBRIDGE011", "[RunicInteractionTimeout(",
+                    $"{name}ViewModel.Confirm: [RunicInteractionTimeout({milliseconds})] is not a timeout; use 1 to 86400000 milliseconds (24 hours), or Timeout.Infinite for no deadline.").ConfigureAwait(false);
+            await RejectAt("ViewQuestionInteractionTimeout", """
+                public sealed class TimedQuestionViewModel : FixtureModel
+                {
+                    [RunicInteractionTimeout(-1)] public ViewQuestion<string, bool> Confirm { get; } = new();
+                }
+                public sealed partial class TimedQuestionWindow : RunicWindow<TimedQuestionViewModel>;
+                """, "RUNICBRIDGE035", "[RunicInteractionTimeout(-1)]",
+                "TimedQuestionViewModel.Confirm: [RunicInteractionTimeout] applies to a ReactiveUI Interaction; a view question takes its timeout in its constructor").ConfigureAwait(false);
             // RUNICBRIDGE035: a ViewRequest or ViewQuestion is a get-only property, in either MVVM flavor.
             await RejectAt("SettableViewRequest", """
                 public sealed class FocusViewModel : FixtureModel

@@ -2922,9 +2922,11 @@ model's turn it publishes and sends in the next turn. An input that does not fit
 [Leave confirmation in a web View](../Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
 for the table). When no page can answer it runs the fallback, or fails with
 `RunicInteractionUnhandledException` when there is none. The page's
-cancellation, its presentation closing, a timeout (by default two minutes, at
-most ten, set with the constructor's `timeout`) and the caller's token fail it
-as interactions do.
+cancellation, its presentation closing, a timeout and the caller's token fail it
+as interactions do. The constructor's `timeout` sets the lifetime: by default
+two minutes, at most 24 hours, or `Timeout.InfiniteTimeSpan` for none, as for a
+question a person answers (see
+[Interaction lifetime](../Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime)).
 
 **Work that no page started.** A timer, a notification's `Activated` handler
 or other background work of a window enters the window scope explicitly, so

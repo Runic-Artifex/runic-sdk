@@ -39,6 +39,7 @@ internal static class InteractionCodeEmitter
             if (!names.Add(publicName))
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                     $"{modelName}.{property.Name}: duplicate generated interaction name '{publicName}'.", property);
+            var timeout = DeclaredTimeout(property, interaction, modelName);
             plans.Add(new GeneratedInteractionPlan(property, interaction,
                 BridgeTypeGraph.Discover(interaction.Input,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 0),
@@ -46,10 +47,44 @@ internal static class InteractionCodeEmitter
                 BridgeTypeGraph.Discover(interaction.Output,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 1),
                     $"{modelName}.{property.Name}.output", property, honorJsonIgnore, BridgeValueDirection.FromPage),
-                $"{contractFingerprint}:interaction:{property.Name}"));
+                $"{contractFingerprint}:interaction:{property.Name}", timeout));
         }
         return [.. plans];
     }
+
+    private const string TimeoutAttribute = "Runic.Application.Views.RunicInteractionTimeoutAttribute";
+
+    /// <summary>
+    /// The <c>[RunicInteractionTimeout]</c> of a ReactiveUI interaction (sdk#1146), also one on the base property that the
+    /// property overrides, as the C# expression the descriptor takes: <c>Timeout.InfiniteTimeSpan</c> or a
+    /// <c>TimeSpan</c> of milliseconds. Null without one, for the default of two minutes. Read by name, as
+    /// <c>[RunicOperationClose]</c> is. A view question takes its timeout in its constructor instead.
+    /// </summary>
+    private static string? DeclaredTimeout(PropertyInfo property, MvvmInteraction interaction, string modelName)
+    {
+        const BindingFlags AllDeclared = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+            | BindingFlags.Public | BindingFlags.NonPublic;
+        Runic.Application.Views.BridgeAttributeNames.Entry? attribute = null;
+        for (var owner = property.DeclaringType; owner is not null && owner != typeof(object) && attribute is null; owner = owner.BaseType)
+            if (owner.GetProperty(property.Name, AllDeclared) is { } declared)
+                attribute = Runic.Application.Views.BridgeAttributeNames.Find(declared, TimeoutAttribute);
+        if (attribute is null) return null;
+        if (interaction.ShapeDiagnostic != BridgeDiagnosticCodes.Interaction)
+            throw new BridgeDiagnosticException(interaction.ShapeDiagnostic,
+                $"{modelName}.{property.Name}: [RunicInteractionTimeout] applies to a ReactiveUI Interaction; a {interaction.Kind} "
+                + "takes its timeout in its constructor (new ViewQuestion<TInput, TOutput>(fallback, timeout)).", property);
+        var milliseconds = attribute.FixedArguments?.Invoke() is [var argument]
+            ? Convert.ToInt64(argument, System.Globalization.CultureInfo.InvariantCulture) : 0;
+        if (milliseconds == System.Threading.Timeout.Infinite) return "global::System.Threading.Timeout.InfiniteTimeSpan";
+        if (milliseconds is <= 0 or > MaximumTimeoutMilliseconds)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
+                $"{modelName}.{property.Name}: [RunicInteractionTimeout({milliseconds})] is not a timeout; use 1 to "
+                + $"{MaximumTimeoutMilliseconds} milliseconds (24 hours), or Timeout.Infinite for no deadline.", property);
+        return $"global::System.TimeSpan.FromMilliseconds({milliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
+    }
+
+    // RunicInteractionTimeoutAttribute.MaximumMilliseconds.
+    private const long MaximumTimeoutMilliseconds = 86_400_000;
 
     /// <summary>
     /// The <c>ViewRequest&lt;T&gt;</c> members of a ViewModel: one-way requests to the page, each with its input
@@ -334,7 +369,8 @@ internal static class InteractionCodeEmitter
     }
 }
 
+// Timeout: the C# expression of a [RunicInteractionTimeout], or null for the default.
 internal sealed record GeneratedInteractionPlan(PropertyInfo Property, MvvmInteraction Contract,
-    BridgeTypeGraph Input, BridgeTypeGraph Output, string ContractId);
+    BridgeTypeGraph Input, BridgeTypeGraph Output, string ContractId, string? Timeout = null);
 
 internal sealed record GeneratedViewRequestPlan(PropertyInfo Property, BridgeTypeGraph Input, string ContractId);
