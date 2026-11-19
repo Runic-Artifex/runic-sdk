@@ -358,13 +358,19 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 else if (options.Width is { } width && options.Height is { } height) native.SetSize((uint)width, (uint)height);
                 // Before ConfigureWindow: an application that sets a close handler of its own there replaces the guard's.
                 if (userClose is not null) native.SetCloseHandler(userClose.OnUserClose);
+                // sdk#1221: the Development DevTools Protocol endpoint a browser window's Chromium opens when
+                // RUNIC_WEBUI_REMOTE_DEBUGGING_PORT asks; before ConfigureWindow, whose own custom parameters replace it.
+                using var debugging = CsWebUiRemoteDebugging.ForWindow(native,
+                    browserWindow: !UseWebView && !customShow && !serveOnly);
                 ConfigureWindow?.Invoke(native);
+                debugging?.ReleasePort();
                 // A browser that cannot be found, started or connected fails the open with its reason, logged as
                 // event 2100, instead of WebUI's exception (#265).
                 try { shown.Show(options.StartPage, UseWebView, ShowWindow, windowType); }
                 catch (WebUiException error) { throw CsWebUiLog.ShowFailed(scope.ServiceProvider, windowName, error); }
                 if (initialPlacement is not null) presentation?.ApplyInitial(initialPlacement);
                 presentation?.StartPolling();
+                debugging?.Start(native);
             }
             if (loop is null) Show();
             else

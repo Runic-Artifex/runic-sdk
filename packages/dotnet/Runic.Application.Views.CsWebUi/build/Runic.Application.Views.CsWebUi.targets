@@ -14,6 +14,14 @@
     <!-- RunicApplicationFrontendDelivery=Embedded stages the client with the frontend instead of copying it. -->
     <_RunicApplicationHostStageTargets>$(_RunicApplicationHostStageTargets);RunicViewsStageCsWebUiClient</_RunicApplicationHostStageTargets>
   </PropertyGroup>
+  <!-- sdk#1221: a browser window's Development DevTools Protocol endpoint (CsWebUiRemoteDebugging, D070.7) is for untrimmed
+       development builds such as dotnet runic dev's, as in Runic.Desktop.targets: a trimmed or NativeAOT publish turns it
+       off, so the trimmer removes it and its HTTP client. Only the publish, and once when both hosts add the switch. -->
+  <Target Name="_RunicCsWebUiPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
+    <ItemGroup Condition="'@(RuntimeHostConfigurationOption->WithMetadataValue('Identity', 'Runic.Desktop.WebUiRemoteDebugging'))' == ''">
+      <RuntimeHostConfigurationOption Include="Runic.Desktop.WebUiRemoteDebugging" Value="false" Trim="true" />
+    </ItemGroup>
+  </Target>
   <Target Name="RunicViewsStageCsWebUiClient" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ItemGroup>
       <_RunicViewsEmbeddedHostFile Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../www/runic-cswebui.js'))" RunicFrontendPath="runic-views.js"

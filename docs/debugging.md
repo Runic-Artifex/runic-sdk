@@ -321,36 +321,52 @@ on macOS there is no endpoint.
 
 ## CS-WebUI pages in a JavaScript debugger
 
-Since 0.22, a CS-WebUI Window that runs in an installed Chrome, Edge or other Chromium browser can open that browser's
+A CS-WebUI Window that runs in an installed Chrome, Edge or other Chromium browser can open that browser's
 Chrome DevTools Protocol endpoint, so an IDE's JavaScript debugger attaches to the page you are using: breakpoints,
-stepping, the console and the page's variables. Visual Studio debugs CS-WebUI pages only this way. Runic.Desktop adds
-`--remote-debugging-port` to the browser's command line only when all of these hold:
+stepping, the console and the page's variables. Visual Studio debugs CS-WebUI pages only this way. 0.22 built it only
+into Runic Desktop's installed-browser windows, so a `--host cswebui` application opened no endpoint; since 0.23
+(#1221) the CS-WebUI host passes `--remote-debugging-port` to the browser WebUI starts, by the same rules. It does so
+only when all of these hold:
 
 - the Window process runs in **Development** (`DOTNET_ENVIRONMENT`, or else `ASPNETCORE_ENVIRONMENT`), the test that
-  turns the developer tools on, and a `DesktopWindowOptions.WebContent` policy does not set `DevTools = false`;
-- **`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`** asks for it: `0` for a free port that the browser picks at launch, or a fixed
-  port. Outside Development the variable is ignored;
-- the browser is Chromium-based and runs with its own profile directory: the generated one, or `ProfilePath`
-  (Chromium 136 and later refuse remote debugging in the default profile). Firefox and the platform WebView fallback
-  open no endpoint;
-- the application's own browser arguments (`SetBrowserArguments`, `DesktopWindowOptions.BrowserArguments`) do not name
-  `--remote-debugging-port`. If they do, theirs applies as written, in every environment, and Runic adds no second one.
-  Unlike other custom arguments, the Development port does not replace Runic's Chromium defaults.
+  turns the developer tools on. On Runic Desktop, a `DesktopWindowOptions.WebContent` policy must also not set
+  `DevTools = false`;
+- **`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`** asks for it: `0` for a free port, or a fixed port. Outside Development the
+  variable is ignored;
+- the window is a **browser window**: CS-WebUI's default presentation, not `UseWebView`, a `ShowWindow` window or
+  serve-only mode, and on Runic Desktop an installed browser. A WebView (WebView2, WebKitGTK, WKWebView) opens no
+  endpoint here: Runic Desktop's WebView2 has its own ([above](#the-browsers-developer-tools-per-engine)), CS-WebUI's none;
+- the browser is **Chromium-based**: on CS-WebUI the one `CSWEBUI_BROWSER_PATH` names, by its file name, or else
+  WebUI's best browser. Another browser, such as Firefox, opens none, and the Window writes a warning. The browser must
+  run with a profile of its own (Chromium 136 and later refuse remote debugging in the default profile): on Runic
+  Desktop the generated one or `ProfilePath`, on CS-WebUI WebUI's own `.WebUI/WebUI<Browser>Profile`;
+- the application's own browser arguments do not replace Runic's:
+  - **Runic Desktop:** when `SetBrowserArguments` or `DesktopWindowOptions.BrowserArguments` name
+    `--remote-debugging-port`, theirs applies as written, in every environment, and Runic adds no second one. Unlike
+    other custom arguments, the Development port does not replace Runic's Chromium defaults.
+  - **CS-WebUI:** WebUI's custom parameters replace its Chromium defaults, so the host passes those defaults itself,
+    followed by the port, before `ConfigureWindow` runs. A `WebUiWindow.SetCustomParameters` there replaces them: its
+    parameters apply as written, and the Window warns that no endpoint opened unless they open one. While the endpoint
+    is on, the defaults include `--no-proxy-server`, so a `SetProxy` there does not apply.
 
 Any local process can attach to the endpoint, so it opens only when you or your IDE ask for it (D070.17): a terminal
 `dotnet runic dev` opens none.
 
 The endpoint exists only in untrimmed builds, such as the one `dotnet runic dev` runs. A trimmed or NativeAOT publish
-turns the `Runic.Desktop.WebUiRemoteDebugging` feature switch off, so the trimmer removes the endpoint and its HTTP
+turns the `Runic.Desktop.WebUiRemoteDebugging` feature switch off (both hosts' build targets set it), so the trimmer removes the endpoint and its HTTP
 client, and such a build opens no endpoint even in Development. Only the publish turns it off: a project that sets
 `PublishAot` or `PublishTrimmed` keeps the endpoint in `dotnet build`, `dotnet run` and IDE debugging.
 
-The browser listens on 127.0.0.1. Each window's browser gets its own port. When the endpoint is open, the Window process
+The browser listens on 127.0.0.1. Each window's browser gets its own port. A CS-WebUI process's windows share WebUI's
+profile and so one browser: its endpoint is the first window's, it reaches every window's page, and a later window
+warns that its own port did not open. When the endpoint is open, the Window process
 prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:<port>/` on its standard output, and
 `RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=http://127.0.0.1:<port>/` when that browser exits. Before it reports an
 endpoint, the Window confirms it:
 
-- **A free port (`0`):** Chromium writes the port it bound into `DevToolsActivePort` in the profile.
+- **A free port (`0`):** on Runic Desktop, Chromium writes the port it bound into `DevToolsActivePort` in the profile.
+  The CS-WebUI host cannot read WebUI's profile, so it holds a free loopback port itself until the browser starts,
+  passes it, and confirms it as a fixed port below.
 - **A fixed port:** Chromium writes no such record, so the Window asks `/json/version` on 127.0.0.1. On Linux it also
   checks that no other user listens on that port. The Window holds a fixed port on 127.0.0.1 and `[::1]` until just
   before the browser starts. If something holds it already, the browser gets a free port instead, and the Window writes

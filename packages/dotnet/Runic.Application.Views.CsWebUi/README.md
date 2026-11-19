@@ -374,6 +374,20 @@ to fit, by Runic Desktop's rule.
 - A Linux window manager decides whether to maximize and where to put a window;
   without one, as under a bare Xvfb, a window does not maximize.
 
+## The page in a JavaScript debugger
+
+In Development, a browser window's Chrome or Edge opens its DevTools Protocol
+endpoint on 127.0.0.1 when `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` asks for it
+(since 0.23, #1221): `dotnet runic dev --debug-endpoint`, `--no-window` and the
+template's `(CS-WebUI script debugging)` profile set it, and the Window prints
+`RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:<port>/` once
+the endpoint answers, which `dev` turns into its `[dev] Debugging:` line. A
+`UseWebView`, `ShowWindow` or serve-only window opens none, nor does a
+non-Chromium browser or a trimmed or NativeAOT publish. The host passes WebUI's
+Chromium defaults with the port as the window's custom parameters, before
+`ConfigureWindow`. See
+[CS-WebUI pages in a JavaScript debugger](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#cs-webui-pages-in-a-javascript-debugger).
+
 ## Menu bar
 
 A CS-WebUI window has no native menu bar, so the page renders the host's bar
