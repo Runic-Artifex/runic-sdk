@@ -107,6 +107,8 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
     // The endpoint of a window the host is about to show, with the window's parameters set, or null for none.
     internal static CsWebUiRemoteDebugging? ForWindow(WebUiWindow window, bool browserWindow)
     {
+        // First, so a trimmed build, where the switch is off, keeps none of the code below or its delegates.
+        if (!WebUiRemoteDebugging.IsSupported) return null;
         var debugging = Request(Environment.GetEnvironmentVariable, browserWindow,
             () => IsChromiumBased(Environment.GetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable), window.BestBrowser),
             WebUiRemoteDebugging.WriteWarning);
