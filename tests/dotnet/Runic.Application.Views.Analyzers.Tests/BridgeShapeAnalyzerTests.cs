@@ -96,6 +96,8 @@ public sealed class BridgeShapeAnalyzerTests
     [Arguments("public RunicQueryCollection<Row, System.Guid> Rows { get; } = null!;")]
     [Arguments("public IRelayCommand SaveCommand { get; } = null!; [RunicFailure(typeof(string))] public IRelayCommand LoadCommand { get; } = null!;")]
     [Arguments("[RunicIgnore] public NavigationSelection Tabs { get; set; } = null!; private ICommand Hidden { get; } = null!;")]
+    // #1180: an async command's IProgress<double> parameter is bound to the operation, not a Bridge value from the page.
+    [Arguments("public IAsyncRelayCommand<System.IProgress<double>> ImportCommand { get; } = null!;")]
     public async Task AcceptsWhatTheGeneratorAccepts(string member)
     {
         var diagnostics = await AnalyzeAsync(AppSource(member));
