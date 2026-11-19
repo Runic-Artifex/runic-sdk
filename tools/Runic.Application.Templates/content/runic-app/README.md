@@ -170,7 +170,7 @@ Kit is not needed. Choose a configuration in Run and Debug:
 | `Window in Chrome` | Every OS: runs the `runic: dev --browser` task until `[dev] Ready` and opens the Window's page in Chrome under VS Code's JavaScript debugger, so breakpoints in `Frontend/src` stop on Linux and macOS too. The page runs on Chromium, without native window features. For Edge, change its `type` to `msedge`. |
 <!--#if (desktopHost) -->
 | `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Elevated Windows get no port, as for the launch profile. |
-| `Window + WebKitGTK (Linux)` | Linux (preview): the same with WebKitGTK. The Window starts with WebKit's inspector on port 9223, and `dotnet runic dev --no-window` serves it to the JavaScript debugger on port 9222. |
+| `Window + WebKitGTK (Linux)` | Linux: the same with WebKitGTK. The Window starts with WebKit's inspector on port 9223, and `dotnet runic dev --no-window` serves it to the JavaScript debugger on port 9222. |
 | `Attach to the page (JavaScript)` | Attaches VS Code's JavaScript debugger to port 9222 alone: on Linux to the Window that `dotnet runic dev` started (the `runic: dev` task), on Windows to a WebView2 Window started with the port. Breakpoints in `Frontend/src`, stepping, the console and the page's variables work; on Linux the debugger stays attached when `dotnet watch` restarts the Window. |
 <!--#endif -->
 
@@ -193,12 +193,12 @@ describes the lines and the `obj/runic/dev-session.json` file that tasks and
 extensions read.
 <!--#if (desktopHost) -->
 On Linux, `dotnet runic dev` serves the Window's WebKitGTK page to JavaScript
-debuggers on port 9222, as WebView2 does on Windows (preview): VS Code's
+debuggers on port 9222, as WebView2 does on Windows: VS Code's
 `Attach to the page (JavaScript)` works on both, and `[dev] Debugging:` and the
 session file's `debugEndpoints` name the port. Turn it off with
-`dotnet runic dev --no-debug-endpoint`. Rider's JavaScript debugger attaches to
-such a port too, but that is not verified yet; Visual Studio debugs the page on
-Windows only. On macOS the page has Safari's Web Inspector (Safari ▸ Develop)
+`dotnet runic dev --no-debug-endpoint`. Rider's JavaScript debugger speaks the same
+protocol, but Runic does not test it; Visual Studio debugs the page on Windows
+only. On macOS the page has Safari's Web Inspector (Safari ▸ Develop)
 and no endpoint for IDE debuggers.
 <!--#endif -->
 

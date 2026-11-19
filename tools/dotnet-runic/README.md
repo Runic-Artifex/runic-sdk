@@ -139,7 +139,7 @@ Since 0.11, `dev` takes these options of `dotnet run` and `dotnet build`:
 | `-e`, `--environment NAME=VALUE` | Sets an environment variable for the Window process, as `dotnet run -e` does; repeat it for several. It wins over the defaults in the table below, so `-e DOTNET_ENVIRONMENT=Staging` runs the Window in `Staging`. The variables `dev` uses to describe the development server (`RUNIC_APPLICATION_*` below) are refused with `RAPPDEV1012`, and a value without `=` with `RAPPDEV1011`. `--dry-run` prints the names, never the values. |
 | `-v`, `--verbosity <level>` | Passes the MSBuild verbosity (`q[uiet]`, `m[inimal]`, `n[ormal]`, `d[etailed]` or `diag[nostic]`) to the restore, the build and `dotnet watch`. |
 
-Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-pages-javascript-on-linux-preview)):
+Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-pages-javascript-on-linux)):
 
 | Option | Effect |
 | --- | --- |
@@ -651,10 +651,12 @@ Verified by hand in 0.20 on Linux with VS Code 1.144 and the C# extension
 (2.160, `coreclr`): F5 ran the task, waited for `Ready`, built without
 replacing the development page, stopped on a breakpoint in `Program.cs`, and
 the Window showed the page from the Vite server and a frontend edit live.
-The C# Dev Kit `dotnet` configuration, Rider, Visual Studio and Windows
-(WebView2) are not yet verified by hand.
+Visual Studio on Windows (WebView2), with Runic DevKit's Debug the Window and
+Attach to the Page, was verified by hand in 0.22 (Visual Studio 2026 18.12).
+Runic does not test the C# Dev Kit `dotnet` configuration or Rider; use the C#
+extension's `coreclr` configuration above, or attach through the IDE contract.
 
-## Debug the page's JavaScript on Linux (preview)
+## Debug the page's JavaScript on Linux
 
 Since 0.21, `dotnet runic dev` on Linux serves the Window's WebKitGTK pages to
 JavaScript debuggers on port 9222, as WebView2 does on Windows (D066.39). VS
