@@ -124,6 +124,14 @@ platform {
   resource_unavailable = The requested resource is not available.
   # The title of a window until the page has one (Windows while WebView2 starts, Linux with GTK 4); a screen reader reads it.
   loading_title = Loading…
+  # The page a CS-WebUI window answers when the application fails to answer a request.
+  server_error_title = Internal Server Error
+  server_error = The application could not answer this request.
+  # The banner WebUI's bridge shows in a CS-WebUI page: the label before its message, then the message.
+  connection_error_label = Error:
+  connection_failed = Failed to connect to the backend application
+  connection_lost = Connection with the backend is lost
+  websocket_unsupported = WebSocket is not supported by your web browser
 }
 
 # DesktopStandardMenuTitles: the standard macOS menus Runic adds.

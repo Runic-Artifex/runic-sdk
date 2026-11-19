@@ -16,12 +16,12 @@ namespace Runic.Application.Views.CsWebUi;
 // before the handler runs. The handler redirects only while the window's server listens on loopback alone.
 internal static class CsWebUiDevelopmentServer
 {
-    internal static void Serve(WebUiWindow window, string root, DevelopmentServerForwarding forwarding)
+    internal static void Serve(WebUiWindow window, string root, DevelopmentServerForwarding forwarding, CsWebUiPageTexts texts)
     {
         window.SetRootFolder(root);
         var folder = Path.GetFullPath(root);
-        window.SetFileHandler(path => Respond(folder, forwarding, path,
-            () => CsWebUiWindowLocality.ListensOnLoopbackOnly((int)window.Port)));
+        window.SetFileHandler(texts.Handler(path => Respond(folder, forwarding, path,
+            () => CsWebUiWindowLocality.ListensOnLoopbackOnly((int)window.Port))));
         // As in CsWebUiAssets.Serve: the handler serves the window's own origin, so WebUI's authentication cookie, which
         // installing a file handler turns off, stays on.
         WebUiApplication.SetConfiguration(WebUiConfiguration.UseCookies, true);

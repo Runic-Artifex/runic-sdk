@@ -1,2 +1,14 @@
 #nullable enable
 const Runic.Platform.DesktopMenuItem.OpenDevToolsCommandId = "runic.devtools.open" -> string!
+Runic.Platform.DesktopPlatformTexts.ConnectionErrorLabel.get -> string!
+Runic.Platform.DesktopPlatformTexts.ConnectionErrorLabel.init -> void
+Runic.Platform.DesktopPlatformTexts.ConnectionFailedMessage.get -> string!
+Runic.Platform.DesktopPlatformTexts.ConnectionFailedMessage.init -> void
+Runic.Platform.DesktopPlatformTexts.ConnectionLostMessage.get -> string!
+Runic.Platform.DesktopPlatformTexts.ConnectionLostMessage.init -> void
+Runic.Platform.DesktopPlatformTexts.ServerErrorMessage.get -> string!
+Runic.Platform.DesktopPlatformTexts.ServerErrorMessage.init -> void
+Runic.Platform.DesktopPlatformTexts.ServerErrorTitle.get -> string!
+Runic.Platform.DesktopPlatformTexts.ServerErrorTitle.init -> void
+Runic.Platform.DesktopPlatformTexts.WebSocketUnsupportedMessage.get -> string!
+Runic.Platform.DesktopPlatformTexts.WebSocketUnsupportedMessage.init -> void

@@ -547,7 +547,8 @@ static int ProbeBlobs()
 }
 
 // #726 and #730: a Window serves an asset source through its file handler, without a folder. One folder of an
-// archive is served as a frontend of its own; a path the source does not declare answers 404 instead of a file of the
+// archive is served as a frontend of its own; a path the source does not declare answers 404 (a page in the window's
+// texts, cs-webui#32) instead of a file of the
 // working directory, WebUI's default root; and WebUI's authentication cookie, which a file handler turns off, still
 // binds the window to the first client that loaded webui.js.
 static async Task ProbeEmbeddedAssetsAsync()
@@ -591,6 +592,29 @@ static async Task ProbeEmbeddedAssetsAsync()
             using var outside = await first.GetAsync("outside.txt");
             if (outside.StatusCode != System.Net.HttpStatusCode.NotFound)
                 throw new InvalidOperationException($"A path outside the source answered {(int)outside.StatusCode} instead of 404.");
+            // cs-webui#32: the 404 page and WebUI's banners take DesktopPlatformTexts.Current, as Runic Translations sets it.
+            var english = await outside.Content.ReadAsStringAsync();
+            Runic.Platform.DesktopPlatformTexts.Current = new Runic.Platform.DesktopPlatformTexts
+            {
+                ResourceUnavailableTitle = "Ressource nicht verfügbar", ConnectionFailedMessage = "Keine Verbindung zur Anwendung möglich",
+            };
+            try
+            {
+                using var missing = await first.GetAsync("missing.html");
+                var german = await missing.Content.ReadAsStringAsync();
+                if (missing.StatusCode != System.Net.HttpStatusCode.NotFound || !english.Contains("<h1>Resource Not Available</h1>", StringComparison.Ordinal)
+                    || !german.Contains("<h1>Ressource nicht verfügbar</h1>", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"The 404 pages did not follow the platform texts: '{english}', '{german}'.");
+                using var texts = await first.GetAsync("_runic/cswebui/texts.js");
+                var banner = await texts.Content.ReadAsStringAsync();
+                if (texts.StatusCode != System.Net.HttpStatusCode.OK || texts.Content.Headers.ContentType?.MediaType != "text/javascript"
+                    || !banner.Contains("Keine Verbindung zur Anwendung m", StringComparison.Ordinal) || !banner.Contains("webui-error-connection-lost", StringComparison.Ordinal))
+                    throw new InvalidOperationException($"The banner texts answered {(int)texts.StatusCode} {texts.Content.Headers.ContentType}: {banner}");
+            }
+            finally
+            {
+                Runic.Platform.DesktopPlatformTexts.Current = null!;
+            }
             using var script = await first.GetAsync("webui.js");
             if (script.StatusCode != System.Net.HttpStatusCode.OK || !script.Headers.Contains("Set-Cookie"))
                 throw new InvalidOperationException($"webui.js answered {(int)script.StatusCode} without WebUI's authentication cookie.");
@@ -601,6 +625,17 @@ static async Task ProbeEmbeddedAssetsAsync()
             using var again = await first.GetAsync("index.html");
             if (again.StatusCode != System.Net.HttpStatusCode.OK)
                 throw new InvalidOperationException($"The first client answered {(int)again.StatusCode} after loading webui.js.");
+        }
+        // A web root folder: WebUI serves its files, and the window's file handler only the banner texts.
+        await using (var window = await new RunicCsWebUiHost(provider).OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = work.FullName }))
+        {
+            var url = CsWebUiPlatformServices.GetWebUiWindow(window)?.Url ?? throw new InvalidOperationException("The serve-only window has no URL.");
+            using var client = new HttpClient { BaseAddress = new UriBuilder(url) { Host = "127.0.0.1", Path = "/" }.Uri };
+            using var file = await client.GetAsync("outside.txt");
+            using var texts = await client.GetAsync("_runic/cswebui/texts.js");
+            if (file.StatusCode != System.Net.HttpStatusCode.OK || await file.Content.ReadAsStringAsync() != "outside"
+                || texts.StatusCode != System.Net.HttpStatusCode.OK || !(await texts.Content.ReadAsStringAsync()).Contains("Failed to connect", StringComparison.Ordinal))
+                throw new InvalidOperationException($"A folder window answered {(int)file.StatusCode} for its file and {(int)texts.StatusCode} for the banner texts.");
         }
         Console.WriteLine("CSWEBUI_EMBEDDED_ASSETS_OK");
     }

@@ -20,10 +20,11 @@ internal static class CsWebUiAssets
     /// <summary>
     /// Answers every request of <paramref name="window"/> that WebUI does not answer itself (<c>webui.js</c>) from
     /// <paramref name="source"/>, and keeps WebUI's authentication cookie, which installing a file handler turns off.
+    /// <paramref name="texts"/> answers its banner script and gives the 404 page the window's texts.
     /// </summary>
-    internal static void Serve(WebUiWindow window, IAssetSource source)
+    internal static void Serve(WebUiWindow window, IAssetSource source, CsWebUiPageTexts texts)
     {
-        window.SetFileHandler(path => Respond(source, path));
+        window.SetFileHandler(texts.Handler(path => Respond(source, path)));
         // WebUI disables its authentication cookie process-wide when a window installs a file handler, since it cannot
         // know whether the handler serves another origin. This one serves the window's own origin, so the cookie that
         // binds the window to the first browser that loaded webui.js keeps working as with SetRootFolder.
@@ -33,8 +34,8 @@ internal static class CsWebUiAssets
     internal static WebUiFileHandlerResult Respond(IAssetSource source, string path)
     {
         // An explicit 404 instead of NotHandled: WebUI would otherwise serve the path from its root folder, the
-        // process's working directory.
-        if (!source.Manifest.TryResolveRequestPath(path, options: null, out var descriptor)) return Status(404, "Not Found");
+        // process's working directory. CS-WebUI answers it with a page in the window's texts (cs-webui#32).
+        if (!source.Manifest.TryResolveRequestPath(path, options: null, out var descriptor)) return WebUiFileHandlerResult.NotFound;
         try
         {
             using var snapshot = source.OpenAsync(descriptor.RelativePath).AsTask().GetAwaiter().GetResult();
