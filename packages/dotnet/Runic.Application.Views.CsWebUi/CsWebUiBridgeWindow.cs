@@ -59,6 +59,9 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         set => Volatile.Write(ref _webUiClosed, value);
     }
 
+    // sdk#1148: the guard of the user's close, when WebUI can keep this window open; the window's own close abandons it.
+    internal CsWebUiUserClose? UserClose { get; set; }
+
     /// <summary>The window's scoped root ViewModel.</summary>
     public TViewModel ViewModel { get; }
 
@@ -123,6 +126,8 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
+        // A user close being decided ends: this close does not ask.
+        UserClose?.Abandon();
         Task<RunicWindowCloseResult> admission;
         lock (_closeGate)
             admission = _closeAdmission ??= BeginCloseAsync(timeout);

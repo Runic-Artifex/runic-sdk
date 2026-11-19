@@ -50,15 +50,9 @@ another host's. `WaitForCloseAsync` completes when WebUI reports that its
 windows have closed: CS-WebUI reports closing for all of its windows at once,
 so with several windows open it waits for all of them.
 
-A browser window closes without asking the application, and WebUI reports the
-close only after it happened, so CS-WebUI cannot keep a window open. A Window
-with `GuardClose` opens unguarded, logs event 1053 `WindowCloseGuardUnavailable`
-once, and its `CanCloseAsync` is not asked when the user closes the browser
-window; the navigation regions' departure guards still run for navigation
-inside the window. `window.RequestCloseAsync()` still asks `CanCloseAsync`
-before it closes the window, because the application is the one closing. Use
-Runic Desktop's embedded window when a user close must be able to keep unsaved
-work open.
+A Window with `GuardClose` keeps a `UseWebView` window on Windows and Linux open
+while `CanCloseAsync` decides the user's close; elsewhere it opens unguarded
+(see [Closing a window](#closing-a-window)).
 
 `ValidateWindow<TWindow>` checks at startup that the generated Bridge for the
 ViewModel is registered and returns a `RunicWindowValidationResult`, the same
@@ -85,7 +79,7 @@ Frames queue in the bridge, which sends a recovery state once the queue is
 full, and the window's other clients wait for the same write. Other CS-WebUI windows are not held back:
 WebUI before nightly `9264f7ae9` (webui-dev/webui#723) wrote every WebSocket
 frame under one process-wide lock, so one stalled client delayed every window in
-the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.9, the lowest
+the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.10, the lowest
 version this package accepts, includes the fix.
 
 ## What a window opens
@@ -260,6 +254,38 @@ GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.
 
+## Closing a window
+
+Since 0.23 (#1148) a `UseWebView` window asks before it closes on Windows and
+Linux: when the user closes a Window with `GuardClose`, with the close button,
+Alt+F4 or the window manager, the window stays open while `CanCloseAsync`
+decides in a model turn, as on Runic Desktop. When it allows, the host closes
+the window with `WebUiWindow.Close`, which CS-WebUI never sends through the
+close handler again; when it refuses, the window stays as it was. A second
+close while the guard asks is ignored. `window.RequestCloseAsync()` asks the
+same guard and joins a decision the user started, so the two never ask at
+once; an allowed request releases the Window as before. `CloseAsync`,
+disposal and the end of `Run` close without asking and cancel a pending
+decision.
+
+| Window | The user's close of a guarded Window |
+| --- | --- |
+| `UseWebView` on Windows (WebView2) | Guarded (`WM_CLOSE`) |
+| `UseWebView` on Linux (WebKitGTK, X11 and Wayland) | Guarded (GTK `delete-event`) |
+| `UseWebView` on macOS (WKWebView) | Unguarded, event 1053: WebUI learns of the close only afterwards |
+| Browser window (the default presentation) | Unguarded, event 1053: the browser closes its window without asking |
+| `RunicCsWebUiHostOptions.ShowWindow` | Unguarded, event 1053: the host cannot tell how the window is shown |
+| `RUNIC_APPLICATION_SERVE_ONLY=1` | Unguarded, event 1053: there is no window |
+
+Where the user's close cannot be guarded, a Window with `GuardClose` opens
+unguarded, logs event 1053 `WindowCloseGuardUnavailable` once naming the
+reason, and its `CanCloseAsync` is not asked when the user closes the window;
+the navigation regions' departure guards still run for navigation inside the
+window, and `RequestCloseAsync` still asks `CanCloseAsync` before it closes
+the window, because the application is the one closing. The host sets its
+close handler before `ConfigureWindow` runs, so an application that calls
+`WebUiWindow.SetCloseHandler` there replaces the guard for the user's close.
+
 ## Menu bar
 
 A CS-WebUI window has no native menu bar, so the page renders the host's bar
@@ -343,7 +369,7 @@ requests can reach WebUI at once. Runic relies on WebUI's fix for concurrent cal
 two calls that arrive together. One call could then run with the other's
 arguments or receive the other's reply, and one of them could receive no reply
 at all. The fix is in WebUI nightly `efac0e24d` and in every CsWebUi since
-2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.9, the lowest version this package
+2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.10, the lowest version this package
 accepts, bundles WebUI nightly `24c7d196edc63f5b777d465063c3d26731f52dea`,
 which also removes the process-wide send lock (webui-dev/webui#723) and gives
 navigation events their URL argument (webui-dev/webui#724). An application that
@@ -503,7 +529,7 @@ decisions:
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
   with an older WebUI, Bridge calls that arrive together can run with each
   other's arguments or receive each other's replies. Runic is tested with
-  `24c7d196e`, which CsWebUi 2.5.0-beta.4.9 bundles (see above). Runic cannot
+  `24c7d196e`, which CsWebUi 2.5.0-beta.4.10 bundles (see above). Runic cannot
   check a custom build, so the host logs event 2101 when one is configured.
 
 - **Embedded frontends and file handlers.** WebUI turns its authentication

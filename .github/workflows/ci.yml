@@ -2085,7 +2085,8 @@ jobs:
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
       # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes and
-      # blobs-probe its blobs and uploads (blobs/1) from Chromium.
+      # blobs-probe its blobs and uploads (blobs/1) from Chromium. The --probe-webview-* probes open a real WebView2 or
+      # WebKitGTK window (sdk#1148) and report themselves skipped on macOS.
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
@@ -2096,6 +2097,7 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-guard
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
@@ -2108,6 +2110,7 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-webview-close-guard
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets

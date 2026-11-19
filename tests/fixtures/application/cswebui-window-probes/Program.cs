@@ -46,8 +46,13 @@ switch (args.SingleOrDefault())
     case "--probe-unowned-dialogs":
         return UnownedDialogProbe.Run();
 #endif
+#if RUNIC_WEBVIEW_PROBE
+    // WebViewProbe.cs, a real WebView2 or WebKitGTK window; the package smoke builds Program.cs alone.
+    case "--probe-webview-close-guard":
+        return WebViewProbe.RunCloseGuard();
+#endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard");
         return 2;
 }
 WebUiApplication.Clean();
