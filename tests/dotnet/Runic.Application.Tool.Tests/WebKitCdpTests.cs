@@ -331,8 +331,50 @@ internal sealed partial class ToolTests
             Script("3", "user-script:1"),
             Script("4", ""),
             Script("5", ""),
+            // Two modules whose maps name their source alike: each source resolves against its script's URL (#1108).
+            Script("40", "http://h/@vite/client", Map("client")),
+            Script("41", "http://h/@id/virtual:runic/client", Map("client")),
         ]);
-        SequenceEqual(["3", "4", "5", "7", "31"], [.. current.Select(static script => script["scriptId"]!.GetValue<string>())]);
+        SequenceEqual(["3", "4", "5", "7", "31", "40", "41"], [.. current.Select(static script => script["scriptId"]!.GetValue<string>())]);
+    }
+
+    [Test, DisplayName("the scripts of a document that WebKit already replaced do not reach the debugger (#1108)")]
+    public async Task ScriptsOfAReplacedDocumentAreNotForwarded()
+    {
+        // The adapter translates WebKit's events after it received them. During reloads in quick succession it still
+        // holds the old document's scripts when WebKit has navigated; js-debug would remove such a script while it
+        // creates the sources of its source map, and keep an original source bound to the removed script.
+        const string id = "http://h/src/App.tsx:68:13";
+        var webKit = new FakeWebKit
+        {
+            Answer = static (method, _) => method == "Debugger.setBreakpointByUrl" ? Json($$"""{"breakpointId":"{{id}}","locations":[]}""") : [],
+        };
+        CdpPageSession session = webKit.Session();
+        await session.HandleAsync("Debugger.setBreakpointByUrl", Json("""{"url":"http://h/src/App.tsx","lineNumber":68,"columnNumber":13}"""));
+        int start = webKit.Emitted.Count;
+        session.Post("Debugger.scriptParsed", Json("""{"scriptId":"5","url":"http://h/src/App.tsx","endLine":142,"sourceMapURL":"data:x"}"""));
+        session.Post("Debugger.breakpointResolved", Json($$$"""{"breakpointId":"{{{id}}}","location":{"scriptId":"5","lineNumber":70,"columnNumber":19}}"""));
+        session.Post("Console.messageAdded", Json("""
+            {"message":{"source":"console-api","level":"debug","type":"log","text":"[vite] connecting...","parameters":[{"type":"string","value":"x"}],
+              "stackTrace":{"callFrames":[{"functionName":"","scriptId":"5","url":"http://h/src/App.tsx","lineNumber":3,"columnNumber":7}]}}}
+            """));
+        session.Post("Page.frameNavigated", Json("""{"frame":{"id":"0.1","loaderId":"0.2","url":"http://h/index.html"}}"""));
+        session.Post("Debugger.globalObjectCleared", []);
+        // The new document's script, after the navigation, reaches it.
+        session.Post("Debugger.scriptParsed", Json("""{"scriptId":"6","url":"http://h/src/App.tsx","endLine":142,"sourceMapURL":"data:x"}"""));
+        session.Post("Debugger.breakpointResolved", Json($$$"""{"breakpointId":"{{{id}}}","location":{"scriptId":"6","lineNumber":70,"columnNumber":19}}"""));
+        Task events = session.RunAsync(CancellationToken.None);
+        await Until(() => webKit.Emitted.Skip(start).Any(static e => e.Method == "Debugger.breakpointResolved"));
+        List<(string Method, JsonObject Parameters)> emitted = [.. webKit.Emitted.Skip(start)];
+        SequenceEqual(["Runtime.consoleAPICalled", "Runtime.executionContextsCleared", "Page.frameNavigated", "Runtime.executionContextsCleared",
+            "Debugger.scriptParsed", "Debugger.breakpointResolved"], [.. emitted.Select(static e => e.Method)]);
+        Equal("6", emitted[4].Parameters["scriptId"]!.GetValue<string>());
+        Equal("6", emitted[5].Parameters["location"]!["scriptId"]!.GetValue<string>());
+        // The old document's console output keeps its place in its file, without the script js-debug would wait for.
+        JsonObject frame = emitted[0].Parameters["stackTrace"]!["callFrames"]![0]!.AsObject();
+        Equal(("", "http://h/src/App.tsx", 2), (frame["scriptId"]!.GetValue<string>(), frame["url"]!.GetValue<string>(), frame["lineNumber"]!.GetValue<int>()));
+        session.Complete();
+        await events;
     }
 
     [Test, DisplayName("the source-map pause is emulated: one per script, before it runs, while WebKit stays stopped (#1051)")]
