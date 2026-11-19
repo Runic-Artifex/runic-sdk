@@ -21,7 +21,9 @@ internal static class Fixture
 }
 
 // The checks, in order. Each reads or acts through the accessibility API only; the page reacts as it would to a user.
-internal sealed class Scenario(AccessibilityClient client, Report report, Expectations expectations) : IDisposable
+// assertiveInPage: the fixture puts the focus on the window itself before the assertive message (WebView2,
+// sdk#1181), and the page must still announce it in its live region.
+internal sealed class Scenario(AccessibilityClient client, Report report, Expectations expectations, bool assertiveInPage) : IDisposable
 {
     private static readonly TimeSpan EventTimeout = TimeSpan.FromSeconds(5);
     // How long the window title, a value or a selection may take to reflect the page; condition waits, scaled.
@@ -97,15 +99,18 @@ internal sealed class Scenario(AccessibilityClient client, Report report, Expect
         await ExpectEventAsync("aria-listbox-page-change-event", mark, EventKind.SelectionChanged, Fixture.Colour, "Green", cancellationToken);
 
         // DesktopWindow.AnnounceAsync: the page asks the host, which announces with each priority. On WebView2, while the
-        // page has the keyboard focus, the page's Bridge says it in a live region instead of the window (I-184).
+        // page has the keyboard focus, the page's Bridge says it in a live region instead of the window (I-184). It does so
+        // too while the focus is on the window itself, where WebView2 can leave it after it activates the window for a UI
+        // Automation action, while the page's button stays the screen reader's focus: NVDA drops the window's
+        // notification then (sdk#1181). The fixture puts the focus there for the assertive message (assertiveInPage).
         mark = _log.Mark();
         await client.PressAsync(_controls[Fixture.Announce], cancellationToken);
         await ExpectEventAsync("announcement-polite", mark, EventKind.Announcement, null, Fixture.PoliteAnnouncement, cancellationToken,
             alternative: EventKind.LiveRegion);
         mark = _log.Mark();
         await client.PressAsync(_controls[Fixture.Alert], cancellationToken);
-        await ExpectEventAsync("announcement-assertive", mark, EventKind.Announcement, null, Fixture.AssertiveAnnouncement, cancellationToken,
-            alternative: EventKind.LiveRegion);
+        await ExpectEventAsync("announcement-assertive", mark, assertiveInPage ? EventKind.LiveRegion : EventKind.Announcement, null,
+            Fixture.AssertiveAnnouncement, cancellationToken, alternative: assertiveInPage ? null : EventKind.LiveRegion);
 
         // A live region (aria-live="polite" on an output).
         mark = _log.Mark();

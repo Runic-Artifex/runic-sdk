@@ -70,7 +70,8 @@ try
         var sidePanel = own.Contains("--side-panel", StringComparer.Ordinal);
         Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(),
             host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region, sidePanel: sidePanel,
-                pressTab: OperatingSystem.IsMacOS() ? SidePanelSmoke.PressTabOnMacOSAsync : null));
+                pressTab: OperatingSystem.IsMacOS() ? SidePanelSmoke.PressTabOnMacOSAsync : null,
+                focusWindowItself: OperatingSystem.IsWindows() ? WindowsAnnouncementFocus.FocusWindowItselfAsync : null));
     }
     else if (args.Contains("--region", StringComparer.Ordinal))
     {
