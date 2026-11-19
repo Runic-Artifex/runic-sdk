@@ -802,21 +802,25 @@ and a tab keeps it across restarts:
   `dev` writes a page that opens the address with it,
   `obj/runic/dev-browser.html` (the session file's `browser.codeFile`). Only you
   can read that page: mode 0600 on Linux and macOS, an access list of your account
-  alone on Windows. Opening the address with the code admits that browser with
-  `dev`'s own cookie (`HttpOnly`, `SameSite=Strict`), replaces the code and
-  rewrites the page; a later `[dev] Browser:` line carries the new code. `dev`
-  deletes the page when it stops.
-- **One browser at a time.** Opening the address with the new code admits
-  another browser and ends the previous one's admission: its next request gets
-  403. To move to another browser or profile, open the page (or the newest
-  code) there.
+  alone on Windows. Opening the address with the code gives that browser a new
+  cookie of `dev`'s (`HttpOnly`, `SameSite=Strict`), replaces the code and
+  rewrites the page; a `[dev] Browser:` line prints the new code. `dev` deletes
+  the page when it stops.
+- **One browser at a time.** The new cookie takes over when that browser's next
+  navigation, which the admission's page makes at once, presents it. Then the
+  previous browser's admission ends: its next request gets 403, and its open
+  WebSocket connections, such as a page's Bridge, close. A request that only
+  carries the code, and no such navigation, ends nothing. To move to another
+  browser or profile, open the page (or the newest code) there.
+- **A Window the application closes.** When the application closes a Window
+  while its process keeps running, `/` opens the first Window that still serves,
+  and `/windows/<n>` of the closed one says that it closed.
 - **Restarts.** After `dotnet watch` restarts the Window, a Runic Desktop page
   reloads itself onto the new Window. Its Bridge connects through the same
   address. When the stopping Window tells the page to close, `dev` passes on
   the Bridge's token refusal instead, so the page reloads; it waits at the
   address until the new Window serves, then opens it. A page's Bridge that
-  reconnects to a Window that has gone gets the same answer. A Window that the
-  application closes while it keeps running reloads into that waiting page too.
+  reconnects to a Window that has gone gets the same answer.
   A CS-WebUI page's WebUI connection goes to the Window's own port, so reload a
   CS-WebUI tab after a restart; the address stays the same.
 - **The Window's side.** `dev` sets `RUNIC_APPLICATION_SERVE_ORIGIN` to the
@@ -865,12 +869,21 @@ address with the code from the `[dev] Browser:` line.
   Window through it. The code is compared in constant time, and its answers
   are not cached and send no referrer. `dev`'s cookie stays out of the requests
   it passes to the Window.
+- **The cookie is a bearer credential for every loopback port.** Browsers do
+  not scope cookies by port, so your browser sends `dev`'s cookie with every
+  request to any `http://127.0.0.1:<port>` it loads, and `SameSite=Strict` does
+  not hold it back there (it is the same site). Whoever listens on such a port
+  receives it and can send it to 9224 from outside a browser, without an
+  `Origin` or `Sec-Fetch-Site`.
 - **Other users on the machine.** Loopback ports admit every local account. The
   code is in the terminal's output and in a page that only you can read, not in
-  the session file, so another user's process has no code to be admitted with.
-  On Linux, `dev` also looks up the owner of each connection's other end in
-  `/proc/net/tcp`, as for the CDP adapter, answers 403 when that is another user,
-  and says so once per user in a `[dev] Warning:` line.
+  the session file. On Linux, `dev` also looks up the owner of each connection's
+  other end in `/proc/net/tcp`, as for the CDP adapter, answers 403 when that is
+  another user, and says so once per user in a `[dev] Warning:` line. macOS and
+  Windows cannot tell a loopback connection's user: there another local user's
+  server on 127.0.0.1 that your browser loads receives the cookie and can reach
+  the Window with it. On a machine that you share with other users, use
+  `--browser` on Linux only.
 - **Standard input.** A serve-only Window stops serving at a line on its
   standard input, so `dev` gives it an empty pipe instead of the terminal.
 - **The .NET debugger.** Attach it to the process that

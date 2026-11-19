@@ -73,9 +73,9 @@ internal static class DevApplication
             $"features such as dialogs and menus report OwnerUnavailable.{moved}";
     }
 
-    /// <summary>After an admission: the new code, which admits another browser and ends this one's admission.</summary>
+    /// <summary>After an admission request: the new code, whose browser becomes the admitted one and ends the previous one's admission.</summary>
     internal static string BrowserAdmittedLine(int port, string code) =>
-        $"[dev] Browser: a browser opened the Window. Another one opens {BrowserEntry.CodeUrl(port, 0, code)}, which ends this one's admission.";
+        $"[dev] Browser: a browser used the code. The next one is {BrowserEntry.CodeUrl(port, 0, code)}; the browser that opens it becomes the admitted one.";
 
     /// <summary>
     /// The IDE contract line for each Window that the serve-only Window process serves, at its entry address with the

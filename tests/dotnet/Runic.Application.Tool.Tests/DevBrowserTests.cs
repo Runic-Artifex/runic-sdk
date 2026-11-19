@@ -145,6 +145,28 @@ internal sealed partial class ToolTests
         Equal(404, Decide(BrowserRequest("/surface-a/save", method: "POST"), restarted).Status);
         // A Window that closed its page (the Bridge's close command): its address waits, and its paths are an earlier
         // Window's, so the page's reload goes to the entry.
+        // A pending admission: its cookie confirms on a navigation to an entry, and opens nothing else before that.
+        var pending = state with { Windows = [new(DesktopSurfaceUrl)], PendingCookie = "pending" };
+        Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Redirect, Location: "/surface-a/index.html", Confirms: true),
+            Decide(BrowserRequest(cookie: BrowserEntry.CookieName + "=pending", site: "same-origin"), pending));
+        Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Redirect, Location: "/surface-a/index.html"), Decide(BrowserRequest(), pending));
+        Equal(403, Decide(BrowserRequest("/surface-a/app.js", cookie: BrowserEntry.CookieName + "=pending"), pending).Status);
+        Equal(403, Decide(BrowserRequest("/surface-a/_webui_ws_connect", cookie: BrowserEntry.CookieName + "=pending", upgrade: true), pending).Status);
+        Equal(403, Decide(BrowserRequest(cookie: BrowserEntry.CookieName + "=pending", site: "cross-site"), pending).Status);
+        Equal(403, Decide(BrowserRequest(cookie: BrowserEntry.CookieName + "=other"), pending).Status);
+
+        // The application closed a Window and its process keeps running: / opens the first Window that serves, and a closed
+        // /windows/<n> says so; within the grace after the close, both wait, as for a restart.
+        Uri second = new(RestartedSurfaceUrl);
+        Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Redirect, Location: "/surface-b/index.html"),
+            Decide(BrowserRequest(), state with { Windows = [null, second] }));
+        Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Wait), Decide(BrowserRequest(), state with { Windows = [null, second], Closing = new HashSet<int> { 0 } }));
+        Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Closed), Decide(BrowserRequest("/windows/2"), state with { Windows = [second, null] }));
+        Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Wait),
+            Decide(BrowserRequest("/windows/2"), state with { Windows = [second, null], Closing = new HashSet<int> { 1 } }));
+        Contains(BrowserEntry.ClosedPage, "The application closed this Window");
+        Contains(BrowserEntry.ClosedPage, "http-equiv=\"refresh\"");
+
         var closed = state with { Windows = [null], StaleBases = new Dictionary<string, int> { ["/surface-a/"] = 0 } };
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Wait), Decide(BrowserRequest(), closed));
         Equal(new BrowserEntry.Decision(BrowserEntry.Outcome.Redirect, Location: "/"), Decide(BrowserRequest("/surface-a/index.html"), closed));
@@ -365,11 +387,40 @@ internal sealed partial class ToolTests
                 Equal("page /surface-b/index.html", await page.Content.ReadAsStringAsync());
             Equal(forwarded + 2, first.Requests.Count);
 
-            // One bound browser: a new admission ends the previous browser's cookie.
+            // One bound browser. An admission request alone (a file: page that frames or opens the code file) ends nothing:
+            // the admitted browser keeps its cookie until the new browser's navigation presents its own.
+            string next;
             using (HttpResponseMessage again = await Send("/?code=" + secondCode, site: "cross-site"))
+            {
                 Equal(HttpStatusCode.OK, again.StatusCode);
+                string setCookie = again.Headers.GetValues("Set-Cookie").Single();
+                next = setCookie[..setCookie.IndexOf(';', StringComparison.Ordinal)];
+            }
+            using (HttpResponseMessage still = await Send("/surface-b/index.html", cookie))
+                Equal(HttpStatusCode.OK, still.StatusCode);
+            // The pending cookie opens nothing but its entry, which makes it the admitted one.
+            using (HttpResponseMessage early = await Send("/surface-b/index.html", next))
+                Equal(HttpStatusCode.Forbidden, early.StatusCode);
+            // The admitted browser's open Bridge socket.
+            using var live = new TcpClient();
+            await live.ConnectAsync(IPAddress.Loopback, entry.Port);
+            NetworkStream liveStream = live.GetStream();
+            await liveStream.WriteAsync(Encoding.ASCII.GetBytes($"GET /surface-b/_webui_ws_connect HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\n" +
+                $"Connection: Upgrade\r\nOrigin: http://{host}\r\nCookie: {cookie}\r\nSec-WebSocket-Key: a2V5a2V5a2V5a2V5a2V5aw==\r\nSec-WebSocket-Version: 13\r\n\r\n"));
+            StartsWith(await ReadUntil(liveStream, "\r\n\r\n"), "HTTP/1.1 101 ");
+            await liveStream.WriteAsync(Encoding.ASCII.GetBytes("ping\n"));
+            Equal("pong:/surface-b/_webui_ws_connect\n", await ReadUntil(liveStream, "\n"));
+            Equal(1, entry.RelayedUpgrades);
+            using (HttpResponseMessage confirmed = await Send("/", next, site: "same-origin"))
+                Equal(HttpStatusCode.Found, confirmed.StatusCode);
+            // The previous browser's cookie has ended, and so has its socket.
             using (HttpResponseMessage ended = await Send("/surface-b/index.html", cookie))
                 Equal(HttpStatusCode.Forbidden, ended.StatusCode);
+            using (var closedRead = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                Equal(0, await liveStream.ReadAsync(new byte[16], closedRead.Token));
+            Equal(0, entry.RelayedUpgrades);
+            using (HttpResponseMessage admitted = await Send("/surface-b/index.html", next))
+                Equal(HttpStatusCode.OK, admitted.StatusCode);
         }
         finally
         {
@@ -516,6 +567,8 @@ internal sealed partial class ToolTests
                         }
                         await ReadUntil(stream, "\n");
                         await stream.WriteAsync(Encoding.ASCII.GetBytes($"pong:{path}\n"));
+                        // Open until the page closes it, as a Bridge socket is (ReadUntil gives up after 10 s).
+                        await ReadUntil(stream, "\n");
                         return;
                     }
                     string answer = path.EndsWith("/redirect", StringComparison.Ordinal)
@@ -628,7 +681,7 @@ internal sealed partial class ToolTests
         DoesNotContain(hint, "was taken");
         Contains(DevApplication.BrowserHint(40001, "abc"), "http://127.0.0.1:40001/?code=abc");
         Contains(DevApplication.BrowserHint(40001, "abc"), "Port 9224 was taken");
-        Contains(DevApplication.BrowserAdmittedLine(9224, "next"), "http://127.0.0.1:9224/?code=next, which ends this one's admission");
+        Contains(DevApplication.BrowserAdmittedLine(9224, "next"), "The next one is http://127.0.0.1:9224/?code=next; the browser that opens it becomes the admitted one.");
         Equal("[dev] Browser: Window serves at http://127.0.0.1:9224/?code=abc",
             DevApplication.BrowserServedLine(new BrowserEntry.ServedWindow(0, "http://127.0.0.1:9224/", null), "abc"));
         string page = BrowserEntry.CodePage(9224, "a&b");

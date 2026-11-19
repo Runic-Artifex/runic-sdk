@@ -278,15 +278,18 @@ through the development server's source maps, stepping, conditions, logpoints, e
 
 Since 0.23 (#1187), the address admits one browser by a one-time code: the `[dev] Browser:` lines print it
 (`http://127.0.0.1:9224/?code=…`), and `obj/runic/dev-browser.html`, a page only you can read, opens the address with
-the newest one, as `Window in Chrome` does with `"file"`. A new admission ends the previous browser's. The tab keeps
+the newest one, as `Window in Chrome` does with `"file"`. The browser that opens it becomes the admitted one, and the
+previous browser's admission ends, with its open connections. The tab keeps
 the address when `dotnet watch` restarts the Window: a Runic Desktop page reloads itself onto the new Window, and its
 breakpoints stop again; reload a CS-WebUI tab.
 
 Two differences from the Window: the page runs on **Chromium**, not on the Window's engine, so check WebKit- or
 WebView2-specific behaviour in the Window; and it has **no native window features**: file dialogs, menus and the
 window's commands report `OwnerUnavailable`, and there is no side panel. Without the code or the admitted browser's
-cookie the address answers 403, and on Linux it also answers only the user who runs `dev`. Attach the .NET debugger
-to the process that
+cookie the address answers 403. The cookie is a bearer credential: your browser sends it to every
+`http://127.0.0.1:<port>` it loads, so a server there receives it. On Linux the address answers only the user who runs
+`dev`; macOS and Windows cannot tell a loopback connection's user, so on a shared machine another local user's server
+that your browser loads can take the cookie and reach the Window with it. Attach the .NET debugger to the process that
 `[dev] Window started` names, as without `--browser`. See the dotnet-runic README's
 [Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).
 

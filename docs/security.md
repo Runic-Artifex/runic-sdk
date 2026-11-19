@@ -463,8 +463,12 @@ Whoever it admits uses the Window as you do, Bridge included. Since 0.23
 - **One browser, by a one-time code.** A request with the current code admits
   its browser, also from another site: the code page that `dev` writes is a
   `file:` document. The code is compared in constant time. The admitted browser
-  gets `dev`'s cookie (`HttpOnly`, `SameSite=Strict`, random per admission). Each
-  admission replaces the code and ends the previous browser's cookie.
+  gets a new cookie of `dev`'s (`HttpOnly`, `SameSite=Strict`, random per
+  admission), and the code is replaced. The cookie takes over when that
+  browser's next navigation, which the admission's page makes, presents it:
+  then the previous browser's cookie ends and the proxy closes its open
+  WebSocket connections. A request that only carries the code (a `file:` page
+  that frames or opens the code page, for example) ends no admission.
 - **Where the code is.** In `dev`'s terminal output, and in
   `obj/runic/dev-browser.html`, readable only by you: mode 0600 on Linux and
   macOS, an access list of your account alone with no inherited entries on
@@ -475,8 +479,17 @@ Whoever it admits uses the Window as you do, Bridge included. Since 0.23
   an IP address or `localhost` (against DNS rebinding), no `Origin` other than
   the address's own, and a `Sec-Fetch-Site` of `none` or `same-origin` when it
   has one. So a web page in a browser cannot reach the Window through it, and a
-  local process without the code gets 403. On Linux the address also refuses
-  connections of other users (`/proc/net/tcp`).
+  local process without the code or the cookie gets 403. On Linux the address
+  also refuses connections of other users (`/proc/net/tcp`).
+- **The cookie is a bearer credential for every loopback port.** Browsers do not
+  scope cookies by port, so the admitted browser sends `dev`'s cookie with every
+  request to any `http://127.0.0.1:<port>` it loads, and `SameSite=Strict` does
+  not hold it back there (it is the same site). Whoever listens on such a port
+  receives it and can replay it to 9224 from outside a browser, where requests
+  carry no `Origin` or `Sec-Fetch-Site`. On Linux the peer check refuses that
+  replay from another user; macOS and Windows cannot tell a loopback
+  connection's user, so on a machine shared with other users, use `--browser` on
+  Linux only.
 - **What the Window admits.** `dev` tells the serve-only Window the address's
   origin (`RUNIC_APPLICATION_SERVE_ORIGIN`). Runic Desktop admits that origin
   for its surfaces and connects their Bridge through the proxy; Runic's

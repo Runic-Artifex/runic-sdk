@@ -22,11 +22,13 @@ namespace Runic.Application.Tool;
 /// Window the process opened; until a Window serves, a page that reloads itself every second.
 /// <para>
 /// Admission: the first request carries a one-time code (<c>?code=…</c>), which dev prints in the
-/// <c>[dev] Browser:</c> line, lists in the session file and writes into a page only this user can read
-/// (<see cref="CodeFile"/>), which an IDE's launch configuration opens. That request gets dev's own browser cookie
-/// (<c>HttpOnly</c>, <c>SameSite=Strict</c>), the code is replaced and the file rewritten; every other request needs the
-/// cookie, and a new admission ends the previous browser's. On Linux the address also answers only the user who runs
-/// dev (<see cref="CheckPeer"/>).
+/// <c>[dev] Browser:</c> line and writes into a page only this user can read (<see cref="CodeFile"/>), which an IDE's
+/// launch configuration opens; the session file names that page, not the code. That request gets a new cookie of dev's
+/// (<c>HttpOnly</c>, <c>SameSite=Strict</c>), and the code is replaced and the file rewritten. The cookie becomes the
+/// admitted browser's when that browser's next navigation, which the admission's page makes, presents it; then the
+/// previous browser's cookie ends and its open WebSocket connections close. Until then the previous admission stays.
+/// Every other request needs the admitted browser's cookie. On Linux the address also answers only the user who runs dev
+/// (<see cref="CheckPeer"/>).
 /// </para>
 /// <para>
 /// Forwarding: a request of the bound browser goes to the Window's own loopback server with its <c>Host</c> rewritten
@@ -75,6 +77,12 @@ internal sealed class BrowserEntry : IAsyncDisposable
     private Task _accepting = Task.CompletedTask;
     private string _code = NewSecret();
     private string? _cookie;
+    // The cookie of the last admission request, which becomes _cookie when its browser's next navigation presents it.
+    private string? _pendingCookie;
+    // The WebSocket connections the proxy relays now, which a new admission closes.
+    private readonly HashSet<Action> _upgrades = [];
+    // How long after its close command a Window's address waits for a successor, as when dotnet watch restarts it.
+    internal static readonly TimeSpan ClosingGrace = TimeSpan.FromSeconds(5);
 
     private BrowserEntry(TcpListener listener, LoopbackSockets? sockets, Action<string> report, string? codeFile)
     {
@@ -138,7 +146,10 @@ internal sealed class BrowserEntry : IAsyncDisposable
     internal sealed record ServedWindow(int Index, string EntryUrl, string? Type);
 
     // Closed: the Window sent its page the Bridge's close command (RelayBridgeAsync); its address waits for a successor.
-    private sealed record Served(Uri Target, string Base, string? Type, bool Closed = false);
+    private sealed record Served(Uri Target, string Base, string? Type, DateTimeOffset? ClosedAt = null)
+    {
+        internal bool Closed => ClosedAt is not null;
+    }
 
     /// <summary>The Windows the current Window process serves, in the order it opened them.</summary>
     internal IReadOnlyList<ServedWindow> Windows
@@ -206,7 +217,8 @@ internal sealed class BrowserEntry : IAsyncDisposable
     /// <summary>
     /// A Window whose Bridge socket at <paramref name="socketPath"/> received the Window's close command: it serves that
     /// page no more (the Window closed, or <c>dotnet watch</c> is stopping its process). Its paths count as an earlier
-    /// Window's from now on, so the page's reload goes to the entry, which waits for the Window that serves next.
+    /// Window's from now on, so the page's reload goes to the entry. For a few seconds that waits (<see cref="ClosingGrace"/>),
+    /// as for a restart; then <c>/</c> opens the first Window that serves, and <c>/windows/&lt;n&gt;</c> says the Window closed.
     /// </summary>
     internal void BridgeClosed(string socketPath)
     {
@@ -215,7 +227,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
         {
             int index = _windows.FindIndex(window => window.Base == closedBase && !window.Closed);
             if (index < 0 || closedBase == "/") return;
-            _windows[index] = _windows[index] with { Closed = true };
+            _windows[index] = _windows[index] with { ClosedAt = DateTimeOffset.UtcNow };
             _staleBases[closedBase] = index;
         }
     }
@@ -240,30 +252,39 @@ internal sealed class BrowserEntry : IAsyncDisposable
         Wait,
         Forward,
         TurnAway,
+        Closed,
     }
 
     /// <summary>
     /// A decision: a status and body for <see cref="Outcome.Refuse"/>; the place to go for <see cref="Outcome.Admit"/> and
     /// <see cref="Outcome.Redirect"/> (a path on this address); the Window's authority and the path to request there for
     /// <see cref="Outcome.Forward"/>. <see cref="Outcome.TurnAway"/> answers an earlier Window's Bridge socket itself
-    /// (<see cref="TurnAwayFrame"/>).
+    /// (<see cref="TurnAwayFrame"/>). <see cref="Outcome.Closed"/> answers with <see cref="ClosedPage"/>. Confirms: the
+    /// request presents the pending admission's cookie on a navigation to an entry, which makes that browser the admitted one.
     /// </summary>
     internal sealed record Decision(Outcome Outcome, int Status = 200, string Body = "", string? Location = null, string? Authority = null,
-        string? Path = null);
+        string? Path = null, bool Confirms = false);
 
     /// <summary>The request as the decision sees it.</summary>
     internal sealed record Request(string Method, string Target, string? Host, string? Origin, string? FetchSite, string? Cookie, bool Upgrade);
 
     /// <summary>
-    /// The Windows of the running process (null for one that closed its page) and the surface paths of earlier ones, as
-    /// the decision sees them.
+    /// The Windows of the running process (null for one that closed its page; <paramref name="Closing"/> those that closed
+    /// within <see cref="ClosingGrace"/>), the surface paths of earlier ones, and the cookies of the admitted browser and
+    /// of the pending admission, as the decision sees them.
     /// </summary>
-    internal sealed record State(string Code, string? BrowserCookie, IReadOnlyList<Uri?> Windows, IReadOnlyDictionary<string, int> StaleBases);
+    internal sealed record State(string Code, string? BrowserCookie, IReadOnlyList<Uri?> Windows, IReadOnlyDictionary<string, int> StaleBases,
+        string? PendingCookie = null, IReadOnlySet<int>? Closing = null);
 
     internal const string WaitingPage =
         "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"1\">" +
         "<title>Waiting for the Window</title><p>dotnet runic dev is starting the Window, or the application closed it. This page " +
         "opens it as soon as it serves.</p></html>";
+
+    internal const string ClosedPage =
+        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"2\">" +
+        "<title>The Window closed</title><p>The application closed this Window. This page opens the Window that serves at this " +
+        "address next; the first Window is at <a href=\"/\">/</a>.</p></html>";
 
     internal const string CodeRequiredBody =
         "Forbidden: open the address that dotnet runic dev prints in its [dev] Browser: line, with its code, or the page it writes as obj/runic/" +
@@ -298,25 +319,51 @@ internal sealed class BrowserEntry : IAsyncDisposable
             return HasCookie(request, state) ? new(Outcome.Redirect, Location: path) : Refused(403, CodeRequiredBody);
         }
 
-        if (!HasCookie(request, state)) return Refused(403, CodeRequiredBody);
+        // The admitted browser's cookie; or the pending admission's, on the navigation that the admission's page makes.
+        string presented = CookieValue(request.Cookie, CookieName) ?? "";
+        bool confirms = !HasCookie(request, state) && entry is not null && request.Method is "GET" or "HEAD" && !request.Upgrade &&
+            state.PendingCookie is not null && FixedTimeEquals(presented, state.PendingCookie);
+        if (!HasCookie(request, state) && !confirms) return Refused(403, CodeRequiredBody);
         if (!string.IsNullOrEmpty(request.Origin) && !IsOwnOrigin(request.Origin, request.Host!)) return Refused(403, "Forbidden");
         if (request.FetchSite is not null and not ("none" or "same-origin")) return Refused(403, "Forbidden");
+        Decision decided = Route(request, state, target, path, query, entry);
+        return confirms ? decided with { Confirms = true } : decided;
 
+        static bool HasCookie(Request request, State state) =>
+            state.BrowserCookie is not null && FixedTimeEquals(CookieValue(request.Cookie, CookieName) ?? "", state.BrowserCookie);
+        static Decision Refused(int status, string body) => new(Outcome.Refuse, status, body);
+    }
+
+    // Where a request of the admitted browser goes (Decide).
+    private static Decision Route(Request request, State state, string target, string path, string? query, int? entry)
+    {
         if (entry is { } entryIndex)
         {
-            if (entryIndex >= state.Windows.Count || state.Windows[entryIndex] is not { } window)
-                return request.Method is "GET" or "HEAD" ? new(Outcome.Wait) : Refused(405, "Method not allowed");
             bool getOrHead = request.Method is "GET" or "HEAD";
+            if (!getOrHead) return Refused(405, "Method not allowed");
+            if (entryIndex < state.Windows.Count && state.Windows[entryIndex] is null)
+            {
+                // A Window that sent its page the close command: wait a moment, as for a restart. Then / follows the first
+                // Window that still serves, and /windows/<n> says it closed.
+                if (state.Closing?.Contains(entryIndex) == true) return new(Outcome.Wait);
+                if (entryIndex > 0) return new(Outcome.Closed);
+                int live = -1;
+                for (int index = 0; index < state.Windows.Count && live < 0; index++)
+                    if (state.Windows[index] is not null) live = index;
+                if (live < 0) return new(Outcome.Wait);
+                entryIndex = live;
+            }
+            if (entryIndex >= state.Windows.Count || state.Windows[entryIndex] is not { } window) return new(Outcome.Wait);
             if (BasePath(window) == "/")
             {
                 // A CS-WebUI Window serves at its server's root, which is also the entry's. The proxy has one root, the
                 // first such Window's; a later one (a second CS-WebUI Window) opens at its own address, as before #1187.
                 if (Enumerable.Range(0, state.Windows.Count).First(index => state.Windows[index] is { } other && BasePath(other) == "/") != entryIndex)
-                    return getOrHead ? new(Outcome.Redirect, Location: window.AbsoluteUri) : Refused(405, "Method not allowed");
+                    return new(Outcome.Redirect, Location: window.AbsoluteUri);
                 // The root with a query, or the page itself, is the Window's.
                 if (path == "/" && (query is not null || window.PathAndQuery == "/")) return Forward(window, target);
             }
-            return getOrHead ? new(Outcome.Redirect, Location: window.PathAndQuery) : Refused(405, "Method not allowed");
+            return new(Outcome.Redirect, Location: window.PathAndQuery);
         }
 
         // The longest base of a running Window that the path is in (a CS-WebUI Window's is /).
@@ -344,8 +391,6 @@ internal sealed class BrowserEntry : IAsyncDisposable
         }
         return Refused(404, "Not found");
 
-        static bool HasCookie(Request request, State state) =>
-            state.BrowserCookie is not null && FixedTimeEquals(CookieValue(request.Cookie, CookieName) ?? "", state.BrowserCookie);
         static Decision Forward(Uri window, string path) => new(Outcome.Forward, Authority: window.Authority, Path: path);
         static Decision Refused(int status, string body) => new(Outcome.Refuse, status, body);
     }
@@ -507,13 +552,15 @@ internal sealed class BrowserEntry : IAsyncDisposable
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    // Admits the browser of an admission request: a new cookie, which ends the previous browser's, and a new code.
+    // An admission request: a new code, and a pending cookie for its browser (Confirm). The admitted browser stays admitted
+    // until a browser presents that cookie, so a page that only sends the code somewhere (a file: page that frames or opens
+    // the code file) cannot end its admission.
     private string Admit()
     {
         string cookie = NewSecret();
         lock (_gate)
         {
-            _cookie = cookie;
+            _pendingCookie = cookie;
             _code = NewSecret();
         }
         WriteCodeFile();
@@ -525,6 +572,43 @@ internal sealed class BrowserEntry : IAsyncDisposable
         {
         }
         return cookie;
+    }
+
+    // The pending admission's browser presented its cookie: it is the admitted browser now. The previous one's cookie ends,
+    // and so do the WebSocket connections the proxy relays for it, which would otherwise keep driving the Window.
+    private void Confirm(string? presented)
+    {
+        Action[] upgrades;
+        lock (_gate)
+        {
+            if (_pendingCookie is null || presented is null || !FixedTimeEquals(presented, _pendingCookie)) return;
+            _cookie = _pendingCookie;
+            _pendingCookie = null;
+            upgrades = [.. _upgrades];
+            _upgrades.Clear();
+        }
+        foreach (Action close in upgrades) close();
+    }
+
+    // Registers a WebSocket connection that the proxy relays, which Confirm closes; disposing the result removes it.
+    private Untrack TrackUpgrade(Action close)
+    {
+        lock (_gate) _upgrades.Add(close);
+        return new Untrack(this, close);
+    }
+
+    private sealed class Untrack(BrowserEntry entry, Action close) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (entry._gate) entry._upgrades.Remove(close);
+        }
+    }
+
+    /// <summary>The number of WebSocket connections the proxy relays now (tests).</summary>
+    internal int RelayedUpgrades
+    {
+        get { lock (_gate) return _upgrades.Count; }
     }
 
     /// <summary>The page that opens the address with <paramref name="code"/>: a refresh to it, and the address to type.</summary>
@@ -656,10 +740,17 @@ internal sealed class BrowserEntry : IAsyncDisposable
                     return;
                 }
                 State state;
-                lock (_gate) state = new(_code, _cookie, [.. _windows.Select(static window => window.Closed ? null : window.Target)], new Dictionary<string, int>(_staleBases));
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                lock (_gate)
+                {
+                    state = new(_code, _cookie, [.. _windows.Select(static window => window.Closed ? null : window.Target)],
+                        new Dictionary<string, int>(_staleBases), _pendingCookie,
+                        Enumerable.Range(0, _windows.Count).Where(index => now - _windows[index].ClosedAt < ClosingGrace).ToHashSet());
+                }
                 var request = new Request(head.Method, head.Path, head.Header("Host"), head.Header("Origin"), head.Header("Sec-Fetch-Site"),
                     head.Header("Cookie"), head.IsWebSocketUpgrade(out string webSocketKey));
                 Decision decision = Decide(request, state);
+                if (decision.Confirms) Confirm(CookieValue(request.Cookie, CookieName));
                 switch (decision.Outcome)
                 {
                     case Outcome.Admit:
@@ -672,6 +763,9 @@ internal sealed class BrowserEntry : IAsyncDisposable
                         return;
                     case Outcome.Wait:
                         await WriteAsync(stream, 200, WaitingPage, head.Method == "HEAD").ConfigureAwait(false);
+                        return;
+                    case Outcome.Closed:
+                        await WriteAsync(stream, 200, ClosedPage, head.Method == "HEAD").ConfigureAwait(false);
                         return;
                     case Outcome.TurnAway:
                         await TurnAwayAsync(stream, webSocketKey, head.Header("Sec-WebSocket-Protocol")).ConfigureAwait(false);
@@ -734,6 +828,19 @@ internal sealed class BrowserEntry : IAsyncDisposable
         await server.WriteAsync(Encoding.Latin1.GetBytes(ForwardedHead(head, upgrade, authority, path)), _stop.Token).ConfigureAwait(false);
 
         using var done = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+        // A new admission closes the WebSocket connections of the browser admitted before (Confirm).
+        using Untrack? tracked = upgrade ? TrackUpgrade(() =>
+        {
+            try
+            {
+                done.Cancel();
+                window.Close();
+                client.Close();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }) : null;
         // A WebSocket carries frames both ways until either side closes; a request carries its body (Content-Length; a
         // browser does not send chunked request bodies to a page's server), and nothing after it reaches the Window.
         Task upload = upgrade ? client.CopyToAsync(server, done.Token) : CopyBodyAsync(client, server, head, done.Token);

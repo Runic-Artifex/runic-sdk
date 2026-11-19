@@ -240,7 +240,7 @@ async function checkBrowser() {
     if (!values.only && !/^\[[\d.]+s\] PASS window-restart: after the Window restarted: stopped at /m.test(run.stdout))
       throw new Error("The window-restart scenario did not pass");
     // Chrome's admission replaced the code: dev printed the next one.
-    if (!/^\[dev\] Browser: a browser opened the Window\. Another one opens http:\/\/127\.0\.0\.1:\d+\/\?code=[\w-]+, /m.test(output))
+    if (!/^\[dev\] Browser: a browser used the code\. The next one is http:\/\/127\.0\.0\.1:\d+\/\?code=[\w-]+; /m.test(output))
       throw new Error("dotnet runic dev --browser printed no line for the browser it admitted");
     // One bound browser: Chrome's admission ended curl's.
     check("the earlier browser", [cookie, "Sec-Fetch-Site: none"], "403");
