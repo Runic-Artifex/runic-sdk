@@ -397,7 +397,7 @@ and the component build target.
 <!--#if (editor == "vscode") -->
 | `.vscode/` | VS Code tasks for `dotnet runic dev`, debug configurations and the recommended extensions. See [VS Code](#vs-code). |
 <!--#endif -->
-| `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
+| `icons/` | The application's placeholder icon: `icon.svg` and `icon.png` (512 px), from which the build derives the Windows and macOS icons. |
 <!--#if (packaging) -->
 | `packaging/` | The manifests `dotnet runic package` fills, which replace its built-in ones: MSIX on Windows, `.app` on macOS, the desktop entry, AppStream metadata and Flatpak manifest on Linux. See [Package it](#package-it). |
 <!--#endif -->
@@ -638,7 +638,6 @@ The project file declares the application's identity once:
 | `ApplicationId` | `__RUNIC_APPLICATION_ID__` | The desktop entry, icon and Flatpak ID on Linux, the bundle identifier on macOS, the package name and AppUserModelID on Windows. |
 | `ApplicationTitle` | `__RUNIC_APPLICATION_NAME__` | The name users see. |
 | `Version` | `1.0.0` | The application's version. |
-| `ApplicationIcon` | `icons/icon.ico` | The executable's icon in Explorer and the taskbar. |
 
 Choose the ID before you ship: a reverse-DNS name for a domain you control,
 such as `org.example.Notes` (`dotnet new runic-app --application-id org.example.Notes`
@@ -657,13 +656,27 @@ AppUserModelID or an MSIX package, a macOS bundle).
 <!--#endif -->
 
 The icon in `icons/` is a neutral placeholder. Replace `icons/icon.svg` with
-your own square icon, then render `icon.png` (512 px) and `icon.ico` from it,
-for example with ImageMagick:
+your own square icon, then render `icon.png` (512 px) from it, for example with
+ImageMagick:
 
 ```sh
 magick -background none -density 384 icons/icon.svg -resize 512x512 icons/icon.png
-magick icons/icon.png -define icon:auto-resize=256,128,64,48,32,24,16 icons/icon.ico
 ```
+
+`icons/icon.png` is the application's only icon; Runic derives the rest from it:
+
+- **Windows.** The build writes `obj/<configuration>/<framework>/runic-icon/application.ico`
+  (16 to 256 px) and uses it as `ApplicationIcon`, the executable's icon in Explorer
+  and on the taskbar. Windows without an `IconFile` show the same icon.
+- **macOS.** `dotnet run` starts the application from a development bundle with
+  the icon as `icon.icns`, so the Dock shows it; outside a bundle a window sets it
+  as the application's icon.
+- **Packages.** `dotnet runic package` makes each package's icons from it.
+
+The icon must be a square PNG of at least 256 px; another one is a warning
+(`RUNICICON001` to `RUNICICON003`) and the build goes on without the derived
+icon. To use an `.ico` of your own, set `ApplicationIcon`; to turn the derived
+icons off, set `RunicApplicationIconGenerationEnabled` to `false`.
 
 ## Publish
 

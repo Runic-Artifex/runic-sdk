@@ -23,8 +23,6 @@ internal sealed partial class LinuxWebKitGtkHost
     // GTK thread only: a copy of the last primary button press on the view, and the running drag out.
     private nint _dragPress;
     private Gtk3DragOut? _dragOut;
-    // GTK thread only: the effect GTK reported when the pending drop was dropped.
-    private DesktopDragEffects _dropEffect = DesktopDragEffects.Copy;
 
     public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default)
     {

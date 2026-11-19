@@ -375,6 +375,36 @@ names the override file and the field, and says where to add it, rather than shi
 only. Runic Translations will fill `RunicApplicationLocales` from `runic.json`;
 until then, set it by hand to the catalog's locales.
 
+## The application icon
+
+An application supplies one icon: `RunicPackageIcon`, by default
+`icons/icon.png`, a square PNG of 512 px (at least 256 px; 1024 px for the Mac
+App Store), with an optional `icon.svg` beside it for Linux. The packages make
+their icons from it, and since 0.23 the build derives the rest:
+
+| Where | What Runic derives | When |
+| --- | --- | --- |
+| Windows executable | `obj/<configuration>/<framework>/runic-icon/application.ico` with 16, 20, 24, 32, 40, 48 and 64 px as 32-bit bitmaps and 256 px as PNG, used as `ApplicationIcon`: the icon in Explorer and on the taskbar, embedded in the managed assembly, the application host and the NativeAOT executable | Every build of an executable whose project sets no `ApplicationIcon` or `Win32Resource` |
+| Windows windows | A Runic Desktop window without `IconFile` takes its large and small icon from the executable's icon resource, or from the application's assembly when the process is `dotnet app.dll`; nothing is shipped for it | At run time |
+| macOS development bundle | `Contents/Resources/icon.icns` with `CFBundleIconFile`, PNG entries of the sizes `iconutil` writes, up to the icon's size, so the Dock shows the icon during `dotnet run` | `dotnet run` on a Mac ([development bundle](../packages/dotnet/Runic.Platform.MacOS/README.md#development-bundle)) |
+| macOS outside a bundle | A Runic Desktop window without `IconFile` sets the PNG, copied beside the executable as `runic-application-icon.png`, as the application's icon when the process has no bundle icon, such as `dotnet app.dll` | Builds that can run on macOS (no `RuntimeIdentifier`, or `osx-*`) |
+
+The `.ico` and `.icns` are written by managed code in `Runic.Platform`'s build
+files, without native libraries or tools such as ImageMagick, `sips` or
+`iconutil`, so a Linux build, a Windows build, a Mac and a Nix build write the
+same bytes. Every standard PNG works: each colour type and bit depth, palette
+transparency (`tRNS`) and interlaced images. The sizes are scaled down with an
+area filter in premultiplied alpha, so transparent pixels add no colour to the
+edges. An icon that is not square, smaller than 256 px or no readable PNG is a
+build warning ([`RUNICICON001`](diagnostics.md#runicicon001) to
+[`RUNICICON003`](diagnostics.md#runicicon003)), and the build goes on without
+it.
+
+GTK takes a window's icon from the icon theme by the application ID, as before:
+the installed packages put the icon there. To use an `.ico` of your own, set
+`ApplicationIcon`; `RunicApplicationIconGenerationEnabled=false` turns all of
+the above off.
+
 ## Windows
 
 Install the Windows SDK, which provides `makeappx` and `signtool`. The command

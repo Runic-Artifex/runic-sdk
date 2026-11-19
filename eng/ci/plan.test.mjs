@@ -310,8 +310,9 @@ test('component dependencies cover every project reference and workspace npm dep
 // generated output, pack staging or an external checkout (DynamicData fork,
 // CsWebUi), not another component's source. AotSizeModelsDirectory is the scaling suite's generated NativeAOT
 // fixture models under artifacts/ (tests/scaling/aot-size). _RunicDevTools* is dotnet-runic's stamped DevTools extension
-// manifest under obj/ (Runic.Application.Tool.csproj).
-const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|AotSizeModelsDirectory|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|RunicPackagingProbeExtraFiles\w*|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*|_?RunicDevTools\w*|_?RunicPrivileged\w*|_?RunicDesktopNativeServer\w*|_?RunicNativeServer\w*)\))/;
+// manifest under obj/ (Runic.Application.Tool.csproj). _RunicDesktopApplicationIcon is the consuming application's own
+// package icon (Runic.Desktop.targets, sdk#1207).
+const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|_RunicDesktopApplicationIcon|AotSizeModelsDirectory|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|RunicPackagingProbeExtraFiles\w*|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*|_?RunicDevTools\w*|_?RunicPrivileged\w*|_?RunicDesktopNativeServer\w*|_?RunicNativeServer\w*)\))/;
 
 test('component dependencies cover MSBuild imports and cross-directory items', () => {
   for (const file of tracked('*.csproj', '*.props', '*.targets')) {
@@ -894,6 +895,7 @@ test('the CI scripts of platform steps belong to the component whose job runs th
     ['eng/ci/hdiutil.sh', 'packaging', ['osx-arm64'], ['packaging']],
     ['eng/ci/packaging-probe-check.mjs', 'packaging', platforms, ['packaging']],
     ['eng/ci/packaging-rpm.sh', 'packaging', [], ['packaging']],
+    ['eng/ci/windows-icon-check.mjs', 'packaging', platforms, ['packaging']],
   ]) {
     assert.deepEqual(ownedBy(file), [component], file);
     const result = plan([file]);

@@ -1058,13 +1058,18 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Browser: Window serves at <url>` | With `--browser` (since 0.21), each time the Window process serves a Window: the first at `dev`'s root address, later ones at `/windows/<n>` ([Debug the page in Chrome](#debug-the-page-in-chrome---browser)). Since 0.23 the URL carries the current one-time code (`?code=…`), which admits one browser; the session file's `browser.codeFile` opens the address with the newest code. One form for every Window; match it with `^\[dev\] Browser: Window serves at (?<url>http://\S+)$`. Other `[dev] Browser:` lines are human text. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
 | `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
+| `[vite] [runic] Frontend errors cleared` | Since 0.23, after a frontend module that did not compile (a `RUNICP008` line, below) compiles again: the frontend errors printed since the last such line no longer apply. Printed by the Runic Vite plugin, so only for a Vite frontend. |
 | `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
 **Stopping `dev`.** Stop `dev` as a terminal does, with Ctrl+C or SIGINT/SIGTERM.
 `dev` then stops the frontend and the Window, marks the session file
-`"stopped"`, deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
-exits with 130. A process killed by force does none of this: a build within 30
-seconds still keeps the development pages, and the session file keeps its state.
+`"stopped"`, replaces the development pages it wrote into the web root with a
+page that loads nothing (since 0.23; a page that a build replaced meanwhile
+stays), deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
+exits with 130. The next build copies the frontend's pages back. A process
+killed by force does none of this: its development pages stay until the next
+build, a build within 30 seconds still keeps them, and the session file keeps
+its state.
 On Windows, the frontend's development server or watcher runs in a Job object
 with everything it starts (the package manager, Node.js below it and the
 `runic-translations serve` that the Vite plugin starts), so the stop ends all of
@@ -1083,6 +1088,21 @@ The processes that `dev` starts get an empty input of their own, so none of them
 reads the request. Without the variable, `dev` doesn't read its input, and an
 interactive terminal works as before. An older `dev` ignores the variable, so
 keep the forced stop as the fallback.
+
+**Known issue: SIGTERM with the .NET 11 SDK.** With SDK 11.0.100 on Linux, a
+SIGTERM sent to the `dotnet` process that runs `dotnet runic dev` ends that
+process without forwarding the signal to `dev`
+([dotnet/sdk#57091](https://github.com/dotnet/sdk/issues/57091)): `dev` keeps
+running without its parent, with its Window and development server, and a
+process manager that stops it so leaves it behind. SDK 10 forwards the signal.
+Set `DOTNET_CLI_ENABLEAOT=0` in the environment that starts `dev`, which makes
+SDK 11 forward it too, or send the signal to `dev` itself (the session file's
+`processId`) or to its process group. Ctrl+C in a terminal is not affected: the
+terminal signals every process of its group. The stop on standard input
+(`RUNIC_DEV_STOP_ON_INPUT=1`) is not affected either, as `dev` reads the input
+it inherits from the `dotnet` process; Runic DevKit for Visual Studio and for VS
+Code stop `dev` that way. Neither SDK forwards a SIGINT that reaches only the
+`dotnet` process: send a forced stop's SIGINT to `dev` or its process group.
 
 The two prefix lines are where a background task's `beginsPattern` starts a new
 build cycle, as the template's `.vscode/tasks.json` below does; the text after
@@ -1153,8 +1173,22 @@ first build's lines come as the build prints them. The lines of a process that
 `[host] /path/to/App/CounterViewModel.cs(18,5): error CS1002: ; expected`
 (`[app] ` with `--no-dotnet-watch`; the Vite development server's lines follow
 `[vite] `). VS Code's built-in `$msCompile` takes `[host] /path/…` for the
-file, so the task above uses its pattern after an optional label. This pattern
-matches all of them, for other tools:
+file, so the task above uses its pattern after an optional label.
+
+Since 0.23, a frontend module that Vite cannot compile (a TSX syntax error, an
+import that does not resolve) is also one such line per error, from the Runic
+Vite plugin, besides Vite's own output and the page's overlay. The path is
+absolute and the position 1-based, as in the build's lines:
+
+```text
+[vite] /path/to/App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.
+```
+
+The message starts with the Vite plugin that failed. Once the modules that
+failed compile again, `[vite] [runic] Frontend errors cleared` follows, and an
+IDE removes the `RUNICP008` errors it took from the lines before. There is no
+type check: a type error that Vite compiles is not one. This pattern matches
+all of them, for other tools:
 
 ```text
 ^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$

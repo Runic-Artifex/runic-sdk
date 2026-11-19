@@ -35,7 +35,8 @@ public sealed partial class DesktopWindow
     /// size and its position on the screen and is not laid out again. The panel's page is a second connection of the
     /// window, with a credential of its own, so it binds to the same ViewModel tree as the page. It is
     /// not granted <c>navigation-path/1</c>: its address and history are its own, and its Back does not navigate the
-    /// window. It may show hosted regions. Files dropped on it are refused. <c>window.close()</c> in it closes the panel,
+    /// window. It may show hosted regions. Files dropped on it reach <see cref="FilesDropped"/> as the page's do, with
+    /// <see cref="DesktopFileDropEventArgs.InSidePanel"/> set. <c>window.close()</c> in it closes the panel,
     /// never the window, and its title is not the window's.
     /// </para>
     /// <para>

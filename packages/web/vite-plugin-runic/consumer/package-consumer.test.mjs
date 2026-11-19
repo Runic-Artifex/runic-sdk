@@ -19,13 +19,18 @@ const execFile = (command, args, options) => {
   return execute(command, args, options);
 };
 
+// The consumer installs its dependencies from the public npm registry, so this is not a unit test: `bun run test:consumer`
+// packs the built package, and eng/verify-packages.mjs runs it on the release archive (RUNIC_VITE_PLUGIN_ARCHIVE).
 test("packed package is source-free and works from an isolated consumer", { timeout: scaled(120000) }, async () => {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-package-"));
   try {
-    const packed = await execFile("npm", ["pack", "--json", "--pack-destination", root], { cwd: process.cwd() });
-    const result = JSON.parse(packed.stdout);
-    const [{ filename }] = Array.isArray(result) ? result : Object.values(result);
-    const tarball = join(root, filename);
+    let tarball = process.env.RUNIC_VITE_PLUGIN_ARCHIVE;
+    if (!tarball) {
+      const packed = await execFile("npm", ["pack", "--json", "--pack-destination", root], { cwd: process.cwd() });
+      const result = JSON.parse(packed.stdout);
+      const [{ filename }] = Array.isArray(result) ? result : Object.values(result);
+      tarball = join(root, filename);
+    }
     const files = (await execFile("tar", ["-tf", tarball])).stdout.split("\n").filter(Boolean);
     assert.ok(files.includes("package/package.json"));
     assert.ok(files.includes("package/dist/index.js"));

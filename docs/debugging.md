@@ -157,6 +157,11 @@ IDE tasks and extensions read `dotnet runic dev` through stable lines and a sess
   `unavailableDebugEndpoints` (one that the engine will not open, with a `reason`), `browser` (the address that
   `--browser` serves the Window at), and `sourceMap`, the Bridge
   source map that the page's tools read. See [Session file](../tools/dotnet-runic/README.md#session-file).
+- **Stopping:** write `stop` to `dev`'s standard input with `RUNIC_DEV_STOP_ON_INPUT=1` set, or send SIGINT or
+  SIGTERM to `dev` itself (`processId`), not to the `dotnet` process that started it: the .NET 11 SDK does not forward
+  SIGTERM to a local tool on Linux ([dotnet/sdk#57091](https://github.com/dotnet/sdk/issues/57091); set
+  `DOTNET_CLI_ENABLEAOT=0` to make it), and no SDK forwards a SIGINT that reaches only that process. See
+  [Stopping `dev`](../tools/dotnet-runic/README.md#ide-contract).
 
 ## The browser's developer tools per engine
 
@@ -176,9 +181,9 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
 
 | Engine | Where | Open | Debugger and automation |
 | --- | --- | --- | --- |
-| WebView2 | Windows | F12, Ctrl+Shift+I, Inspect from the page's context menu, Open DevTools in the window's system menu (Alt+Space), or `DesktopWindow.OpenDevToolsAsync()` | A DevTools Protocol endpoint on request (below); DevTools extensions (below) |
+| WebView2 | Windows | F12, Ctrl+Shift+I, Inspect from the page's context menu, Open DevTools in the window's system menu (Alt+Space), the template's View ▸ Developer Tools, or `DesktopWindow.OpenDevToolsAsync()` | A DevTools Protocol endpoint on request (below); DevTools extensions (below) |
 | WKWebView | macOS 13.3 and later | Safari ▸ Develop ▸ your Mac ▸ the window's page (turn on "Show features for web developers" in Safari's Advanced settings) | Safari's Web Inspector only; no DevTools Protocol endpoint |
-| WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached) | A DevTools Protocol endpoint for JavaScript debuggers under `dotnet runic dev` (below), and WebKit's remote inspector |
+| WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached), the template's View ▸ Developer Tools, or `DesktopWindow.OpenDevToolsAsync()` | A DevTools Protocol endpoint for JavaScript debuggers under `dotnet runic dev` (below), and WebKit's remote inspector |
 | Installed browser | CS-WebUI's default, and Runic Desktop's fallback without a WebView | The browser's own F12 | The browser's own rules: Runic's policy does not apply to it |
 
 - **WebView2 endpoint.** WebView2 opens a Chrome DevTools Protocol endpoint when the Window starts with
@@ -193,8 +198,11 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
   IDE without elevation.
 - **WebView2 DevTools window.** While a window's developer tools are on, its system menu (Alt+Space, or a right
   click on the title bar) has **Open DevTools**, and `await window.OpenDevToolsAsync()` opens the same Edge DevTools
-  window from code, for example from a development-only menu item of your own. It returns `false` where the developer
-  tools are off, as in production, and on WKWebView, WebKitGTK and installed browsers.
+  window from code; on WebKitGTK it shows WebKit's Web Inspector (since 0.23). It returns `false` where the developer
+  tools are off, as in production, and on WKWebView and installed browsers. A menu bar item whose command id is
+  `DesktopMenuItem.OpenDevToolsCommandId` (`runic.devtools.open`, since 0.23) does the same for the key window, and is
+  disabled where it cannot; the `runic-app` template declares it as View ▸ Developer Tools in Development on Windows
+  and Linux. See the [Runic.Desktop README](../packages/dotnet/Runic.Desktop/README.md#the-webview2-devtools-window-and-devtools-extensions).
 - **WebView2 DevTools extensions** (since 0.21). In Development a WebView2 window loads unpacked browser extensions,
   such as React Developer Tools or Vue.js devtools, so their panels appear in its DevTools window and their hooks run
   in the page. List the extension folders (each one holds a `manifest.json`) in `DesktopHostOptions.DevToolsExtensions`,

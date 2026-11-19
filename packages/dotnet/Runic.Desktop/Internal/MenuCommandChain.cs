@@ -7,11 +7,16 @@ namespace Runic.Desktop.Internal;
 // The one command path of a menu item, for the native bar, a global menu, shortcuts, the page and
 // DesktopWindow.TryExecuteMenuItemAsync: the declaration, then the window's target, then the application's, each asked
 // CanExecute before Execute. A target that throws is logged (event 3014) and counts as unable to run the item. The
-// check mark of a check or radio item comes from the same targets (IsChecked).
+// check mark of a check or radio item comes from the same targets (IsChecked). Runic's standard command
+// DesktopMenuItem.OpenDevToolsCommandId runs before them all and never reaches them (#1188, D077.13): the window's host
+// opens its developer tools (DevTools), and the item is disabled where it cannot (StandardCommands).
 // Callers run it on the window's UI thread.
 internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> application, ILogger? logger) : IDesktopMenuCommandTarget
 {
     private IDesktopMenuCommandTarget? _window;
+
+    // The window's host, which runs the standard commands; null where there is none, such as the macOS application menu.
+    internal IWebUiEmbeddedHost? DevTools { get; init; }
 
     // The window's own target, DesktopWindow.MenuCommands.
     internal IDesktopMenuCommandTarget? Window
@@ -31,11 +36,38 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
         set => _shortcutsSuspended = value;
     }
 
-    public bool CanExecute(DesktopMenuItem item) => !_shortcutsSuspended && CanExecute(item, Window, application(), logger);
+    public bool CanExecute(DesktopMenuItem item) => !_shortcutsSuspended && CanExecute(item, Window, application(), logger, DevTools);
 
     public void Execute(DesktopMenuItem item) => _ = TryExecute(item);
 
-    internal bool TryExecute(DesktopMenuItem item) => !_shortcutsSuspended && TryExecute(item, Window, application(), logger);
+    internal bool TryExecute(DesktopMenuItem item) => !_shortcutsSuspended && TryExecute(item, Window, application(), logger, DevTools);
+
+    // Whether the item names a standard command, which the chain runs itself.
+    internal static bool IsStandard(DesktopMenuItem item) =>
+        string.Equals(item.CommandId, DesktopMenuItem.OpenDevToolsCommandId, StringComparison.Ordinal);
+
+    // Whether the window's host can open its developer tools now: only in Development (WebContentRules.IsDevelopment,
+    // the test that also turns DevTools on by default), and only where the host opens them on request.
+    internal static bool CanOpenDevTools(IWebUiEmbeddedHost? host, Func<string, string?>? readEnvironment = null) =>
+        host is { IsOpen: true, CanOpenDevTools: true } &&
+        WebContentRules.IsDevelopment(readEnvironment ?? Environment.GetEnvironmentVariable);
+
+    private static void OpenDevTools(IWebUiEmbeddedHost host, ILogger? logger, DesktopMenuItem item)
+    {
+        _ = Observe(host.OpenDevToolsAsync().AsTask());
+
+        async Task Observe(Task<bool> opening)
+        {
+            try
+            {
+                await opening.ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                Report(logger, error, "Execute", item);
+            }
+        }
+    }
 
     public bool? IsChecked(DesktopMenuItem item) => IsChecked(item, Window, application(), logger);
 
@@ -47,6 +79,7 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
     {
         ArgumentNullException.ThrowIfNull(item);
         if (item.IsChecked is not { } declared) return null;
+        if (IsStandard(item)) return declared;
         foreach (var target in (ReadOnlySpan<IDesktopMenuCommandTarget?>)[window, ReferenceEquals(application, window) ? null : application])
         {
             if (target is null) continue;
@@ -63,20 +96,27 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
     }
 
     internal static bool CanExecute(DesktopMenuItem item, IDesktopMenuCommandTarget? window, IDesktopMenuCommandTarget? application,
-        ILogger? logger)
+        ILogger? logger, IWebUiEmbeddedHost? devTools = null, Func<string, string?>? readEnvironment = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (!item.IsEnabled) return false;
+        if (IsStandard(item)) return CanOpenDevTools(devTools, readEnvironment);
         return (window is not null && SafeCanExecute(window, item, logger))
             || (application is not null && !ReferenceEquals(application, window) && SafeCanExecute(application, item, logger));
     }
 
     // Runs the item on the first target that can run it; false when none ran it.
     internal static bool TryExecute(DesktopMenuItem item, IDesktopMenuCommandTarget? window, IDesktopMenuCommandTarget? application,
-        ILogger? logger)
+        ILogger? logger, IWebUiEmbeddedHost? devTools = null, Func<string, string?>? readEnvironment = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (!item.IsEnabled) return false;
+        if (IsStandard(item))
+        {
+            if (!CanOpenDevTools(devTools, readEnvironment)) return false;
+            OpenDevTools(devTools!, logger, item);
+            return true;
+        }
         foreach (var target in (ReadOnlySpan<IDesktopMenuCommandTarget?>)[window, ReferenceEquals(application, window) ? null : application])
         {
             if (target is null || !SafeCanExecute(target, item, logger)) continue;
@@ -97,10 +137,11 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
     // the item's Execute returned, also when the target runs it in a model turn of its own (IAwaitableMenuCommandTarget).
     // A command that starts asynchronous work returns at its first await, as on the native bar.
     internal static async Task<bool> TryExecuteAsync(DesktopMenuItem item, IDesktopMenuCommandTarget? window,
-        IDesktopMenuCommandTarget? application, ILogger? logger)
+        IDesktopMenuCommandTarget? application, ILogger? logger, IWebUiEmbeddedHost? devTools = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (!item.IsEnabled) return false;
+        if (IsStandard(item)) return TryExecute(item, window, application, logger, devTools);
         foreach (var target in new[] { window, ReferenceEquals(application, window) ? null : application })
         {
             if (target is null || !SafeCanExecute(target, item, logger)) continue;

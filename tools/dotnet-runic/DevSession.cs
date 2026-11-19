@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -374,6 +375,7 @@ internal sealed partial class DevSession
             {
                 // The marker first: a build that starts now runs the frontend build and copy again.
                 File.Delete(FrontendMarkerPath);
+                RetireDevelopmentPages();
                 if (Directory.Exists(PagesDirectory)) Directory.Delete(PagesDirectory, recursive: true);
             }
         }
@@ -397,6 +399,52 @@ internal sealed partial class DevSession
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+        }
+    }
+
+    /// <summary>
+    /// The page that takes a development page's place in the web root when dev stops (DEV-SEC-48, #1178). A development
+    /// page loads its script from the development server's loopback port, which another local process can bind once dev
+    /// has stopped and then serve the application script. This page loads nothing: its content security policy refuses
+    /// every script and every request. The next build copies the frontend's pages over it (<see cref="StoppedStampName"/>).
+    /// </summary>
+    internal const string StoppedPage = """
+        <!doctype html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+        <title>dotnet runic dev has stopped</title>
+        </head>
+        <body>
+        <p>This page was written by <code>dotnet runic dev</code>, which served the frontend and has stopped.
+        Build the project (<code>dotnet build</code>) to put the application's pages here, or start <code>dotnet runic dev</code> again.</p>
+        </body>
+        </html>
+
+        """;
+
+    /// <summary>
+    /// Replaces each development page that dev wrote into the web root, and that is still there unchanged, with
+    /// <see cref="StoppedPage"/>. A page that a build replaced since is left as it is. The copies beside the marker
+    /// (<see cref="PagesDirectory"/>) tell which pages dev wrote and what they hold.
+    /// </summary>
+    private void RetireDevelopmentPages()
+    {
+        if (!Directory.Exists(PagesDirectory)) return;
+        string webRoot;
+        lock (_gate) webRoot = _configuration.RuntimeWebRoot;
+        foreach (string copy in Directory.EnumerateFiles(PagesDirectory, "*", SearchOption.AllDirectories))
+        {
+            string page = System.IO.Path.GetFullPath(System.IO.Path.GetRelativePath(PagesDirectory, copy), webRoot);
+            try
+            {
+                if (File.Exists(page) && File.ReadAllBytes(page).AsSpan().SequenceEqual(File.ReadAllBytes(copy)))
+                    File.WriteAllText(page, StoppedPage, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+            }
         }
     }
 

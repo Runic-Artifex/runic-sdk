@@ -31,8 +31,8 @@
          desktop entry sets DBusActivatable=true and the Flatpak exports a D-Bus service file. -->
     <RunicApplicationDBusActivatable>false</RunicApplicationDBusActivatable>
 <!--#endif -->
-    <!-- The Explorer and taskbar icon; icons/ holds the same placeholder as SVG and PNG. -->
-    <ApplicationIcon>icons/icon.ico</ApplicationIcon>
+    <!-- icons/icon.png is the application's icon: the build derives the Windows icon (Explorer, the taskbar and the
+         windows) and the macOS icon from it, and dotnet runic package the packages' icons. -->
     <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package.
          Commit it: a later restore that resolves a different package fails instead of using it. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

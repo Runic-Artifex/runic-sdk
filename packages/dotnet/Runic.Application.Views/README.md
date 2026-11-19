@@ -665,8 +665,12 @@ after a user close.
   native close request. A Window that also has
   `WindowOptions.ConfirmCloseAsync` asks its own guard first, then that
   confirmation, for both.
+- CS-WebUI's WebView window asks too on Windows (WebView2) and Linux
+  (WebKitGTK), since 0.23 (#1148), and `RequestCloseAsync` joins the user's
+  decision there.
 - A presentation that cannot keep its window open opens the Window unguarded and
-  logs event 1053 `WindowCloseGuardUnavailable` instead of failing: CS-WebUI, a
+  logs event 1053 `WindowCloseGuardUnavailable` instead of failing: a CS-WebUI
+  browser window, macOS WebView, `ShowWindow` window or serve-only mode, a
   browser window (an explicitly selected browser or the `EmbeddedThenBrowser`
   fallback), or a custom embedded-window host without the `CloseConfirmation`
   capability. A browser tab or window closes without asking the application.
@@ -1530,6 +1534,11 @@ and never for an access decision. In a Flatpak sandbox the paths are
 document-portal paths under `/run/user/<uid>/doc`, which the application can
 open; a macOS App Sandbox grants access to dropped files while the application
 runs.
+
+Files dropped on the Window's [side panel](../../../docs/side-panel.md#dropped-files-on-the-panel)
+reach the same root ViewModel, in the same queue, with `RunicFileDrop.InSidePanel`
+set and the panel page's label in `Target`. The host sets `InSidePanel` from the
+view that received the drop, so unlike the label it can be trusted.
 
 `RunicFileDrop.Effect` is `Copy`, `Move` or `Link`, as the drag source, the
 user's modifier keys and the page agreed; mark where a drop copies, moves, links
@@ -3012,6 +3021,35 @@ private async Task ImportAsync(ImportSource source, CancellationToken token)
     }
 }
 ```
+
+A command without input can take the progress as its parameter instead, the
+usual .NET pattern, which also suits a library method that takes an
+`IProgress<double>`. The Bridge binds the parameter as CommunityToolkit binds
+the `CancellationToken`: the page sends nothing for it, and the generated
+client calls `import()` and `startImport()` without an argument. Started as an
+operation, the command receives a reporter bound to that operation, which keeps
+reporting to it from any thread until it ends; otherwise, such as through the
+awaited `import()` call, a reporter that does nothing.
+
+```csharp
+[RelayCommand(IncludeCancelCommand = true)]
+private Task ImportAsync(IProgress<double> progress, CancellationToken token) =>
+    importer.ImportAllAsync(progress, token);
+
+// ReactiveUI
+ImportCommand = ReactiveCommand.CreateFromTask<IProgress<double>>(
+    (progress, token) => importer.ImportAllAsync(progress, token));
+```
+
+Only an asynchronous command binds it: a CommunityToolkit
+`IAsyncRelayCommand<IProgress<double>>` (a `[RelayCommand]` method that
+returns `Task`) or a ReactiveUI `ReactiveCommand<IProgress<double>, TResult>`.
+A command that also takes input keeps `RunicOperationProgress.Report`, since
+CommunityToolkit gives a command one parameter. .NET code that runs such a
+command itself passes its own reporter, or `RunicOperationProgress.Current`,
+the reporter of the operation on the current flow. A WPF button without a
+`CommandParameter` passes `null`, so a command that a WPF View binds too writes
+`progress?.Report(...)`.
 
 A result that other parts of the page show, or that must survive a reload, is
 better published as state. Publish it in a read-only property, together with the input it
@@ -4886,7 +4924,7 @@ trace id; correlate them with the host's spans by time and route.
 | 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 1051 | `WindowReleaseFailed` | Error | `IRunicWindowService` fails to release a Window it opened, after that Window closed. | `Window`, `ErrorType` |
 | 1052 | `WindowCloseGuardFailed` | Error | A guarded Window's `CanCloseAsync` throws; the window stays open. A departure guard that throws is logged by the navigator as 1060 instead. | `Window`, `ErrorType` |
-| 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
+| 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as a browser, or CS-WebUI except its WebView on Windows and Linux, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
 | 1054 | `WindowFileDropFailed` | Error | `IRunicFileDropTarget.OnFilesDroppedAsync` of a Window's root ViewModel threw for a drop of files; later drops still arrive. | `ViewModel`, `FileCount`, `ErrorType` |
 | 1055 | `WindowCloseDrainUnavailable` | Warning | A Window with a close drain (`RunicWindowOptions.CloseDrain`, `RunicDesktopHostOptions.CloseDrain`) opens on a presentation that cannot keep its window open, such as an installed browser, serve-only mode or CS-WebUI: the window closes at once, and the Window's scope still waits for durable work. | `Window`, `Presentation` |
 | 1090 | `ReactiveSchedulerKept` | Information | A Runic Desktop, CS-WebUI or test-host window opens while ReactiveUI's main-thread scheduler is one set before `AddRunicReactiveModelContext()`, so Runic's was not installed. Once per scheduler type; a UI dispatcher's scheduler, such as WPF's, is not logged. | `Scheduler` |
@@ -4953,7 +4991,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2029 | `DesktopHostedPeerRefused` | Warning | An elevated hosted application (the elevated pair) refused a connection to one of its listeners from a loopback peer that does not run elevated, or whose process it cannot look up, before it read the request (`elevated-peer-refused`). At most ten a minute. | `Peer` |
 | 2030 | `DesktopHostedRegionAppearanceUnavailable` | Warning | The host gave a region window an appearance override (`RunicHostedRegionOptions.Appearance`, `RunicHostedRegion.SetAppearanceAsync`), but the guest does not implement `region-appearance/1`, such as a 0.18 guest: the window shows the desktop's appearance. Once per window. | `Name`, `Region` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
-| 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `24c7d196e` (CsWebUi 2.5.0-beta.4.9). Once per process, before the first window opens. | `Path` |
+| 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `24c7d196e` (CsWebUi 2.5.0-beta.4.10). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
 | 2103 | `CsWebUiBlobEndpointPortsHeld` | Warning | Another process held, or answered on, one loopback address of `localhost` (`Address`) on `Count` of the `Tried` ports a CS-WebUI Window's blob endpoint tried, so the endpoint gave up `Host`. On Windows, where http.sys refuses to listen on a port that another socket holds, `Address` is `localhost` when no single address shows which socket holds it. Its URLs then fall back to `127.0.0.1`, whose loads the page makes cross-site and the endpoint refuses; on Windows, which has no fallback, the Window opens without blobs and uploads (event 1207). | `Address`, `Count`, `Tried`, `Host` |
 | 2104 | `CsWebUiBlobEndpointPortsReserved` | Warning | On Windows, URL reservations of http.sys (`Reservations`, the reserved URL prefixes) named `Count` of the `Tried` ports a CS-WebUI Window's blob endpoint tried for `Host`, so the endpoint gave up `Host`. A reservation lets the users that its access list names register URLs under the endpoint's, so the endpoint does not use a port that one names, whatever its host or path. The Window then opens without blobs and uploads (event 1207). | `Reservations`, `Count`, `Tried`, `Host` |

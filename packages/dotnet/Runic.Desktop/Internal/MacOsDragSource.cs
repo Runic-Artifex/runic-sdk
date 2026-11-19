@@ -63,7 +63,7 @@ internal sealed partial class MacOsWkWebViewHost
     // The NSDragOperation WebKit last answered for a drag over the web view. Main thread only.
     private ulong _dragOperation;
     // A drop with promised files still arriving, which takes the page's next report; under _promiseGate, which also
-    // orders the reports passed to _drops.
+    // orders the reports passed to _drops and the side panel's pairing.
     private readonly object _promiseGate = new();
     private PromisedDrop? _awaitingReport;
 
@@ -214,8 +214,6 @@ internal sealed partial class MacOsWkWebViewHost
     {
         try
         {
-            // The side panel takes no drops from outside its page (D062.6).
-            if (RefusesDrop(self, sender)) return MacOsDragOperations.None;
             var operation = Api.SendSuperUlongNint(self, Api.GetClass("WKWebView"), selector, sender);
             if (WebViews.TryGetValue(self, out var host)) host._dragOperation = operation;
             return operation;
@@ -227,9 +225,10 @@ internal sealed partial class MacOsWkWebViewHost
     }
 
     // performDragOperation:, main thread. Paths and the effect are read now; promised files are received into private
-    // staging directories, and the drop goes to the pairing once they arrived.
-    private void ReadDrop(nint draggingInfo)
+    // staging directories, and the drop goes to the pairing of the view it was dropped on once they arrived.
+    private void ReadDrop(nint view, nint draggingInfo)
     {
+        var pairing = DropsOf(view);
         var paths = Api.ReadDroppedFilePaths(draggingInfo);
         var effect = MacOsDragOperations.DropEffect(Api.SendUlong(draggingInfo, "draggingSourceOperationMask"), _dragOperation);
         var receivers = Api.ReadPromiseReceivers(draggingInfo);
@@ -239,19 +238,20 @@ internal sealed partial class MacOsWkWebViewHost
             {
                 // A new drop: an earlier promised drop's report is not coming.
                 _awaitingReport = null;
-                _drops?.NativeDrop(paths, [], effect);
+                pairing?.NativeDrop(paths, [], effect);
             }
             return;
         }
-        var drop = new PromisedDrop(paths, effect);
+        var drop = new PromisedDrop(paths, effect, pairing);
         lock (_promiseGate) _awaitingReport = drop;
         _ = DeliverPromisedDropAsync(drop, ReceivePromisedFiles(receivers, PromiseWait));
     }
 
     // The page's report of a drop, main thread. While a promised drop receives its files, the report waits with it:
     // the pairing waits only FileDropSupport.LabelWait for a report after the native drop.
-    // deliverTo is an attached region's guest (RegionFrames), which receives the drop instead of the window.
-    private void PageReport(string? label, bool refused, Action<DesktopFileDropEventArgs>? deliverTo = null)
+    // deliverTo is an attached region's guest (RegionFrames), which receives the drop instead of the window. view is the
+    // web view whose page reported: the page's or the side panel's.
+    private void PageReport(nint view, string? label, bool refused, Action<DesktopFileDropEventArgs>? deliverTo = null)
     {
         lock (_promiseGate)
         {
@@ -261,7 +261,7 @@ internal sealed partial class MacOsWkWebViewHost
                 _awaitingReport = null;
                 return;
             }
-            _drops?.PageReport(label, refused, deliverTo: deliverTo);
+            DropsOf(view)?.PageReport(label, refused, deliverTo: deliverTo);
         }
     }
 
@@ -280,22 +280,23 @@ internal sealed partial class MacOsWkWebViewHost
         {
             if (ReferenceEquals(_awaitingReport, drop)) _awaitingReport = null;
             if (drop.Paths.Count == 0 && files.Count == 0) return;
-            if (_drops is not { } drops)
+            if (drop.Pairing is not { } drops)
             {
                 foreach (var file in files) _ = file.DisposeAsync().AsTask().ContinueWith(static task => _ = task.Exception,
                     CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
                 return;
             }
-            // A closed window's pairing discards the drop and deletes the staged copies.
+            // A closed window's or side panel's pairing discards the drop and deletes the staged copies.
             drops.NativeDrop(drop.Paths, files, drop.Effect);
             if (drop.Reported) drops.PageReport(drop.Label, drop.Refused, deliverTo: drop.DeliverTo);
         }
     }
 
     // A drop whose promised files are still arriving, and the page's report for it. Under _promiseGate.
-    private sealed class PromisedDrop(IReadOnlyList<string> paths, DesktopDragEffects effect)
+    private sealed class PromisedDrop(IReadOnlyList<string> paths, DesktopDragEffects effect, FileDropPairing? pairing)
     {
         internal IReadOnlyList<string> Paths { get; } = paths;
+        internal FileDropPairing? Pairing { get; } = pairing;
         internal DesktopDragEffects Effect { get; } = effect;
         internal bool Reported { get; private set; }
         internal string? Label { get; private set; }

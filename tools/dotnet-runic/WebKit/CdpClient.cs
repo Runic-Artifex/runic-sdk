@@ -52,6 +52,10 @@ internal sealed class CdpClient : IAsyncDisposable
         internal volatile bool Suspended;
         // A restarted Window's page was picked for it; set and cleared under the client's lock.
         internal bool Rebinding;
+        // While the session waits: the inspector connection of the page that went away (InspectorTarget.Generation), and
+        // the pages that connection listed then.
+        internal long GoneGeneration;
+        internal IReadOnlySet<string> GonePeers = new HashSet<string>(StringComparer.Ordinal);
     }
 
     internal async Task RunAsync(CancellationToken cancellationToken)
@@ -222,8 +226,8 @@ internal sealed class CdpClient : IAsyncDisposable
 
     /// <summary>
     /// The page went away. When its Window restarts (<c>dotnet watch</c>), the session waits for the new Window's page and
-    /// continues on it like after a reload, so the debugger stays attached; a page closed in a Window that keeps running
-    /// ends its session. When another client took WebKit's inspector, the session ends as Chrome ends one whose page
+    /// continues on it like after a reload, so the debugger stays attached; a page that another page replaced in a Window
+    /// that keeps running ends its session, and so does a restart that does not come (<see cref="ClosedInRunningWindow"/>). When another client took WebKit's inspector, the session ends as Chrome ends one whose page
     /// another DevTools took over: <c>Inspector.detached</c>, then <c>Target.detachedFromTarget</c>.
     /// </summary>
     private void PageGone(AttachedPage attached, WebKitPage page)
@@ -239,23 +243,22 @@ internal sealed class CdpClient : IAsyncDisposable
             _ = EndAsync(attached.SessionId, ReplacedReason);
             return;
         }
-        long generation = page.Target.Generation;
+        attached.GoneGeneration = page.Target.Generation;
+        attached.GonePeers = _endpoint.ConnectedGeneration == page.Target.Generation
+            ? _endpoint.KnownPages.Where(known => known.Generation == page.Target.Generation).Select(static known => known.PageId).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
         CdpTrace.Write("adapter", $"page {page.Target.PageId} went away; session {attached.SessionId} waits for a restarted Window");
         attached.Session.Suspend();
         _ = page.DisposeAsync().AsTask();
+        // Whether the Window restarts or the page closed in a Window that keeps running is decided by events of the
+        // Window's inspector connection (ClosedInRunningWindow, TargetsChangedAsync), not by a timer (#1210): the page
+        // leaves the list before its Window's process exits, and on a slow machine that exit can take seconds. The
+        // session waits while that process runs; only a restart that never comes ends it, after RestartTimeout, and so
+        // does dev's stop.
         _ = Task.Run(async () =>
         {
             try
             {
-                // The page leaves the list just before its Window's inspector closes; an open inspector of the same Window
-                // afterwards means the page itself closed.
-                await Task.Delay(RestartGrace, _stop.Token).ConfigureAwait(false);
-                if (!attached.Suspended) return;
-                if (_endpoint.ConnectedGeneration == generation)
-                {
-                    await EndAsync(attached.SessionId).ConfigureAwait(false);
-                    return;
-                }
                 await Task.Delay(RestartTimeout, _stop.Token).ConfigureAwait(false);
                 if (attached.Suspended) await EndAsync(attached.SessionId).ConfigureAwait(false);
             }
@@ -265,7 +268,23 @@ internal sealed class CdpClient : IAsyncDisposable
         }, CancellationToken.None);
     }
 
-    private static readonly TimeSpan RestartGrace = TimeSpan.FromSeconds(1.5);
+    /// <summary>
+    /// Whether the page that <paramref name="attached"/> waits for a replacement of closed for good: its Window's
+    /// inspector connection is still open and lists a page it did not list when this one went away, so the Window
+    /// process runs on with another page in its place. When the connection closes instead, the Window process has
+    /// exited, and the session waits for the restarted Window's page on a later connection
+    /// (<see cref="TargetsChangedAsync"/>). Pages that were listed already prove nothing: a Window process that exits
+    /// can drop its pages one at a time before its connection closes.
+    /// </summary>
+    private bool ClosedInRunningWindow(AttachedPage attached) =>
+        ClosedInRunningWindow(_endpoint.ConnectedGeneration, _endpoint.KnownPages, attached.GoneGeneration, attached.GonePeers);
+
+    /// <summary>The decision of <see cref="ClosedInRunningWindow(AttachedPage)"/>, from the endpoint's state.</summary>
+    internal static bool ClosedInRunningWindow(long? connectedGeneration, IReadOnlyList<InspectorTarget> pages, long goneGeneration,
+        IReadOnlySet<string> gonePeers) =>
+        connectedGeneration == goneGeneration &&
+        pages.Any(page => page.Generation == goneGeneration && !gonePeers.Contains(page.PageId));
+
     // Chrome's Inspector.detached reason when another DevTools client takes the page over.
     internal const string ReplacedReason = "replaced_with_devtools";
     private static readonly TimeSpan RestartTimeout = TimeSpan.FromMinutes(3);
@@ -342,6 +361,13 @@ internal sealed class CdpClient : IAsyncDisposable
         foreach (AttachedPage attached in Snapshot().Where(attached => !attached.Suspended && !attached.Page.IsListedIn(pages)))
         {
             attached.Page.TargetRemoved();
+        }
+        List<AttachedPage> closed;
+        lock (_gate) closed = [.. _sessions.Values.Where(attached => attached.Suspended && !attached.Rebinding && ClosedInRunningWindow(attached))];
+        foreach (AttachedPage attached in closed)
+        {
+            CdpTrace.Write("adapter", $"the Window of session {attached.SessionId} runs on with another page; the session ends");
+            await EndAsync(attached.SessionId).ConfigureAwait(false);
         }
         var rebinds = new List<(AttachedPage, InspectorTarget)>();
         List<string> gone;

@@ -157,7 +157,8 @@ export const packageLayouts = {
   // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
   // carry their help links (W300-004).
   // The RUNICPLAT analyzers and their code fixes ship under analyzers/ (0.14).
-  "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets",
+  // RunicApplicationIcon.cs is the source of the application icon task, which the targets compile (sdk#1207).
+  "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets", "buildTransitive/RunicApplicationIcon.cs",
     "analyzers/dotnet/cs/Runic.Platform.Analyzers.dll", "analyzers/dotnet/cs/Runic.Platform.Analyzers.CodeFixes.dll"] },
   // The macOS targets generate the launch daemon's property list; the props carry their help links (W300-026).
   "Runic.Platform.MacOS": { includes: ["buildTransitive/Runic.Platform.MacOS.props", "buildTransitive/Runic.Platform.MacOS.targets"] },
@@ -632,6 +633,9 @@ console.log('The ' + (development ? 'development' : 'production') + ' builds of 
 `);
   run("node", ["views-builds.mjs"], frontend);
   run("node", ["--conditions=development", "views-builds.mjs"], frontend);
+  // The Vite plugin's own isolated consumer (types, build, DevTools dock under Bun and Node), on the packed archive.
+  run("bun", ["test", "--timeout", "240000", "consumer/package-consumer.test.mjs"], resolve(root, "packages/web/vite-plugin-runic"),
+    { RUNIC_VITE_PLUGIN_ARCHIVE: archives.find(([name]) => name === "@runic-artifex/vite-plugin-runic")[1] });
   verifyViewsTranslationsVite(frontend, env);
   writeFileSync(
     join(frontend, "consumer.ts"),

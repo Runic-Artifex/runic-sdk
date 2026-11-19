@@ -14,6 +14,7 @@ Each entry starts with what the ID means. **Fix** says what to change.
 - [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSIZE`, `RCLI`)](#dotnet-runic)
 - [Asset packer and Runic.Assets build (`RAS`)](#asset-packer)
 - [Runic Desktop build (`RUNICDESK`)](#runic-desktop-build)
+- [Application icon (`RUNICICON`)](#application-icon)
 - [Navigation ReactiveUI build (`RUNICNAV`)](#navigation-reactiveui-build)
 - [Runic.Create (`RCREATE`)](#runiccreate)
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
@@ -1634,6 +1635,42 @@ the executable opens windows, or remove the server package when it does not. If
 the reference is intended, for example because a library brings it in, suppress
 the warning with `<NoWarn>$(NoWarn);RUNICDESK007</NoWarn>`.
 
+## Application icon
+
+The `Runic.Platform` build targets derive the Windows `.ico` from the package
+icon, `RunicPackageIcon` (by default `icons/icon.png`), when the project sets no
+`ApplicationIcon`, and the `Runic.Platform.MacOS` targets the development
+bundle's `icon.icns` ([the application icon](packaging.md#the-application-icon)).
+They report these warnings for an icon they cannot use, and the build goes on
+without the derived icon: the executable keeps the generic icon, and the
+development bundle has none. Since 0.23. A project that treats warnings as
+errors fails; fix the icon, or set `RunicApplicationIconGenerationEnabled` to
+`false` to derive nothing.
+
+### RUNICICON001
+
+The package icon is not a PNG the build can read: another format under a `.png`
+name, a damaged file (a wrong checksum, data that ends early), or a PNG larger
+than 8192 px. The message says what is wrong.
+
+**Fix:** save the icon as a PNG again, or point `RunicPackageIcon` at another
+file.
+
+### RUNICICON002
+
+The package icon is not square. Each derived icon is a square, so the build does
+not stretch or crop it.
+
+**Fix:** make the icon square, with transparent margins if the artwork is not.
+
+### RUNICICON003
+
+The package icon is smaller than 256 px, the largest size in the `.ico`. The
+build only scales down.
+
+**Fix:** export the icon at 512 px (or 1024 px, which the Mac App Store needs);
+at least 256 px is required.
+
 ## Navigation ReactiveUI build
 
 The `Runic.Navigation.ReactiveUI` and `Runic.Navigation.ReactiveUI.Reactive`
@@ -2158,7 +2195,8 @@ an id.
 ## Vite plugin
 
 `@runic-artifex/vite-plugin-runic` reports these errors when Vite resolves its
-configuration. Numbers below `007` are not assigned. See the
+configuration, and while `dotnet runic dev` serves, a frontend module that does
+not compile. Numbers below `007` are not assigned. See the
 [plugin guide](../packages/web/vite-plugin-runic/README.md).
 
 ### RUNICP007
@@ -2172,3 +2210,19 @@ panel; it is not the browser's developer tools, which F12 or Inspect opens.)
 `runic-app` template's Vite starters do, or leave `devtools` at its default,
 `"auto"`, which shows the dock's Runic panel only when `DevTools()` is
 registered.
+
+### RUNICP008
+
+A frontend module does not compile in the Vite development server that
+`dotnet runic dev` runs: a syntax error in a `.ts`, `.tsx`, `.vue` or `.svelte`
+file, an import that does not resolve, or another Vite plugin's error. Since
+0.23 the plugin prints each such error as one line in MSBuild's form, with the
+module's absolute path and the 1-based position, and the name of the Vite plugin
+that failed at the start of the message, so that IDE error lists show it next to
+the build's errors (see [IDE contract](../tools/dotnet-runic/README.md#ide-contract)).
+`[runic] Frontend errors cleared` follows once the modules compile again. The
+plugin prints nothing when Vite serves without `dotnet runic dev`. There is no
+type check: a type error that Vite still compiles is not reported.
+
+**Fix:** correct the module at the line and column given; the page's error
+overlay and Vite's output show the same error with its code frame.

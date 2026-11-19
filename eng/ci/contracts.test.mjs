@@ -503,7 +503,7 @@ test('package checks without a lockfile resolve third-party npm packages publish
   const scripts = execFileSync('git', ['ls-files', '-z', '*.mjs'], { cwd: root, encoding: 'utf8' }).split('\0')
     .filter(path => path && !path.startsWith('native/') && path !== 'eng/ci/contracts.test.mjs');
   const unlocked = scripts.filter(path => readFileSync(resolve(root, path), 'utf8').includes('"--package-lock=false"'));
-  assert.deepEqual(unlocked.sort(), ['eng/verify-packages.mjs', 'packages/web/vite-plugin-runic/test/package-consumer.test.mjs',
+  assert.deepEqual(unlocked.sort(), ['eng/verify-packages.mjs', 'packages/web/vite-plugin-runic/consumer/package-consumer.test.mjs',
     'tests/fixtures/application/operations-consumer/package-smoke.mjs', 'tests/web/angular-package-consumer/test-package-consumer.mjs',
     'tests/web/svelte-package-consumers/package-consumers.mjs']);
   for (const path of unlocked) {

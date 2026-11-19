@@ -74,7 +74,7 @@ namespace Runic.Application.Views.CsWebUi
                         break;
                     case DesktopMenuItem item:
                         DesktopMenuRules.Title(item.Title, $"An item of '{path}'");
-                        DesktopMenuRules.Item(item, $"'{path} ▸ {item.Title}'");
+                        DesktopMenuRules.Item(item, $"'{path} ▸ {item.Title}'", standardCommands: true);
                         break;
                     default:
                         // A separator, or an entry kind of a later release that the bar does not show.

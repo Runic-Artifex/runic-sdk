@@ -1,6 +1,9 @@
 #nullable enable
 const Runic.Application.Views.RunicInteractionTimeoutAttribute.MaximumMilliseconds = 86400000 -> int
+Runic.Application.Views.RunicFileDrop.InSidePanel.get -> bool
+Runic.Application.Views.RunicFileDrop.InSidePanel.init -> void
 Runic.Application.Views.RunicInteractionTimeoutAttribute
 Runic.Application.Views.RunicInteractionTimeoutAttribute.Milliseconds.get -> int
 Runic.Application.Views.RunicInteractionTimeoutAttribute.RunicInteractionTimeoutAttribute(int milliseconds) -> void
 Runic.Application.Views.RunicInteractionTimeoutAttribute.Timeout.get -> System.TimeSpan
+static Runic.Application.Views.RunicOperationProgress.Current.get -> System.IProgress<double>!

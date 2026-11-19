@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, lstatSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { assertReleaseLinks } from './readme-links.mjs';
 import { packageVersion } from '../version.mjs';
 import { assertNpmSource } from './npm-inputs.mjs';
+import { inspect } from './metadata.mjs';
 const workspaceAuthority = JSON.parse(readFileSync(new URL('../workspace.json', import.meta.url), 'utf8'));
 // The release-train version. A package may ship on its own version (eng/version.mjs packageVersion).
 export const VERSION = workspaceAuthority.version;
@@ -23,9 +22,7 @@ export function authority(workspace) {
   assert.equal(new Set(entries.map(p => p.name)).size, entries.length, 'Duplicate inventory identity');
   return entries;
 }
-export function inspect(path, registry) {
-  return JSON.parse(execFileSync(process.platform === 'win32' ? 'python' : 'python3', [fileURLToPath(new URL('./metadata.py', import.meta.url)), registry, path], {encoding:'utf8', maxBuffer: 16 * 1024 * 1024}));
-}
+export { inspect };
 export function dependencyOrder(packages) {
   const result = [], active = new Set(), done = new Set();
   function visit(p) {
