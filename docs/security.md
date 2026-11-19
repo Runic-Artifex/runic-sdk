@@ -334,6 +334,15 @@ Add the plugin as the
 [`dotnet runic dev` documentation](../tools/dotnet-runic/README.md) describes
 for your frontend.
 
+The development pages that `dev` writes into the output's `www/` load their
+script from that loopback port. Once `dev` has stopped, another local process
+could bind the port and serve the application script to a Window started from
+that output without a build. Since 0.23, `dev` replaces those pages when it
+stops with a page whose content security policy refuses every script and
+request; the next build copies the frontend's pages back. A `dev` killed by
+force, which cannot run its stop, leaves its pages until the next build:
+build before you run the output after such an end.
+
 The development server is not a boundary against other users of the same
 machine. Loopback admits every local account, and Vite serves the frontend
 sources to any of them. Runic's development endpoints add little to that: the
