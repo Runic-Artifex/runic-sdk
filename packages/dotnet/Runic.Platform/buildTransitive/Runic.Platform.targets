@@ -468,6 +468,11 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
     <RunicApplicationIconGenerationEnabled Condition="'$(RunicApplicationIconGenerationEnabled)' == ''">true</RunicApplicationIconGenerationEnabled>
     <_RunicApplicationIconTaskSource>$(MSBuildThisFileDirectory)RunicApplicationIcon.cs</_RunicApplicationIconTaskSource>
   </PropertyGroup>
+  <!-- The task's source is part of the package, not of the application: when the package folder lies below the project
+       (a RestorePackagesPath such as nuget-cache/), the default Compile glob would take it into the application. -->
+  <ItemGroup>
+    <Compile Remove="$(_RunicApplicationIconTaskSource)" />
+  </ItemGroup>
 
   <UsingTask TaskName="RunicWriteApplicationIcon" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
