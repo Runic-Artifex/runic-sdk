@@ -157,6 +157,11 @@ IDE tasks and extensions read `dotnet runic dev` through stable lines and a sess
   `unavailableDebugEndpoints` (one that the engine will not open, with a `reason`), `browser` (the address that
   `--browser` serves the Window at), and `sourceMap`, the Bridge
   source map that the page's tools read. See [Session file](../tools/dotnet-runic/README.md#session-file).
+- **Stopping:** write `stop` to `dev`'s standard input with `RUNIC_DEV_STOP_ON_INPUT=1` set, or send SIGINT or
+  SIGTERM to `dev` itself (`processId`), not to the `dotnet` process that started it: the .NET 11 SDK does not forward
+  SIGTERM to a local tool on Linux ([dotnet/sdk#57091](https://github.com/dotnet/sdk/issues/57091); set
+  `DOTNET_CLI_ENABLEAOT=0` to make it), and no SDK forwards a SIGINT that reaches only that process. See
+  [Stopping `dev`](../tools/dotnet-runic/README.md#ide-contract).
 
 ## The browser's developer tools per engine
 
