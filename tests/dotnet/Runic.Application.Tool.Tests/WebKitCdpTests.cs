@@ -752,6 +752,24 @@ internal sealed partial class ToolTests
         Equal(CdpException.InvalidParams, (await ThrowsAsync<CdpException>(() => session.HandleAsync("Debugger.getScriptSource", Json("""{"scriptId":"40"}""")))).Code);
     }
 
+    [Test, DisplayName("a session waits for a restarted Window while the old one exits, and ends when another page takes its place (#1210)")]
+    public void RestartWaitDependsOnTheInspectorConnection()
+    {
+        static InspectorTarget Page(long generation, ulong id) => new(1, id, "WebPage", "Page", "http://127.0.0.1:1/index.html") { Generation = generation };
+        var main = Page(3, 1);
+        var settings = Page(3, 2);
+        IReadOnlySet<string> peers = new HashSet<string>([settings.PageId], StringComparer.Ordinal);
+        // The connection closed, or a newer one (the restarted Window) is open: the Window process exited; wait.
+        False(CdpClient.ClosedInRunningWindow(null, [], 3, peers), "closed connection");
+        False(CdpClient.ClosedInRunningWindow(4, [Page(4, 1)], 3, peers), "restarted Window");
+        // Still open, and it lists only what it listed when the page went away, or nothing: an exiting Window process can
+        // drop its pages one at a time, however slowly; wait.
+        False(CdpClient.ClosedInRunningWindow(3, [settings], 3, peers), "the other page of an exiting Window");
+        False(CdpClient.ClosedInRunningWindow(3, [], 3, peers), "no page yet");
+        // A page that was not there: the Window process runs on with another page in this one's place; end.
+        True(CdpClient.ClosedInRunningWindow(3, [settings, Page(3, 7)], 3, peers), "a new page in a running Window");
+    }
+
     [Test, DisplayName("on a restarted Window's page, the debugger's commands wait until its breakpoints are set again (#1108)")]
     public async Task CommandsWaitForTheRestartedWindowsBreakpoints()
     {
