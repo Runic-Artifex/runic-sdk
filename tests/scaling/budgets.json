@@ -335,8 +335,8 @@
     "fdd/folder-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 3766148,
-      "measured": [3692301, 3692301],
+      "limit": 3743213,
+      "measured": [3669816, 3669816],
       "margin": 0.02,
       "note": "the linux-x64 framework-dependent publish (-r linux-x64 --self-contained false) of the CS-WebUI fixture (K = 0), every file: a project-reference publish in this repository holds what a package consumer's does (FD5, fdd-size-0.22.md §7.2); the limit is the measurement plus 2 %. files: the bytes per file at the last --update, which a failure compares with to name the files that grew",
       "files": {
@@ -358,8 +358,7 @@
         "Runic.Platform.Runtime.dll": 320512,
         "Runic.Platform.dll": 306688,
         "libwebui-2.so": 337632,
-        "www/runic-cswebui.js": 21906,
-        "www/runic-views.js": 21906
+        "www/runic-views.js": 21327
       }
     },
     "fdd/other-os-bytes": {
@@ -372,8 +371,8 @@
     "fdd/desktop/folder-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 7127731,
-      "measured": [6987971, 6987971],
+      "limit": 7121252,
+      "measured": [6981619, 6981619],
       "margin": 0.02,
       "note": "the linux-x64 framework-dependent publish of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0), every file (FD5); the limit is the measurement plus 2 %. files: the bytes per file at the last --update",
       "files": {
@@ -399,8 +398,7 @@
         "Runic.Platform.Runtime.dll": 320512,
         "Runic.Platform.dll": 306688,
         "Tmds.DBus.Protocol.dll": 233472,
-        "www/runic-desktop-views.js": 5755,
-        "www/runic-views.js": 5755
+        "www/runic-views.js": 5158
       }
     },
     "fdd/desktop/other-os-bytes": {

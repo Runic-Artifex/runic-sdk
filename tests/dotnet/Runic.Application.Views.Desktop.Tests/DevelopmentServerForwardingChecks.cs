@@ -288,7 +288,7 @@ internal sealed class DevelopmentServerForwardingChecks
         try
         {
             Write(root, "index.html", "<p>document</p>");
-            Write(root, "assets/runic-cswebui.js", "// host client");
+            Write(root, "assets/runic-views.js", "// host client");
             var forwarding = new CsWebUiForwarding(new Uri("http://127.0.0.1:5173/"));
             // The folder's files stay WebUI's, which serves them with its authentication cookie. So does WebUI's
             // "<path>/index.html" probe below such a file, which otherwise redirected the file (the template check of #1096).

@@ -308,10 +308,10 @@ one connection travel through the connection's mailbox
 
 ## Build output
 
-The package's build targets copy `runic-cswebui.js` into `www/` next to the
-built frontend, also as `runic-views.js`. With
+The package's build targets copy its Views client into `www/` next to the
+built frontend as `runic-views.js`. With
 `RunicApplicationFrontendDelivery=Embedded` (since 0.15) they pack the frontend
-and both scripts into the application assembly instead, and each window serves
+and the client into the application assembly instead, and each window serves
 that archive without extracting it; see
 [Ship the frontend inside the executable](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#ship-the-frontend-inside-the-executable).
 `RunicCsWebUiHostOptions.Assets` serves another `IAssetSource`, such as one
@@ -326,8 +326,9 @@ runs on Runic Desktop, whose package copies its own client as `runic-views.js`.
 A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 `desktop`); see
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
-Pages that load `runic-cswebui.js` keep working in 0.22 but log a console
-warning: that copy is deprecated and removed in 0.23. The script adapts
+Since 0.23 the build no longer copies the client as `runic-cswebui.js`
+(deprecated in 0.22): a page that loads that name gets a 404 and no Bridge, and
+the build reports warning `RUNICBRIDGE019`. The script adapts
 `window.webui` to the generated client's transport contract, `__runicBridge`.
 Load it right after `webui.js`: it then observes WebUI's connection events
 through `webui.setEventCallback` and passes every event on to the callback the
@@ -352,7 +353,7 @@ calls, and `2b35db13f` or later for the behaviour this package is tested with.
 WebUI reports no version or commit that Runic could check, so the host logs
 event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before the first
 window opens, when such a library is configured.
-Applications that keep their own copy of `runic-cswebui.js` must update it: the
+Applications that keep their own copy of the client must update it: the
 script and the host speak one Views protocol, 4 in this release. A copy from
 an earlier release speaks Views protocol 3, so its Views do not connect. The build replaces the
 copy in `www/` on every build, so only a copy the application keeps elsewhere,
@@ -392,7 +393,7 @@ connection that just closed, even before WebUI reports that close. Since 0.16:
   closed connection never reaches the connection that reused its slot.
 - With `request-session/1`, which pages and hosts of 0.16 use, every request
   names the random session of its page's `hello`. A request of another page,
-  including the `receive` that `runic-cswebui.js` sends as soon as its socket
+  including the `receive` that `runic-views.js` sends as soon as its socket
   opens, is answered `no-hello` and never touches the old connection or its
   mailbox, and the new page's `hello` closes the old connection at once
   ([request sessions](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#request-sessions)).
@@ -522,7 +523,7 @@ decisions:
   cannot carry `frame-ancestors`, `report-uri` or `sandbox`. The Bridge needs
   `'self'` scripts and connections and no `'unsafe-eval'`, as in
   `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`.
-  The host sends Views state and navigations as data, which `runic-cswebui.js`
+  The host sends Views state and navigations as data, which `runic-views.js`
   parses instead of evaluating. WebUI still evaluates script for
   `WebUiWindow.RunJavaScript`/`ExecuteJavaScript` and
   `WebUiEvent.RunJavaScript`, and for `SetSize` or `SetPosition` while a browser

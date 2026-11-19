@@ -306,7 +306,6 @@ serve_and_fetch() {
     fi
   }
   fetch_served index.html "$document"
-  fetch_served runic-cswebui.js "$document.runic-cswebui.js"
   fetch_served runic-views.js "$document.runic-views.js"
   expect_served 'CS-WebUI owns the browser transport' "$document.runic-views.js" runic-views.js
   # A second window's page is served from the same web root as index.html.
@@ -501,15 +500,18 @@ verify_template() {
       exit 1
     fi
   fi
-  local host_client
+  # D072.11: the host's Views client is copied only as runic-views.js; 0.23 removed the host-named copy.
+  local host_client host_named_client
   case "$host" in
     cswebui)
-      host_client=runic-cswebui.js
+      host_client='CS-WebUI owns the browser transport'
+      host_named_client=runic-cswebui.js
       grep -Fq "<PackageReference Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\" />" "$output/$project_name.csproj"
       grep -Fq 'return RunicCsWebUiHost.Run(provider, RunAsync);' "$output/Program.cs"
       ;;
     desktop)
-      host_client=runic-desktop-views.js
+      host_client='The Desktop surface serves webui.js'
+      host_named_client=runic-desktop-views.js
       grep -Fq 'Runic.Application.Views.Desktop' "$output/$project_name.csproj"
       grep -Fq 'return RunicDesktopHost.Run(provider, options, hostOptions, RunAsync);' "$output/Program.cs"
       # SEC-06 and D040: a Content-Security-Policy outside Development, without 'unsafe-eval': the Bridge needs none.
@@ -610,7 +612,7 @@ verify_template() {
   if [[ "$html_inputs" == true ]]; then
     sed 's|<title>[^<]*</title>|<title>Second window</title>|' "$output/Frontend/index.html" > "$output/Frontend/settings.html"
   fi
-  # serve_and_fetch also fetches CS-WebUI's runic-cswebui.js. Desktop variants
+  # serve_and_fetch also fetches CS-WebUI's runic-views.js. Desktop variants
   # open a native window; the smoke lane opens them under Xvfb (run_desktop_smoke).
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
@@ -725,8 +727,12 @@ verify_template() {
   if [[ "$html_inputs" == true ]]; then
     test -f "$output/bin/Release/net10.0/www/settings.html"
   fi
-  # The referenced host's client is the page's runic-views.js.
-  cmp "$output/bin/Release/net10.0/www/$host_client" "$output/bin/Release/net10.0/www/runic-views.js"
+  # The referenced host's client is the page's runic-views.js, and the build copies no host-named copy (D072.11).
+  grep -Fq "$host_client" "$output/bin/Release/net10.0/www/runic-views.js"
+  if [[ -e "$output/bin/Release/net10.0/www/$host_named_client" ]]; then
+    echo "The build copied the removed host-named client www/$host_named_client." >&2
+    exit 1
+  fi
   # #944: a translated Vite frontend compiles its catalog with the Translations Vite plugin, so the .NET build writes
   # no page ESM of its own, and an edited message rebuilds the page. The rebuild below runs with the restored catalog.
   if [[ "$translations" == translations && "$framework" != angular ]]; then
@@ -757,7 +763,7 @@ verify_template() {
   local built_files served_files
   built_files="$(cd "$output/Frontend/dist" && find . -type f | sort)"
   served_files="$(cd "$output/bin/Release/net10.0/www" && find . -type f \
-    ! -name runic-views.js ! -name runic-cswebui.js ! -name runic-desktop-views.js | sort)"
+    ! -name runic-views.js | sort)"
   if [[ "$built_files" != "$served_files" ]]; then
     echo "www/ does not mirror Frontend/dist after a frontend change." >&2
     diff <(echo "$built_files") <(echo "$served_files") >&2 || true
@@ -768,7 +774,11 @@ verify_template() {
     dotnet publish "$output/$project_name.csproj" --configuration Release --no-restore --no-build \
       --output "$output/publish" > "$output/publish.log"
     test -f "$output/publish/www/settings.html"
-    cmp "$output/publish/www/$host_client" "$output/publish/www/runic-views.js"
+    grep -Fq "$host_client" "$output/publish/www/runic-views.js"
+    if [[ -e "$output/publish/www/$host_named_client" ]]; then
+      echo "The publish copied the removed host-named client www/$host_named_client." >&2
+      exit 1
+    fi
     check_published_files "$output/publish" "$host" portable
     # D072.9: a publish for this machine's RuntimeIdentifier ships only its operating system's Runic.Platform providers.
     # Once per framework lane, with the template's defaults (the Runic Desktop host).
