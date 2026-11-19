@@ -406,7 +406,7 @@ it could read from the server directly, as described above.
 
 On Linux, `dev` also opens two debugging endpoints for the Window's WebKitGTK
 pages, as the
-[`dotnet runic dev` documentation](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview)
+[`dotnet runic dev` documentation](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux)
 describes. Both listen on loopback only, and both can script the Window's page
 and its Bridge:
 
