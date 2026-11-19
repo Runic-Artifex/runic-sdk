@@ -324,6 +324,9 @@
             DOTNET_ROOT = "${dotnet}/share/dotnet";
             RUNIC_CI_ACT = "${actForCi}/bin/act";
             DisableImplicitLibraryPacksFolder = "true";
+            # Browser and WebKit tests lay out text and fail without fonts (elements without text have no size).
+            # Pin them instead of reading the host's fontconfig, which a container or CI image may not have.
+            FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
 
             shellHook = ''
               # Keep interactive restores inside the repository workspace.
