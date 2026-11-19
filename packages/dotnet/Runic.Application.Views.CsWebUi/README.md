@@ -199,7 +199,9 @@ to one browser; an upload also needs its connection's token. There is no native 
 
 A ViewModel's `IRunicWindowPresentation` does what WebUI can:
 `PresentAsync` brings the window to the front (`WebUiWindow.Focus`), and
-`MinimizeAsync` minimizes a `UseWebView` window. The rest, hiding, full screen,
+`MinimizeAsync` minimizes a `UseWebView` window. A `UseWebView` window on
+Windows and Linux also reports its placement and maximizes and restores (see
+[Window placement](#window-placement)). The rest, hiding, full screen,
 the edited mark and the color scheme, reports `Unavailable(BackendUnavailable)`.
 A browser window tells WebUI nothing about its focus, so the Window reports no
 activity: `Features` lacks `Activity` and the Window counts as active and
@@ -285,6 +287,64 @@ window, and `RequestCloseAsync` still asks `CanCloseAsync` before it closes
 the window, because the application is the one closing. The host sets its
 close handler before `ConfigureWindow` runs, so an application that calls
 `WebUiWindow.SetCloseHandler` there replaces the guard for the user's close.
+
+## Window placement
+
+Since 0.23 (#1149) a `UseWebView` window on Windows and Linux reports its
+placement, the restored bounds and whether it is maximized, in
+`IRunicWindowPresentation.Placement`, and takes one with `SetPlacementAsync`,
+`MaximizeAsync` and `RestoreAsync`; `Features` has `Placement` and `Maximize`.
+Save the placement when the Window closes and pass it back with
+`RunicCsWebUiHostOptions.Placement` at the next start, as with Runic Desktop's
+`RunicDesktopHostOptions.Placement`:
+
+```csharp
+return RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions
+{
+    UseWebView = true,
+    Placement = window => window is MainWindow ? settings.MainWindowPlacement : null,
+}, async host =>
+{
+    await using var window = await host.OpenWindowAsync<MainWindow>();
+    await window.WaitForCloseAsync();
+    settings.MainWindowPlacement = window.Presentation.Placement; // also after the user closed it
+    return 0;
+});
+```
+
+The host reads the placement every 500 ms while the window is shown, and once
+more when it closes, also when the user closes it: WebUI raises no event when a
+window moves or resizes. A Win32 subclass could report `WM_WINDOWPOSCHANGED`
+on Windows, but only on the window's own thread, which runs WebUI's message
+loop, and GTK offers no signal to another thread, so both platforms poll; a
+read is a few user32 calls on Windows and one turn of GTK's main loop on
+Linux. `PropertyChanged` reports a change in a model turn, so a drag reaches
+the ViewModel as a few changes, not one per pixel. A placement, the initial one
+included, is kept on a monitor that exists now: bounds off every monitor's
+work area move onto the one they are nearest, and bounds larger than it shrink
+to fit, by Runic Desktop's rule.
+
+| Window | Reported | Taken |
+| --- | --- | --- |
+| `UseWebView` on Windows (WebView2) | Restored bounds (outer frame, screen coordinates), maximized | Bounds, maximized |
+| `UseWebView` on Linux, X11 | Size, frame position, maximized | Size, position, maximized |
+| `UseWebView` on Linux, Wayland | Size and maximized; `X` and `Y` are `null` | Size and maximized; a placement with a position reports `Unavailable(BackendUnavailable)` |
+| `UseWebView` on macOS (WKWebView) | Nothing (`Placement` is `null`) | The initial size and a position WebUI accepts, before the window shows |
+| Browser window, `ShowWindow` | Nothing | The initial size and a position WebUI accepts, before the window shows |
+| `RUNIC_APPLICATION_SERVE_ONLY=1` | Nothing | Nothing: there is no window, and `Placement` is not called |
+
+- The units are CS-WebUI's (`WebUiWindowPlacement`): on Windows the outer
+  window rectangle in screen coordinates, scaled as the process's DPI
+  awareness scales them; on Linux GTK's window size, without the frame, and the
+  frame's position. They are not Runic Desktop's, so save a placement per host.
+- Before a window shows, WebUI takes positions from 0 × 0 to 3000 × 1800 and
+  sizes from 100 to 3840 pixels only; a WebView window takes the whole
+  placement, a negative position included, once it is shown.
+- CS-WebUI has no full screen: a placement with `FullScreen` reports
+  `Unavailable(BackendUnavailable)`. On Linux `RestoreAsync` un-maximizes but
+  does not bring back a minimized window.
+- A Linux window manager decides whether to maximize and where to put a window;
+  without one, as under a bare Xvfb, a window does not maximize.
 
 ## Menu bar
 

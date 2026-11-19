@@ -54,6 +54,72 @@ internal static partial class WebViewProbe
         return 0;
     }
 
+    // sdk#1149, --probe-webview-placement: RunicCsWebUiHostOptions.Placement places the shown window; the presentation
+    // reports the placement, notices a move it did not make (polling), maximizes and restores over the same restored bounds,
+    // and keeps the placement the window had when the user closed it. On Linux under a window manager (Openbox in CI),
+    // which maximizes; GDK_BACKEND=x11 gives a position.
+    internal static int RunPlacement()
+    {
+        if (!Prepare(out var root)) return 0;
+        var services = new ServiceCollection();
+        services.AddScoped<ProbeViewModel>();
+        services.AddRunicViews();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        var initial = new RunicWindowPlacement { X = 150, Y = 120, Width = 700, Height = 500 };
+        RunicWindowPlacement? closedAt = null;
+        var options = new RunicCsWebUiHostOptions
+        {
+            UseWebView = true,
+            Placement = window => window is ProbeWindow ? initial : null,
+        };
+        var result = RunicCsWebUiHost.Run(provider, options, async host =>
+        {
+            var window = await host.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = root, Width = 400, Height = 300 });
+            var native = CsWebUiPlatformServices.GetWebUiWindow(window) ?? throw new InvalidOperationException("The Window has no WebUI window.");
+            var presentation = window.Presentation;
+            Check(presentation.Features.HasFlag(RunicWindowPresentationFeatures.Placement | RunicWindowPresentationFeatures.Maximize),
+                $"A WebView window reported {presentation.Features}.");
+            var changes = 0;
+            presentation.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(IRunicWindowPresentation.Placement)) Interlocked.Increment(ref changes);
+            };
+            await Until(() => Same(presentation.Placement, initial), $"The initial placement was not taken: {presentation.Placement}.");
+
+            // A move the presentation did not make, as the user's drag: the poll reports it.
+            var before = Volatile.Read(ref changes);
+            Check(native.TrySetPlacement(new WebUiWindowPlacement(260, 140, 720, 520)), "TrySetPlacement failed.");
+            await Until(() => Same(presentation.Placement, new RunicWindowPlacement { X = 260, Y = 140, Width = 720, Height = 520 })
+                && Volatile.Read(ref changes) > before, $"The poll did not report the move: {presentation.Placement}.");
+
+            var placed = new RunicWindowPlacement { X = 200, Y = 100, Width = 640, Height = 480 };
+            Check(await presentation.SetPlacementAsync(placed) is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success,
+                "SetPlacementAsync failed.");
+            await Until(() => Same(presentation.Placement, placed), $"SetPlacementAsync was not reported: {presentation.Placement}.");
+            Check(await presentation.MaximizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success, "MaximizeAsync failed.");
+            await Until(() => presentation.Placement is { Maximized: true } maximized && Same(maximized with { Maximized = false }, placed),
+                $"MaximizeAsync did not keep the restored bounds: {presentation.Placement}.");
+            Check(await presentation.RestoreAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success, "RestoreAsync failed.");
+            await Until(() => Same(presentation.Placement, placed), $"RestoreAsync did not restore: {presentation.Placement}.");
+
+            RequestUserClose(native);
+            await window.WaitForCloseAsync().AsTask().WaitAsync(Limit);
+            closedAt = presentation.Placement;
+            await window.DisposeAsync();
+            return 7;
+        });
+        Check(result == 7, $"Run returned {result} instead of the application's result.");
+        Check(Same(closedAt, new RunicWindowPlacement { X = 200, Y = 100, Width = 640, Height = 480 }),
+            $"The placement at the user's close was {closedAt}.");
+        Console.WriteLine("CSWEBUI_WEBVIEW_PLACEMENT_OK");
+        return 0;
+    }
+
+    // The same bounds and state; Wayland reports no position, so there only the size and state count.
+    private static bool Same(RunicWindowPlacement? actual, RunicWindowPlacement expected) =>
+        actual is not null && actual.Width == expected.Width && actual.Height == expected.Height && actual.Maximized == expected.Maximized
+        && (actual.X is null || (actual.X == expected.X && actual.Y == expected.Y));
+
     // The bundled WebUI, a page that loads webui.js so WebUI sees the window connect, and a watchdog. False on macOS,
     // where WebUI's WebView cannot keep a window open and Runic's CI does not show WKWebView windows.
     private static bool Prepare(out string root)

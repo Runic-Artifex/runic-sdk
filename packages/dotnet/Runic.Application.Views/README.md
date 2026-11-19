@@ -1078,8 +1078,12 @@ _settings.WindowPlacement = _window.Placement;
   pixels on Linux), and Runic.Application.Views.Desktop converts with
   `ToRunicPlacement()` and `ToDesktopPlacement()`, so a placement saved with
   `DesktopPlatformServices.GetWindowState` passes between the two layers. In
-  WPF all four are device-independent pixels. An open side panel is not part
-  of the bounds.
+  WPF all four are device-independent pixels. On CS-WebUI (a `UseWebView`
+  window on Windows and Linux, since 0.23) they are CS-WebUI's
+  `WebUiWindowPlacement`: the outer frame in screen coordinates on Windows, and
+  GTK's window size and frame position on Linux; see
+  [Window placement](../Runic.Application.Views.CsWebUi/README.md#window-placement).
+  An open side panel is not part of the bounds.
 - **Keeping or fitting.** `X` and `Y` both `null` keep the position, and a
   `Width` or `Height` of zero or less keeps that dimension. Runic Desktop keeps
   the bounds on a monitor that exists now, as at open, so `Placement` can report

@@ -62,6 +62,9 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
     // sdk#1148: the guard of the user's close, when WebUI can keep this window open; the window's own close abandons it.
     internal CsWebUiUserClose? UserClose { get; set; }
 
+    // sdk#1149: the window's presentation, which reads its placement once more before the host closes the window.
+    internal CsWebUiWindowPresentation? Presentation { get; set; }
+
     /// <summary>The window's scoped root ViewModel.</summary>
     public TViewModel ViewModel { get; }
 
@@ -191,6 +194,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         // A visible closed window must not leave command callbacks active.
         // The content session stays alive solely to own accepted operations.
         Capture(_transport.Dispose, errors);
+        Capture(EndPresentation, errors);
         Capture(_window.Close, errors);
         Task completion;
         lock (_closeGate)
@@ -241,11 +245,20 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         var errors = new List<Exception>();
         Capture(_content.Dispose, errors);
         Capture(_transport.Dispose, errors);
+        Capture(EndPresentation, errors);
         Capture(_window.Dispose, errors);
         if (_scope is IAsyncDisposable asynchronousScope)
             await CaptureAsync(asynchronousScope.DisposeAsync, errors).ConfigureAwait(false);
         else Capture(_scope.Dispose, errors);
         return errors;
+    }
+
+    // The placement as the window closes, then no more polling.
+    private void EndPresentation()
+    {
+        if (Presentation is not { } presentation) return;
+        presentation.Refresh();
+        presentation.StopPolling();
     }
 
     private static Task CompletionFor(List<Exception> errors) => errors.Count switch
