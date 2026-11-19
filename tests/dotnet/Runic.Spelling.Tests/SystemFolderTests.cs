@@ -21,13 +21,15 @@ public sealed class SystemFolderTests
             "/nix/profile/share/hunspell", "/nix/profile/share/myspell", "/nix/profile/share/myspell/dicts",
             "/run/current-system/sw/share/hunspell", "/run/current-system/sw/share/myspell", "/run/current-system/sw/share/myspell/dicts",
             "/usr/share/hunspell", "/usr/share/myspell", "/usr/share/myspell/dicts",
+            // /usr/share comes last also when XDG_DATA_DIRS leaves it out (here under the fake system folder).
+            "/r/system/usr/share/hunspell", "/r/system/usr/share/myspell", "/r/system/usr/share/myspell/dicts",
         ], SpellingFolders.SystemFolders(environment));
 
         // Without the variables: ~/.local/share, then the XDG defaults.
         Sequence([
             "/r/home/.local/share/hunspell", "/r/home/.local/share/myspell", "/r/home/.local/share/myspell/dicts",
-            "/usr/local/share/hunspell", "/usr/local/share/myspell", "/usr/local/share/myspell/dicts",
-            "/usr/share/hunspell", "/usr/share/myspell", "/usr/share/myspell/dicts",
+            "/r/system/usr/local/share/hunspell", "/r/system/usr/local/share/myspell", "/r/system/usr/local/share/myspell/dicts",
+            "/r/system/usr/share/hunspell", "/r/system/usr/share/myspell", "/r/system/usr/share/myspell/dicts",
         ], SpellingFolders.SystemFolders(Environments.Fake(SpellingPlatform.Linux, "/r")));
         // A relative XDG_DATA_HOME is ignored, as the specification says.
         Equal("/r/home/.local/share/runic/dictionaries",
@@ -59,7 +61,7 @@ public sealed class SystemFolderTests
     {
         var environment = Environments.Fake(SpellingPlatform.MacOS, "/r", ("DICPATH", "/ignored"));
 
-        Sequence(["/r/home/Library/Spelling", "/Library/Spelling"], SpellingFolders.SystemFolders(environment));
+        Sequence(["/r/home/Library/Spelling", "/r/system/Library/Spelling"], SpellingFolders.SystemFolders(environment));
         Equal("/r/home/Library/Application Support/Runic/dictionaries", SpellingFolders.DownloadFolder(environment));
         // The application's dictionaries beside the program, or in the bundle's Resources.
         Sequence(["/r/app/dictionaries", "/r/Resources/dictionaries"], SpellingFolders.ApplicationFolders(environment, null));

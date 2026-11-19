@@ -8,8 +8,11 @@ internal enum SpellingPlatform
     Windows,
 }
 
-// What the folders are worked out from: the process's own by default, fakes in the tests.
-internal sealed record SpellingEnvironment(SpellingPlatform Platform, Func<string, string?> Variable, string Home, string BaseDirectory)
+// What the folders are worked out from: the process's own by default, fakes in the tests. SystemRoot is the root the
+// fixed system folders (/usr/share, /Library/Spelling) are under: / for the process, a temporary folder in the tests, so
+// they never read the dictionaries of the computer they run on.
+internal sealed record SpellingEnvironment(SpellingPlatform Platform, Func<string, string?> Variable, string Home, string BaseDirectory,
+    string SystemRoot = "/")
 {
     internal static SpellingEnvironment Current { get; } = new(
         OperatingSystem.IsWindows() ? SpellingPlatform.Windows : OperatingSystem.IsMacOS() ? SpellingPlatform.MacOS : SpellingPlatform.Linux,
@@ -72,7 +75,7 @@ internal static class SpellingFolders
         {
             case SpellingPlatform.MacOS:
                 Add(Path.Combine(environment.Home, "Library", "Spelling"));
-                Add("/Library/Spelling");
+                Add(Path.Combine(environment.SystemRoot, "Library", "Spelling"));
                 break;
             case SpellingPlatform.Windows:
                 var spelling = Path.Combine(environment.Value("APPDATA") ?? Path.Combine(environment.Home, "AppData", "Roaming"), "Microsoft", "Spelling");
@@ -87,8 +90,11 @@ internal static class SpellingFolders
                 break;
             default:
                 foreach (var entry in Split(environment.Value("DICPATH"), environment.ListSeparator)) Add(entry);
-                var dataDirs = Split(environment.Value("XDG_DATA_DIRS") ?? "/usr/local/share:/usr/share", ':');
-                foreach (var share in (string[])[DataHome(environment), .. dataDirs, "/usr/share"])
+                var usrShare = Path.Combine(environment.SystemRoot, "usr", "share");
+                var dataDirs = environment.Value("XDG_DATA_DIRS") is { } configured
+                    ? Split(configured, ':')
+                    : [Path.Combine(environment.SystemRoot, "usr", "local", "share"), usrShare];
+                foreach (var share in (string[])[DataHome(environment), .. dataDirs, usrShare])
                 {
                     Add(Path.Combine(share, "hunspell"));
                     Add(Path.Combine(share, "myspell"));

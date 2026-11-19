@@ -88,11 +88,14 @@ internal sealed class TemporaryFolder : IDisposable
 
 internal static class Environments
 {
-    // An environment with only the variables given, a home in the temporary folder and the program in its app folder.
+    // An environment with only the variables given, a home in the temporary folder, the program in its app folder, and the
+    // fixed system folders (/usr/share, /Library/Spelling) under its system folder, so that no test reads the dictionaries
+    // of the computer it runs on (an Ubuntu runner has /usr/share/hunspell/en_US).
     internal static SpellingEnvironment Fake(SpellingPlatform platform, string root, params (string Name, string Value)[] variables)
     {
         var values = variables.ToDictionary(variable => variable.Name, variable => variable.Value, StringComparer.Ordinal);
-        return new(platform, name => values.GetValueOrDefault(name), Path.Combine(root, "home"), Path.Combine(root, "app"));
+        return new(platform, name => values.GetValueOrDefault(name), Path.Combine(root, "home"), Path.Combine(root, "app"),
+            Path.Combine(root, "system"));
     }
 
     // The bundled dictionaries in this suite's output, where the package's targets copy them.
