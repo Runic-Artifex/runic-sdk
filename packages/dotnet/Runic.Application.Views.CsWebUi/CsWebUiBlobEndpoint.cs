@@ -360,7 +360,7 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         }
         var origin = request.GetRequestHeader("Origin");
         var pageOrigin = PageOrigin();
-        var fromPage = origin.Length > 0 && pageOrigin is not null && IsPageOrigin(origin, pageOrigin);
+        var fromPage = origin.Length > 0 && pageOrigin is not null && (IsPageOrigin(origin, pageOrigin) || IsServedThrough(origin, ServeOrigin()));
         // Every response grants the page's origin, also one to a request without Origin such as an <img>: the
         // browser caches a blob as immutable and may answer a later fetch of the page from that cached response.
         if (pageOrigin is not null)
@@ -431,6 +431,20 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         }
         catch (ObjectDisposedException) { return null; }
     }
+
+    // dotnet runic dev --browser (#1187, D077.14): a serve-only window's pages also come from dev's loopback address,
+    // RUNIC_APPLICATION_SERVE_ORIGIN, while its WebUI connection stays on the window's own port. Null otherwise.
+    internal static string? ServeOrigin(Func<string, string?>? read = null)
+    {
+        read ??= Environment.GetEnvironmentVariable;
+        return read("RUNIC_APPLICATION_SERVE_ONLY") == "1" && read("RUNIC_APPLICATION_SERVE_ORIGIN") is { Length: > 0 } value ? value : null;
+    }
+
+    // The serve origin itself: http on a loopback name with an explicit port, and nothing after the authority.
+    internal static bool IsServedThrough(string origin, string? serveOrigin) =>
+        serveOrigin is not null && Uri.TryCreate(serveOrigin, UriKind.Absolute, out var served) && served.Scheme == Uri.UriSchemeHttp &&
+        served.IsLoopback && !served.IsDefaultPort && served.AbsolutePath == "/" && served.Query.Length == 0 &&
+        string.Equals(origin, served.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
 
     // An origin of the window's page: http on the page's port, with a loopback name.
     internal static bool IsPageOrigin(string origin, string pageOrigin)

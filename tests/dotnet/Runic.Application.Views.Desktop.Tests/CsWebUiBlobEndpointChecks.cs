@@ -28,6 +28,27 @@ internal sealed partial class CsWebUiBlobEndpointChecks
     private const string IPv4OnlyVariable = "RUNIC_CSWEBUI_ENDPOINT_IPV4_ONLY";
     private static bool IPv4Only => Environment.GetEnvironmentVariable(IPv4OnlyVariable) == "1";
 
+    // #1187 (D077.14): under dotnet runic dev --browser, the serve-only window's pages also come from dev's address.
+    [Test]
+    public void TheServeOriginIsThePagesOriginOnlyWhenServingOnly()
+    {
+        string? Read(string name, string? origin) => name switch
+        {
+            "RUNIC_APPLICATION_SERVE_ONLY" => "1",
+            "RUNIC_APPLICATION_SERVE_ORIGIN" => origin,
+            _ => null,
+        };
+        var served = BlobEndpoint.ServeOrigin(name => Read(name, "http://127.0.0.1:9224"));
+        Require(served == "http://127.0.0.1:9224", $"The serve origin was {served}.");
+        Require(BlobEndpoint.IsServedThrough("http://127.0.0.1:9224", served), "dev's origin was refused.");
+        Require(!BlobEndpoint.IsServedThrough("http://127.0.0.1:9225", served), "another port was admitted.");
+        Require(!BlobEndpoint.IsServedThrough("http://localhost:9224", served), "another name was admitted.");
+        Require(BlobEndpoint.ServeOrigin(name => name == "RUNIC_APPLICATION_SERVE_ORIGIN" ? "http://127.0.0.1:9224" : null) is null,
+            "The origin counted without serve-only mode.");
+        foreach (var value in new[] { "https://127.0.0.1:9224", "http://example.com:9224", "http://127.0.0.1", "http://127.0.0.1:9224/x" })
+            Require(!BlobEndpoint.IsServedThrough(value.TrimEnd('/'), value), $"'{value}' was taken as a serve origin.");
+    }
+
     [Test]
     public async Task UploadsOverEitherLoopbackAddressReachTheWindowsListener()
     {
