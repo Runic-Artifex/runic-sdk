@@ -1675,4 +1675,4 @@ regenerated. 0.23.0 removes what 0.22.0 deprecated.
 | A page loads `runic-desktop-views.js` (Runic Desktop) or `runic-cswebui.js` (CS-WebUI), which logged a deprecation warning | Load `runic-views.js` (`<script src="runic-views.js"></script>` after `webui.js`). The build no longer copies the host-named copy, so such a page gets no Bridge, and the build reports warning `RUNICBRIDGE019` naming the page |
 | `import { onBridgeDraining } from "@runic-artifex/views/experimental"`, deprecated | `import { onBridgeDraining } from "@runic-artifex/views"`, the same function. `./experimental` no longer exports it, so the old import fails to compile (TypeScript) or to bundle |
 
-Details: the [0.23.0 release notes](../eng/release/notes/0.23.0.md), "Upgrading".
+Details: the 0.23.0 release notes, "Upgrading".
