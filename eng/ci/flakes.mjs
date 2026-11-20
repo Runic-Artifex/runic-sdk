@@ -24,21 +24,24 @@ const errorLine = /^\s*(?:error|[\w.]*(?:Error|Exception))\b[^:]*:/;
 
 // An error line as a signature: its first clause (a probe's "VoiceOver did not say 'Finish'; it said: …" varies after
 // it), without paths, numbers or JSON, so the same failure on another runner or run with another temporary directory,
-// port or count reads the same.
+// port or count reads the same. An exit code stays (127 or 134, a crash, is another failure than 1), and so does a
+// number inside a word (CS0436, IL2037, Win32Exception).
 export function normalizeError(text) {
   return text.replace(testFailurePrefix, "").split("; ")[0]
     .replace(/(?:[A-Za-z]:)?(?:[\\/][^\s'"`),;]+)+/g, "<path>")
     .replace(/\{.*\}/g, "{…}")
-    .replace(/0x[\da-f]+|\d+(?:[.:]\d+)*/gi, "N")
+    .replace(/(?<![\w])(?<!exit code |exited with )(?:0x[\da-f]+|\d+(?:[.:]\d+)*)/gi, "N")
     .replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
 // The words of an error that an issue would quote: the message after its exception type, up to its first path,
-// number, value or quote. Too short or too generic to tell failures apart (an exit code), it is not used.
+// number, value or quote; after a tool's one-word prefix ("hdiutil: attach failed - …") when that alone is too short.
+// Too short or too generic to tell failures apart (an exit code), it is not used.
 export function messageHead(text) {
-  const head = text.replace(testFailurePrefix, "").replace(/^(?:\s*(?:error|[\w.]*(?:Error|Exception))\s*:\s*)+/i, "")
-    .split(/[\\/{"'`=\d]|: /)[0].replace(/[\s.,;:]+$/, "").trim();
-  return head.length >= 20 && !/exited with|exit code/i.test(head) ? head : null;
+  const clauses = text.replace(testFailurePrefix, "").replace(/^(?:\s*(?:error|[\w.]*(?:Error|Exception))\s*:\s*)+/i, "").split(": ");
+  const head = clauses.slice(0, /^[\w.-]+$/.test(clauses[0].trim()) ? 2 : 1)
+    .map(clause => clause.split(/[\\/{"'`=\d]/)[0].replace(/[\s.,;:]+$/, "").trim()).find(clause => clause.length >= 20);
+  return head && !/exited with|exit code/i.test(head) ? head : null;
 }
 
 // The failures a job log names, each with its first error line. Each pattern is one runner's failure line:
@@ -71,15 +74,61 @@ export function failingTests(log) {
   return [...found.values()];
 }
 
-// The first `##[error]` annotation that says more than the step's exit code; else the last error line the log printed
-// before its first annotation (a script's thrown error); else the exit code.
+// The part of a job log that its failed step wrote: the lines stamped from the step's start to its end (GitHub gives
+// step times in whole seconds). Tests that failed in an earlier step with continue-on-error (a quarantined test, a
+// retried download) and the job's post steps are not the failure. A log without timestamps, or a step without times,
+// is used whole.
+export function stepLog(log, step) {
+  const start = Date.parse(step?.started_at ?? ""), end = Date.parse(step?.completed_at ?? "") + 1000;
+  if (Number.isNaN(start) || Number.isNaN(end)) return log;
+  const lines = log.split("\n");
+  let current = NaN;
+  const kept = lines.filter(line => {
+    const stamp = /^(\d{4}-\d\d-\d\dT[\d:.]+Z)/.exec(line);
+    if (stamp) current = Date.parse(stamp[1]);
+    return current >= start && current < end;
+  });
+  return kept.length ? kept.join("\n") : log;
+}
+
+// Lines that wrap another failure: a runner script's "bash exited with 1", bun's "script exited", a test harness's
+// "… failed in <dir> with exit code 1". They are the signature only when nothing more specific was printed.
+const wrapper = /\bexited with (?:code )?-?\d+\.?\s*$|\bfailed in \S+ with exit code -?\d+|^error: script "[^"]+" exited|^Process completed with exit code/;
+// A test host's echo of a passing case's captured output ("StandardError: child-error"), not an error.
+const echo = /^\s*Standard(?:Error|Output)\s*:/;
+// Lines that name the failure of a step whose log names no test, most specific first:
+//   a compiler, MSBuild, ILC or NuGet error (`… : error CS0436: …`, `ILC : error IL2037: …`, `… : error : …`): the first
+//   one is the cause, later ones (MSB3077 after IL2037) follow from it;
+//   a probe's or smoke's own failure line (a deadline, `HOSTED_WINDOWS_FAILED:`, `hdiutil: attach failed`, a download
+//   that ran out of attempts, an unhandled exception, an uncaught NSException) and PowerShell's thrown message: the
+//   last one.
+const buildError = /(?:^|\s|\))(?:fatal )?error ([A-Z][A-Z\d]*\d{3,})\s*:\s*(\S.*)$|\s:\s(?:fatal )?error()\s*:\s*(\S.*)$/;
+const probeFailure = new RegExp([
+  /exceeded its [\w-]+ deadline/, /did not finish within/, /^[A-Z][A-Z\d]*(?:_[A-Z\d]+)*_FAILED\b/, /^Unhandled exception\. /,
+  /could not be downloaded/, /\battach failed\b/, /terminating due to uncaught exception/, /^curl: \(\d+\)/,
+  /^npm error (?:network|code)\b/, /^(?:##\[warning\])?Attempt (\d+) of \1 failed with status/,
+].map(pattern => pattern.source).join("|"));
+
+// The line that names a failed step's error: the first `##[error]` annotation that says more than the step's exit code;
+// else the first build error; else the last probe failure line or PowerShell error; else the last error line (a
+// script's thrown error), not counting echoes of captured output and wrappers; else the last wrapper; else the
+// exit code.
 export function firstError(log) {
   const lines = log.split("\n").map(strip);
   const errors = lines.map(line => /^##\[error\](.*)$/.exec(line)?.[1].trim()).filter(Boolean);
   const annotated = errors.find(text => !/^Process completed with exit code/.test(text));
   if (annotated) return annotated;
   const end = lines.findIndex(line => line.startsWith("##[error]"));
-  return lines.slice(0, end < 0 ? lines.length : end).findLast(line => errorLine.test(line))?.trim() ?? errors[0] ?? "";
+  const before = lines.slice(0, end < 0 ? lines.length : end).map(line => line.trim()).filter(line => line && !echo.test(line));
+  const build = before.map(line => buildError.exec(line)).map(match => match && { code: match[1] ?? "", text: match[2] ?? match[4] })
+    .find(match => match && !wrapper.test(match.text));
+  if (build) return `error${build.code ? ` ${build.code}` : ""}: ${build.text}`;
+  // PowerShell prints a thrown message, then "At C:\…\script.ps1:92 char:5".
+  const thrown = before.findLastIndex(line => /^At .+\.ps1:\d+ char:\d+$/.test(line));
+  const probe = before.findLastIndex(line => probeFailure.test(line));
+  if (probe >= 0 || thrown > 0) return probe > thrown - 1 ? before[probe] : before[thrown - 1];
+  return before.findLast(line => errorLine.test(line) && !wrapper.test(line))
+    ?? before.findLast(line => wrapper.test(line)) ?? errors[0] ?? "";
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -134,8 +183,9 @@ export async function collect(source, { repository = defaultRepository, since, c
       const attempt = job.run_attempt ?? run.run_attempt;
       // The same job of a later attempt (the same commit) passed: the failure is a flake, not a break.
       const passedOnRerun = jobs.some(other => other.name === job.name && (other.run_attempt ?? 0) > attempt && other.conclusion === "success");
-      const step = job.steps?.find(item => item.conclusion === "failure")?.name ?? "(no failed step)";
-      const log = await source.log(job.id).catch(() => "");
+      const failed = job.steps?.find(item => item.conclusion === "failure");
+      const step = failed?.name ?? "(no failed step)";
+      const log = stepLog(await source.log(job.id).catch(() => ""), failed);
       const tests = failingTests(log);
       const named = tests.length ? tests.map(item => ({ ...item, test: true }))
         : [{ name: `step: ${step}`, test: false, raw: firstError(log), error: normalizeError(firstError(log)) }];
@@ -155,15 +205,41 @@ export async function collect(source, { repository = defaultRepository, since, c
   return { repository, since: since.toISOString(), runs: runs.length, cancelled, failures, issues };
 }
 
+// Failures of the runners and services rather than the code: a mirror or registry that did not answer, an artifact
+// service error, setup-dotnet's download, a runner that shut down. Only a step's error counts; a named test's failure
+// is the test's. ci.yml retries most of these steps (eng/ci/README.md, "Flakes").
+export const infrastructure = [
+  /could not be downloaded/, /^(?:##\[warning\])?Attempt (\d+) of \1 failed with status \d+: (?:sudo |\S*\/)?\S*(?:apt-get|curl|playwright-core install)/,
+  /Failed to install dotnet/, /Unable to download artifact|Artifact download failed|Failed to (?:Create|Finalize|Upload)Artifact|Unable to make request/,
+  /runner has received a shutdown signal|lost communication with the server|hosted runner encountered an error/,
+  /\b(?:ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b|socket hang up|^npm error network\b|^curl: \(\d+\).* error: 5\d\d\b/, /\bNU1301\b/,
+];
+const infrastructureFailure = item => !item.test && infrastructure.some(pattern => pattern.test(item.raw ?? item.error));
+
+// A closed issue still counts as known for this long after it closed: a fix that did not hold shows as a regression
+// of a known flake (re-queue, and reopen the issue), not as a new failure to investigate.
+export const recentlyClosedDays = 7;
+// Where a sighting came from: its pull request (the queue's temporary branch names it), or its branch (main).
+const origin = item => String(item.pullRequests?.[0] ?? /^gh-readonly-queue\/[^/]+\/pr-(\d+)-/.exec(item.branch ?? "")?.[1] ?? item.branch);
+
 // Group failures by signature (test or step, and first error line) across runs, jobs and legs. An entry's issues are
 // those whose title or body mention its test, or the words of its error (messageHead). The status of an entry:
 //   known            an open issue mentions it: a known flake (a queue entry failing only in known flakes is re-queued);
+//   infrastructure   a step failed on a runner or service (`infrastructure`), not the code: re-queue or rerun;
 //   needs-issue      seen in `min` or more runs and no issue mentions it: file one today;
 //   regressed        only closed issues mention it, and it failed after the last of them closed: reopen or file one;
 //   fixed            only closed issues mention it, and every sighting predates the last closing;
 //   repeated-step    seen in `min` or more runs, the logs name no test, and no issue mentions the error: read one;
 //   first-sighting   seen once.
-// `flake` is set when a sighting's job passed on a rerun of the same commit.
+// `flake` is set when a sighting's job passed on a rerun of the same commit; `evidence` when it did, or the entry
+// failed for two or more pull requests or branches (a failure one change causes stays with that change).
+//
+// Each failed merge queue run gets a verdict:
+//   re-queue      every failure in it is known, infrastructure, or matches an issue that was open when it failed or
+//                 closed less than `recentlyClosedDays` before;
+//   file-issue    the others are flakes by evidence that no open issue names: file or reopen the issue (D069), then
+//                 re-queue;
+//   investigate   a failure is neither: it may be the change.
 export function report({ failures, issues, runs, cancelled = 0, since, repository }, { min = 2 } = {}) {
   const signature = item => `${item.name}\n${item.error}`;
   const groups = new Map();
@@ -185,18 +261,31 @@ export function report({ failures, issues, runs, cancelled = 0, since, repositor
     const runs = new Set(group.sightings.map(item => `${item.run}/${item.attempt}`)).size;
     const closed = matched.map(issue => issue.closedAt).filter(Boolean).sort().at(-1);
     const status = open.length ? "known"
+      : infrastructureFailure(group) ? "infrastructure"
       : closed ? (group.sightings.some(item => item.at > closed) ? "regressed" : "fixed")
       : runs < min ? "first-sighting" : group.test ? "needs-issue" : "repeated-step";
+    const flake = group.sightings.some(item => item.passedOnRerun);
     const { raw, ...rest } = group;
-    return { ...rest, runs, status, flake: group.sightings.some(item => item.passedOnRerun),
-      issues: matched.map(({ number, state, title, url }) => ({ number, state, title, url })) };
+    return { ...rest, runs, status, flake, evidence: flake || new Set(group.sightings.map(origin)).size > 1,
+      issues: matched.map(({ number, state, title, url, closedAt }) => ({ number, state, title, url, closedAt })) };
   }).sort((a, b) => b.runs - a.runs || a.key.localeCompare(b.key));
-  const known = new Set(all.filter(group => group.status === "known").map(group => group.key));
-  // Each failed merge queue run: re-queue when every failure in it is a known flake.
+  const byKey = new Map(all.map(group => [group.key, group]));
+  const recent = recentlyClosedDays * dayMs;
+  // Known when it failed: an open issue, an infrastructure failure, or an issue closed after it or shortly before.
+  const knownFailure = item => {
+    const group = byKey.get(signature(item));
+    return group.status === "known" || group.status === "infrastructure"
+      || group.issues.some(issue => issue.closedAt && Date.parse(issue.closedAt) > Date.parse(item.at) - recent);
+  };
   const queue = [...new Set(failures.filter(item => item.event === "merge_group").map(item => item.run))].map(run => {
-    const keys = [...new Set(failures.filter(item => item.run === run).map(signature))];
-    const first = failures.find(item => item.run === run);
-    return { run, branch: first.branch, url: first.url.replace(/\/job\/\d+$/, ""), verdict: keys.every(key => known.has(key)) ? "re-queue" : "investigate", failures: keys };
+    const inRun = failures.filter(item => item.run === run);
+    const keys = [...new Set(inRun.map(signature))];
+    const unknown = [...new Set(inRun.filter(item => !knownFailure(item)).map(signature))].map(key => byKey.get(key));
+    const verdict = unknown.length === 0 ? "re-queue"
+      : unknown.every(group => group.evidence && group.runs >= min) ? "file-issue" : "investigate";
+    const first = inRun[0];
+    return { run, branch: first.branch, url: first.url.replace(/\/job\/\d+$/, ""), verdict, failures: keys,
+      unknown: unknown.map(group => group.key) };
   });
   return { repository, since, runs, cancelled, groups: all, queue };
 }
@@ -215,6 +304,8 @@ export function format(result) {
   ]), ""];
   const by = status => result.groups.filter(group => group.status === status);
   const issueList = group => group.issues.map(issue => ` #${issue.number} (${issue.state})`).join(",");
+  const byKey = new Map(result.groups.map(group => [group.key, group]));
+  const verdicts = ["re-queue", "file-issue", "investigate"].map(verdict => [verdict, result.queue.filter(entry => entry.verdict === verdict).length]);
   return [
     `${result.repository}: ${result.runs} failed or rerun ci.yml runs since ${result.since.slice(0, 16).replace("T", " ")}Z`
       + `; ${result.cancelled} cancelled (not classified)`, "",
@@ -222,10 +313,15 @@ export function format(result) {
     ...section("Failed again after its issue closed (reopen it or file one)", by("regressed"), group => ` —${issueList(group)}`),
     ...section("Seen twice or more in a step whose log names no test (read one: a real break or a flake)", by("repeated-step"), () => ""),
     ...section("Known flakes (an open issue mentions them)", by("known"), group => ` —${issueList(group)}`),
+    ...section("Infrastructure: a runner, mirror, registry or artifact service failed (rerun; ci.yml retries most of these)", by("infrastructure"), () => ""),
     ...section("Fixed: only closed issues mention them, and no failure since they closed", by("fixed"), group => ` —${issueList(group)}`),
     ...section("Seen once", by("first-sighting"), group => group.test ? "" : " (the log names no test; read it)"),
-    ...result.queue.length ? ["Failed merge queue entries:", ...result.queue.map(entry =>
-      `  ${entry.verdict.padEnd(11)} ${entry.branch.replace(/^gh-readonly-queue\/main\//, "")} ${entry.url}`), ""] : [],
+    ...result.queue.length ? [
+      `Failed merge queue entries (${verdicts.map(([verdict, count]) => `${verdict} ${count}`).join(", ")}):`,
+      ...result.queue.flatMap(entry => [
+        `  ${entry.verdict.padEnd(11)} ${entry.branch.replace(/^gh-readonly-queue\/main\//, "")} ${entry.url}`,
+        ...entry.unknown.map(key => byKey.get(key)).map(group => `    ${group.status}: ${group.name}${group.error ? ` — ${group.error}` : ""}`),
+      ]), ""] : [],
   ].join("\n").trimEnd();
 }
 

@@ -38,8 +38,28 @@ runs:
     # The pinned SDK goes into its own directory, which setup-dotnet puts first on PATH and in DOTNET_ROOT.
     # In the image's directory, a newer preinstalled SDK (11.0.100 since ubuntu-24.04 20261111.370.1) is what
     # projects outside the repo resolve, such as the template and consumer projects, which have no global.json.
+    # dotnet-install fails now and then ("Failed to install dotnet, exit code: 1. Fatal error.": four jobs in October and
+    # November 2026, on Windows), so a failed install is tried once more, after a pause and from an empty directory.
     - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      id: dotnet
       if: inputs.dotnet == 'true'
+      continue-on-error: true
+      env:
+        DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet
+      with:
+        global-json-file: global.json
+    - name: Wait before installing the .NET SDK again
+      if: steps.dotnet.outcome == 'failure'
+      shell: bash
+      env:
+        INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet
+      run: |
+        echo "::warning title=Infrastructure retry::Installing the .NET SDK failed; trying once more in 30 s."
+        if command -v cygpath >/dev/null; then INSTALL_DIR=$(cygpath -u "$INSTALL_DIR"); fi
+        rm -rf "$INSTALL_DIR"
+        sleep 30
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      if: steps.dotnet.outcome == 'failure'
       env:
         DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet
       with:
@@ -58,7 +78,26 @@ runs:
     # The certified additional SDKs of eng/toolchain.mjs are the dotnet-version of this step. Both SDKs share one
     # directory, so the newer one finds the pinned SDK's runtime, which net10.0 applications need.
     - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      id: additional-dotnet
       if: inputs.dotnet == 'true' && inputs.additional-dotnet == 'true'
+      continue-on-error: true
+      env:
+        DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet-additional
+      with:
+        global-json-file: global.json
+        dotnet-version: 11.0.100
+    - name: Wait before installing the additional .NET SDK again
+      if: steps.additional-dotnet.outcome == 'failure'
+      shell: bash
+      env:
+        INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet-additional
+      run: |
+        echo "::warning title=Infrastructure retry::Installing the .NET SDK failed; trying once more in 30 s."
+        if command -v cygpath >/dev/null; then INSTALL_DIR=$(cygpath -u "$INSTALL_DIR"); fi
+        rm -rf "$INSTALL_DIR"
+        sleep 30
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      if: steps.additional-dotnet.outcome == 'failure'
       env:
         DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet-additional
       with:
@@ -103,7 +142,7 @@ runs:
         restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
     # The train feed: outside the workspace, so the source-state check never sees it. RUNIC_TRAIN_FEED adds it to every
     # restore in the repository (eng/build/nuget-lock.targets) and to the NuGet.config of the consumers outside it.
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+    - uses: ./.github/actions/download-artifact
       if: inputs.train-feed == 'true'
       with:
         name: train-feed
