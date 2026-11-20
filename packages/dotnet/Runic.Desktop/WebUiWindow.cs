@@ -4352,12 +4352,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     // The admitted Origin of the page connected as connectionId (DesktopConnectionEvent.SessionId), or null when no such
-    // page is connected or its upgrade carried none.
+    // page is connected or its upgrade carried none. A session counts while it is admitted (IsAuthenticated): from its
+    // token check, before any of its Bridge calls, until its close revokes it, before its Disconnected event drops it from
+    // ConnectedSessionCount. It leaves _sessions only after that, so a closed page's origin must not be read from there
+    // (#1222): a region declared then would take it as its embedder.
     internal string? ConnectionOrigin(ulong connectionId)
     {
         foreach (var session in _sessions.Values)
         {
-            if ((ulong)session.ConnectionId == connectionId) return session.Origin.Length == 0 ? null : session.Origin;
+            if ((ulong)session.ConnectionId == connectionId)
+                return session.IsAuthenticated && session.Origin.Length != 0 ? session.Origin : null;
         }
         return null;
     }
