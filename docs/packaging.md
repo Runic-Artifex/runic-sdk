@@ -380,8 +380,17 @@ names `zh_TW` when `zh-TW` has no name.
 A project created before 0.17 has manifests in `packaging/` without these
 fields. Once it sets the languages, the command fails with `RAPPPKG1006`,
 names the override file and the field, and says where to add it, rather than shipping a package that declares English
-only. Runic Translations will fill `RunicApplicationLocales` from `runic.json`;
-until then, set it by hand to the catalog's locales.
+only.
+
+An application that uses Runic Translations 0.15 or later needs no list: when
+the project doesn't set `RunicApplicationLocales`, Runic.Translations.Build adds
+the languages of its `runic.json` as `RunicApplicationLocale` items,
+`baseLocale` first as the development language, then `locales`, without
+`pseudoLocales`. A project that sets the property keeps exactly its value, its
+own items still give a language its name and description, and several
+`runic.json` files add their languages in item order. Set
+`RunicTranslationsFillApplicationLocales` to `false` to turn this off
+([Runic.Translations.Build](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.0/packages/dotnet/Runic.Translations.Build/README.md)).
 
 ## The application icon
 
