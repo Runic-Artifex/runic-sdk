@@ -2821,6 +2821,10 @@ static class BridgeDiagnosticCodes
     internal const string RegionCollectionName = "RUNICBRIDGE071";
     /// <summary>A [RunicDevelopmentOnly] declaration has no effect: it is on an interaction or view request.</summary>
     internal const string DevelopmentOnly = "RUNICBRIDGE072";
+    /// <summary>A ReactiveUI interaction's [RunicInteractionTimeout] is neither Timeout.Infinite nor 1 ms to 24 hours (sdk#1146).</summary>
+    internal const string InteractionTimeout = "RUNICBRIDGE073";
+    /// <summary>A [RunicInteractionTimeout] is on a view question, which takes its timeout in its constructor (sdk#1146).</summary>
+    internal const string ViewQuestionTimeout = "RUNICBRIDGE074";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2875,6 +2879,8 @@ static class BridgeDiagnosticCodes
         (RegionCollection, "error", "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"),
         (RegionCollectionName, "error", "A region collection's select or close client method collides with another client member"),
         (DevelopmentOnly, "warning", "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"),
+        (InteractionTimeout, "error", "A ReactiveUI interaction's [RunicInteractionTimeout] is not a timeout"),
+        (ViewQuestionTimeout, "error", "A [RunicInteractionTimeout] is on a view question"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

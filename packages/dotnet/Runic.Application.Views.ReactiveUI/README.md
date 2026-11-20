@@ -177,9 +177,9 @@ as not answered.
 
 The Bridge generator passes the attribute to the generated descriptor; it
 changes neither the generated TypeScript nor the contract hash. A value outside
-the range is reported as RUNICBRIDGE011, and the attribute on a
+the range is reported as RUNICBRIDGE073, and the attribute on a
 `ViewQuestion<TInput, TOutput>`, which takes its `timeout` in its constructor,
-as RUNICBRIDGE035. A page built with `@runic-artifex/views` before 0.23 still
+as RUNICBRIDGE074. A page built with `@runic-artifex/views` before 0.23 still
 aborts its handler after ten minutes, whatever the lifetime.
 
 ## Model-context scheduling
