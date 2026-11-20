@@ -60,17 +60,46 @@ public sealed class PrivateFileTests
         Equal(Private, File.GetUnixFileMode(Path.GetDirectoryName(dictionaries.DownloadDirectory)!));
     }
 
+    // In the WindowsPrivateFiles category, which the native job's Windows x64 leg runs: the leg that PrivateFiles.cs and
+    // SpellingUserWords.cs plan (eng/ci/platforms.mjs).
+    [Test, Category("WindowsPrivateFiles"), DisplayName("on Windows, the word list grants only its user, also after a rewrite")]
+    public async Task TheWordListIsPrivateOnWindows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var temporary = new TemporaryFolder();
+        var path = Path.Combine(temporary.Path, "Runic", "user-words.txt");
+        var words = await SpellingUserWords.OpenAsync(path);
+        True(await words.AddAsync("brinewise"), "brinewise is added");
+        RequireOwnerOnly(path);
+        // Each write replaces the list with a new file; the replacement grants only the user too.
+        True(await words.RemoveAsync("brinewise"), "brinewise is removed");
+        True(await words.AddAsync("glimmerfen"), "glimmerfen is added");
+        RequireOwnerOnly(path);
+        Sequence(["glimmerfen"], (await SpellingUserWords.OpenAsync(path)).Words);
+        Sequence(["user-words.txt"], Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(path)!).Select(Path.GetFileName).OfType<string>());
+    }
+
     private static void RequireOwnerOnly(string path)
     {
         if (OperatingSystem.IsWindows())
         {
-            var security = new FileInfo(path).GetAccessControl();
-            True(security.AreAccessRulesProtected, "the list inherits no access rules");
-            var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
-            Sequence([WindowsIdentity.GetCurrent().User!.Value], rules.Select(rule => rule.IdentityReference.Value).Distinct());
-            True(rules.All(rule => rule.AccessControlType == AccessControlType.Allow), "only allow rules");
+            RequireOwnerOnlyOnWindows(path);
             return;
         }
         Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+    }
+
+    // The file's access list: one rule of its own, full control for the current user, and nothing inherited.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RequireOwnerOnlyOnWindows(string path)
+    {
+        var security = new FileInfo(path).GetAccessControl();
+        True(security.AreAccessRulesProtected, "the list inherits no access rules");
+        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
+        Equal(1, rules.Length, $"one access rule, not {string.Join(", ", rules.Select(rule => $"{rule.IdentityReference.Value} {rule.AccessControlType} {rule.FileSystemRights}"))}");
+        Equal(WindowsIdentity.GetCurrent().User!.Value, rules[0].IdentityReference.Value);
+        Equal(AccessControlType.Allow, rules[0].AccessControlType);
+        Equal(FileSystemRights.FullControl, rules[0].FileSystemRights & FileSystemRights.FullControl);
+        True(!rules[0].IsInherited, "the user's rule is the file's own");
     }
 }
