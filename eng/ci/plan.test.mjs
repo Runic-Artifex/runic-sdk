@@ -8,7 +8,8 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
-  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths, matchesPath } from './platforms.mjs';
+  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths,
+  windowsSpellingPrivateFilePaths, matchesPath } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -487,6 +488,22 @@ test('dotnet runic dev\'s loopback listeners plan the native Windows x64 leg', (
     assert.ok(existsSync(resolve(root, file)), file);
     assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
   }
+});
+
+// DEV-SEC-88: Runic.Spelling's private word list, its owner-only helper and their check of the Windows access list plan the
+// native Windows x64 leg, which runs that check (Runic.Spelling.Tests' WindowsPrivateFiles category). The package's other
+// files plan no Windows leg.
+test('Runic.Spelling\'s private word list plans the native Windows x64 leg', () => {
+  assert.deepEqual(windowsSpellingPrivateFilePaths, ['packages/dotnet/Runic.Spelling/PrivateFiles.cs',
+    'packages/dotnet/Runic.Spelling/SpellingUserWords.cs', 'tests/dotnet/Runic.Spelling.Tests/PrivateFileTests.cs']);
+  for (const file of windowsSpellingPrivateFilePaths) {
+    assert.ok(existsSync(resolve(root, file)), file);
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  }
+  assert.deepEqual(plan(['packages/dotnet/Runic.Spelling/SpellChecker.cs']).platforms, []);
+  // The step that runs the check is in the native job, on the leg that the rule plans.
+  const workflowText = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
+  assert.match(workflowText, /--project tests\/dotnet\/Runic\.Spelling\.Tests[^\n]*\n?[^\n]*Category=WindowsPrivateFiles/);
 });
 
 // The narrow rule above holds only while every process start of the tool goes through CommandRunner, whose callers pass

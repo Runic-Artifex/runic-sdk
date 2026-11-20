@@ -61,6 +61,7 @@ public sealed partial class SpellChecker
 
     /// <summary>Reads <paramref name="dictionary"/>, or takes it from an earlier read, and makes a checker of it.</summary>
     /// <exception cref="IOException">Its files could not be read.</exception>
+    /// <exception cref="InvalidDataException">A downloaded dictionary's files are not the ones it was installed with; download it again.</exception>
     public static Task<SpellChecker> LoadAsync(SpellingDictionary dictionary, SpellCheckerOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dictionary);

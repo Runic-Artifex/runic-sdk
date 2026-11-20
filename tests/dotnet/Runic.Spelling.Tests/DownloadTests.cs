@@ -130,6 +130,68 @@ public sealed class DownloadTests
         Equal("https://github.com/wooorm/dictionaries", catalogue.Find("en_AU")!.Source.ToString());
     }
 
+    // DEV-SEC-87: a downloaded dictionary counts as installed, and loads, only while its .dic and .aff are the files it
+    // was installed with; otherwise it is offered for download again.
+    [Test]
+    public async Task AnInstalledDictionaryWithOtherFilesIsOfferedAgainAndDoesNotLoad()
+    {
+        using var temporary = new TemporaryFolder();
+        await using var server = await DictionaryServer.StartAsync();
+        var dictionaries = Dictionaries(temporary, server.Catalog("de_CH", "de-CH"));
+        var entry = dictionaries.Catalog.Find("de_CH")!;
+        var installed = await dictionaries.DownloadAsync(entry);
+        Equal(SpellingAvailabilityStatus.Downloaded, dictionaries.GetAvailability("de-CH").Status);
+
+        // Truncated, as a crash right after the install could leave it: the size differs.
+        var original = File.ReadAllBytes(installed.DictionaryPath);
+        File.WriteAllBytes(installed.DictionaryPath, original[..(original.Length / 2)]);
+        var truncated = dictionaries.GetAvailability("de-CH");
+        Equal(SpellingAvailabilityStatus.Downloadable, truncated.Status);
+        Equal(null, truncated.Installed);
+        Equal("de_CH", truncated.Download?.Name);
+        // A dictionary found before the change does not load either.
+        await ThrowsAsync<InvalidDataException>(() => SpellChecker.LoadAsync(installed));
+
+        // The same size with another byte, written later: the SHA-256 differs.
+        var changed = (byte[])original.Clone();
+        changed[^2] ^= 0x01;
+        File.WriteAllBytes(installed.DictionaryPath, changed);
+        File.SetLastWriteTimeUtc(installed.DictionaryPath, DateTime.UtcNow.AddMinutes(1));
+        Equal(SpellingAvailabilityStatus.Downloadable, dictionaries.GetAvailability("de-CH").Status);
+        await ThrowsAsync<InvalidDataException>(() => SpellChecker.LoadAsync(installed));
+
+        // Downloading it again mends it.
+        var again = await dictionaries.DownloadAsync(entry);
+        Equal(SpellingAvailabilityStatus.Downloaded, dictionaries.GetAvailability("de-CH").Status);
+        Sequence(["Strase"], (await SpellChecker.LoadAsync(again)).Check("Strasse Strase").Select(found => found.Word));
+    }
+
+    // An install of another pin, such as one that an application with another release of Runic.Spelling put in the shared
+    // directory, is checked against the record its download wrote (source.json); without that record it does not count.
+    [Test]
+    public async Task AnInstallOfAnotherPinIsCheckedAgainstItsRecord()
+    {
+        using var temporary = new TemporaryFolder();
+        await using var server = await DictionaryServer.StartAsync();
+        var dictionaries = Dictionaries(temporary, server.Catalog("de_CH", "de-CH"));
+        var installed = await dictionaries.DownloadAsync(dictionaries.Catalog.Find("de_CH")!);
+        var source = Path.Combine(Path.GetDirectoryName(installed.DictionaryPath)!, "source.json");
+        var record = File.ReadAllText(source);
+        var commit = System.Text.RegularExpressions.Regex.Match(record, "\"commit\": \"([^\"]+)\"").Groups[1].Value;
+        True(commit.Length > 0, "source.json names the commit");
+
+        File.WriteAllText(source, record.Replace(commit, "another-pin", StringComparison.Ordinal));
+        Equal(SpellingAvailabilityStatus.Downloaded, dictionaries.GetAvailability("de-CH").Status);
+        // Its record's sizes and hashes still count: a truncated file is not installed.
+        var bytes = File.ReadAllBytes(installed.DictionaryPath);
+        File.WriteAllBytes(installed.DictionaryPath, bytes[..^1]);
+        Equal(SpellingAvailabilityStatus.Downloadable, dictionaries.GetAvailability("de-CH").Status);
+        File.WriteAllBytes(installed.DictionaryPath, bytes);
+
+        File.Delete(source);
+        Equal(SpellingAvailabilityStatus.Downloadable, dictionaries.GetAvailability("de-CH").Status);
+    }
+
     private static SpellingDictionaries Dictionaries(TemporaryFolder temporary, SpellingCatalog catalogue) => new(new()
     {
         Environment = Environments.Fake(SpellingPlatform.Linux, temporary.Path),

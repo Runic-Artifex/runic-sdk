@@ -13,6 +13,9 @@ internal static class WordLists
 
     internal static WordList Load(SpellingDictionary dictionary)
     {
+        // A downloaded dictionary only while its files are the ones it was installed with (DEV-SEC-87).
+        if (dictionary.InstalledFiles is { } installed && !InstalledDictionaryCheck.IsIntact(installed))
+            throw new InvalidDataException($"The files of the downloaded dictionary {dictionary.Name} are not the ones it was installed with; download it again.");
         var file = new FileInfo(dictionary.DictionaryPath);
         var key = (dictionary.DictionaryPath, dictionary.AffixPath, file.Exists ? file.LastWriteTimeUtc : default, file.Exists ? file.Length : -1);
         var lazy = s_loaded.GetOrAdd(key, static key => new Lazy<WordList>(() => Read(key.Dictionary, key.Affix)));

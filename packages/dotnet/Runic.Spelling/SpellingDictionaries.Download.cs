@@ -50,7 +50,7 @@ public sealed partial class SpellingDictionaries
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Directory.CreateDirectory(DownloadDirectory);
+            PrivateFiles.CreateDirectory(DownloadDirectory);
             RemoveAbandoned();
             var staging = Path.Combine(DownloadDirectory, $".download-{entry.Name}-{Guid.NewGuid():N}");
             Directory.CreateDirectory(staging);
@@ -75,7 +75,10 @@ public sealed partial class SpellingDictionaries
                 TryDelete(staging);
                 throw;
             }
-            return new(entry.Name, SpellingDictionarySource.Downloaded, Path.Combine(target, entry.Name + ".dic"), Path.Combine(target, entry.Name + ".aff"));
+            return new(entry.Name, SpellingDictionarySource.Downloaded, Path.Combine(target, entry.Name + ".dic"), Path.Combine(target, entry.Name + ".aff"))
+            {
+                InstalledFiles = InstalledDictionaryCheck.Expected(target, entry.Name, Catalog),
+            };
         }
         finally
         {
@@ -107,7 +110,8 @@ public sealed partial class SpellingDictionaries
             if (length != file.Size) throw new InvalidDataException($"{file.Url} has {length} bytes, not the catalogue's {file.Size}.");
             var actual = Convert.ToHexStringLower(hash.GetHashAndReset());
             if (actual != file.Sha256) throw new InvalidDataException($"{file.Url} has the SHA-256 {actual}, not the catalogue's {file.Sha256}.");
-            await target.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // On the disk before the folder is moved into place, so a crash cannot leave a shorter file under its name.
+            target.Flush(flushToDisk: true);
         }
         finally
         {
@@ -138,6 +142,8 @@ public sealed partial class SpellingDictionaries
         }
         writer.WriteEndArray();
         writer.WriteEndObject();
+        writer.Flush();
+        stream.Flush(flushToDisk: true);
     }
 
     // The verified folder takes the dictionary's place in one move; one installed before steps aside first and comes back

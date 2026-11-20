@@ -58,7 +58,9 @@ else if (availability.Download is { } download)
   sentence, and either may be written all in capitals or with `'s`.
 - `SpellingUserWords` is the user's own word list: a UTF-8 file of one word per line, by default `user-words.txt` in the
   directory all Runic applications share (below), or a file the application names. `AddAsync` and `RemoveAsync` keep the
-  words another application added; a checker sees a change at once.
+  words another application added; a checker sees a change at once. Only the user can read the file: each write replaces
+  it with a new file of mode 0600 on Linux and macOS, or with an access list of the user alone on Windows, and a
+  directory created for it is 0700.
 
 A checker is safe to use from several threads. Each dictionary is read once and shared by every checker of it. A
 dictionary whose `.aff` names a code page in its `SET` line, such as ISO8859-15, is read with
@@ -121,6 +123,13 @@ variant.
 - keeps the dictionary's license texts (`LICENSE`, or `COPYING_GPLv2` and `COPYING_GPLv3`), its readme (source and
   license) and a `source.json` (the catalog entry) beside its `.dic` and `.aff`;
 - reports the bytes received to `progress`.
+
+A downloaded dictionary counts as installed, and `SpellChecker.LoadAsync` reads it, only while its `.dic` and `.aff` have
+the size and SHA-256 they were installed with: the catalog's, or for an install of another catalog pin, which an
+application with another release of this package can put in the shared directory, those its `source.json` records.
+Otherwise `GetAvailability` offers it for download again, and loading it throws `InvalidDataException`. The size is
+compared at each look, and the SHA-256 once per version of each file in the process, about 1 ms for a dictionary of the
+median size and 18 ms for the largest of the catalog (38 MB).
 
 ## Licences
 

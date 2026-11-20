@@ -1533,6 +1533,15 @@ jobs:
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Tool.Tests -c Release --
           --treenode-filter "/*/*/*/*[Category=WindowsCommands]" --timeout 5m --output detailed
+      # DEV-SEC-88: Runic.Spelling writes the personal word list readable only by its user, on Windows an access list of
+      # that user alone with nothing inherited; the WindowsPrivateFiles category checks it (the leg that PrivateFiles.cs
+      # and SpellingUserWords.cs plan).
+      - name: Test Runic.Spelling's private word list on Windows
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Spelling.Tests -c Release --
+          --treenode-filter "/*/*/*/*[Category=WindowsPrivateFiles]" --timeout 5m --output detailed
       - name: Exercise dotnet runic dev with npm on Windows
         if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 15

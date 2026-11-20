@@ -150,8 +150,10 @@ export function planFor({ full, components, screenReaders: readers = true, webKi
   const frameworks = full || has("svelte");
   // Package consumers and templates cover every shipped component (every component but the CI component).
   const packages = full || components.some(name => name !== ciComponent);
-  // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration.
-  const native = full || has("desktop", "platform", "application", "examples", "administration-windows") ? legs(nativeLegs, planned) : [];
+  // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration; and Runic.Spelling's
+  // private word list when its Windows x64 rule planned that leg (DEV-SEC-88), whose step checks the Windows access list.
+  const native = full || has("desktop", "platform", "application", "examples", "administration-windows")
+    || (has("spelling") && planned.includes("win-x64")) ? legs(nativeLegs, planned) : [];
   // The WPF hosts and their packed consumer run on Windows only.
   const wpf = full || has("navigation", "application-wpf") ? legs(wpfLegs, planned) : [];
   // The template's packaging recipes build, install and open real packages on each OS; the platform packages they
