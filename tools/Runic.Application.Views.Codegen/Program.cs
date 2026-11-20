@@ -2825,6 +2825,8 @@ static class BridgeDiagnosticCodes
     internal const string InteractionTimeout = "RUNICBRIDGE073";
     /// <summary>A [RunicInteractionTimeout] is on a view question, which takes its timeout in its constructor (sdk#1146).</summary>
     internal const string ViewQuestionTimeout = "RUNICBRIDGE074";
+    /// <summary>Warning from the build targets: RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true.</summary>
+    internal const string AutoPropertyValue = "RUNICBRIDGE075";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2881,6 +2883,7 @@ static class BridgeDiagnosticCodes
         (DevelopmentOnly, "warning", "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"),
         (InteractionTimeout, "error", "A ReactiveUI interaction's [RunicInteractionTimeout] is not a timeout"),
         (ViewQuestionTimeout, "error", "A [RunicInteractionTimeout] is on a view question"),
+        (AutoPropertyValue, "warning", "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

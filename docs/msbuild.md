@@ -21,7 +21,20 @@ that the server packages of 0.20 and earlier set (since 0.21 they set `_RunicDes
 the handshake between Runic Translations' build, which adds the files it
 generates, and Runic.Application.Views, which mirrors them into the frontend
 (`RunicApplicationFrontendTranslations`); it is not a setting either, and the
-two packages change it together. A renamed setting keeps its old name working with a warning; the former
+two packages change it together. Likewise `RunicPrivilegedActionsDependsOn`, to which each platform package appends its
+own target (which depends on `RunicValidatePrivilegedActions`) so that it runs before the `PrivilegedActions` class is
+written, and the read-only `RunicPrivilegedActionsReservedNames` (`All`, `MacOSDaemon`, `WindowsElevation`, the names
+an action cannot have): they are the protocol between Runic.Platform and the platform packages, not application
+settings.
+
+Runtime feature-switch names are not settings either: the `Runic.*` `RuntimeHostConfigurationOption` items that the
+Runic targets add, such as `Runic.Application.Views.Blobs`, `Runic.Application.Views.DevelopmentOnlyViews` or
+`Runic.Desktop.WebUiRemoteDebugging`. Set the MSBuild property on this page instead (`RunicBridgeBlobs`,
+`RunicDevelopmentOnlyViews`, `RunicDesktopRegionHost`, `RunicDesktopServer`); a name, value or meaning of a
+feature switch can change in any release. `RunicDevelopmentOnly.FeatureSwitch` is public, for `AppContext` checks
+in application code ([Development-only views and members](packaging.md#development-only-views-and-members)).
+
+A renamed setting keeps its old name working with a warning; the former
 names are listed in
 [Moved and renamed since 0.7.0-preview.6](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
 and the [migration guide](migration-1.0.md).
@@ -56,8 +69,8 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendDocumentationEnabled` | property | `true` | XML documentation for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | property | `false` | Marks the Window project that `dotnet runic dev` and `doctor` run. |
 | `RunicApplicationFrontendBootstrap` | property (read-only) | set by the targets | `true` only in the bootstrap pass. |
-| `RunicDevelopmentOnlyViews` | property | `auto` | `auto` leaves [development-only views and members](packaging.md#development-only-views-and-members) (`[RunicDevelopmentOnly]`) out of trimmed and NativeAOT publishes; `true` keeps them in every publish (since 0.22). Builds, `dotnet run` and untrimmed publishes always keep them. |
-| `RunicBridgeBlobs` | property | `auto` | `auto` turns Bridge blobs and uploads (`blobs/1`) off in a trimmed or NativeAOT publish when no assembly's generated Bridges hold a `RunicBlob` or take a `RunicUpload` and no referenced assembly names either type, so the executable leaves the blob store and the hosts' blob endpoints out (since 0.23); `true` keeps them in every publish. Builds, `dotnet run` and untrimmed publishes always keep them. |
+| `RunicDevelopmentOnlyViews` | property | `auto` | `auto` leaves [development-only views and members](packaging.md#development-only-views-and-members) (`[RunicDevelopmentOnly]`) out of trimmed and NativeAOT publishes; `true` keeps them in every publish (since 0.22). Builds, `dotnet run` and untrimmed publishes always keep them. Another value, such as `false`, is warning [`RUNICBRIDGE075`](diagnostics.md#runicbridge075) and builds as `auto` (since 0.23). |
+| `RunicBridgeBlobs` | property | `auto` | `auto` turns Bridge blobs and uploads (`blobs/1`) off in a trimmed or NativeAOT publish when no assembly's generated Bridges hold a `RunicBlob` or take a `RunicUpload` and no referenced assembly names either type, so the executable leaves the blob store and the hosts' blob endpoints out (since 0.23); `true` keeps them in every publish. Builds, `dotnet run` and untrimmed publishes always keep them. Another value, such as `false`, is warning [`RUNICBRIDGE075`](diagnostics.md#runicbridge075) and builds as `auto` (since 0.23). |
 | `RunicApplicationFrontendInput` | item | none | An input outside the frontend directory that rebuilds it. |
 | `RunicApplicationFrontendBuildEnvironment` | item | none | An environment variable that changes the built frontend. |
 
@@ -158,8 +171,6 @@ See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#dec
 | `RunicPrivilegedCommand` | item | none | A command under one action. |
 | `RunicPrivilegedActionsClassName` | property | `PrivilegedActions` | The generated class. |
 | `RunicPrivilegedActionsNamespace` | property | `$(RootNamespace)` | Its namespace. |
-| `RunicPrivilegedActionsReservedNames` | property (read-only) | `All`, `MacOSDaemon`, `WindowsElevation` | Names an action cannot have. |
-| `RunicPrivilegedActionsDependsOn` | property | the platform packages' targets | The targets that run before the class is written. A platform package appends its own target, which depends on `RunicValidatePrivilegedActions`; with `RunicPrivilegedActionsReservedNames`, it is the protocol between Runic.Platform and the platform packages, not an application setting. |
 | `RunicApplicationIconGenerationEnabled` | property | `true` | `false` turns off the icons the build derives from `RunicPackageIcon` (since 0.23): the `.ico` it uses as `ApplicationIcon` when the project sets none, the PNG beside the executable that a Runic Desktop window shows on macOS outside a bundle, and the macOS development bundle's `icon.icns`. A project with its own `ApplicationIcon` (or `Win32Resource`) keeps it either way. See [the application icon](packaging.md#the-application-icon). |
 | `RunicPublishAllPlatformAssemblies` | property | `false` | `true` keeps every operating system's `Runic.Platform` providers and Linux-only libraries in a `dotnet publish -r` for a Windows, macOS or Linux RuntimeIdentifier. By default (since 0.22) such a publish, framework-dependent or self-contained without trimming, with or without ReadyToRun or single-file, ships only its own operating system's (`Runic.Desktop.Gtk4`, whose `WithGtk4()` runs on every operating system, stays; its GirCore bindings ship only for Linux), and code that calls another operating system's provider from a method that also runs on this one gets `FileNotFoundException`. Builds, `dotnet run`, publishes without `-r`, trimmed and NativeAOT publishes, and so every `dotnet runic package` output (NativeAOT), are not affected. |
 

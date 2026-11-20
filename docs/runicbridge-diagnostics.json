@@ -250,6 +250,11 @@
       "id": "RUNICBRIDGE074",
       "severity": "error",
       "title": "A [RunicInteractionTimeout] is on a view question"
+    },
+    {
+      "id": "RUNICBRIDGE075",
+      "severity": "warning",
+      "title": "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"
     }
   ]
 }

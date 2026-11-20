@@ -102,6 +102,7 @@ and severities are open.
 | [`RUNICBRIDGE072`](#runicbridge072) | Warning | Generator | A `[RunicDevelopmentOnly]` declaration on an interaction or view request has no effect |
 | [`RUNICBRIDGE073`](#runicbridge073) | Error | Generator | A ReactiveUI interaction's `[RunicInteractionTimeout]` is not a timeout |
 | [`RUNICBRIDGE074`](#runicbridge074) | Error | Generator | A `[RunicInteractionTimeout]` is on a view question |
+| [`RUNICBRIDGE075`](#runicbridge075) | Warning | Build targets | `RunicDevelopmentOnlyViews` or `RunicBridgeBlobs` is neither auto nor true |
 
 ### Errors and warnings while you type
 
@@ -997,6 +998,19 @@ applies to ReactiveUI interactions only. The analyzer does not report it.
 **Fix:** remove the attribute, and give the view question its lifetime in its
 constructor: `new ViewQuestion<Request, bool>(timeout: Timeout.InfiniteTimeSpan)`.
 See [Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime).
+
+### RUNICBRIDGE075
+
+A warning from the `Runic.Application.Views` build targets (since 0.23).
+`RunicDevelopmentOnlyViews` or `RunicBridgeBlobs` has a value other than `auto`
+(the default, also when the property is empty) or `true`, compared without case,
+such as `false` or a typo. The build goes on as `auto`: a trimmed or NativeAOT
+publish leaves development-only views and members, or Bridge blobs and uploads
+that no Bridge uses, out, and builds and untrimmed publishes keep them. There is
+no `false`: neither can be left out of a build or an untrimmed publish.
+
+**Fix:** remove the property for `auto`, or set `true` to keep them in every
+publish. See [MSBuild properties](msbuild.md#runicapplicationviews).
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
