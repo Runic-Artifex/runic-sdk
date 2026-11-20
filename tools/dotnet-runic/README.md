@@ -1108,12 +1108,12 @@ The two prefix lines are where a background task's `beginsPattern` starts a new
 build cycle, as the template's `.vscode/tasks.json` below does; the text after
 the prefix is not part of the contract.
 
-`dev` writes the [session file](#session-file) before it prints each of the
-first three lines, so a reader that reacts to a line finds the same state there: after
-`Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
-after `Window exited`, no Window process and `"state": "starting"`; after a
-`Browser` line, its address in `browser.windows`. In 0.20.0
-previews, `dev` printed the line first.
+`dev` writes the [session file](#session-file) before it prints each
+`Window started`, `Ready`, `Browser` and `Window exited` line, so a reader that
+reacts to a line finds the same state there: after `Window started`, the file's
+`window.processId`; after `Ready`, `"state": "ready"`; after a `Browser` line,
+the Window in `browser.windows`; after `Window exited`, no Window process and
+`"state": "starting"`. In 0.20.0 previews, `dev` printed the line first.
 
 `dev` finds the Window process below the `dotnet watch` or `dotnet run`
 process it started: the shallowest process that runs the project's program
@@ -1304,7 +1304,11 @@ gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
 added the `webkitgtk` endpoints, `devtoolsExtension`, `devtoolsExtensionId`, `browser` and, with
 `--no-window` on Linux, `WEBKIT_INSPECTOR_SERVER` in `window.environment`; 0.22 added the `chromium` endpoint and
-`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` in `window.environment`.
+`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` in `window.environment`. 0.23 added `browser.codeFile` and is the one exception
+to the rule: within `/1` it changed `browser.url` and `browser.windows[].url` from addresses
+(`http://127.0.0.1:9224/`) to `*` patterns of the per-session origin (`http://*.localhost:9224/`, D077.15). The address
+is secret since 0.23, so the file cannot hold it, and the old value would no longer open the page: a reader opens
+`codeFile`, and may use the patterns to match the page's URL.
 
 WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
 (and its other `WEBVIEW2_*` variables and current-user policy overrides) in an

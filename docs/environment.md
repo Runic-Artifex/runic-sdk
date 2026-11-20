@@ -19,6 +19,9 @@ an application whose environment is `Development` (`DOTNET_ENVIRONMENT` or
 | `RUNIC_DEV_CDP_TRACE` | `dotnet runic dev` (Linux) | A file to write the traffic of the JavaScript debugger adapter to, for reporting a debugger that does not work with it. The file holds the page's data. JSON strings over 4096 characters, such as script sources, keep their first 200 characters. | Yes |
 | `RUNIC_DEV_CDP_TRACE_SOURCES` | `dotnet runic dev` (Linux) | `1` keeps script sources and inline source maps whole in `RUNIC_DEV_CDP_TRACE`'s file. On a page with thousands of modules that writes hundreds of megabytes in minutes. | Yes |
 | `RUNIC_APPLICATION_VITE_DEBUG` | `dotnet runic dev` | Passed to the Vite development server as `DEBUG`, in place of `DEBUG` itself, which `dev` keeps away from the build. | Yes |
+| `RUNIC_DEV_STOP_ON_INPUT` | `dotnet runic dev` | `1` or `true` makes `dev` read its standard input and stop as on Ctrl+C at a line `stop` or at the end of the input; other lines are ignored. For an IDE that starts `dev` and cannot signal it (Visual Studio on Windows); the processes `dev` starts then get an empty input of their own. See [dotnet-runic](../tools/dotnet-runic/README.md). | Yes |
+| `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` | Runic.Desktop (installed-browser windows), Runic.Application.Views.CsWebUi | `0` for a free port, or a fixed port: a Window that runs in a Chromium-based browser starts it with `--remote-debugging-port` on 127.0.0.1, for an IDE's JavaScript debugger, and announces it with `RUNIC_APPLICATION_DEBUG_ENDPOINT=` (below). `dotnet runic dev --debug-endpoint` sets `0`. See [debugging](debugging.md). | Yes |
+| `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` | Runic.Desktop (Windows, WebView2) | Folders of unpacked browser extensions, separated by `;`, that WebView2 windows load into their developer tools for one session, after `DesktopHostOptions.DevToolsExtensions`; entries that are not full paths are skipped. In Development, `dotnet runic dev` appends the Runic DevTools extension unless `--no-devtools-extension`. See [debugging](debugging.md). | Yes |
 | `RUNIC_LOCALE` | `runic-app` template's `Program.cs` | The application's language at start (`RUNIC_LOCALE=de dotnet run`). Application code, which the application may change. | No |
 | `RUNIC_APPLICATION_SERVE_ONLY` | Runic.Application.Views.Desktop, Runic.Application.Views.CsWebUi, Runic.Application.Testing | `1` serves the Window's page without opening a window, for browser tests and automation; the host announces the address on standard output. See [Runic.Application.Views.Desktop](../packages/dotnet/Runic.Application.Views.Desktop/README.md). | No |
 | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN` | Runic.Application.Views.Desktop | `1` closes the Window as soon as it opened, after writing `RUNIC_APPLICATION_OPENED=<presentation>` on standard output, for smoke tests. Warns on standard error while set. | No |
@@ -53,22 +56,36 @@ replace the `RUNIC_APPLICATION_VITE_*`, `RUNIC_APPLICATION_FRONTEND_*`,
 | `RUNIC_WEBUI_ORIGIN`, `RUNIC_DEV_ORIGIN` | Runic.Application.Views.Dev (`runic-dev`) | The frontend development server's configuration | The serve-only backend's origin and the development coordinator's. | Yes |
 | `RUNIC_APPLICATION_EXECUTABLE` | A package's launcher (the Nix builder's wrapper) | Runic.Platform.Linux.Portal | The wrapper that starts the program, so the portal registers it rather than the program behind it. Read once and removed from the environment. | No |
 | `RUNIC_CALLER_UID` | Runic.Platform.MacOS | The elevated program it starts | The user ID of the application's process. | No |
+| `RUNIC_APPLICATION_SERVE_ORIGIN` | `dotnet runic dev --browser` | Runic.Application.Views.Desktop, Runic.Application.Views.CsWebUi | The session's own address, `http://<label>.localhost:<port>`, through which `dev` serves the Window's pages to the browser: the Window admits it as an origin of its pages, and the Runic Desktop page's Bridge connects to its port. Read only with `RUNIC_APPLICATION_SERVE_ONLY=1`, and not by a hosted guest. Accepted only as `http://localhost:<port>` or `http://<label>.localhost:<port>`, where `<label>` is one DNS label (1 to 63 letters, digits and inner hyphens), with an explicit port and nothing after it: no user information, path, query or fragment. Any other value, such as an IP address, `a.b.localhost` or `localhost.example`, is ignored, and the Window serves as without it ([security guide](security.md#development-server)). | No |
+| `RUNIC_BATCH_COMMAND_LINE` | `dotnet runic dev` (Windows) | `cmd.exe` | The command line of a batch file (`.cmd`, `.bat`) that `dev` starts, such as a package manager's, which `cmd.exe` runs as `/d /v:off /s /c "%RUNIC_BATCH_COMMAND_LINE%"` so its arguments are not expanded a second time. | Yes |
 
 ## Names that are not environment variables
 
-These `RUNIC_*` names are line prefixes on standard input or output, or
-compile-time symbols. Setting them in the environment has no effect.
+These `RUNIC_*` names are line prefixes on standard input or output,
+compile-time symbols, or a variable of a generated build. Setting them in the
+environment has no effect.
 
 - Standard output of a serve-only Window: `RUNIC_APPLICATION_URL=`,
   `RUNIC_APPLICATION_WINDOW=`, and `RUNIC_APPLICATION_OPENED=` under
   `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`.
+- Standard output of a Window whose browser opened a DevTools Protocol endpoint
+  under `RUNIC_WEBUI_REMOTE_DEBUGGING_PORT`, which `dotnet runic dev` reads:
+  `RUNIC_APPLICATION_DEBUG_ENDPOINT=<engine> <protocol> <url>` (for example
+  `chromium cdp http://127.0.0.1:<port>/`) and, when the browser exits,
+  `RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=<url>`.
 - The hosted guest protocol (`specs/desktop/host-protocol.md`): `RUNIC_HOST_OFFER=`,
   `RUNIC_HOST_CHANNEL=`, `RUNIC_HOST_REFUSED=`.
 - Lines between processes during development: `RUNIC_VITE_INPUTS=`,
   `RUNIC_DEV_READY|`, `RUNIC_DEV_RESTARTED|`, `RUNIC_DEV_BUILD_FAILED|`,
   `RUNIC_IDE_CONTRACT_RESTART_REQUIRED|`.
 - Compile-time symbols: `__RUNIC_DEVELOPMENT__` (the development build of the
-  npm packages), `RUNIC_PORTABLE_PLATFORMS`, `RUNIC_ASSETS_PACK_SUBCOMMAND`.
+  npm packages), `RUNIC_PORTABLE_PLATFORMS`, `RUNIC_ASSETS_PACK_SUBCOMMAND`,
+  `RUNIC_APPLICATION_ICON_CODEC` (Runic.Platform's tests compile the
+  application icon task's codec with it).
+- `RUNIC_RUNTIME`: a variable of the Flatpak manifest that
+  `dotnet runic package flathub` writes, the runtime identifier of each
+  architecture's build (`linux-x64`, `linux-arm64`). It is set inside that
+  build only.
 
 ## Repository build and tests
 
