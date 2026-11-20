@@ -57,6 +57,7 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerZoomFactorSlot = 7;
     internal const int ControllerFocusSlot = 12;
     internal const int ControllerMoveFocusRequestedSlot = 13;
+    internal const int ControllerGotFocusSlot = 15;
     internal const int ControllerAcceleratorKeyPressedSlot = 19;
     internal const int ControllerCloseSlot = 24;
     internal const int ControllerWebViewSlot = 25;
@@ -472,6 +473,10 @@ internal sealed class WindowsWebView2Controller : IDisposable
             if (reason is 1 or 2 && moveFocus(reason))
                 WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.MoveFocusHandledSlot, 1);
         }));
+
+    // The page took the keyboard focus, from a click, Tab, MoveFocus or a UI Automation client.
+    internal void RegisterGotFocus(Action gotFocus) =>
+        AddEvent<IWebViewFocusChanged>(_controller, WindowsWebView2Interop.ControllerGotFocusSlot, new WebViewEvent(_ => gotFocus()));
 
     // A key down that is the shortcut of a declared menu item keeps the browser's own accelerator for it off, such as
     // Ctrl+P printing or F5 reloading; the page still receives the key first and reports it when unhandled
@@ -1143,6 +1148,8 @@ internal partial interface IWebViewWebMessageReceived { [PreserveSig] int Invoke
 internal partial interface IWebViewPermissionRequested { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("69035451-6dc7-4cb8-9bce-b2bd70ad289f")]
 internal partial interface IWebViewMoveFocusRequested { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("05ea24bd-6452-4926-9014-4b82b498135d")]
+internal partial interface IWebViewFocusChanged { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("9adbe429-f36d-432b-9ddc-f8881fbd76e3")]
 internal partial interface IWebViewNavigationStarting { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("d4c185fe-c81c-4989-97af-2d3fa7ab5651")]
@@ -1315,7 +1322,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 
 [GeneratedComClass]
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
-    IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting,
+    IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewFocusChanged, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting,
     IWebViewAcceleratorKeyPressed,
     IWebViewFrameCreated, IWebViewFrameWebMessageReceived, IWebViewNavigationCompleted, IWebViewProcessFailed, IWebViewDevToolsEventReceived
 {

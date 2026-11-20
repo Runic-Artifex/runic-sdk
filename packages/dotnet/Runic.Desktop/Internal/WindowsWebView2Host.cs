@@ -19,6 +19,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             _ = Native.DwmSetWindowAttribute(window, DwmUseImmersiveDarkModeBefore20H1, ref darkMode, sizeof(int));
     }
     private const uint WmAppDispatch = 0x8001;
+    private const uint WmAppForwardFocus = 0x8003;
+    private const uint WmSetFocus = 0x0007;
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
     private const uint WmGetObject = 0x003D;
@@ -342,14 +344,36 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     // Read from the window's own thread, as IsWebContentFocusedIn does: its focus is the window only while the window is
     // active, and Windows clears it when another application's window takes the foreground, so the window announces
     // from the background as before. A session without a foreground window (the Windows arm64 runner) has none to read.
-    internal bool IsFocusOnPageOrWindow => IsWebContentFocused || IsOwnThreadFocus(_window);
+    // A window of this process inside the window counts too: WebView2 passes the focus through its own child window
+    // there while it moves it from the window to the page (MoveFocus, ForwardFocusToPage, sdk#1204).
+    internal bool IsFocusOnPageOrWindow => IsWebContentFocused || IsOwnThreadFocus(_window, within: true);
 
-    private static bool IsOwnThreadFocus(nint window)
+    // Window thread only: whether the side panel's page, rather than the window's, took the keyboard focus last.
+    private bool _panelFocusedLast;
+
+    // WM_SETFOCUS on the window itself: the window has no control of its own, so the keyboard focus belongs in the page
+    // (sdk#1204). Windows gives it to the window when it is activated: when the user switches back to it, clicks its
+    // frame, or when WebView2 activates it to carry out a UI Automation action from another process (I-185), after which
+    // Chromium and the screen reader still treat the page's element as focused while keys went to the window. Once the
+    // message has returned, the focus moves to the page, or to the side panel's when it had the focus last, which then
+    // focuses the element it had focused before. It moves only if the focus is still on the window itself and the window
+    // is active and not minimized, so a focus or window the user has moved to since keeps it; the window is not
+    // activated for it.
+    private void ForwardFocusToPage()
+    {
+        if (_window == 0 || !_activated || Native.IsIconic(_window) || !IsOwnThreadFocus(_window)) return;
+        if (_panelFocusedLast && _panel is { IsShown: true, Controller: { } panel }) panel.MoveFocus();
+        else _controller?.MoveFocus();
+    }
+
+    // Whether the window's own thread has the keyboard focus on the window itself, or within: also on a window inside it.
+    private static bool IsOwnThreadFocus(nint window, bool within = false)
     {
         if (window == 0) return false;
         var thread = Native.GetWindowThreadProcessId(window, out _);
         var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf<GuiThreadInfo>() };
-        return thread != 0 && Native.GetGUIThreadInfo(thread, ref info) && info.Focus == window;
+        return thread != 0 && Native.GetGUIThreadInfo(thread, ref info)
+            && (info.Focus == window || (within && info.Focus != 0 && Native.IsChild(window, info.Focus)));
     }
 
     // The same for any window that hosts a WebView2 controller, such as the child window of a WPF RunicWebView (I-203):
@@ -924,6 +948,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 _controller.SetTransparent();
             }
             _controller.SetPreferredColorScheme(options.ColorScheme);
+            _controller.RegisterGotFocus(() => _panelFocusedLast = false);
             _controller.RegisterEvents(
                 title => Native.SetWindowText(_window, title),
                 () => Native.PostMessage(_window, WmClose, 0, 0),
@@ -1080,6 +1105,13 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     if (host._activated) ShortcutModifierNames.ReadKeyboardLayout();
                 }
                 return Native.DefWindowProc(window, message, wParam, lParam);
+            case WmSetFocus when host is not null:
+                // Forwarded once this message has returned (ForwardFocusToPage).
+                Native.PostMessage(window, WmAppForwardFocus, 0, 0);
+                return Native.DefWindowProc(window, message, wParam, lParam);
+            case WmAppForwardFocus:
+                host?.ForwardFocusToPage();
+                return 0;
             case WmInputLanguageChange:
                 // The user switched the keyboard layout (Win+Space): the shortcut labels take its modifier names.
                 if (host is not null) ShortcutModifierNames.ReadKeyboardLayout();
