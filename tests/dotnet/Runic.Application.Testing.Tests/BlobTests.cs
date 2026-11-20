@@ -161,6 +161,17 @@ internal sealed class BlobTests
         Require(!plain.Contains("\"blobs\"", StringComparison.Ordinal), $"A connection without blobs/1 got a grant: {plain}");
     }
 
+    // runic-sdk#1193: the generated codecs of a blob or upload member mark their assembly, so that a trimmed or NativeAOT
+    // publish keeps blobs/1 (Runic.Application.Views.targets turns it off when no assembly is marked).
+    [Test]
+    public void TheGeneratedCodecsMarkAnAssemblyWhoseBridgesUseBlobs()
+    {
+        var marked = typeof(BlobTests).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .Cast<System.Reflection.AssemblyMetadataAttribute>()
+            .Any(attribute => attribute.Key == "Runic.Application.Views.Blobs" && attribute.Value == "true");
+        Require(marked, "The generated codecs of BlobViewModel did not mark the assembly with Runic.Application.Views.Blobs=true.");
+    }
+
     [Test]
     public async Task AnUploadForUnitTestsReadsAndSavesItsBytes()
     {

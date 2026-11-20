@@ -68,7 +68,8 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.RegionCollectionsFeature);
             writer.WriteStringValue(BridgeDispatcher.ClientErrorsFeature);
             writer.WriteStringValue(BridgeDispatcher.QueryCollectionsFeature);
-            writer.WriteStringValue(BridgeDispatcher.BlobsFeature);
+            // Not when no Bridge of the application holds a blob or takes an upload (BridgeBlobs.IsSupported).
+            if (BridgeBlobs.IsSupported) writer.WriteStringValue(BridgeDispatcher.BlobsFeature);
             writer.WriteStringValue(BridgeDispatcher.ValidationPendingFeature);
             writer.WriteStringValue(BridgeDispatcher.FieldFlushFeature);
             writer.WriteStringValue(BridgeDispatcher.FieldPathsFeature);

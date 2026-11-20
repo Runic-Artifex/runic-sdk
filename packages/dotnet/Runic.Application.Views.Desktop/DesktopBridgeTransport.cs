@@ -88,8 +88,9 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IBridge
                 });
                 serving.Capability = _surface.RegisterCapability(RequestCapability,
                     (invocation, token) => HandleAsync(handler, invocation, token));
-                // blobs/1: the window's blobs and uploads, below the surface's URL.
-                if (handler is BridgeDispatcher dispatcher)
+                // blobs/1: the window's blobs and uploads, below the surface's URL. Not without blobs/1
+                // (BridgeBlobs.IsSupported), so a trimmed or NativeAOT publish drops the blob exchange (runic-sdk#1193).
+                if (BridgeBlobs.IsSupported && handler is BridgeDispatcher dispatcher)
                 {
                     var surface = _surface;
                     dispatcher.Blobs.Attach(BridgeBlobEndpoint.Below(() => surface.CurrentUrl));

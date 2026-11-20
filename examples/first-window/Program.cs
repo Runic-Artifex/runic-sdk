@@ -3,6 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
 
+// RUNIC_SMOKE_TRACE=1 (browser-smoke.mjs): without an ILoggerFactory, Runic logs its errors to Trace, which this writes
+// to standard error so that the smoke sees them.
+if (Environment.GetEnvironmentVariable("RUNIC_SMOKE_TRACE") == "1")
+    System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.ConsoleTraceListener(useErrorStream: true));
+
 var services = new ServiceCollection();
 services.AddScoped<CounterViewModel>();
 services.AddRunicViews();

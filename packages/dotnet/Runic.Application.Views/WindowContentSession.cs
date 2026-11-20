@@ -132,7 +132,7 @@ public sealed class WindowContentSession : IDisposable
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
             dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger, options.FlowCultureFromLocale);
-            dispatcher.Blobs.Configure(maximumUploadBytes, maximumPendingUploadBytes);
+            if (BridgeBlobs.IsSupported) dispatcher.Blobs.Configure(maximumUploadBytes, maximumPendingUploadBytes);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
             // A departure of this window's models flushes its pages first (field-flush/1).
             if (ModelContext is { } flushContext)
@@ -1043,7 +1043,7 @@ public sealed class WindowContentSession : IDisposable
         Capture(_interactions.Dispose, errors);
         Capture(_fieldWrites.Dispose, errors);
         // blobs/1: the window's blob URLs stop working and its unclaimed uploads are deleted.
-        Capture(BridgeDispatcher.For(_transport).Blobs.Dispose, errors);
+        if (BridgeBlobs.IsSupported) Capture(BridgeDispatcher.For(_transport).Blobs.Dispose, errors);
 
         IRunicModelContextLease[] modelLeases;
         IRunicModelContextLease? rootModelLease;

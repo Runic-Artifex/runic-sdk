@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+import { assertBlobsOff, launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+
+// RUNIC_SMOKE_BLOBS_OFF=1: the host is a trimmed or NativeAOT publish of this example, whose Bridges use no blobs, so
+// the publish turned blobs/1 off (runic-sdk#1193): the page still connects and calls, upload rejects with unavailable,
+// and neither the page (at startup) nor the host reports an error.
+const blobsOff = process.env.RUNIC_SMOKE_BLOBS_OFF === "1";
+const hostErrors = text => text.split(/\r?\n/).filter(line => /\b(error|fail|crit|exception|unhandled)\b/i.test(line));
 
 const dll = process.env.RUNIC_FIRST_WINDOW_DLL
   ?? fileURLToPath(new URL("./bin/Release/net10.0/FirstWindow.dll", import.meta.url));
@@ -8,7 +14,7 @@ const native = process.env.RUNIC_FIRST_WINDOW_EXECUTABLE;
 // RUNIC_APPLICATION_SERVE_ONLY makes the unchanged example start its server
 // without launching a browser and print RUNIC_APPLICATION_URL=<url>.
 const host = spawn(native ?? "dotnet", native ? [] : [dll],
-  { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1" } });
+  { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1", ...(blobsOff ? { RUNIC_SMOKE_TRACE: "1" } : {}) } });
 let output = "", errors = "", browser;
 host.stdout.on("data", chunk => { output += chunk; });
 host.stderr.on("data", chunk => { errors += chunk; });
@@ -27,6 +33,7 @@ try {
     status: document.querySelector("#status")?.textContent})`);
   await retry(async () => (await state()).status === "Connected to the .NET ViewModel.", "initial connection");
   if ((await state()).count !== "0") throw new Error("Initial count was not zero.");
+  const blobs = blobsOff ? await assertBlobsOff(browser) : undefined;
   // D040: the page's policy has no 'unsafe-eval'. CDP's own evaluation is exempt unless it asks not to be.
   const evaluation = (await browser.command("Runtime.evaluate", { returnByValue: true, allowUnsafeEvalBlockedByCSP: false,
     expression: `(() => { try { new Function("return 1")(); return "allowed"; } catch (error) { return error.name; } })()` })).result.value;
@@ -61,6 +68,12 @@ try {
   await retry(async () => (await state()).count === "4", "updated command");
   await evaluate("location.reload()");
   await retry(async () => (await state()).count === "4" && (await state()).step === "3", "reload");
+  if (blobsOff) {
+    // The page's errors are checked at startup (assertBlobsOff), before the reload; the host's here.
+    const found = hostErrors(output + errors);
+    if (found.length > 0) throw new Error(`The host reported errors without blobs/1:\n${found.join("\n")}`);
+    console.log(`FIRST_WINDOW_BLOBS_OFF_OK|upload ${blobs.kind}: ${blobs.message}`);
+  }
   console.log("FIRST_WINDOW_OK|snapshot|command|state-push-without-eval|property|reload");
 } finally {
   try { await browser?.close(); }

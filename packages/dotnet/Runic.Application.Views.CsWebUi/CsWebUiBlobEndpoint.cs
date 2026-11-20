@@ -69,9 +69,10 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
     }
 
     // Starts the window's endpoint and attaches it to the window's blobs; null, after logging why, when no listener
-    // could start, so the window opens without blobs and uploads.
+    // could start, so the window opens without blobs and uploads. Null without blobs/1 (BridgeBlobs.IsSupported): a
+    // trimmed or NativeAOT publish whose Bridges use no blobs then drops the endpoint and its listener (runic-sdk#1193).
     internal static CsWebUiBlobEndpoint? Start(BridgeBlobs blobs, WebUiWindow window, ILogger logger) =>
-        Start(blobs, () => (int)window.Port, logger, FreePort);
+        BridgeBlobs.IsSupported ? Start(blobs, () => (int)window.Port, logger, FreePort) : null;
 
     // As above, with the page's port and the ports to try; for tests. Without the relay, the listener holds one address
     // of localhost only outside Windows, which leaves the other to the ownership check.

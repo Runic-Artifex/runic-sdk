@@ -132,7 +132,6 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
     {
         _transport = transport;
         _targeted = transport as IBridgeConnectionTransport;
-        Blobs = new BridgeBlobs();
         HostedRegions = new BridgeHostedRegions(transport, () => _logger);
         _transportKeysUnique = transport is IBridgeUniqueConnectionKeys;
         // A closing window can still attach content while accepted work drains, after its host disposed the
@@ -157,8 +156,20 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
 
     internal IBridgeTransport Transport => _transport;
 
-    // The Window's blobs and uploads (blobs/1). The host attaches its endpoint; the window session disposes it.
-    internal BridgeBlobs Blobs { get; }
+    // The Window's blobs and uploads (blobs/1), created on first use. The host attaches its endpoint; the window session
+    // disposes it. Every caller in the runtime and the hosts tests BridgeBlobs.IsSupported first, so a trimmed or
+    // NativeAOT publish without blob members drops the store (runic-sdk#1193).
+    internal BridgeBlobs Blobs
+    {
+        get
+        {
+            if (Volatile.Read(ref _blobs) is { } existing) return existing;
+            lock (_gate)
+                return _blobs ??= new BridgeBlobs { Logger = _logger, TimeProvider = _timeProvider };
+        }
+    }
+
+    private BridgeBlobs? _blobs;
 
     // hosted-regions/1: the regions the window's pages declare, which a host of hosted applications observes.
     internal BridgeHostedRegions HostedRegions { get; }
@@ -184,8 +195,13 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         _logger = logger;
         _pageLogger = pageLogger ?? logger;
         _timeProvider = timeProvider;
-        Blobs.Logger = logger;
-        Blobs.TimeProvider = timeProvider;
+        if (BridgeBlobs.IsSupported)
+            lock (_gate)
+                if (_blobs is { } blobs)
+                {
+                    blobs.Logger = logger;
+                    blobs.TimeProvider = timeProvider;
+                }
     }
 
     // Serves a route: requests that name it go to the handler until the lease is disposed; after that they answer
@@ -813,7 +829,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         RefuseHeld(connection);
         // blobs/1: the connection's upload token stops working and its unclaimed uploads are deleted, also when a hello of
         // another session replaced it. Its token and uploads are under its own key, which a later page never gets.
-        Blobs.ConnectionClosed(connection.Key);
+        if (BridgeBlobs.IsSupported) Volatile.Read(ref _blobs)?.ConnectionClosed(connection.Key);
         // hosted-regions/1: the connection's regions are removed, as a page reload or a crash removes them.
         HostedRegions.ConnectionClosed(connection.Key);
         foreach (var observer in observers)
@@ -1025,7 +1041,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         // appearance/1: the window's appearance, also while it is unknown.
         if (usesAppearance) PushAppearanceAfterHello(connection);
         // blobs/1: the connection's upload grant, when the host takes uploads.
-        var grant = usesBlobs ? Blobs.Grant(connection.Key) : null;
+        var grant = usesBlobs && BridgeBlobs.IsSupported ? Blobs.Grant(connection.Key) : null;
         // navigation-path/1: the reply tells the page the window's route path, when the window has a path region.
         return usesNavigationPath && BridgeNavigation.TryGetPath(this, out var path)
             ? BridgeMessages.Hello(grant, path, navigationPath: true, handlerTiming: handlerTiming)
@@ -1056,7 +1072,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             else if (name == RegionCollectionsFeature) usesRegionCollections = true;
             else if (name == ClientErrorsFeature) usesClientErrors = true;
             else if (name == QueryCollectionsFeature) usesQueryCollections = true;
-            else if (name == BlobsFeature) usesBlobs = true;
+            else if (name == BlobsFeature) usesBlobs = BridgeBlobs.IsSupported;
             else if (name == FieldFlushFeature) usesFieldFlush = true;
             else if (name == FieldPathsFeature) usesFieldPaths = true;
             else if (name == TranslationTextFeature) usesTranslationText = true;

@@ -5,6 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { reportIfSlow, scaled, startWait, timeoutScale } from "../../tests/support/timeouts.mjs";
 
@@ -209,7 +210,13 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
   const pending = new Map();
   let socket, nextId = 0, closed = false, answered = false, connected = performance.now();
 
-  const remember = line => { consoleLines.push(line); if (consoleLines.length > 100) consoleLines.shift(); };
+  // Every console error, exception and error log entry since the launch, unbounded: consoleErrors().
+  const errorLines = [];
+  const remember = (line, error = false) => {
+    consoleLines.push(line);
+    if (consoleLines.length > 100) consoleLines.shift();
+    if (error) errorLines.push(line);
+  };
   const browser = {
     process: child,
     profile,
@@ -231,6 +238,13 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
     /** Evaluates `expression` in the page, awaiting promises, and returns its value. */
     async evaluate(expression, options) {
       return (await browser.command("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, options)).result.value;
+    },
+    /**
+     * The page's console errors, uncaught exceptions and error log entries since the launch, without Chromium's own
+     * request for /favicon.ico, which no example page serves.
+     */
+    consoleErrors() {
+      return errorLines.filter(line => !/^\[network\.error\] .* 404 .*\/favicon\.ico\)$/.test(line));
     },
     /** Recent console output, the page state and a bounded DOM excerpt. */
     async diagnostics() {
@@ -297,12 +311,14 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
       if (message.id !== undefined) { pending.get(message.id)?.resolve(message); return; }
       if (message.method === "Runtime.consoleAPICalled") {
         const text = message.params.args.map(arg => arg.value ?? arg.description ?? arg.type).join(" ");
-        remember(`[console.${message.params.type}] ${text}`);
+        remember(`[console.${message.params.type}] ${text}`, message.params.type === "error");
       } else if (message.method === "Runtime.exceptionThrown") {
         const details = message.params.exceptionDetails;
-        remember(`[exception] ${details.exception?.description ?? details.text}`);
+        remember(`[exception] ${details.exception?.description ?? details.text}`, true);
       } else if (message.method === "Log.entryAdded") {
-        remember(`[${message.params.entry.source}.${message.params.entry.level}] ${message.params.entry.text}`);
+        const { entry } = message.params;
+        remember(`[${entry.source}.${entry.level}] ${entry.text}${entry.url ? ` (${entry.url})` : ""}`,
+          entry.level === "error");
       } else if (message.method === "Network.webSocketCreated") {
         remember(`[websocket ${message.params.requestId}] created at ${Math.round(performance.now() - connected)} ms: ${message.params.url}`);
       } else if (message.method === "Network.webSocketFrameError") {
@@ -365,4 +381,43 @@ export function viewsProbe(evaluate) {
     isOpen: route => evaluate(
       `globalThis[Symbol.for("runic.views.generated-client-runtime")]?.routes.has(${JSON.stringify(route)}) === true`),
   };
+}
+
+/**
+ * Calls the published `upload` of `@runic-artifex/views` in the page (blobs/1, runic-sdk#1193) and resolves with
+ * `{ uploaded }` or the BridgeError's `{ kind, message }`. The built package (dist/, as published, which the examples'
+ * frontends also need) is bundled with esbuild and evaluated
+ * beside the page's own bundle: every copy of the package shares the page instance (specs/application/README.md,
+ * "Shared globals"), so `upload` uses the page's runtime and the upload grant of its own hello. Call it after a View
+ * rendered.
+ */
+export async function pageUpload(evaluate) {
+  const { build } = await import("esbuild");
+  const views = fileURLToPath(new URL("../../packages/web/views/", import.meta.url));
+  const bundle = await build({
+    stdin: {
+      contents: `import { upload } from "./dist/index.js";
+        globalThis.__runicSmokeUpload = async () => {
+          try { return { uploaded: await upload(new Blob(["probe"], { type: "text/plain" }), { name: "probe.txt" }) }; }
+          catch (error) { return { kind: error?.kind ?? null, name: error?.name ?? null, message: String(error?.message ?? error) }; }
+        };`,
+      resolveDir: views, loader: "js", sourcefile: "smoke-upload.js",
+    },
+    bundle: true, format: "iife", platform: "browser", target: "es2022", write: false, logLevel: "silent",
+  });
+  await evaluate(bundle.outputFiles[0].text);
+  return evaluate("globalThis.__runicSmokeUpload()");
+}
+
+/**
+ * The checks of an application without Bridge blobs in a trimmed or NativeAOT publish (runic-sdk#1193): the publish
+ * turned blobs/1 off, so `upload` rejects with `unavailable` and says why, and the page logged no error.
+ */
+export async function assertBlobsOff(browser) {
+  const result = await pageUpload(browser.evaluate);
+  if (result.kind !== "unavailable" || !/does not implement blobs\/1/.test(result.message))
+    throw new Error(`upload without blobs/1 did not reject with unavailable: ${JSON.stringify(result)}`);
+  const errors = browser.consoleErrors();
+  if (errors.length > 0) throw new Error(`The page logged errors:\n${errors.join("\n")}`);
+  return result;
 }

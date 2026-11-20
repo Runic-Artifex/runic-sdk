@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+import { assertBlobsOff, launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+
+// RUNIC_SMOKE_BLOBS_OFF=1: the host is a trimmed or NativeAOT publish of this example, whose Bridges use no blobs, so
+// the publish turned blobs/1 off (runic-sdk#1193): the page still connects and calls, upload rejects with unavailable,
+// and neither the page (at startup) nor the host reports an error.
+const blobsOff = process.env.RUNIC_SMOKE_BLOBS_OFF === "1";
+const hostErrors = text => text.split(/\r?\n/).filter(line => /\b(error|fail|crit|exception|unhandled)\b/i.test(line));
 
 // RUNIC_DESKTOP_VIEWS_EXECUTABLE runs a self-contained publish, such as the trimmed one in CI, instead of the DLL.
 const executable = process.env.RUNIC_DESKTOP_VIEWS_EXECUTABLE;
@@ -25,10 +31,17 @@ try {
   const { evaluate } = browser;
   const count = () => evaluate('document.querySelector("#count")?.value');
   await retry(async () => (await count()) === "0", "initial generated snapshot");
+  const blobs = blobsOff ? await assertBlobsOff(browser) : undefined;
   await evaluate('document.querySelector("#increment").click()');
   await retry(async () => (await count()) === "1", "ReactiveUI command");
   await evaluate("location.reload()");
   await retry(async () => (await count()) === "1", "reconnected snapshot");
+  if (blobsOff) {
+    // The page's errors are checked at startup (assertBlobsOff), before the reload; the host's here.
+    const found = hostErrors(output + errors);
+    if (found.length > 0) throw new Error(`The host reported errors without blobs/1:\n${found.join("\n")}`);
+    console.log(`DESKTOP_VIEWS_BLOBS_OFF_OK|upload ${blobs.kind}: ${blobs.message}`);
+  }
   // The page learns that the host ended when its WebSocket drops, without making a call (#406).
   const states = () => evaluate("JSON.stringify(globalThis.connectionStates ?? null)");
   // A reload may still be replacing the document; register in the document that has the Bridge.
