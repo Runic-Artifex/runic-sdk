@@ -115,12 +115,16 @@ public sealed class SpellingUserWords
     {
         try
         {
+            // Only the user reads the list (DEV-SEC-88): each write creates a new file that only the user can read, and
+            // moves it over the list at once, so it also keeps that mode.
             var folder = System.IO.Path.GetDirectoryName(Path)!;
-            Directory.CreateDirectory(folder);
+            PrivateFiles.CreateDirectory(folder);
             var temporary = System.IO.Path.Combine(folder, $".{System.IO.Path.GetFileName(Path)}.{Guid.NewGuid():N}.tmp");
             try
             {
-                await File.WriteAllLinesAsync(temporary, words, new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
+                var content = new StringBuilder();
+                foreach (var word in words) content.Append(word).Append(Environment.NewLine);
+                await PrivateFiles.WriteNewAsync(temporary, new UTF8Encoding(false).GetBytes(content.ToString()), cancellationToken).ConfigureAwait(false);
                 File.Move(temporary, Path, overwrite: true);
             }
             finally

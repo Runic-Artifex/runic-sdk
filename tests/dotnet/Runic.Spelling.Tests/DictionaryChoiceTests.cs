@@ -61,8 +61,8 @@ public sealed class DictionaryChoiceTests
         var system = temporary.Folder("share", "hunspell");
         var variable = temporary.Folder("override");
         foreach (var folder in new[] { app, system, variable }) TemporaryFolder.Dictionary(folder, "en_GB", "colour");
-        TemporaryFolder.Dictionary(Path.Combine(downloads, "en_GB"), "en_GB", "colour");
-        TemporaryFolder.Dictionary(Path.Combine(downloads, "de_CH"), "de_CH", "Strasse");
+        TemporaryFolder.Downloaded(downloads, "en_GB", "colour");
+        TemporaryFolder.Downloaded(downloads, "de_CH", "Strasse");
         TemporaryFolder.Dictionary(system, "de_CH", "Strasse");
         TemporaryFolder.Dictionary(system, "fr_FR", "couleur");
         // A download in progress is not installed.
@@ -96,7 +96,7 @@ public sealed class DictionaryChoiceTests
     {
         using var temporary = new TemporaryFolder();
         var downloads = temporary.Folder("downloads");
-        TemporaryFolder.Dictionary(Path.Combine(downloads, "de"), "de", "Strasse");
+        TemporaryFolder.Downloaded(downloads, "de", "Strasse");
         var system = temporary.Folder("system");
         TemporaryFolder.Dictionary(system, "de_CH", "Strasse");
 

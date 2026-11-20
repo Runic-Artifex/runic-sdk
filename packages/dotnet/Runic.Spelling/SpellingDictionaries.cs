@@ -144,7 +144,9 @@ public sealed partial class SpellingDictionaries
         return dictionaries;
     }
 
-    // The downloaded dictionaries: <folder>/<name>/<name>.dic and .aff, without the folders of downloads in progress.
+    // The downloaded dictionaries: <folder>/<name>/<name>.dic and .aff, without the folders of downloads in progress, and
+    // only those whose files are the ones they were installed with (InstalledDictionaryCheck); another one counts as not
+    // installed, so GetAvailability offers it for download again.
     private List<SpellingDictionary> Downloaded()
     {
         string[] folders;
@@ -163,8 +165,12 @@ public sealed partial class SpellingDictionaries
             var name = Path.GetFileName(folder);
             var dictionary = Path.Combine(folder, name + ".dic");
             var affix = Path.Combine(folder, name + ".aff");
-            if (SpellingDictionaryNames.Parse(name) is not null && File.Exists(dictionary) && File.Exists(affix))
-                dictionaries.Add(new(name, SpellingDictionarySource.Downloaded, Path.GetFullPath(dictionary), Path.GetFullPath(affix)));
+            if (SpellingDictionaryNames.Parse(name) is null || !File.Exists(dictionary) || !File.Exists(affix)) continue;
+            if (InstalledDictionaryCheck.Expected(folder, name, Catalog) is not { } expected || !InstalledDictionaryCheck.IsIntact(expected)) continue;
+            dictionaries.Add(new(name, SpellingDictionarySource.Downloaded, Path.GetFullPath(dictionary), Path.GetFullPath(affix))
+            {
+                InstalledFiles = expected,
+            });
         }
         return dictionaries;
     }

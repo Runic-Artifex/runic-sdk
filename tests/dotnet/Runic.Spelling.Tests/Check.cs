@@ -74,6 +74,21 @@ internal sealed class TemporaryFolder : IDisposable
         File.WriteAllLines(System.IO.Path.Combine(folder, name + ".dic"), [words.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), .. words]);
     }
 
+    // A fake downloaded dictionary in <downloads>/<name>/, with the source.json a download writes beside it: only a
+    // dictionary whose files match its record counts as installed (DEV-SEC-87).
+    internal static void Downloaded(string downloads, string name, params string[] words)
+    {
+        var folder = System.IO.Path.Combine(downloads, name);
+        Dictionary(folder, name, words);
+        string Record(string file)
+        {
+            var bytes = File.ReadAllBytes(System.IO.Path.Combine(folder, file));
+            return $$"""{ "file": "{{file}}", "sha256": "{{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))}}", "size": {{bytes.Length}} }""";
+        }
+        File.WriteAllText(System.IO.Path.Combine(folder, "source.json"),
+            $$"""{ "name": "{{name}}", "commit": "test-pin", "files": [{{Record(name + ".dic")}}, {{Record(name + ".aff")}}] }""");
+    }
+
     public void Dispose()
     {
         try

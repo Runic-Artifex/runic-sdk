@@ -33,6 +33,10 @@ public sealed class SpellingDictionary
             : name.Replace('_', '-');
     }
 
+    // A downloaded dictionary's .dic and .aff with their size and SHA-256 (InstalledDictionaryCheck), which loading
+    // checks again; null for the other sources.
+    internal IReadOnlyList<InstalledFile>? InstalledFiles { get; init; }
+
     /// <summary>The dictionary's name as Hunspell names it, such as <c>de_CH</c>, <c>en_GB</c> or <c>de</c>.</summary>
     public string Name { get; }
 
