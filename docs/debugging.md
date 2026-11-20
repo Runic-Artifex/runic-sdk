@@ -244,8 +244,8 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
   the dotnet-runic README's
   [Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux).
 
-  The endpoint listens on 127.0.0.1 only and refuses requests that carry an `Origin` or a `Host` other than an IP
-  address or `localhost`, so a web page cannot reach it. WebKit's own server serves one client, and a new one takes its place: while no
+  The endpoint listens on 127.0.0.1 and `[::1]` (a debugger told `localhost` may try `[::1]` first) and refuses requests
+  that carry an `Origin` or a `Host` other than an IP address or `localhost`, so a web page cannot reach it. WebKit's own server serves one client, and a new one takes its place: while no
   debugger is attached, GNOME Web (Epiphany), a WebKitGTK browser, opens the `inspector://` address that
   `[dev] Debugging:` names. Other local users can reach that port too.
   `--no-debug-endpoint` opens neither. WebKit serves either that socket or its Web Inspector over HTTP
@@ -287,7 +287,9 @@ source maps, stepping, conditions, logpoints, exceptions, the console, reloads a
 Since 0.23 (#1187), the address is `http://<label>.localhost:9224/`, with a random label for each `dev` run that stays
 the same across its Window restarts. Each session is an origin of its own, so an earlier session's or another
 project's pages, service workers, storage and cookies do not reach it. Chromium browsers (Chrome, Edge) and Firefox
-resolve names under `.localhost` to the loopback interface themselves. The address admits one browser by a one-time
+resolve names under `.localhost` to the loopback interface themselves: Chromium connects to `[::1]` first, Firefox to
+127.0.0.1, and `dev` listens on both, with the same rules. When 9224 is taken on either, the address moves to a port
+free on both, and the `[dev] Browser:` line says so. The address admits one browser by a one-time
 code: the `[dev] Browser:` lines print the address with it (`http://<label>.localhost:9224/?code=…`), and
 `obj/runic/dev-browser.html`, a page only you can read, opens it with the newest one, as `Window in Chrome` does with
 `"file"`. The browser that opens it becomes the admitted one, and the previous browser's admission ends, with its open
@@ -306,7 +308,8 @@ window's commands report `OwnerUnavailable`, and there is no side panel. Without
 cookie on the session's own name, the address answers 403. The label, the code and the cookie are bearer secrets: your
 browser sends the cookie to `<label>.localhost` on any port, so whoever knew the label could collect it on a port of
 theirs. `dev` therefore prints the label only in its `[dev] Browser:` lines and writes it only to the code page; the
-session file has `*` in its place. On Linux the address also answers only the user who runs `dev`; macOS and Windows
+session file has `*` in its place. On Linux the address also answers only the user who runs `dev`, on both loopback
+addresses; macOS and Windows
 cannot tell a loopback connection's user, so there the secrets alone keep other local users out. Attach the .NET
 debugger to the process that
 `[dev] Window started` names, as without `--browser`. See the dotnet-runic README's
