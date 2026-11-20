@@ -34,6 +34,7 @@
     {"frame":{"request":"upgrade","token":{"$secret":"frame-token"},"status":101}},
     {"receive":{"kind":"region-page","window":{"$id":"w1"},"page":"connected"},"connection":"c1"},
     {"send":{"kind":"region-detach","window":{"$id":"w1"},"reason":"removed"},"connection":"c1"},
+    {"frame":{"request":"closed"},"note":"region-detach is a push without a reply: the page's closing shows that the guest applied it."},
     {"send":{"kind":"activity","window":{"$id":"w1"},"active":false,"minimized":false,"visible":false},"connection":"c1"},
     {"frame":{"request":"upgrade","token":{"$secret":"frame-token"},"refused":true}},
     {"guest":{"action":"activity","window":"w1"},"as":"a1"},
