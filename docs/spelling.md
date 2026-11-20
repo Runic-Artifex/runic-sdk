@@ -45,8 +45,8 @@ A Runic application can check spelling in two ways.
 English (United States and United Kingdom) ships with the package. The system's Hunspell dictionaries are used where
 they are installed: on Linux those of the distribution's `hunspell-*` packages, and in a Nix-built application those of
 `buildRunicApplication`'s `spellingDictionaries` ([Nix, Spell checking](../nix/README.md#spell-checking)).
-The package README lists the folders on each system, the order in which the sources count, the catalogue of
-downloadable dictionaries and their licences.
+The package README lists the directories on each system, the order in which the sources count, the catalog of
+downloadable dictionaries and their licenses.
 
 ## Later
 

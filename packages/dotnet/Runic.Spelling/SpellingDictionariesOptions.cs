@@ -3,16 +3,16 @@ namespace Runic.Spelling;
 /// <summary>Where <see cref="SpellingDictionaries"/> looks for dictionaries and installs downloaded ones.</summary>
 public sealed class SpellingDictionariesOptions
 {
-    /// <summary>The application's own folders of dictionaries (<see cref="SpellingDictionarySource.Bundled"/>), each with
+    /// <summary>The application's own directories of dictionaries (<see cref="SpellingDictionarySource.Bundled"/>), each with
     /// <c>&lt;name&gt;.dic</c> and <c>&lt;name&gt;.aff</c> files, the first of a name winning. <see langword="null"/>, the
     /// default: <c>dictionaries</c> beside the program, where the package's build targets copy the English dictionaries,
-    /// and on macOS in the bundle's <c>Contents/Resources</c>. <see cref="SpellingDictionaries.FolderVariable"/> comes
+    /// and on macOS in the bundle's <c>Contents/Resources</c>. <see cref="SpellingDictionaries.DirectoryEnvironmentVariable"/> comes
     /// before them either way.</summary>
-    public IReadOnlyList<string>? ApplicationFolders { get; init; }
+    public IReadOnlyList<string>? ApplicationDirectories { get; init; }
 
-    /// <summary>The folder downloaded dictionaries are installed in and read from. <see langword="null"/>, the default:
-    /// the folder all Runic applications of the user share (<see cref="SpellingDictionaries.SharedDownloadFolder"/>).</summary>
-    public string? DownloadFolder { get; init; }
+    /// <summary>The directory downloaded dictionaries are installed in and read from. <see langword="null"/>, the default:
+    /// the directory all Runic applications of the user share (<see cref="SpellingDictionaries.SharedDownloadDirectory"/>).</summary>
+    public string? DownloadDirectory { get; init; }
 
     /// <summary>Whether the computer's Hunspell dictionaries are used. Default <see langword="true"/>.</summary>
     public bool UseSystemDictionaries { get; init; } = true;
@@ -29,7 +29,7 @@ public sealed class SpellingDictionariesOptions
     // The tests' fakes: the folders' environment, and a catalogue of a local server.
     internal SpellingEnvironment? Environment { get; init; }
 
-    internal SpellingCatalogue? Catalogue { get; init; }
+    internal SpellingCatalog? Catalog { get; init; }
 
     internal bool AllowLoopbackDownloads { get; init; }
 }

@@ -5,11 +5,11 @@ namespace Runic.Spelling;
 /// <summary>Where an installed dictionary comes from. Closed: these are the three sources.</summary>
 public enum SpellingDictionarySource
 {
-    /// <summary>The application's own folder: the dictionaries the package bundles (English), the folders the application
-    /// names, or <see cref="SpellingDictionaries.FolderVariable"/>.</summary>
+    /// <summary>The application's own directory: the dictionaries the package bundles (English), the directories the application
+    /// names, or <see cref="SpellingDictionaries.DirectoryEnvironmentVariable"/>.</summary>
     Bundled,
 
-    /// <summary>Downloaded from the catalogue into the folder all Runic applications of the user share.</summary>
+    /// <summary>Downloaded from the catalog into the directory all Runic applications of the user share.</summary>
     Downloaded,
 
     /// <summary>A Hunspell dictionary of the computer, such as one in <c>/usr/share/hunspell</c>.</summary>

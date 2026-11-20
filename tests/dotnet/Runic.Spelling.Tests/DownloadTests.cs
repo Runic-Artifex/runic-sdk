@@ -15,14 +15,14 @@ public sealed class DownloadTests
     {
         using var temporary = new TemporaryFolder();
         await using var server = await DictionaryServer.StartAsync();
-        var dictionaries = Dictionaries(temporary, server.Catalogue("de_CH", "de-CH"));
-        var entry = dictionaries.Catalogue.Find("de_CH")!;
+        var dictionaries = Dictionaries(temporary, server.Catalog("de_CH", "de-CH"));
+        var entry = dictionaries.Catalog.Find("de_CH")!;
         Equal(SpellingAvailabilityStatus.Downloadable, dictionaries.GetAvailability("de-CH").Status);
         List<SpellingDownloadProgress> reported = [];
 
         var installed = await dictionaries.DownloadAsync(entry, new Synchronous<SpellingDownloadProgress>(reported.Add));
 
-        var folder = Path.Combine(dictionaries.DownloadFolder, "de_CH");
+        var folder = Path.Combine(dictionaries.DownloadDirectory, "de_CH");
         Equal(Path.Combine(folder, "de_CH.dic"), installed.DictionaryPath);
         Equal(SpellingDictionarySource.Downloaded, installed.Source);
         Sequence(["LICENSE", "README.md", "de_CH.aff", "de_CH.dic", "source.json"],
@@ -30,7 +30,7 @@ public sealed class DownloadTests
         Equal(DictionaryServer.License, File.ReadAllText(Path.Combine(folder, "LICENSE")));
         True(File.ReadAllText(Path.Combine(folder, "source.json")).Contains("\"license\": \"(GPL-2.0 OR GPL-3.0)\"", StringComparison.Ordinal), "source.json names the licence");
         // Only the download folder holds anything: no folder of the download is left.
-        Sequence(["de_CH"], Directory.EnumerateFileSystemEntries(dictionaries.DownloadFolder).Select(Path.GetFileName).OfType<string>());
+        Sequence(["de_CH"], Directory.EnumerateFileSystemEntries(dictionaries.DownloadDirectory).Select(Path.GetFileName).OfType<string>());
         Equal(new SpellingDownloadProgress(0, entry.Size), reported[0]);
         Equal(new SpellingDownloadProgress(entry.Size, entry.Size), reported[^1]);
         // The request carries a generic User-Agent and nothing else of the user's.
@@ -45,7 +45,7 @@ public sealed class DownloadTests
         // A second download replaces the first.
         var again = await dictionaries.DownloadAsync(entry);
         Equal(installed.DictionaryPath, again.DictionaryPath);
-        Sequence(["de_CH"], Directory.EnumerateFileSystemEntries(dictionaries.DownloadFolder).Select(Path.GetFileName).OfType<string>());
+        Sequence(["de_CH"], Directory.EnumerateFileSystemEntries(dictionaries.DownloadDirectory).Select(Path.GetFileName).OfType<string>());
     }
 
     [Test]
@@ -54,12 +54,12 @@ public sealed class DownloadTests
         using var temporary = new TemporaryFolder();
         await using var server = await DictionaryServer.StartAsync();
         // The server sends other bytes of the same size for the affix file.
-        var dictionaries = Dictionaries(temporary, server.Catalogue("de_CH", "de-CH", tamperedAffix: true));
+        var dictionaries = Dictionaries(temporary, server.Catalog("de_CH", "de-CH", tamperedAffix: true));
 
-        var error = await ThrowsAsync<InvalidDataException>(() => dictionaries.DownloadAsync(dictionaries.Catalogue.Find("de_CH")!));
+        var error = await ThrowsAsync<InvalidDataException>(() => dictionaries.DownloadAsync(dictionaries.Catalog.Find("de_CH")!));
 
         True(error.Message.Contains("SHA-256", StringComparison.Ordinal), error.Message);
-        Equal(0, Directory.EnumerateFileSystemEntries(dictionaries.DownloadFolder).Count());
+        Equal(0, Directory.EnumerateFileSystemEntries(dictionaries.DownloadDirectory).Count());
         Equal(SpellingAvailabilityStatus.Downloadable, dictionaries.GetAvailability("de-CH").Status);
     }
 
@@ -68,7 +68,7 @@ public sealed class DownloadTests
     {
         using var temporary = new TemporaryFolder();
         await using var server = await DictionaryServer.StartAsync();
-        var dictionaries = Dictionaries(temporary, server.Catalogue("de_CH", "de-CH", stallDictionary: true));
+        var dictionaries = Dictionaries(temporary, server.Catalog("de_CH", "de-CH", stallDictionary: true));
         using var cancellation = new CancellationTokenSource();
         var progress = new Synchronous<SpellingDownloadProgress>(report =>
         {
@@ -76,9 +76,9 @@ public sealed class DownloadTests
             if (report.BytesReceived > 0) cancellation.Cancel();
         });
 
-        await ThrowsAsync<OperationCanceledException>(() => dictionaries.DownloadAsync(dictionaries.Catalogue.Find("de_CH")!, progress, cancellation.Token));
+        await ThrowsAsync<OperationCanceledException>(() => dictionaries.DownloadAsync(dictionaries.Catalog.Find("de_CH")!, progress, cancellation.Token));
 
-        Equal(0, Directory.EnumerateFileSystemEntries(dictionaries.DownloadFolder).Count());
+        Equal(0, Directory.EnumerateFileSystemEntries(dictionaries.DownloadDirectory).Count());
         Equal(null, dictionaries.Find("de-CH"));
     }
 
@@ -87,19 +87,19 @@ public sealed class DownloadTests
     {
         using var temporary = new TemporaryFolder();
         await using var server = await DictionaryServer.StartAsync();
-        var local = server.Catalogue("de_CH", "de-CH");
+        var local = server.Catalog("de_CH", "de-CH");
         // An entry of another catalogue.
-        await ThrowsAsync<ArgumentException>(() => Dictionaries(temporary, local).DownloadAsync(SpellingCatalogue.Default.Find("de_CH")!));
+        await ThrowsAsync<ArgumentException>(() => Dictionaries(temporary, local).DownloadAsync(SpellingCatalog.Default.Find("de_CH")!));
         // A catalogue of http:// addresses is refused unless the tests allow their local server.
-        Throws<InvalidDataException>(() => SpellingCatalogue.Read(new MemoryStream(Encoding.UTF8.GetBytes(server.Json("de_CH", "de-CH")))));
-        var withoutLoopback = new SpellingDictionaries(new() { Environment = Environments.Fake(SpellingPlatform.Linux, temporary.Path), Catalogue = local });
+        Throws<InvalidDataException>(() => SpellingCatalog.Read(new MemoryStream(Encoding.UTF8.GetBytes(server.Json("de_CH", "de-CH")))));
+        var withoutLoopback = new SpellingDictionaries(new() { Environment = Environments.Fake(SpellingPlatform.Linux, temporary.Path), Catalog = local });
         await ThrowsAsync<ArgumentException>(() => withoutLoopback.DownloadAsync(local.Find("de_CH")!));
     }
 
     [Test]
     public void TheShippedCatalogueIsPinnedToCommitsOverHttps()
     {
-        var catalogue = SpellingCatalogue.Default;
+        var catalogue = SpellingCatalog.Default;
         string[] sources = ["https://github.com/wooorm/dictionaries", "https://github.com/LibreOffice/dictionaries"];
 
         True(catalogue.Entries.Count >= 80, $"{catalogue.Entries.Count} dictionaries");
@@ -107,8 +107,8 @@ public sealed class DownloadTests
         {
             True(sources.Contains(entry.Source.ToString().TrimEnd('/')), $"{entry.Name} comes from {entry.Source}");
             True(entry.Commit.Length == 40 && entry.Commit.All(char.IsAsciiHexDigitLower), $"{entry.Name} names a commit, not {entry.Commit}");
-            True(entry.Files.Any(file => file.Kind == SpellingCatalogueFileKind.Dictionary) && entry.Files.Any(file => file.Kind == SpellingCatalogueFileKind.Affix), entry.Name);
-            True(entry.Files.Any(file => file.Kind == SpellingCatalogueFileKind.Readme), $"{entry.Name} has its readme");
+            True(entry.Files.Any(file => file.Kind == SpellingCatalogFileKind.Dictionary) && entry.Files.Any(file => file.Kind == SpellingCatalogFileKind.Affix), entry.Name);
+            True(entry.Files.Any(file => file.Kind == SpellingCatalogFileKind.Readme), $"{entry.Name} has its readme");
             True(entry.License.Length > 0, $"{entry.Name} names its licence");
             Equal(entry.Files.Sum(file => file.Size), entry.Size);
             var repository = entry.Source.AbsolutePath.Trim('/');
@@ -124,18 +124,18 @@ public sealed class DownloadTests
         Equal("de-CH", swiss.LanguageTag);
         Equal("https://github.com/LibreOffice/dictionaries", swiss.Source.ToString());
         Equal("(GPL-2.0 OR GPL-3.0)", swiss.License);
-        Equal(2, swiss.Files.Count(file => file.Kind == SpellingCatalogueFileKind.License));
+        Equal(2, swiss.Files.Count(file => file.Kind == SpellingCatalogFileKind.License));
         Equal(null, catalogue.Find("de"));
         // English is bundled, but its other regions can be downloaded.
         Equal("https://github.com/wooorm/dictionaries", catalogue.Find("en_AU")!.Source.ToString());
     }
 
-    private static SpellingDictionaries Dictionaries(TemporaryFolder temporary, SpellingCatalogue catalogue) => new(new()
+    private static SpellingDictionaries Dictionaries(TemporaryFolder temporary, SpellingCatalog catalogue) => new(new()
     {
         Environment = Environments.Fake(SpellingPlatform.Linux, temporary.Path),
         UseSystemDictionaries = false,
-        ApplicationFolders = [],
-        Catalogue = catalogue,
+        ApplicationDirectories = [],
+        Catalog = catalogue,
         AllowLoopbackDownloads = true,
     });
 }
@@ -194,8 +194,8 @@ internal sealed class DictionaryServer : IAsyncDisposable
         }
     }
 
-    internal SpellingCatalogue Catalogue(string name, string tag, bool tamperedAffix = false, bool stallDictionary = false) =>
-        SpellingCatalogue.Read(new MemoryStream(Encoding.UTF8.GetBytes(Json(name, tag, tamperedAffix, stallDictionary))), allowLoopback: true);
+    internal SpellingCatalog Catalog(string name, string tag, bool tamperedAffix = false, bool stallDictionary = false) =>
+        SpellingCatalog.Read(new MemoryStream(Encoding.UTF8.GetBytes(Json(name, tag, tamperedAffix, stallDictionary))), allowLoopback: true);
 
     internal string Json(string name, string tag, bool tamperedAffix = false, bool stallDictionary = false)
     {

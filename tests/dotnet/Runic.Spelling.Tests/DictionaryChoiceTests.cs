@@ -81,13 +81,13 @@ public sealed class DictionaryChoiceTests
 
         // RUNIC_SPELLING_DICTIONARIES comes first.
         var overridden = new SpellingDictionaries(new() { Environment = environment with { Variable = name =>
-            name == SpellingDictionaries.FolderVariable ? variable : environment.Variable(name) } });
+            name == SpellingDictionaries.DirectoryEnvironmentVariable ? variable : environment.Variable(name) } });
         Equal(Path.Combine(variable, "en_GB.dic"), overridden.Find("en")!.DictionaryPath);
 
         // Without the system's.
         Equal(null, new SpellingDictionaries(new() { Environment = environment, UseSystemDictionaries = false }).Find("fr"));
         // The application's folders replace dictionaries/ beside the program.
-        var own = new SpellingDictionaries(new() { Environment = environment, ApplicationFolders = [variable], UseSystemDictionaries = false });
+        var own = new SpellingDictionaries(new() { Environment = environment, ApplicationDirectories = [variable], UseSystemDictionaries = false });
         Equal(Path.Combine(variable, "en_GB.dic"), own.Find("en-GB")!.DictionaryPath);
     }
 
@@ -103,7 +103,7 @@ public sealed class DictionaryChoiceTests
         var dictionaries = new SpellingDictionaries(new()
         {
             Environment = Environments.Fake(SpellingPlatform.Linux, temporary.Path, ("DICPATH", system)),
-            DownloadFolder = downloads,
+            DownloadDirectory = downloads,
         });
 
         Equal("de_CH", dictionaries.Find("de-CH")!.Name);
@@ -119,7 +119,7 @@ public sealed class DictionaryChoiceTests
         var dictionaries = new SpellingDictionaries(new()
         {
             Environment = Environments.Fake(SpellingPlatform.Linux, temporary.Path, ("DICPATH", system)),
-            ApplicationFolders = [Environments.Bundled],
+            ApplicationDirectories = [Environments.Bundled],
         });
 
         var english = dictionaries.GetAvailability("en-GB");

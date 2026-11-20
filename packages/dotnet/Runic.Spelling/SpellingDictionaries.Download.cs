@@ -7,7 +7,7 @@ namespace Runic.Spelling;
 
 /// <summary>How far a download is.</summary>
 /// <param name="BytesReceived">The bytes received so far, of every file.</param>
-/// <param name="TotalBytes">The bytes of every file together (<see cref="SpellingCatalogueEntry.Size"/>).</param>
+/// <param name="TotalBytes">The bytes of every file together (<see cref="SpellingCatalogEntry.Size"/>).</param>
 public readonly record struct SpellingDownloadProgress(long BytesReceived, long TotalBytes);
 
 public sealed partial class SpellingDictionaries
@@ -24,35 +24,35 @@ public sealed partial class SpellingDictionaries
     });
 
     /// <summary>
-    /// Downloads <paramref name="entry"/> into <see cref="DownloadFolder"/>: its files from the catalogue's addresses,
-    /// each checked against its size and SHA-256, then moved into place at once, with its licence texts and readme beside
+    /// Downloads <paramref name="entry"/> into <see cref="DownloadDirectory"/>: its files from the catalog's addresses,
+    /// each checked against its size and SHA-256, then moved into place at once, with its license texts and readme beside
     /// it.
     /// </summary>
-    /// <param name="entry">An entry of <see cref="Catalogue"/>, such as <see cref="SpellingAvailability.Download"/>.</param>
+    /// <param name="entry">An entry of <see cref="Catalog"/>, such as <see cref="SpellingAvailability.Download"/>.</param>
     /// <param name="progress">Told the bytes received, after each read.</param>
     /// <param name="cancellationToken">Stops the download; nothing of it stays installed.</param>
     /// <returns>The installed dictionary. A dictionary of the same name installed before is replaced.</returns>
-    /// <exception cref="ArgumentException"><paramref name="entry"/> is not of <see cref="Catalogue"/>.</exception>
-    /// <exception cref="InvalidDataException">A file's size or SHA-256 is not the catalogue's; nothing is installed.</exception>
+    /// <exception cref="ArgumentException"><paramref name="entry"/> is not of <see cref="Catalog"/>.</exception>
+    /// <exception cref="InvalidDataException">A file's size or SHA-256 is not the catalog's; nothing is installed.</exception>
     /// <exception cref="HttpRequestException">A file could not be downloaded; nothing is installed.</exception>
     /// <exception cref="IOException">The dictionary could not be written; nothing is installed.</exception>
-    public async Task<SpellingDictionary> DownloadAsync(SpellingCatalogueEntry entry, IProgress<SpellingDownloadProgress>? progress = null,
+    public async Task<SpellingDictionary> DownloadAsync(SpellingCatalogEntry entry, IProgress<SpellingDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        if (!Catalogue.Contains(entry)) throw new ArgumentException($"{entry.Name} is not an entry of this catalogue.", nameof(entry));
+        if (!Catalog.Contains(entry)) throw new ArgumentException($"{entry.Name} is not an entry of this catalogue.", nameof(entry));
         foreach (var file in entry.Files)
         {
-            if (!SpellingCatalogue.IsAllowed(file.Url, _allowLoopback)) throw new ArgumentException($"{file.Url} is not an HTTPS address.", nameof(entry));
+            if (!SpellingCatalog.IsAllowed(file.Url, _allowLoopback)) throw new ArgumentException($"{file.Url} is not an HTTPS address.", nameof(entry));
         }
-        var target = Path.GetFullPath(Path.Combine(DownloadFolder, entry.Name));
+        var target = Path.GetFullPath(Path.Combine(DownloadDirectory, entry.Name));
         var gate = s_installing.GetOrAdd(target, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Directory.CreateDirectory(DownloadFolder);
+            Directory.CreateDirectory(DownloadDirectory);
             RemoveAbandoned();
-            var staging = Path.Combine(DownloadFolder, $".download-{entry.Name}-{Guid.NewGuid():N}");
+            var staging = Path.Combine(DownloadDirectory, $".download-{entry.Name}-{Guid.NewGuid():N}");
             Directory.CreateDirectory(staging);
             try
             {
@@ -83,7 +83,7 @@ public sealed partial class SpellingDictionaries
         }
     }
 
-    private async Task DownloadFileAsync(SpellingCatalogueFile file, string path, Action<int> received, CancellationToken cancellationToken)
+    private async Task DownloadFileAsync(SpellingCatalogFile file, string path, Action<int> received, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, file.Url);
         using var response = await (_httpClient ?? s_client.Value).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
@@ -116,7 +116,7 @@ public sealed partial class SpellingDictionaries
     }
 
     // Where the files came from, beside them: the catalogue's entry.
-    private static void WriteSource(SpellingCatalogueEntry entry, string path)
+    private static void WriteSource(SpellingCatalogEntry entry, string path)
     {
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
         using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
@@ -147,7 +147,7 @@ public sealed partial class SpellingDictionaries
         string? previous = null;
         if (Directory.Exists(target))
         {
-            previous = Path.Combine(DownloadFolder, $".replaced-{Path.GetFileName(target)}-{Guid.NewGuid():N}");
+            previous = Path.Combine(DownloadDirectory, $".replaced-{Path.GetFileName(target)}-{Guid.NewGuid():N}");
             Directory.Move(target, previous);
         }
         try
@@ -167,7 +167,7 @@ public sealed partial class SpellingDictionaries
     {
         try
         {
-            foreach (var folder in Directory.EnumerateDirectories(DownloadFolder, ".*"))
+            foreach (var folder in Directory.EnumerateDirectories(DownloadDirectory, ".*"))
             {
                 var name = Path.GetFileName(folder);
                 if ((name.StartsWith(".download-", StringComparison.Ordinal) || name.StartsWith(".replaced-", StringComparison.Ordinal)) &&
