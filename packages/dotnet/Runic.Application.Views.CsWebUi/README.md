@@ -670,10 +670,19 @@ decisions:
   window's server is then reachable from the network, not only from this
   machine, and any client that can load the page can call the Bridge. Leave it
   off unless the application authenticates its users itself.
+- **The first client.** WebUI admits one client per window by default: the
+  first local client that loads the window's page. The window's port is open on
+  loopback from the moment its server starts, before the browser has started
+  and connected. A local process that reaches the port first, on a shared
+  machine also another user's process, becomes the window's client instead of
+  the browser. It receives the page, WebUI's authentication cookie and the
+  token in `webui.js`, so it can call the window's Bridge as the application's
+  user, and WebUI refuses the browser's page. This holds for every CS-WebUI
+  window. On a machine shared with other users, prefer Runic Desktop.
 - **Serve-only mode.** With `RUNIC_APPLICATION_SERVE_ONLY=1` the window writes
   its URL to standard output and waits for a client. The first local client to
-  connect gets the window, and on a shared machine that can be another user's
-  process. Use it for test harnesses on machines you control.
+  connect gets the window, as above, and on a shared machine that can be another
+  user's process. Use it for test harnesses on machines you control.
 - **Multiple clients.**
   `WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, true)` lets
   every client that reaches the server share the window. `IRunicConnections`
