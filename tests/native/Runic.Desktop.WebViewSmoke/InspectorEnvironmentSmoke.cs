@@ -10,6 +10,13 @@ using Runic.Desktop;
 // nor .NET's environment has the variable any more; in Development the port opens, and the HTTP inspector lists the page.
 // One variable at a time: with both set, WebKitGTK 2.54 starts only the HTTP inspector. Linked into
 // Runic.Desktop.Gtk4.Smoke for GTK 4.
+//
+// #1257: the port is free when the parent picks it, but the child binds its own listeners, the presentation server first,
+// on port 0. A port from the ephemeral range could go to one of them, which then answered in Production ("opened port")
+// and kept WebKit's inspector from binding in Development. On Linux the parent therefore picks a port outside
+// ip_local_port_range, which neither bind(0) nor connect() hands out, and the child asks /proc who listens on it: in
+// Production nothing of the child's process tree, in Development the child's tree, and a failed check names the holder.
+// Elsewhere (the smoke runs on Linux only) it falls back to a connection attempt.
 internal static partial class InspectorEnvironmentSmoke
 {
     internal const string Argument = "--inspector-environment";
@@ -39,7 +46,7 @@ internal static partial class InspectorEnvironmentSmoke
             start.Environment["DOTNET_ENVIRONMENT"] = environment;
             start.Environment.Remove("ASPNETCORE_ENVIRONMENT");
             foreach (var other in Variables) start.Environment.Remove(other);
-            start.Environment[name] = $"127.0.0.1:{FreePort()}";
+            start.Environment[name] = $"127.0.0.1:{InspectorPort()}";
             using var child = Process.Start(start) ?? throw new InvalidOperationException("The inspector smoke could not start itself.");
             if (!child.WaitForExit(TimeSpan.FromSeconds(120)))
             {
@@ -60,27 +67,42 @@ internal static partial class InspectorEnvironmentSmoke
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 480, Height = 320 });
         await surface.ExecuteJavaScriptAsync("return document.readyState;", Deadline);
         var environment = development ? "Development" : "Production";
+        Require(surface.Url.Port != port, $"{environment}: the presentation server listens on the inspector's port {port}");
         if (development)
         {
-            Require(await AcceptsAsync(port, TimeSpan.FromSeconds(10)), $"Development: {name} opened no port {port}");
+            var opened = OperatingSystem.IsLinux()
+                ? await TreeListensAsync(port, TimeSpan.FromSeconds(10))
+                : await AcceptsAsync(port, TimeSpan.FromSeconds(10));
+            Require(opened, $"Development: {name} opened no port {port} in this process's tree ({Holders(port)})");
             if (name == "WEBKIT_INSPECTOR_HTTP_SERVER")
             {
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 var list = await GetTargetsAsync(client, port);
-                Require(list.Contains(Title, StringComparison.Ordinal), $"Development: the HTTP inspector on {port} did not list the page: {list}");
+                Require(list.Contains(Title, StringComparison.Ordinal),
+                    $"Development: the HTTP inspector on {port} did not list the page: {list} ({Holders(port)})");
             }
         }
         else
         {
             // The server starts with the first web context, before the page loads; a late start gets two seconds anyway.
             await Task.Delay(TimeSpan.FromSeconds(2));
-            Require(!await AcceptsAsync(port, TimeSpan.Zero), $"Production: {name} opened port {port}");
+            if (OperatingSystem.IsLinux())
+            {
+                var listeners = PortListeners.Find(port);
+                Require(!listeners.Any(listener => listener.InTree), $"Production: {name} opened port {port} ({Holders(port)})");
+                // Another process on the port would also have kept WebKit from binding it: then the check proves nothing.
+                Require(listeners.Count == 0, $"Production: port {port} is held outside this process's tree, so {name} cannot be checked ({Holders(port)})");
+            }
+            else
+            {
+                Require(!await AcceptsAsync(port, TimeSpan.Zero), $"Production: {name} opened port {port}");
+            }
         }
         // The port first, the environment it came from second: the native copy for WebKit, .NET's for child processes.
         var native = NativeVariable(name);
         Require(development == native is not null, $"{environment}: the native environment's {name} is {native ?? "unset"}");
         Require(development == Environment.GetEnvironmentVariable(name) is not null, $"{environment}: .NET's {name} is {Environment.GetEnvironmentVariable(name) ?? "unset"}");
-        Console.WriteLine($"Inspector environment: {environment}, {name}: {(development ? "open, variable kept" : "closed, variable cleared")}.");
+        Console.WriteLine($"Inspector environment: {environment}, {name}: {(development ? "open, variable kept" : "closed, variable cleared")} (port {port}).");
         return 0;
     }
 
@@ -139,12 +161,185 @@ internal static partial class InspectorEnvironmentSmoke
         return start;
     }
 
-    private static int FreePort()
+    // A free loopback port that no bind(0) or connect() can be handed meanwhile: on Linux one below the ephemeral range (or
+    // above it when the range starts low), which nothing in the socket tables uses yet.
+    private static int InspectorPort()
     {
+        if (OperatingSystem.IsLinux() && EphemeralRange() is (int low, int high))
+        {
+            var (first, last) = low > 11_000 ? (10_000, low - 1) : high < 64_000 ? (high + 1, 65_535) : (0, -1);
+            for (var attempt = 0; first <= last && attempt < 100; attempt++)
+            {
+                var port = Random.Shared.Next(first, last + 1);
+                if (!PortListeners.InUse(port) && Binds(port)) return port;
+            }
+        }
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
         finally { listener.Stop(); }
+    }
+
+    private static (int Low, int High)? EphemeralRange()
+    {
+        try
+        {
+            var fields = File.ReadAllText("/proc/sys/net/ipv4/ip_local_port_range").Split((char[])['\t', ' ', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            return (int.Parse(fields[0], System.Globalization.CultureInfo.InvariantCulture), int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or IndexOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static bool Binds(int port)
+    {
+        try
+        {
+            var listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> TreeListensAsync(int port, TimeSpan wait)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (!PortListeners.Find(port).Any(listener => listener.InTree))
+        {
+            if (elapsed.Elapsed >= wait) return false;
+            await Task.Delay(200);
+        }
+        return true;
+    }
+
+    private static string Holders(int port) => !OperatingSystem.IsLinux() ? "no socket table here"
+        : PortListeners.Find(port) is { Count: > 0 } listeners ? $"listening on {port}: {string.Join(", ", listeners)}"
+        : $"nothing listens on {port}";
+
+    // Linux: the TCP sockets listening on a port (/proc/net/tcp and tcp6, any address), each with the processes holding it
+    // (/proc/<pid>/fd links socket:[inode]) and whether they belong to this process's tree (the process itself and its
+    // descendants, such as WebKit's web processes).
+    private static class PortListeners
+    {
+        private const string Listen = "0A";
+
+        internal sealed record Listener(string Address, uint Uid, IReadOnlyList<(int Pid, string Name, bool InTree)> Processes)
+        {
+            internal bool InTree => Processes.Any(process => process.InTree);
+
+            public override string ToString() => $"{Address} (uid {Uid}) " + (Processes.Count == 0
+                ? "held by no process this user can see"
+                : "held by " + string.Join(", ", Processes.Select(process =>
+                    $"pid {process.Pid} {process.Name}{(process.Pid == Environment.ProcessId ? " (this process)" : process.InTree ? " (this process's tree)" : "")}")));
+        }
+
+        internal static IReadOnlyList<Listener> Find(int port)
+        {
+            var sockets = Rows().Where(row => row.Port == port && row.State == Listen).ToList();
+            if (sockets.Count == 0) return [];
+            var holders = SocketHolders(sockets.Select(row => row.Inode).ToHashSet());
+            return [.. sockets.Select(row => new Listener(row.Address, row.Uid,
+                holders.TryGetValue(row.Inode, out var pids) ? [.. pids.Select(pid => (pid, Name(pid), InTree(pid)))] : []))];
+        }
+
+        // Any socket on the port, listening or not: the local end of a connection keeps WebKit from binding it too.
+        internal static bool InUse(int port) => Rows().Any(row => row.Port == port);
+
+        private static IEnumerable<(string Address, int Port, string State, uint Uid, string Inode)> Rows()
+        {
+            foreach (var table in (string[])["/proc/net/tcp", "/proc/net/tcp6"])
+            {
+                string[] lines;
+                try { lines = File.ReadAllLines(table); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { continue; }
+                // sl local_address rem_address st tx_queue:rx_queue tr:tm->when retrnsmt uid timeout inode ...
+                foreach (var line in lines.Skip(1))
+                {
+                    var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (fields.Length < 10) continue;
+                    var colon = fields[1].LastIndexOf(':');
+                    if (colon < 0) continue;
+                    if (!int.TryParse(fields[1].AsSpan(colon + 1), System.Globalization.NumberStyles.HexNumber, null, out var port)) continue;
+                    if (!uint.TryParse(fields[7], System.Globalization.CultureInfo.InvariantCulture, out var uid)) continue;
+                    yield return (FormatAddress(fields[1][..colon]) + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        port, fields[3], uid, fields[9]);
+                }
+            }
+        }
+
+        // The table's address is the kernel's in-memory word order: four bytes per 32-bit word, each word little-endian.
+        private static string FormatAddress(string hex)
+        {
+            var bytes = Convert.FromHexString(hex);
+            for (var word = 0; word + 4 <= bytes.Length; word += 4) Array.Reverse(bytes, word, 4);
+            var address = new IPAddress(bytes);
+            return address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+        }
+
+        private static Dictionary<string, List<int>> SocketHolders(HashSet<string> inodes)
+        {
+            var holders = new Dictionary<string, List<int>>();
+            foreach (var directory in Directory.EnumerateDirectories("/proc"))
+            {
+                if (!int.TryParse(Path.GetFileName(directory), System.Globalization.CultureInfo.InvariantCulture, out var pid)) continue;
+                try
+                {
+                    foreach (var descriptor in Directory.EnumerateFileSystemEntries(Path.Combine(directory, "fd")))
+                    {
+                        // socket:[12345]
+                        if (new FileInfo(descriptor).LinkTarget is not { } target || !target.StartsWith("socket:[", StringComparison.Ordinal)) continue;
+                        var inode = target["socket:[".Length..^1];
+                        if (!inodes.Contains(inode)) continue;
+                        if (!holders.TryGetValue(inode, out var pids)) holders[inode] = pids = [];
+                        if (!pids.Contains(pid)) pids.Add(pid);
+                    }
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // Another user's process, or one that has exited.
+                }
+            }
+            return holders;
+        }
+
+        private static string Name(int pid)
+        {
+            try { return File.ReadAllText($"/proc/{pid}/comm").Trim(); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return "?"; }
+        }
+
+        private static bool InTree(int pid)
+        {
+            for (var depth = 0; pid > 1 && depth < 64; depth++)
+            {
+                if (pid == Environment.ProcessId) return true;
+                if (Parent(pid) is not { } parent) return false;
+                pid = parent;
+            }
+            return false;
+        }
+
+        // /proc/<pid>/stat: pid (comm) state ppid ...; comm may contain spaces and parentheses.
+        private static int? Parent(int pid)
+        {
+            try
+            {
+                var stat = File.ReadAllText($"/proc/{pid}/stat");
+                var fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+                return int.TryParse(fields[1], System.Globalization.CultureInfo.InvariantCulture, out var parent) ? parent : null;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
     }
 
     private static string? NativeVariable(string name) => Marshal.PtrToStringUTF8(Getenv(name));
