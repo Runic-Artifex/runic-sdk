@@ -46,6 +46,8 @@ internal static class LinuxDragOutSmoke
     // I-214: the stages of the running drag and what its drop target saw, with their times, for a failure's message.
     private static readonly Stopwatch s_clock = new();
     private static readonly ConcurrentQueue<string> s_stages = new();
+    // I-214: the drop target's motions during the running drag (TargetMotion).
+    private static int s_targetMotions;
 
     // The toolkit's drop target window reports the URIs of a drop here (GTK thread).
     internal static void RecordDrop(string[] uris)
@@ -56,6 +58,9 @@ internal static class LinuxDragOutSmoke
 
     // A stage of the running drag, or what the toolkit's drop target saw (any thread).
     internal static void Stage(string stage) => s_stages.Enqueue($"{s_clock.ElapsedMilliseconds} ms {stage}");
+
+    // The toolkit's drop target saw a motion of the drag (GTK thread).
+    internal static void TargetMotion() => Interlocked.Increment(ref s_targetMotions);
 
     private static string Stages() => string.Join("; ", s_stages);
 
@@ -71,6 +76,8 @@ internal static class LinuxDragOutSmoke
         internal required (int X, int Y) OtherFrame { get; init; }
         internal required Func<nint> CreateDropTarget { get; init; }
         internal required (int X, int Y) DropPoint { get; init; }
+        // The drop target calls TargetMotion for each motion, so a drop waits for the target's answer (I-214).
+        internal bool DropTargetReportsMotions { get; init; }
         // GTK 4's X11 drag grabs only the pointer and ignores Escape (gdkdrag-x11.c); its cancelled drag is released
         // over this point, where no window accepts drops.
         internal (int X, int Y)? NowherePoint { get; init; }
@@ -144,6 +151,7 @@ internal static class LinuxDragOutSmoke
     {
         s_dropped = NewDrop();
         s_stages.Clear();
+        Volatile.Write(ref s_targetMotions, 0);
         s_clock.Restart();
         var startsBefore = await surface.ExecuteJavaScriptAsync("return String(window.__dragStarts);");
         var press = toolkit.PageCenter;
@@ -175,6 +183,8 @@ internal static class LinuxDragOutSmoke
         var end = escape && toolkit.NowherePoint is { } nowhere ? nowhere : toolkit.DropPoint;
         await pointer.MoveAsync(moved, end);
         Stage($"the pointer reached ({end.X}, {end.Y})");
+        // The target's motions before this one, such as on the way to the drop point.
+        var motionsOnTheWay = Volatile.Read(ref s_targetMotions);
         // Let the target answer the last position before the drop.
         for (var wiggle = 0; wiggle < 6; wiggle++)
         {
@@ -182,6 +192,28 @@ internal static class LinuxDragOutSmoke
             await Task.Delay(50);
         }
         await Task.Delay(500);
+        if (!escape && toolkit.DropTargetReportsMotions)
+        {
+            // I-214: XTEST queues the motions and the release at once, while the GTK thread, which runs the drag source
+            // and the drop target, may be busy; a release handled before the target answered a position ends the drag
+            // with None, and the target sees the position after it. An X11 drag source (GTK's XDND) sends its next
+            // position only once the target answered the last, so a second motion at the target since the pointer
+            // reached it means the source holds the target's action: release only then.
+            var answered = Stopwatch.StartNew();
+            for (var wiggle = 0; Volatile.Read(ref s_targetMotions) - motionsOnTheWay < 2; wiggle++)
+            {
+                if (answered.Elapsed > TestTimeouts.Scale(TimeSpan.FromSeconds(15)))
+                {
+                    pointer.Escape();
+                    pointer.Release();
+                    throw new TimeoutException(
+                        $"The {toolkit.Name} drop target did not answer the drag within 15 seconds: {Volatile.Read(ref s_targetMotions) - motionsOnTheWay} motions at the drop point. Stages: {Stages()}");
+                }
+                await pointer.MoveAsync(end, (end.X + wiggle % 2, end.Y), steps: 1);
+                await Task.Delay(50);
+            }
+            Stage($"the drop target answered {Volatile.Read(ref s_targetMotions) - motionsOnTheWay} motions at the drop point");
+        }
         if (escape && toolkit.NowherePoint is null)
         {
             Stage("Escape");

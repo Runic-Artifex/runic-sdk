@@ -113,6 +113,7 @@ internal static partial class FileDropSmoke
                 OtherFrame = (520, 170),
                 CreateDropTarget = static () => DropTarget.Create(x: 10, y: 10, size: 150),
                 DropPoint = (85, 85),
+                DropTargetReportsMotions = true,
                 CreateDragSource = static uris => DragSource.Create(uris, x: 10, y: 10, size: 150, actions: DragSource.Copy | DragSource.Move),
                 SourcePoint = (85, 85),
                 DestroyWindow = static window => DragSource.Destroy(window),
@@ -234,6 +235,7 @@ internal static partial class FileDropSmoke
         private static int OnDragMotion(nint widget, nint context, int x, int y, uint time, nint userData)
         {
             if (s_motions++ == 0) LinuxDragOutSmoke.Stage($"the drop target saw the drag at ({x}, {y}), action {SelectedAction(context)}");
+            LinuxDragOutSmoke.TargetMotion();
             return 0;
         }
 
