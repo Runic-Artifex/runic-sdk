@@ -138,7 +138,7 @@ public sealed class BrowserHostTests
         }
     }
 
-    [Test]
+    [Test, RecordedRetry(RetryReason.BrowserConnect)]
     public async Task OwnsChromiumProcessProfileRestartAndNaturalExit()
     {
         var browser = FindChromiumBrowser();
@@ -680,7 +680,7 @@ public sealed class BrowserHostTests
         }
     }
 
-    [Test]
+    [Test, RecordedRetry(RetryReason.BrowserConnect)]
     public async Task CanDisposeOwnedBrowserFromItsBindingCallback()
     {
         var browser = FindChromiumBrowser();

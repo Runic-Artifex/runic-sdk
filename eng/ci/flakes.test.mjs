@@ -279,3 +279,53 @@ test('queue verdicts: infrastructure and recently closed issues re-queue, unfile
   const named = report({ repository: 'r', since: '2026-11-01T00:00:00Z', runs: 1, issues: [], failures: [failure(1, { name: 'ConnectsThroughTheProxy', error: 'SocketException: ETIMEDOUT' })] });
   assert.deepEqual([named.groups[0].status, named.queue[0].verdict], ['first-sighting', 'investigate']);
 });
+
+test('a recorded retry is a sighting: a test that passed on its retry is reported, one that failed twice still fails its entry', async () => {
+  const record = (test, exception, at) => JSON.stringify({ test, method: test, class: 'C', assembly: 'Runic.Desktop.Tests', reason: 'BrowserConnect',
+    leg: 'win-x64', exception, attempt: 1, at });
+  const flaky = 'OwnsChromiumProcessProfileRestartAndNaturalExit';
+  const chromium = 'InvalidOperationException: The Chromium profile was recreated before the browser connected.';
+  const runs = [
+    // Passed, after a retry: no job failed, so only its artifact names the test.
+    { id: 1, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'pull_request', head_branch: 'a', head_sha: 's1', pull_requests: [{ number: 10 }], created_at: '2026-11-21T01:00:00Z' },
+    { id: 2, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'merge_group', head_branch: 'gh-readonly-queue/main/pr-11-x', head_sha: 's2', pull_requests: [], created_at: '2026-11-21T02:00:00Z' },
+    // Failed: the test failed on its retry too, and its job failed.
+    { id: 3, run_attempt: 1, status: 'completed', conclusion: 'failure', event: 'merge_group', head_branch: 'gh-readonly-queue/main/pr-12-x', head_sha: 's3', pull_requests: [], created_at: '2026-11-21T03:00:00Z' },
+    { id: 4, run_attempt: 1, status: 'completed', conclusion: 'cancelled', event: 'pull_request', head_branch: 'b', head_sha: 's4', pull_requests: [], created_at: '2026-11-21T04:00:00Z' },
+  ];
+  const asked = [];
+  const source = {
+    json: async path => {
+      if (path.includes('/workflows/ci.yml/runs?')) return runs;
+      if (path.includes('/runs/3/jobs')) return [{ id: 30, name: 'Native / win-x64', conclusion: 'failure', run_attempt: 1,
+        steps: [{ name: 'Test managed desktop contracts', conclusion: 'failure' }], html_url: 'https://example.invalid/runs/3/job/30', started_at: '2026-11-21T03:01:00Z' }];
+      if (path.includes('/issues?')) return [];
+      throw new Error(`unrecorded ${path}`);
+    },
+    log: async () => `failed ${flaky} (12s 3ms)\n  TUnit.Engine.Exceptions.TestFailedException: [Test Failure] ${chromium}\n`,
+    retries: async run => {
+      asked.push(run.id);
+      return run.id === 4 ? [] : [{ name: `flaky-tests-native-win-x64-1`, text: `${record(flaky, chromium, run.created_at)}\nnot json\n` }];
+    },
+  };
+  const data = await collect(source, { since: new Date('2026-11-21T00:00:00Z') });
+  assert.deepEqual(asked, [1, 2, 3], 'every completed run that was not cancelled');
+  const result = report(data);
+  assert.equal(result.retriedRuns, 3);
+  const group = entry(result, flaky);
+  assert.deepEqual(group.sightings.map(item => [item.run, item.retried ?? false, item.passedOnRetry ?? null]),
+    [[3, false, null], [1, true, true], [2, true, true], [3, true, false]]);
+  // Seen in three runs and no issue mentions it: D069's same-day issue, although two of the runs passed.
+  assert.deepEqual([group.runs, group.status, group.flake], [3, 'needs-issue', true]);
+  // The passing queue run has no verdict; the failing one is a flake by evidence, so file the issue, then re-queue.
+  assert.deepEqual(result.queue.map(item => [item.run, item.verdict]), [[3, 'file-issue']]);
+  const text = format(result);
+  assert.match(text, /: 1 failed or rerun ci\.yml runs since 2026-11-21 00:00Z, 3 with a recorded retry; 1 cancelled/);
+  assert.match(text, /OwnsChromiumProcessProfileRestartAndNaturalExit: 3 runs, [^\n]*— flake: passed on its recorded retry/);
+  assert.match(text, /pull_request #10 native-win-x64 \(retried\) \(retried, passed\)/);
+  assert.match(text, /merge_group pr-12 native-win-x64 \(retried\) \(retried, failed again\)/);
+  // --no-retries reads no artifacts.
+  asked.length = 0;
+  await collect(source, { since: new Date('2026-11-21T00:00:00Z'), retries: false });
+  assert.deepEqual(asked, []);
+});

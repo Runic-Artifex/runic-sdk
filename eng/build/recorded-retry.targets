@@ -1,0 +1,8 @@
+<Project>
+  <!-- RunicRecordedRetry=true compiles the recorded single retry (tests/support/RecordedRetry.cs) into a TUnit test
+       project: [RecordedRetry(RetryReason.…)] on a GUI, speech, browser-connect or real-clock test retries it once and
+       records the retry for eng/ci/flakes.mjs (eng/ci/README.md, "Recorded retries"). Internal to each project. -->
+  <ItemGroup Condition="'$(RunicRecordedRetry)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)../../tests/support/RecordedRetry.cs" Link="TestSupport/RecordedRetry.cs" Visible="false" />
+  </ItemGroup>
+</Project>

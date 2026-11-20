@@ -251,6 +251,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
+      - uses: ./.github/actions/retried-tests
+        with:
+          mode: start
+          leg: linux-x64
       - uses: ./.github/actions/setup-sdk
         with:
           train-feed: ${{ needs.plan.outputs.train-feed }}
@@ -354,6 +359,12 @@ jobs:
           retention-days: 30
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+      - name: Report retried tests
+        if: always()
+        uses: ./.github/actions/retried-tests
+        with:
+          mode: report
+          leg: linux-x64
   # One job runs the planned web packages' tests (webTests in eng/ci/plan.mjs) and the framework
   # consumers as named steps. A step also runs after another one failed, so one run reports every failure.
   web:
@@ -703,6 +714,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
+      - uses: ./.github/actions/retried-tests
+        with:
+          mode: start
+          leg: ${{ matrix.rid }}
       # I-176: each embedded window creates a fresh WebView2 profile under TEMP, and its first request waits for the
       # profile's cookie database. On hosted windows-2025 x64, Windows servicing about 10 min after boot pushes C:'s
       # write latency to seconds, and that wait to 5-25 s. RUNNER_TEMP is on the runner's local disk (D:); a soak with
@@ -789,6 +805,12 @@ jobs:
         run: dotnet run --project examples/wpf-navigation/Tests.ReactiveUI -c Release
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+      - name: Report retried tests
+        if: always()
+        uses: ./.github/actions/retried-tests
+        with:
+          mode: report
+          leg: ${{ matrix.rid }}
   # Two lanes of two frameworks, with one named step per framework, a SvelteKit lane on Node 26, and a React lane
   # whose generated projects build with the certified .NET 11 SDK.
   templates:
@@ -892,6 +914,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
+      - uses: ./.github/actions/retried-tests
+        with:
+          mode: start
+          leg: ${{ matrix.rid }}
       # Only the Windows x64 View IDE check runs npm; the other legs only run node.
       - uses: ./.github/actions/setup-sdk
         with:
@@ -2235,6 +2262,12 @@ jobs:
       - name: Check PackageDownload packages against their pinned hashes
         shell: bash
         run: bun eng/dependencies/package-downloads.mjs check
+      - name: Report retried tests
+        if: always()
+        uses: ./.github/actions/retried-tests
+        with:
+          mode: report
+          leg: ${{ matrix.rid }}
 
   # The native checks for the musl RIDs, in Alpine. GitHub cannot run JavaScript actions in an
   # Alpine container on arm64 runners, so the runner checks out and caches, and
@@ -2740,6 +2773,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
+      - uses: ./.github/actions/retried-tests
+        with:
+          mode: start
+          leg: ${{ matrix.reader }}
       - uses: ./.github/actions/setup-sdk
         with:
           train-feed: ${{ needs.plan.outputs.train-feed }}
@@ -2812,6 +2850,12 @@ jobs:
           name: screen-reader-${{ matrix.reader }}-${{ github.run_id }}
           path: artifacts/screen-reader
           if-no-files-found: ignore
+      - name: Report retried tests
+        if: always()
+        uses: ./.github/actions/retried-tests
+        with:
+          mode: report
+          leg: ${{ matrix.reader }}
 
   # D066.39: VS Code's JavaScript debugger (vscode-js-debug's DAP server, pinned in tests/templates/check-webkit-cdp.mjs)
   # attached through dotnet runic dev's CDP adapter (#1029) to the runic-app template's WebKitGTK Window, GTK 3 and GTK 4,

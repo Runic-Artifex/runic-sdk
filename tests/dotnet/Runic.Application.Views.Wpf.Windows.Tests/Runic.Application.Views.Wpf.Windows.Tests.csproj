@@ -2,6 +2,7 @@
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <RunicTestTimeouts>true</RunicTestTimeouts>
+    <RunicRecordedRetry>true</RunicRecordedRetry>
     <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
     <OutputType>Exe</OutputType>
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
