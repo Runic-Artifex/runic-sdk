@@ -22,3 +22,4 @@ export declare const m: Readonly<{
         readonly "max": bigint | number;
     }>, options?: MessageOptions) => string;
 }>;
+//# sourceMappingURL=messages.d.ts.map
