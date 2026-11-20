@@ -88,6 +88,7 @@ internal static partial class DefaultBrowserSmoke
             return 0;
         }
 
+        if (OperatingSystem.IsWindows()) Console.WriteLine($"Default browser: {Association("http")}.");
         using var browser = new BrowserRequests();
         var native = OperatingSystem.IsWindows() ? "ShellExecuteEx" : "NSWorkspace openURL:";
         foreach (var (launcher, source, what) in new[] { (forWindow, "window", "the window's file launcher"), (forApplication, "application", "the application's file launcher") })
@@ -108,8 +109,9 @@ internal static partial class DefaultBrowserSmoke
     private static async Task LaunchAsync(IDesktopFileLauncher launcher, Uri uri, string what)
     {
         var result = await launcher.LaunchUriAsync(uri).AsTask().WaitAsync(TestTimeouts.Scale(StepTimeout));
-        if (result is not PlatformResult<PlatformUnit>.Success)
-            throw new InvalidOperationException($"LaunchUriAsync of {uri} through {what} returned {result}.");
+        if (result is PlatformResult<PlatformUnit>.Success) return;
+        if (OperatingSystem.IsWindows()) Console.WriteLine($"Default browser: {ShellExecuteDiagnostic(uri)}.");
+        throw new InvalidOperationException($"LaunchUriAsync of {uri} through {what} returned {result}.");
     }
 
     // The handler recorded the URI, exactly, within the step's time.

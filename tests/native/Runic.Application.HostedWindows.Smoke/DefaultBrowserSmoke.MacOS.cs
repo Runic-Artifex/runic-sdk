@@ -49,7 +49,14 @@ internal static partial class DefaultBrowserSmoke
             registered = status == 0 && string.Equals(after, BundleId, StringComparison.OrdinalIgnoreCase);
             Console.WriteLine($"MACOS REGISTRATION: LSSetDefaultHandlerForURLScheme(mailto, {BundleId}) returned {status}; the mailto default is now " +
                 $"'{after ?? "(none)"}': {(registered ? "registered" : "NOT registered")}.");
-            if (!registered) return;
+            if (!registered)
+            {
+                // Round 2 of #1239: status 0, and the default stays the user's (com.apple.mail). macOS changes a scheme's
+                // default handler only with the user's consent, so the default-browser launch above is the covered path.
+                Console.WriteLine("MACOS REGISTRATION: macOS kept the user's mailto default, as it does without the user's consent; " +
+                    "the default-browser launch through NSWorkspace openURL: above is what this smoke covers on macOS.");
+                return;
+            }
             var uri = Mailto("macos");
             await LaunchAsync(launcher, uri, "the application's file launcher");
             await ExpectAsync(record, uri, "the application's file launcher (NSWorkspace openURL: to the mailto default)");
