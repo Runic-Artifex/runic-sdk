@@ -90,8 +90,8 @@ test("parses only well-formed runic.views.bridge-sources/1 entries and finds onl
     ],
   });
   assert.deepEqual(map.members.map((entry) => entry.id), ["A/command/go", "A/state/x"], "an unknown kind is dropped");
-  // The 0.20 name of the format is read through 0.21 and answered with the new one.
-  assert.equal(parseSourceMap({ format: "runic-bridge-sources/1", viewModels: [], members: [] })?.format, "runic.views.bridge-sources/1");
+  // The 0.20 name of the format is no longer read (D077.18).
+  assert.equal(parseSourceMap({ format: "runic-bridge-sources/1", viewModels: [], members: [] }), undefined);
   assert.equal(map.viewModels[0].location, undefined, "a relative path is no location");
   assert.equal(map.members[1].location, undefined, "line 0 is no location");
   assert.deepEqual(findOpenLocation(map, { id: "A/command/go" }), { file: "/src/A.cs", line: 4, column: 9 });
