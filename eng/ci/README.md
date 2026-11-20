@@ -624,8 +624,12 @@ bun eng/ci/flakes.mjs --since 7d   # or 36h, or a date; --min 3, --json, --repo 
 It lists the entries seen twice or more that no issue mentions (file one), those that
 failed again after their issue closed (reopen it), repeated failures in steps whose
 log names no test (read one: a real break or a flake), known flakes (an open issue
-names the test or quotes the error), infrastructure failures, fixed ones and first
-sightings. An entry whose job passed on a rerun of the same commit is marked a flake.
+covers them), infrastructure failures, fixed ones and first sightings. An issue
+covers an entry when it cites one of its runs (an `…/actions/runs/<id>` link), quotes
+the words of its error, or names its test together with one of its platforms
+(`linux-x64`, `Windows`, `nvda`). An issue that names only the test may be about
+another failure of it (#35, a Windows timeout, against #1273 on linux-x64): it is
+listed as a weak match and does not make the entry known, fixed or regressed. An entry whose job passed on a rerun of the same commit is marked a flake.
 An infrastructure failure is a step's error from a runner or service, not the code: an
 Ubuntu mirror out of attempts, `setup-dotnet`'s download, the artifact service, a
 runner shutdown, a network reset or a registry's server error. CI retries the

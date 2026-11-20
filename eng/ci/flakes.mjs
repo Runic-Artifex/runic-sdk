@@ -219,11 +219,23 @@ const infrastructureFailure = item => !item.test && infrastructure.some(pattern 
 // A closed issue still counts as known for this long after it closed: a fix that did not hold shows as a regression
 // of a known flake (re-queue, and reopen the issue), not as a new failure to investigate.
 export const recentlyClosedDays = 7;
+// The words an issue would use for a job's platform: its runtime identifier and operating system ("Native / win-x64":
+// win-x64, Windows; "Screen reader / nvda": nvda, Windows).
+export function platforms(job) {
+  const rid = /\b(linux-musl-(?:x64|arm64)|linux-(?:x64|arm64)|win-(?:x64|arm64)|osx-(?:x64|arm64))\b/.exec(job ?? "")?.[1];
+  const reader = /\b(nvda|voiceover|orca)\b/i.exec(job ?? "")?.[1]?.toLowerCase();
+  const os = rid?.startsWith("win") || reader === "nvda" ? ["Windows"] : rid?.startsWith("osx") || reader === "voiceover" ? ["macOS", "osx"]
+    : rid?.startsWith("linux") || reader === "orca" ? ["Linux"] : [];
+  return [...rid ? [rid] : [], ...reader ? [reader] : [], ...os];
+}
+
 // Where a sighting came from: its pull request (the queue's temporary branch names it), or its branch (main).
 const origin = item => String(item.pullRequests?.[0] ?? /^gh-readonly-queue\/[^/]+\/pr-(\d+)-/.exec(item.branch ?? "")?.[1] ?? item.branch);
 
 // Group failures by signature (test or step, and first error line) across runs, jobs and legs. An entry's issues are
-// those whose title or body mention its test, or the words of its error (messageHead). The status of an entry:
+// those whose title or body cite one of its runs (an …/actions/runs/<id> link), quote the words of its error
+// (messageHead), or name its test together with one of its platforms; one that names only the test is a weak match,
+// listed but not counted. The status of an entry:
 //   known            an open issue mentions it: a known flake (a queue entry failing only in known flakes is re-queued);
 //   infrastructure   a step failed on a runner or service (`infrastructure`), not the code: re-queue or rerun;
 //   needs-issue      seen in `min` or more runs and no issue mentions it: file one today;
@@ -250,13 +262,25 @@ export function report({ failures, issues, runs, cancelled = 0, since, repositor
     if (!group.sightings.some(item => item.run === failure.run && item.attempt === failure.attempt && item.job === failure.job)) group.sightings.push(failure);
     groups.set(key, group);
   }
+  // How an issue covers an entry: it cites one of its runs, quotes its error, or names its test on one of its platforms.
+  // An issue that names the test only (another failure of the same test, on another platform) is a weak match: listed,
+  // but it does not make the entry known, fixed or regressed.
   const mentions = group => {
     const head = messageHead(group.raw);
-    const needles = [...group.test ? [group.name] : [], ...head ? [head] : []];
-    return issues.filter(issue => needles.some(needle => issue.text.includes(needle)));
+    const runs = [...new Set(group.sightings.map(item => item.run))];
+    const where = [...new Set(group.sightings.flatMap(item => platforms(item.job)))];
+    return issues.flatMap(issue => {
+      const how = runs.some(run => new RegExp(`/actions/runs/${run}(?!\\d)`).test(issue.text)) ? "cites a run"
+        : head && issue.text.includes(head) ? "quotes the error"
+        : group.test && issue.text.includes(group.name)
+          ? where.some(word => new RegExp(`(?<![\\w-])${word}(?![\\w-])`, "i").test(issue.text)) ? "names the test on its platform" : "weak"
+        : null;
+      return how ? [{ ...issue, how }] : [];
+    });
   };
   const all = [...groups.values()].map(group => {
-    const matched = mentions(group);
+    const found = mentions(group);
+    const matched = found.filter(issue => issue.how !== "weak");
     const open = matched.filter(issue => issue.state === "open");
     const runs = new Set(group.sightings.map(item => `${item.run}/${item.attempt}`)).size;
     const closed = matched.map(issue => issue.closedAt).filter(Boolean).sort().at(-1);
@@ -267,7 +291,8 @@ export function report({ failures, issues, runs, cancelled = 0, since, repositor
     const flake = group.sightings.some(item => item.passedOnRerun);
     const { raw, ...rest } = group;
     return { ...rest, runs, status, flake, evidence: flake || new Set(group.sightings.map(origin)).size > 1,
-      issues: matched.map(({ number, state, title, url, closedAt }) => ({ number, state, title, url, closedAt })) };
+      issues: matched.map(({ number, state, title, url, closedAt, how }) => ({ number, state, title, url, closedAt, how })),
+      weakIssues: found.filter(issue => issue.how === "weak").map(({ number, state, title, url }) => ({ number, state, title, url })) };
   }).sort((a, b) => b.runs - a.runs || a.key.localeCompare(b.key));
   const byKey = new Map(all.map(group => [group.key, group]));
   const recent = recentlyClosedDays * dayMs;
@@ -304,18 +329,20 @@ export function format(result) {
   ]), ""];
   const by = status => result.groups.filter(group => group.status === status);
   const issueList = group => group.issues.map(issue => ` #${issue.number} (${issue.state})`).join(",");
+  // An issue that names only the test, perhaps another failure of it: shown, so a reader can decide.
+  const weak = group => group.weakIssues?.length ? ` — names the test only (weak):${group.weakIssues.map(issue => ` #${issue.number} (${issue.state})`).join(",")}` : "";
   const byKey = new Map(result.groups.map(group => [group.key, group]));
   const verdicts = ["re-queue", "file-issue", "investigate"].map(verdict => [verdict, result.queue.filter(entry => entry.verdict === verdict).length]);
   return [
     `${result.repository}: ${result.runs} failed or rerun ci.yml runs since ${result.since.slice(0, 16).replace("T", " ")}Z`
       + `; ${result.cancelled} cancelled (not classified)`, "",
-    ...section("Seen twice or more, no issue mentions it (file one today; fix or skip it, linking the issue, within the cycle)", by("needs-issue"), () => ""),
+    ...section("Seen twice or more, no issue mentions it (file one today; fix or skip it, linking the issue, within the cycle)", by("needs-issue"), weak),
     ...section("Failed again after its issue closed (reopen it or file one)", by("regressed"), group => ` —${issueList(group)}`),
-    ...section("Seen twice or more in a step whose log names no test (read one: a real break or a flake)", by("repeated-step"), () => ""),
+    ...section("Seen twice or more in a step whose log names no test (read one: a real break or a flake)", by("repeated-step"), weak),
     ...section("Known flakes (an open issue mentions them)", by("known"), group => ` —${issueList(group)}`),
     ...section("Infrastructure: a runner, mirror, registry or artifact service failed (rerun; ci.yml retries most of these)", by("infrastructure"), () => ""),
     ...section("Fixed: only closed issues mention them, and no failure since they closed", by("fixed"), group => ` —${issueList(group)}`),
-    ...section("Seen once", by("first-sighting"), group => group.test ? "" : " (the log names no test; read it)"),
+    ...section("Seen once", by("first-sighting"), group => `${group.test ? "" : " (the log names no test; read it)"}${weak(group)}`),
     ...result.queue.length ? [
       `Failed merge queue entries (${verdicts.map(([verdict, count]) => `${verdict} ${count}`).join(", ")}):`,
       ...result.queue.flatMap(entry => [

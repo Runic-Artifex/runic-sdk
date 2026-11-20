@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { root } from '../run.mjs';
-import { collect, failingTests, firstError, format, messageHead, normalizeError, report, sinceDate, stepLog, withSmallerPages } from './flakes.mjs';
+import { collect, failingTests, firstError, format, messageHead, normalizeError, platforms, report, sinceDate, stepLog, withSmallerPages } from './flakes.mjs';
 
 // Recorded, trimmed gh api responses of runic-sdk's ci.yml runs on 2026-11-16 and 17:
 // - the VoiceOver return (#1093, closed) and PathWatcher (#1008, reopened) flakes twice each, both passing on a rerun;
@@ -253,7 +253,7 @@ test('queue verdicts: infrastructure and recently closed issues re-queue, unfile
   const nvda = { name: 'nvda-announcement-assertive', error: "NVDA did not say 'Runic assertive announcement'; it said: Runic" };
   const bookkeeping = { name: 'HandWrittenCallerFailureBookkeepingAsync', error: 'InvalidOperationException: Event 3 for the native command differs: context=/a logged=True' };
   const broken = { name: 'ANewTestThatFails', error: 'InvalidOperationException: The new behaviour is wrong.' };
-  const issues = [{ number: 988, state: 'closed', closedAt: '2026-11-15T00:00:00Z', title: 'Flaky: nvda-announcement-assertive', text: 'nvda-announcement-assertive', url: 'u' }];
+  const issues = [{ number: 988, state: 'closed', closedAt: '2026-11-15T00:00:00Z', title: 'Flaky: nvda-announcement-assertive', text: 'nvda-announcement-assertive fails on Windows', url: 'u' }];
   const result = report({ repository: 'r', since: '2026-11-01T00:00:00Z', runs: 9, issues, failures: [
     failure(1, setup), failure(2, artifact), failure(3, apt),
     // #988 closed three days before this failure: a regression of a known flake.
@@ -278,4 +278,36 @@ test('queue verdicts: infrastructure and recently closed issues re-queue, unfile
   // A named test's failure is the test's, whatever its message says.
   const named = report({ repository: 'r', since: '2026-11-01T00:00:00Z', runs: 1, issues: [], failures: [failure(1, { name: 'ConnectsThroughTheProxy', error: 'SocketException: ETIMEDOUT' })] });
   assert.deepEqual([named.groups[0].status, named.queue[0].verdict], ['first-sighting', 'investigate']);
+});
+
+test('an issue covers an entry by citing its run, quoting its error or naming its test on its platform; the test name alone is weak', () => {
+  const failure = (run, { name, error, test = true, job = 'Native / linux-x64' }) => ({ name, error: normalizeError(error), raw: error, test, job,
+    step: 'Run the tests', run, attempt: 1, passedOnRerun: false, event: 'merge_group', branch: `gh-readonly-queue/main/pr-${run}-abc`,
+    pullRequests: [], url: `https://github.com/Runic-Artifex/runic-sdk/actions/runs/${run}/job/${run}1`, at: '2026-11-20T10:00:00Z' });
+  // 2026-11-20: #35, a Windows connection timeout, named the Chromium host test; the linux-x64 failure was another one (#1273).
+  const chromium = { name: 'OwnsChromiumProcessProfileRestartAndNaturalExit',
+    error: 'InvalidOperationException: Generated profile remains at /tmp/runic-chromium-x1; the directory may have been recreated.' };
+  // The GTK 4 step's InspectorEnvironmentSmoke port collisions, which #1257 cites by run and #1258 fixed; the log names no test.
+  const gtk = { name: 'step: Exercise GTK4 native window and platform services', test: false, error: 'Process completed with exit code 1.' };
+  const issues = [
+    { number: 35, state: 'closed', closedAt: '2026-10-30T00:00:00Z', title: 'Flaky: OwnsChromiumProcessProfileRestartAndNaturalExit',
+      text: 'OwnsChromiumProcessProfileRestartAndNaturalExit timed out connecting on win-x64 (Windows).', url: 'u35' },
+    { number: 1257, state: 'closed', closedAt: '2026-11-20T12:00:00Z', title: 'InspectorEnvironmentSmoke: port in use',
+      text: 'The GTK 4 step failed in https://github.com/Runic-Artifex/runic-sdk/actions/runs/44712377949/job/1 and runs/4471237794 (another).', url: 'u1257' },
+  ];
+  const result = report({ repository: 'r', since: '2026-11-19T00:00:00Z', runs: 3, issues,
+    failures: [failure(44712377949, gtk), failure(44700000001, chromium), failure(44700000002, chromium)] });
+  const group = name => result.groups.find(item => item.name === name);
+  assert.deepEqual([group(chromium.name).status, group(chromium.name).issues, group(chromium.name).weakIssues.map(issue => issue.number)], ['needs-issue', [], [35]]);
+  assert.deepEqual([group(gtk.name).status, group(gtk.name).issues.map(issue => [issue.number, issue.how])], ['fixed', [[1257, 'cites a run']]]);
+  // The issue closed after the failure: it was open then, so that queue entry is re-queued.
+  assert.equal(result.queue.find(entry => entry.run === 44712377949).verdict, 're-queue');
+  assert.match(format(result), /OwnsChromiumProcessProfileRestartAndNaturalExit: 2 runs, Native \/ linux-x64 — names the test only \(weak\): #35 \(closed\)/);
+  // On its own platform, the test name is enough.
+  const windows = report({ repository: 'r', since: '2026-11-19T00:00:00Z', runs: 1, issues,
+    failures: [failure(1, { ...chromium, job: 'Native / win-x64' })] });
+  assert.deepEqual(windows.groups[0].issues.map(issue => [issue.number, issue.how]), [[35, 'names the test on its platform']]);
+  assert.deepEqual(platforms('Screen reader / nvda'), ['nvda', 'Windows']);
+  assert.deepEqual(platforms('Native / osx-arm64'), ['osx-arm64', 'macOS', 'osx']);
+  assert.deepEqual(platforms('Managed tests'), []);
 });
