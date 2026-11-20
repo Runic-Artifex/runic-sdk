@@ -259,23 +259,48 @@ internal sealed class QueryCollectionTests
         // Each query change cancels the count and the key searches of the query it replaces, and counts, searches and
         // loads share the collection's slots: 50 query changes never run more than two source calls at once.
         var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
-        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(10_000), CatalogRows.Fields(), row => row.Id, clock)
-            { Latency = TimeSpan.FromSeconds(1) };
+        var source = new CountRecordingSource(new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(10_000), CatalogRows.Fields(), row => row.Id, clock)
+            { Latency = TimeSpan.FromSeconds(1) });
         using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id,
             new RunicQueryCollectionOptions { PageSize = 100, MaximumConcurrentLoads = 2 });
         var first = collection.LoadAsync(new(0, 10)).AsTask();
         var searches = new List<Task<int>>();
+        var latest = RunicQuery.Empty;
         for (var size = 0; size < 50; size++)
         {
-            collection.SetQuery(new RunicQuery(filters: [RunicFilter.Equal("size", size % 7)]).WithSort(new RunicSortKey("id", Descending: size % 2 == 0)));
+            latest = new RunicQuery(filters: [RunicFilter.Equal("size", size % 7)]).WithSort(new RunicSortKey("id", Descending: size % 2 == 0));
+            collection.SetQuery(latest);
             searches.Add(collection.IndexOfAsync(size).AsTask());
         }
         await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(first.IsCompleted && searches.All(task => task.IsCompleted)); });
-        Require(source.MaximumConcurrency <= 2, $"{source.MaximumConcurrency} source calls ran at once.");
-        // The counts and searches of replaced queries were cancelled before they reached the source.
-        // A replaced search is cancelled in the source, at its next row, and runs again for the current query.
-        Require(source.Counts <= 4, $"Replaced queries still counted: {source.Counts} counts.");
+        Require(source.Inner.MaximumConcurrency <= 2, $"{source.Inner.MaximumConcurrency} source calls ran at once.");
+        // The waiting load starts a count of each query it reads while that query is current, so how many of the 50 queries
+        // are counted depends on how its retries interleave with the changes (#1270). What does not: the query change
+        // cancels every count of a replaced query, and only the latest query is counted to the end.
+        var completed = source.CompletedCounts;
+        Require(completed.Count == 1 && completed[0].Equals(latest) && source.Counts == source.CancelledCounts + 1,
+            $"{source.Counts} counts started, {source.CancelledCounts} cancelled, {completed.Count} completed; only the latest query's count completes.");
         Require(searches[^1].Result >= 0 && first.Result.All(row => row.Size == 49 % 7), "The latest query's work did not complete.");
+    }
+
+    [Test]
+    public async Task AQueryChangeWhoseCancellationRunsInlineMovesWaitingWorkToTheNewQueryAsync()
+    {
+        // A source whose cancellation completes its call at once runs the waiting load's and search's retries inside the
+        // query change. They read the new query, its count and its cancellation, not the replaced query's.
+        var source = new HeldSource(CatalogRows.Create(70));
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id);
+        var first = collection.LoadAsync(new(0, 5)).AsTask();
+        var search = collection.IndexOfAsync(3).AsTask();
+        // The count, the first page and the search wait in the source.
+        await WaitAsync(() => Task.FromResult(source.Held == 3));
+        collection.SetQuery(new RunicQuery(filters: [RunicFilter.Equal("size", 3)]));
+        await WaitAsync(() => { source.ReleaseAll(); return Task.FromResult(first.IsCompleted && search.IsCompleted); });
+        Require(first.IsCompletedSuccessfully && first.Result.Count == 5 && first.Result.All(row => row.Size == 3),
+            $"The waiting load did not read the new query: {first.Status} {first.Exception?.InnerException?.Message}");
+        Require(search.IsCompletedSuccessfully && search.Result == 0,
+            $"The waiting search did not search the new query: {search.Status} {search.Exception?.InnerException?.Message}");
+        await WaitAsync(() => { source.ReleaseAll(); return Task.FromResult(collection.Total == 10); });
     }
 
     [Test]
@@ -424,6 +449,92 @@ internal sealed class QueryCollectionTests
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    // Records how each count of the inner source ended.
+    private sealed class CountRecordingSource(RunicTestRowSource<CatalogRow, int> inner) : IRunicRowSource<CatalogRow, int>
+    {
+        private readonly object _gate = new();
+        private readonly List<RunicQuery> _completed = [];
+        private int _cancelled;
+
+        public RunicTestRowSource<CatalogRow, int> Inner { get; } = inner;
+        public int Counts => Inner.Counts;
+        public int CancelledCounts => Volatile.Read(ref _cancelled);
+        public IReadOnlyList<RunicQuery> CompletedCounts
+        {
+            get { lock (_gate) return [.. _completed]; }
+        }
+
+        public async ValueTask<int> CountAsync(RunicQuery query, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var count = await Inner.CountAsync(query, cancellationToken).ConfigureAwait(false);
+                lock (_gate) _completed.Add(query);
+                return count;
+            }
+            catch (OperationCanceledException)
+            {
+                Interlocked.Increment(ref _cancelled);
+                throw;
+            }
+        }
+
+        public ValueTask<RunicRowPage<CatalogRow>> LoadAsync(RunicQuery query, RunicRowRange range, CancellationToken cancellationToken) =>
+            Inner.LoadAsync(query, range, cancellationToken);
+        public ValueTask<int> IndexOfAsync(RunicQuery query, int key, CancellationToken cancellationToken) => Inner.IndexOfAsync(query, key, cancellationToken);
+        public void Validate(RunicQuery query) => Inner.Validate(query);
+    }
+
+    // A source whose calls wait until the test releases them, and whose cancellation completes a call at once, on the
+    // cancelling thread, as many database drivers' does.
+    private sealed class HeldSource(CatalogRow[] rows) : IRunicRowSource<CatalogRow, int>
+    {
+        private readonly object _gate = new();
+        private readonly List<TaskCompletionSource> _held = [];
+        private readonly RunicTestRowSource<CatalogRow, int> _inner = new(rows, CatalogRows.Fields(), row => row.Id);
+
+        public int Held
+        {
+            get { lock (_gate) return _held.Count(call => !call.Task.IsCompleted); }
+        }
+
+        public void ReleaseAll()
+        {
+            TaskCompletionSource[] held;
+            lock (_gate) { held = [.. _held]; _held.Clear(); }
+            foreach (var call in held) call.TrySetResult();
+        }
+
+        public async ValueTask<int> CountAsync(RunicQuery query, CancellationToken cancellationToken)
+        {
+            await HoldAsync(cancellationToken).ConfigureAwait(false);
+            return await _inner.CountAsync(query, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async ValueTask<RunicRowPage<CatalogRow>> LoadAsync(RunicQuery query, RunicRowRange range, CancellationToken cancellationToken)
+        {
+            await HoldAsync(cancellationToken).ConfigureAwait(false);
+            return await _inner.LoadAsync(query, range, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async ValueTask<int> IndexOfAsync(RunicQuery query, int key, CancellationToken cancellationToken)
+        {
+            await HoldAsync(cancellationToken).ConfigureAwait(false);
+            return await _inner.IndexOfAsync(query, key, cancellationToken).ConfigureAwait(false);
+        }
+
+        public void Validate(RunicQuery query) => _inner.Validate(query);
+
+        private async Task HoldAsync(CancellationToken cancellationToken)
+        {
+            // Not RunContinuationsAsynchronously: a cancellation continues the caller inside Cancel.
+            var call = new TaskCompletionSource();
+            lock (_gate) _held.Add(call);
+            using (cancellationToken.Register(() => call.TrySetCanceled(cancellationToken)))
+                await call.Task.ConfigureAwait(false);
+        }
     }
 
     // A UI thread's context for the view list: callbacks run when the test pumps it.
