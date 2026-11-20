@@ -390,7 +390,7 @@ the languages of its `runic.json` as `RunicApplicationLocale` items,
 own items still give a language its name and description, and several
 `runic.json` files add their languages in item order. Set
 `RunicTranslationsFillApplicationLocales` to `false` to turn this off
-([Runic.Translations.Build](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.0/packages/dotnet/Runic.Translations.Build/README.md)).
+([Runic.Translations.Build](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.1/packages/dotnet/Runic.Translations.Build/README.md)).
 
 ## The application icon
 
