@@ -895,7 +895,7 @@ internal sealed partial class ToolTests
         // Every runtime identifier's packages, once, including both NativeAOT compiler packages.
         foreach (string id in new[] { "Microsoft.DotNet.ILCompiler", "runtime.linux-x64.Microsoft.DotNet.ILCompiler", "runtime.linux-arm64.Microsoft.DotNet.ILCompiler", "Microsoft.Extensions.DependencyInjection" })
             Equal(1, locked.Count(entry => entry.Package.Id == id));
-        IReadOnlyList<FlathubNuGetPackage> merged = FlathubSources.Merge([.. locked.Select(entry => entry.Package), new("Microsoft.NETCore.App.Runtime.linux-x64", "10.0.14"), new("microsoft.dotnet.ilcompiler", "10.0.14")]);
+        IReadOnlyList<FlathubNuGetPackage> merged = FlathubSources.Merge([.. locked.Select(entry => entry.Package), new("Microsoft.NETCore.App.Runtime.linux-x64", "10.0.15"), new("microsoft.dotnet.ilcompiler", "10.0.15")]);
         Equal(locked.Count + 1, merged.Count);
         string nuget = FlathubSources.NuGetSources([new("Microsoft.DotNet.ILCompiler", "10.0.14")], _ => "ab12");
         Equal("""

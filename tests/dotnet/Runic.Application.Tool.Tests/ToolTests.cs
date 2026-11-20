@@ -1021,21 +1021,21 @@ internal sealed partial class ToolTests
     [Test, DisplayName("doctor certifies SDK 11 for net10.0 beside the 10.0 baseline")]
     public void DoctorEvaluatesDotNetSdkVersions()
     {
-        var toolchain = new CompatibilityToolchain("10.0.403", "24.22.1", "1.4.4", "12.2.0", "12.9.1") { AdditionalDotNetSdks = ["11.0.100"] };
+        var toolchain = new CompatibilityToolchain("10.0.404", "24.22.3", "1.4.4", "12.2.0", "12.9.1") { AdditionalDotNetSdks = ["11.0.100"] };
         DoctorCheck Sdk(string version, string framework = "net10.0") =>
             DoctorChecks.EvaluateDotNetSdk(version, framework, toolchain, "runic-sdk-test");
         DoctorCheck old = Sdk("10.0.401");
         Equal(DoctorStatus.Failure, old.Status);
-        Contains(old.Message, "older than 10.0.403");
+        Contains(old.Message, "older than 10.0.404");
         Contains(old.Remediation ?? string.Empty, "SDK 11.0.100");
         Equal(DoctorStatus.Failure, Sdk("9.0.300").Status);
-        Contains(Sdk("10.0.403", "net11.0").Message, "cannot build net11.0");
-        DoctorCheck baseline = Sdk("10.0.403");
+        Contains(Sdk("10.0.404", "net11.0").Message, "cannot build net11.0");
+        DoctorCheck baseline = Sdk("10.0.404");
         Equal(DoctorStatus.Pass, baseline.Status);
-        Contains(baseline.Message, ".NET SDK 10.0.403 is certified by runic-sdk-test");
-        DoctorCheck patch = Sdk("10.0.404");
+        Contains(baseline.Message, ".NET SDK 10.0.404 is certified by runic-sdk-test");
+        DoctorCheck patch = Sdk("10.0.405");
         Equal(DoctorStatus.Warning, patch.Status);
-        Contains(patch.Message, "certified with SDK 10.0.403 or 11.0.100");
+        Contains(patch.Message, "certified with SDK 10.0.404 or 11.0.100");
         DoctorCheck sdk11 = Sdk("11.0.100");
         Equal(DoctorStatus.Pass, sdk11.Status);
         Contains(sdk11.Message, ".NET SDK 11.0.100 is certified");

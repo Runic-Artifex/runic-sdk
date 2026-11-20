@@ -918,13 +918,13 @@ function toolchainWarnings(output) {
 
 test("a .NET SDK older than the floor warns with RUNICBRIDGE033", () => {
   const app = fixture("toolchain-sdk", { name: "app", private: true });
-  for (const [version, warns] of [["10.0.401", true], ["10.0.100-rc.2.25502.107", true], ["10.0.403", false],
+  for (const [version, warns] of [["10.0.401", true], ["10.0.100-rc.2.25502.107", true], ["10.0.403", true], ["10.0.404", false],
     ["10.0.500", false], ["11.0.100-preview.1.26101.1", false]]) {
     const result = build(app, { targets: "RunicViewsCheckDotNetSdkVersion", properties: [`NETCoreSdkVersion=${version}`] });
     assert.equal(result.status, 0, result.output);
     const warnings = toolchainWarnings(result.output);
     assert.equal(warnings.length, warns ? 1 : 0, `${version}: ${result.output}`);
-    if (warns) assert.ok(warnings[0].includes(`.NET SDK ${version} is older than 10.0.403`), warnings[0]);
+    if (warns) assert.ok(warnings[0].includes(`.NET SDK ${version} is older than 10.0.404`), warnings[0]);
   }
 });
 

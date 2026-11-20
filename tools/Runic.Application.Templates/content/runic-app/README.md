@@ -17,7 +17,7 @@ with __PACKAGE_MANAGER_NAME__, builds the application, starts the
 __DEVELOPMENT_SERVER_NAME__ development server, and opens the app. Frontend
 edits reload in place; C# edits rebuild and restart the app. Stop it with Ctrl+C.
 
-It needs .NET SDK 10.0.403 or later, or the .NET 11 SDK together with the
+It needs .NET SDK 10.0.404 or later, or the .NET 11 SDK together with the
 .NET 10 runtime, which the application runs on.
 
 If something is missing, `dotnet runic doctor` checks the .NET SDK and

@@ -651,7 +651,7 @@
        requires (tools/dotnet-runic/metadata/runic.compatibility-set.json; eng/support.test.mjs keeps them equal). The
        .NET SDK is checked here, for free; Bun in RunicViewsBuildFrontend, which runs it anyway. -->
   <PropertyGroup>
-    <_RunicMinimumDotNetSdkVersion>10.0.403</_RunicMinimumDotNetSdkVersion>
+    <_RunicMinimumDotNetSdkVersion>10.0.404</_RunicMinimumDotNetSdkVersion>
     <_RunicMinimumBunVersion>1.4.4</_RunicMinimumBunVersion>
   </PropertyGroup>
   <Target Name="RunicViewsCheckDotNetSdkVersion" BeforeTargets="PrepareForBuild"

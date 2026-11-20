@@ -714,17 +714,17 @@ warning with `<NoWarn>$(NoWarn);RUNICBRIDGE032</NoWarn>`.
 ### RUNICBRIDGE033
 
 A warning from the `Runic.Application.Views` build targets. The build runs on a
-.NET SDK older than 10.0.403, or builds a Bun frontend with a Bun older than
-1.4.4: the oldest versions that this release supports, with the October 2026
-security fixes, and that `dotnet runic doctor` accepts. The SDK is checked on
+.NET SDK older than 10.0.404, or builds a Bun frontend with a Bun older than
+1.4.4: the oldest versions that this release supports, with the November 2026
+.NET and October 2026 Bun security fixes, and that `dotnet runic doctor` accepts. The SDK is checked on
 every build; Bun when the build runs the frontend build of a project whose
 package manager is Bun. Older ones still build, but a self-contained or
 NativeAOT package embeds the runtime of the SDK. Under Nix,
 `buildRunicApplication` uses your nixpkgs' `dotnetCorePackages.sdk_10_0` and
 `bun` unless you pass `dotnet-sdk`, and the warning shows while nixpkgs still
-packages older ones. Since 0.14.
+packages older ones. Since 0.14; the SDK floor is 10.0.404 since 0.24 (10.0.403 before).
 
-**Fix:** install .NET SDK 10.0.403 or a newer 10.0 release (runtime 10.0.14),
+**Fix:** install .NET SDK 10.0.404 or a newer 10.0 release (runtime 10.0.15),
 or the .NET 11 SDK with the .NET 10 runtime, and Bun 1.4.4 or a newer 1.x release, then rebuild and republish. Until you
 can, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE033</NoWarn>`.
 
@@ -1211,7 +1211,7 @@ names the missing runtime and the installed versions. Exit code 1. Since 0.18.
 **Fix:** install that runtime next to the SDK, for example the .NET 10 runtime
 with `dotnet-install --runtime dotnet --channel 10.0` (add `--runtime aspnetcore`
 for Runic Desktop on Kestrel) or your package manager, or install .NET SDK
-10.0.403 or later 10.0, which includes it. `dotnet runic doctor` reports the
+10.0.404 or later 10.0, which includes it. `dotnet runic doctor` reports the
 same problem in its `dotnet-runtime` check.
 
 ### RAPPDEV1014
