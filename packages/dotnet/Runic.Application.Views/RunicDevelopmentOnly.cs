@@ -47,6 +47,11 @@ public static class RunicDevelopmentOnly
 
     /// <summary>The failure of opening or presenting a development-only ViewModel that this publish left out.</summary>
     /// <param name="viewModel">The ViewModel's type.</param>
+    /// <remarks>
+    /// For generated code; not part of the application API. Generated Bridges call it, including those of libraries that
+    /// an earlier minor release generated, so it stays while the Bridge contract version does. Applications test
+    /// <see cref="IsSupported"/> instead.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static InvalidOperationException Removed(Type viewModel)
     {
