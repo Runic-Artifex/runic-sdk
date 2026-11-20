@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { anchor, assemble, check, fragmentVersions, notesDirectory, repositoryPaths, split } from './notes.mjs';
+import { anchor, assemble, check, documentProblems, fragmentVersions, notesDirectory, repositoryPaths, split } from './notes.mjs';
 
 // The fixture is a released notes file written before fragments existed.
 const FIXTURE = '0.19.0';
@@ -155,6 +155,40 @@ test('anchors follow GitHub', () => {
   expect(anchor('An appearance override per hosted region (#917, experimental)')).toBe('an-appearance-override-per-hosted-region-917-experimental');
   expect(anchor('Upgrading from 0.18')).toBe('upgrading-from-018');
   expect(anchor('`@runic-artifex/angular` in the Angular Package Format (#945)')).toBe('runic-artifexangular-in-the-angular-package-format-945');
+});
+
+test('anchors keep the text of code spans, including angle brackets', () => {
+  expect(anchor('Operation progress through an `IProgress<double>` parameter (#1180)')).toBe('operation-progress-through-an-iprogressdouble-parameter-1180');
+  expect(anchor('Tag <kbd>Ctrl</kbd> and `<b>code</b>`')).toBe('tag-ctrl-and-bcodeb');
+});
+
+test('anchors drop punctuation, keep underscores and letters outside ASCII', () => {
+  expect(anchor('Dots. And (parens) and # hash & more')).toBe('dots-and-parens-and--hash--more');
+  expect(anchor('Use `a_b` and **bold** and ~~strike~~')).toBe('use-a_b-and-bold-and-strike');
+  expect(anchor('Café naïve — Größe')).toBe('café-naïve--größe');
+  // Numbers outside Nd and Nl (superscripts, fractions) are dropped, as github-slugger does.
+  expect(anchor('Step ² done')).toBe('step--done');
+});
+
+test('anchors turn each space into a hyphen without collapsing repeats', () => {
+  expect(anchor('Repeated   spaces  here')).toBe('repeated---spaces--here');
+  expect(anchor('Linked [text](https://example.com/z) heading')).toBe('linked-text-heading');
+});
+
+test('a link to an anchor with angle brackets resolves, and duplicate headings get -1', () => {
+  const markdown = [
+    '## Highlights',
+    '- [Operation progress](#operation-progress-through-an-iprogressdouble-parameter-1180)',
+    '- [Second](#repeat-1)',
+    '## Operation progress through an `IProgress<double>` parameter (#1180)',
+    '### Repeat',
+    '### Repeat',
+  ].join('\n');
+  expect(documentProblems(markdown, '0.99.0.md', anywhere)).toEqual([]);
+  expect(documentProblems('### Repeat\n### Repeat\n- [x](#repeat-1)', '0.99.0.md', anywhere))
+    .toEqual([]);
+  expect(documentProblems('### Repeat\n- [x](#repeat-3)', '0.99.0.md', anywhere))
+    .toEqual(['the link #repeat-3 names no heading of the notes']);
 });
 
 // The fragments of the coming releases, as the release pull request will assemble them.
