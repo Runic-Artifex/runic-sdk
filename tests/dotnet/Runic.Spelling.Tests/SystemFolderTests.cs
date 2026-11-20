@@ -33,8 +33,8 @@ public sealed class SystemFolderTests
         ], SpellingFolders.SystemFolders(Environments.Fake(SpellingPlatform.Linux, "/r")));
         // A relative XDG_DATA_HOME is ignored, as the specification says.
         Equal("/r/home/.local/share/runic/dictionaries",
-            SpellingFolders.DownloadFolder(Environments.Fake(SpellingPlatform.Linux, "/r", ("XDG_DATA_HOME", "data"))));
-        Equal("/r/data/runic/dictionaries", SpellingFolders.DownloadFolder(environment));
+            SpellingFolders.DownloadDirectory(Environments.Fake(SpellingPlatform.Linux, "/r", ("XDG_DATA_HOME", "data"))));
+        Equal("/r/data/runic/dictionaries", SpellingFolders.DownloadDirectory(environment));
     }
 
     [Test]
@@ -62,9 +62,9 @@ public sealed class SystemFolderTests
         var environment = Environments.Fake(SpellingPlatform.MacOS, "/r", ("DICPATH", "/ignored"));
 
         Sequence(["/r/home/Library/Spelling", "/r/system/Library/Spelling"], SpellingFolders.SystemFolders(environment));
-        Equal("/r/home/Library/Application Support/Runic/dictionaries", SpellingFolders.DownloadFolder(environment));
+        Equal("/r/home/Library/Application Support/Runic/dictionaries", SpellingFolders.DownloadDirectory(environment));
         // The application's dictionaries beside the program, or in the bundle's Resources.
-        Sequence(["/r/app/dictionaries", "/r/Resources/dictionaries"], SpellingFolders.ApplicationFolders(environment, null));
+        Sequence(["/r/app/dictionaries", "/r/Resources/dictionaries"], SpellingFolders.ApplicationDirectories(environment, null));
     }
 
     [Test]
@@ -82,7 +82,7 @@ public sealed class SystemFolderTests
 
         Sequence([Path.Combine(spelling, "de-CH"), Path.Combine(spelling, "en-US"), Path.Combine(spelling, "fr-FR")],
             SpellingFolders.SystemFolders(environment));
-        Equal(Path.Combine(temporary.Path, "local", "Runic", "dictionaries"), SpellingFolders.DownloadFolder(environment));
+        Equal(Path.Combine(temporary.Path, "local", "Runic", "dictionaries"), SpellingFolders.DownloadDirectory(environment));
 
         var dictionaries = new SpellingDictionaries(new() { Environment = environment });
         Sequence(["de_CH", "fr-FR"], dictionaries.GetInstalled().Select(dictionary => dictionary.Name));

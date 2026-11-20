@@ -3,7 +3,7 @@ namespace Runic.Spelling;
 /// <summary>Whether a language can be checked, and with what. Open: a later version may add values.</summary>
 public enum SpellingAvailabilityStatus
 {
-    /// <summary>No installed dictionary serves the language and the catalogue has none.</summary>
+    /// <summary>No installed dictionary serves the language and the catalog has none.</summary>
     Unavailable,
 
     /// <summary>No installed dictionary serves the language, but one can be downloaded
@@ -24,7 +24,7 @@ public enum SpellingAvailabilityStatus
 /// application can say "French: not installed, download 1.4 MB".</summary>
 public sealed class SpellingAvailability
 {
-    internal SpellingAvailability(string languageTag, SpellingDictionary? installed, SpellingCatalogueEntry? download)
+    internal SpellingAvailability(string languageTag, SpellingDictionary? installed, SpellingCatalogEntry? download)
     {
         LanguageTag = languageTag;
         Installed = installed;
@@ -46,10 +46,10 @@ public sealed class SpellingAvailability
     /// <summary>The installed dictionary the language is checked with; <see langword="null"/> when none serves it.</summary>
     public SpellingDictionary? Installed { get; }
 
-    /// <summary>A catalogue dictionary that serves the language better than <see cref="Installed"/>, such as <c>de_CH</c>
+    /// <summary>A catalog dictionary that serves the language better than <see cref="Installed"/>, such as <c>de_CH</c>
     /// for <c>de-CH</c> when only <c>de_DE</c> is installed, or at all; <see langword="null"/> when there is none or the
     /// best one is installed.</summary>
-    public SpellingCatalogueEntry? Download { get; }
+    public SpellingCatalogEntry? Download { get; }
 
     /// <summary>The bytes <see cref="Download"/> fetches; <see langword="null"/> without one.</summary>
     public long? DownloadSize => Download?.Size;

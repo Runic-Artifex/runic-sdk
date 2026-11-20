@@ -39,14 +39,14 @@ internal static class SpellingFolders
         _ => Path.Combine(DataHome(environment), "runic"),
     };
 
-    internal static string DownloadFolder(SpellingEnvironment environment) => Path.Combine(SharedRunicFolder(environment), "dictionaries");
+    internal static string DownloadDirectory(SpellingEnvironment environment) => Path.Combine(SharedRunicFolder(environment), "dictionaries");
 
     // The application's own folders: RUNIC_SPELLING_DICTIONARIES when set, then dictionaries/ beside the program, and on
     // macOS in the bundle's Contents/Resources, where `dotnet runic package macos` puts it.
-    internal static IReadOnlyList<string> ApplicationFolders(SpellingEnvironment environment, IReadOnlyList<string>? folders)
+    internal static IReadOnlyList<string> ApplicationDirectories(SpellingEnvironment environment, IReadOnlyList<string>? folders)
     {
         List<string> result = [];
-        if (environment.Value(SpellingDictionaries.FolderVariable) is { } chosen) result.Add(chosen);
+        if (environment.Value(SpellingDictionaries.DirectoryEnvironmentVariable) is { } chosen) result.Add(chosen);
         if (folders is not null)
         {
             result.AddRange(folders);

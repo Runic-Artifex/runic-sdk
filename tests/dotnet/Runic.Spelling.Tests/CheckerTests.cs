@@ -9,9 +9,9 @@ public sealed class CheckerTests
 {
     private static readonly SpellingDictionaries Dictionaries = new(new()
     {
-        ApplicationFolders = [Environments.Bundled],
+        ApplicationDirectories = [Environments.Bundled],
         UseSystemDictionaries = false,
-        DownloadFolder = Path.Combine(Path.GetTempPath(), "runic-spelling-tests-none"),
+        DownloadDirectory = Path.Combine(Path.GetTempPath(), "runic-spelling-tests-none"),
     });
 
     private static Task<SpellChecker> Checker(string tag = "en-US", SpellCheckerOptions? options = null) =>
@@ -153,7 +153,7 @@ public sealed class CheckerTests
         using var temporary = new TemporaryFolder();
         File.WriteAllBytes(Path.Combine(temporary.Path, "fr_FR.aff"), "SET ISO8859-15\n"u8.ToArray());
         File.WriteAllBytes(Path.Combine(temporary.Path, "fr_FR.dic"), [.. "2\nc"u8, 0xBD, .. "ur\nsoeur\n"u8]);
-        var dictionary = new SpellingDictionaries(new() { ApplicationFolders = [temporary.Path], UseSystemDictionaries = false, DownloadFolder = temporary.Folder("downloads") }).Find("fr")!;
+        var dictionary = new SpellingDictionaries(new() { ApplicationDirectories = [temporary.Path], UseSystemDictionaries = false, DownloadDirectory = temporary.Folder("downloads") }).Find("fr")!;
 
         True(WordLists.NeedsCodePages(dictionary.AffixPath), "ISO8859-15 needs the code pages");
         True(!WordLists.NeedsCodePages(Path.Combine(Environments.Bundled, "en_US.aff")), "UTF-8 needs none");

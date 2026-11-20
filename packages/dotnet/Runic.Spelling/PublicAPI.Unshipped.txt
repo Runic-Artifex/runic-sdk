@@ -1,10 +1,10 @@
 #nullable enable
 const Runic.Spelling.SpellChecker.AcronymLength = 6 -> int
-const Runic.Spelling.SpellingDictionaries.FolderVariable = "RUNIC_SPELLING_DICTIONARIES" -> string!
+const Runic.Spelling.SpellingDictionaries.DirectoryEnvironmentVariable = "RUNIC_SPELLING_DICTIONARIES" -> string!
 ~override Runic.Spelling.Misspelling.Equals(object obj) -> bool
 override Runic.Spelling.Misspelling.GetHashCode() -> int
 ~override Runic.Spelling.Misspelling.ToString() -> string
-override Runic.Spelling.SpellingCatalogueEntry.ToString() -> string!
+override Runic.Spelling.SpellingCatalogEntry.ToString() -> string!
 override Runic.Spelling.SpellingDictionary.ToString() -> string!
 ~override Runic.Spelling.SpellingDownloadProgress.Equals(object obj) -> bool
 override Runic.Spelling.SpellingDownloadProgress.GetHashCode() -> int
@@ -36,7 +36,7 @@ Runic.Spelling.SpellCheckerOptions.UserWords.init -> void
 Runic.Spelling.SpellChecker.Suggest(string! word) -> System.Collections.Generic.IReadOnlyList<string!>!
 Runic.Spelling.SpellChecker.WithKnownWords(System.Collections.Generic.IEnumerable<string!>! knownWords) -> Runic.Spelling.SpellChecker!
 Runic.Spelling.SpellingAvailability
-Runic.Spelling.SpellingAvailability.Download.get -> Runic.Spelling.SpellingCatalogueEntry?
+Runic.Spelling.SpellingAvailability.Download.get -> Runic.Spelling.SpellingCatalogEntry?
 Runic.Spelling.SpellingAvailability.DownloadSize.get -> long?
 Runic.Spelling.SpellingAvailability.Installed.get -> Runic.Spelling.SpellingDictionary?
 Runic.Spelling.SpellingAvailability.LanguageTag.get -> string!
@@ -47,39 +47,39 @@ Runic.Spelling.SpellingAvailabilityStatus.Downloaded = 3 -> Runic.Spelling.Spell
 Runic.Spelling.SpellingAvailability.Status.get -> Runic.Spelling.SpellingAvailabilityStatus
 Runic.Spelling.SpellingAvailabilityStatus.System = 4 -> Runic.Spelling.SpellingAvailabilityStatus
 Runic.Spelling.SpellingAvailabilityStatus.Unavailable = 0 -> Runic.Spelling.SpellingAvailabilityStatus
-Runic.Spelling.SpellingCatalogue
-Runic.Spelling.SpellingCatalogue.Entries.get -> System.Collections.Generic.IReadOnlyList<Runic.Spelling.SpellingCatalogueEntry!>!
-Runic.Spelling.SpellingCatalogueEntry
-Runic.Spelling.SpellingCatalogueEntry.Commit.get -> string!
-Runic.Spelling.SpellingCatalogueEntry.Files.get -> System.Collections.Generic.IReadOnlyList<Runic.Spelling.SpellingCatalogueFile!>!
-Runic.Spelling.SpellingCatalogueEntry.LanguageTag.get -> string!
-Runic.Spelling.SpellingCatalogueEntry.License.get -> string!
-Runic.Spelling.SpellingCatalogueEntry.Name.get -> string!
-Runic.Spelling.SpellingCatalogueEntry.Size.get -> long
-Runic.Spelling.SpellingCatalogueEntry.Source.get -> System.Uri!
-Runic.Spelling.SpellingCatalogueFile
-Runic.Spelling.SpellingCatalogueFileKind
-Runic.Spelling.SpellingCatalogueFileKind.Affix = 1 -> Runic.Spelling.SpellingCatalogueFileKind
-Runic.Spelling.SpellingCatalogueFileKind.Dictionary = 0 -> Runic.Spelling.SpellingCatalogueFileKind
-Runic.Spelling.SpellingCatalogueFile.Kind.get -> Runic.Spelling.SpellingCatalogueFileKind
-Runic.Spelling.SpellingCatalogueFileKind.License = 3 -> Runic.Spelling.SpellingCatalogueFileKind
-Runic.Spelling.SpellingCatalogueFileKind.Readme = 2 -> Runic.Spelling.SpellingCatalogueFileKind
-Runic.Spelling.SpellingCatalogueFile.Sha256.get -> string!
-Runic.Spelling.SpellingCatalogueFile.Size.get -> long
-Runic.Spelling.SpellingCatalogueFile.Url.get -> System.Uri!
-Runic.Spelling.SpellingCatalogue.Find(string! name) -> Runic.Spelling.SpellingCatalogueEntry?
+Runic.Spelling.SpellingCatalog
+Runic.Spelling.SpellingCatalog.Entries.get -> System.Collections.Generic.IReadOnlyList<Runic.Spelling.SpellingCatalogEntry!>!
+Runic.Spelling.SpellingCatalogEntry
+Runic.Spelling.SpellingCatalogEntry.Commit.get -> string!
+Runic.Spelling.SpellingCatalogEntry.Files.get -> System.Collections.Generic.IReadOnlyList<Runic.Spelling.SpellingCatalogFile!>!
+Runic.Spelling.SpellingCatalogEntry.LanguageTag.get -> string!
+Runic.Spelling.SpellingCatalogEntry.License.get -> string!
+Runic.Spelling.SpellingCatalogEntry.Name.get -> string!
+Runic.Spelling.SpellingCatalogEntry.Size.get -> long
+Runic.Spelling.SpellingCatalogEntry.Source.get -> System.Uri!
+Runic.Spelling.SpellingCatalogFile
+Runic.Spelling.SpellingCatalogFileKind
+Runic.Spelling.SpellingCatalogFileKind.Affix = 1 -> Runic.Spelling.SpellingCatalogFileKind
+Runic.Spelling.SpellingCatalogFileKind.Dictionary = 0 -> Runic.Spelling.SpellingCatalogFileKind
+Runic.Spelling.SpellingCatalogFile.Kind.get -> Runic.Spelling.SpellingCatalogFileKind
+Runic.Spelling.SpellingCatalogFileKind.License = 3 -> Runic.Spelling.SpellingCatalogFileKind
+Runic.Spelling.SpellingCatalogFileKind.Readme = 2 -> Runic.Spelling.SpellingCatalogFileKind
+Runic.Spelling.SpellingCatalogFile.Sha256.get -> string!
+Runic.Spelling.SpellingCatalogFile.Size.get -> long
+Runic.Spelling.SpellingCatalogFile.Url.get -> System.Uri!
+Runic.Spelling.SpellingCatalog.Find(string! name) -> Runic.Spelling.SpellingCatalogEntry?
 Runic.Spelling.SpellingDictionaries
-Runic.Spelling.SpellingDictionaries.Catalogue.get -> Runic.Spelling.SpellingCatalogue!
-Runic.Spelling.SpellingDictionaries.DownloadAsync(Runic.Spelling.SpellingCatalogueEntry! entry, System.IProgress<Runic.Spelling.SpellingDownloadProgress>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Spelling.SpellingDictionary!>!
-Runic.Spelling.SpellingDictionaries.DownloadFolder.get -> string!
+Runic.Spelling.SpellingDictionaries.Catalog.get -> Runic.Spelling.SpellingCatalog!
+Runic.Spelling.SpellingDictionaries.DownloadAsync(Runic.Spelling.SpellingCatalogEntry! entry, System.IProgress<Runic.Spelling.SpellingDownloadProgress>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Spelling.SpellingDictionary!>!
+Runic.Spelling.SpellingDictionaries.DownloadDirectory.get -> string!
 Runic.Spelling.SpellingDictionaries.Find(string! languageTag) -> Runic.Spelling.SpellingDictionary?
 Runic.Spelling.SpellingDictionaries.GetAvailability(string! languageTag) -> Runic.Spelling.SpellingAvailability!
 Runic.Spelling.SpellingDictionaries.GetInstalled() -> System.Collections.Generic.IReadOnlyList<Runic.Spelling.SpellingDictionary!>!
 Runic.Spelling.SpellingDictionariesOptions
-Runic.Spelling.SpellingDictionariesOptions.ApplicationFolders.get -> System.Collections.Generic.IReadOnlyList<string!>?
-Runic.Spelling.SpellingDictionariesOptions.ApplicationFolders.init -> void
-Runic.Spelling.SpellingDictionariesOptions.DownloadFolder.get -> string?
-Runic.Spelling.SpellingDictionariesOptions.DownloadFolder.init -> void
+Runic.Spelling.SpellingDictionariesOptions.ApplicationDirectories.get -> System.Collections.Generic.IReadOnlyList<string!>?
+Runic.Spelling.SpellingDictionariesOptions.ApplicationDirectories.init -> void
+Runic.Spelling.SpellingDictionariesOptions.DownloadDirectory.get -> string?
+Runic.Spelling.SpellingDictionariesOptions.DownloadDirectory.init -> void
 Runic.Spelling.SpellingDictionariesOptions.HttpClient.get -> System.Net.Http.HttpClient?
 Runic.Spelling.SpellingDictionariesOptions.HttpClient.init -> void
 Runic.Spelling.SpellingDictionariesOptions.SpellingDictionariesOptions() -> void
@@ -126,8 +126,8 @@ Runic.Spelling.SpellingUserWords.Words.get -> System.Collections.Generic.IReadOn
 static Runic.Spelling.Misspelling.operator !=(Runic.Spelling.Misspelling left, Runic.Spelling.Misspelling right) -> bool
 static Runic.Spelling.Misspelling.operator ==(Runic.Spelling.Misspelling left, Runic.Spelling.Misspelling right) -> bool
 static Runic.Spelling.SpellChecker.LoadAsync(Runic.Spelling.SpellingDictionary! dictionary, Runic.Spelling.SpellCheckerOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Spelling.SpellChecker!>!
-static Runic.Spelling.SpellingCatalogue.Default.get -> Runic.Spelling.SpellingCatalogue!
-static Runic.Spelling.SpellingDictionaries.SharedDownloadFolder.get -> string!
+static Runic.Spelling.SpellingCatalog.Default.get -> Runic.Spelling.SpellingCatalog!
+static Runic.Spelling.SpellingDictionaries.SharedDownloadDirectory.get -> string!
 static Runic.Spelling.SpellingDownloadProgress.operator !=(Runic.Spelling.SpellingDownloadProgress left, Runic.Spelling.SpellingDownloadProgress right) -> bool
 static Runic.Spelling.SpellingDownloadProgress.operator ==(Runic.Spelling.SpellingDownloadProgress left, Runic.Spelling.SpellingDownloadProgress right) -> bool
 static Runic.Spelling.SpellingRange.operator !=(Runic.Spelling.SpellingRange left, Runic.Spelling.SpellingRange right) -> bool
