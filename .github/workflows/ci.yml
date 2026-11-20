@@ -974,8 +974,9 @@ jobs:
         if: runner.os == 'Linux'
         uses: ./.github/actions/apt-install
         with:
-          # hunspell-en-us: a dictionary for the spell-checking smoke (#662).
-          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool hunspell-en-us
+          # hunspell-en-us: a dictionary for the spell-checking smoke (#662). xdg-desktop-portal: the OpenURI portal of
+          # the default handler smoke (#1174).
+          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool hunspell-en-us xdg-desktop-portal
       # A window manager for the GTK 4 placement check (#663), without Openbox's recommended configuration tools.
       - name: Install Openbox for the X11 placement check
         if: runner.os == 'Linux'
@@ -1018,6 +1019,15 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
+      # #1174: the desktop's default mailto handler, which the smoke registers for the run and which records the URI it
+      # is given, launched by the window's and the application's LaunchUriAsync (the OpenURI portal) and by a clicked
+      # link (gtk_show_uri_on_window with GTK 3, GtkUriLauncher with GTK 4). It runs on a session bus of its own.
+      - name: Launch the default mailto handler with GTK 3 and GTK 4
+        if: runner.os == 'Linux'
+        timeout-minutes: 6
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser gtk4
       # S10: WebKitGTK's prefers-reduced-motion and prefers-contrast follow GTK's gtk-enable-animations and theme name
       # while the window is open.
       - name: Follow the desktop's contrast and motion in the GTK 3 window
@@ -1361,6 +1371,14 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
+      # #1174: the window's and the application's LaunchUriAsync (ShellExecuteEx, NSWorkspace openURL:) open loopback URLs
+      # of the smoke in the runner's default browser, whose requests the smoke requires. Windows: LaunchAsync refuses a
+      # .cer file (AssocIsDangerous, a type Windows registers). macOS: an applet that LSSetDefaultHandlerForURLScheme makes
+      # the mailto default, if macOS lets it (MACOS REGISTRATION line), receives a launched mailto URI.
+      - name: Launch the default browser on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 6
+        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser
       # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one
       # SetWindowPos or setFrame:display: (the page resizes once); the visible frame (DWMWA_EXTENDED_FRAME_BOUNDS on
       # Windows) places a second window flush; a run-time minimum holds against a SetWindowPos from outside Runic

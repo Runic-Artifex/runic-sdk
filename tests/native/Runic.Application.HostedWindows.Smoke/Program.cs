@@ -5,6 +5,9 @@ using Runic.Desktop.Gtk4;
 // (WebView2, WKWebView, WebKitGTK 4.1); with gtk4 WebKitGTK 6 through Runic.Desktop.Gtk4. With --region-appearance,
 // region mode with an appearance override instead (RegionAppearanceSmoke).
 
+// #1174: the test handler that DefaultBrowserSmoke registers as the default for mailto records the URI it was given.
+if (args.Contains(DefaultBrowserSmoke.RecordArgument, StringComparer.Ordinal)) return DefaultBrowserSmoke.Record(args);
+
 // A guest application: it shows no window of its own, so it needs no web view and no event loop.
 if (Array.IndexOf(args, HostedSmoke.GuestArgument) is var guest and >= 0 && guest + 2 < args.Length)
     return args[guest + 2] == RegionAppearanceSmoke.GuestBehaviour ? RegionAppearanceSmoke.RunGuest() : HostedSmoke.RunGuest(args[guest + 1], args[guest + 2]);
@@ -73,6 +76,9 @@ try
     // --region-appearance (#917): a guest's Window in a region of the host's page with an appearance override; see
     // RegionAppearanceSmoke. Before any await: on macOS the AppKit loop owns the main thread.
     if (args.Contains(RegionAppearanceSmoke.Argument, StringComparer.Ordinal)) return RegionAppearanceSmoke.Run(options, toolkit);
+    // --default-browser (#1174): the desktop's default mailto handler, launched through the public API; see
+    // DefaultBrowserSmoke. Before any await, as above.
+    if (args.Contains(DefaultBrowserSmoke.Argument, StringComparer.Ordinal)) return DefaultBrowserSmoke.Run(options, toolkit, args);
     var result = HostedSmoke.Run(options, toolkit);
     if (result == 0) Console.WriteLine($"Runic hosted windows smoke passed ({toolkit}{(HostedSmoke.ElevatedPair ? ", elevated pair" : "")}).");
     return result;
