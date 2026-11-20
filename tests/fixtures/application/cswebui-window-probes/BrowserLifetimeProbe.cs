@@ -110,7 +110,7 @@ internal static class BrowserLifetimeProbe
         var start = new ProcessStartInfo(Environment.ProcessPath!) { RedirectStandardOutput = true, UseShellExecute = false };
         // A JIT build runs as dotnet <probe>.dll.
         if (Path.GetFileNameWithoutExtension(Environment.ProcessPath!).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            start.ArgumentList.Add(typeof(BrowserLifetimeProbe).Assembly.Location);
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "CsWebUiWindowProbes.dll"));
         start.ArgumentList.Add("--probe-browser-lifetime");
         start.ArgumentList.Add("--child");
         if (exit) start.ArgumentList.Add("--exit");
