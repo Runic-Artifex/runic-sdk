@@ -10,7 +10,7 @@ dotnet add package Runic.Assets.AspNetCore --prerelease
 ```
 
 The package targets **.NET 10**, uses the shared `Microsoft.AspNetCore.App`
-framework, and brings `Runic.Assets` with it. It is currently a preview package.
+framework, and brings `Runic.Assets` with it.
 Choose this adapter for ASP.NET Core; choose the core package alone when you
 only need an asset source or archive.
 

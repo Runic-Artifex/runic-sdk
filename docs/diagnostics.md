@@ -1551,7 +1551,8 @@ The `Runic.Desktop` build targets report these errors and the warning
 `RUNICDESK007`; `RUNICDESK001` comes from
 `Runic.Desktop.Kestrel`, `RUNICDESK005` and `RUNICDESK006` from
 `Runic.Desktop.NativeServer`.
-`RUNICDESK102`, the native server's experimental ID until 0.15.0, is retired
+The experimental IDs `RUNICDESK100` to `RUNICDESK102`, `RUNICDESK104` (the side panel, until 0.22.0) and
+`RUNICDESK105` (the close drain, until 0.22.0) are retired; `RUNICDESK103` (hosted applications) is in use
 ([Graduated and retired IDs](experimental.md#retired)).
 
 ### RUNICDESK001

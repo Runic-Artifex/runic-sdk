@@ -295,8 +295,10 @@ Repository scripts, build tools and verification use the Bun version pinned in
 `package.json`. Use `bun run --bun` when invoking package scripts so Node shebangs
 also run under Bun. Node is retained for npm/pnpm package and template compatibility checks, not the default workspace
 runtime. `node:` imports refer to compatible APIs and do not require launching Node.
-Native CI targets Linux x64, Windows x64 and macOS Apple Silicon; Intel macOS is
-not supported.
+Native CI runs on Linux (x64 and arm64, glibc and musl), Windows (x64 and arm64)
+and macOS on Apple silicon; Intel macOS is not supported. `eng/support.json` and
+the [README's Supported platforms](README.md#supported-platforms) give the status
+of each host and RID.
 
 The optional Vite DevTools dock supports Bun and is also exercised by an
 installed npm/Node consumer. See the
