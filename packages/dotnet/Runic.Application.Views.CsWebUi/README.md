@@ -420,7 +420,12 @@ the endpoint answers, which `dev` turns into its `[dev] Debugging:` line. A
 `UseWebView`, `ShowWindow` or serve-only window opens none, nor does a
 non-Chromium browser or a trimmed or NativeAOT publish. The host passes WebUI's
 Chromium defaults with the port as the window's custom parameters, before
-`ConfigureWindow`. See
+`ConfigureWindow`. The browser then runs in a profile of the run's own, a new
+0700 temporary directory set with `SetProfile`, instead of WebUI's shared
+`.WebUI` profile, and the Window deletes it when that browser exits. The
+process's windows share that browser: the first window's endpoint reaches every
+page, and a later window reports none of its own. A fixed port is reported only
+when the browser process WebUI started holds its listener. See
 [CS-WebUI pages in a JavaScript debugger](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#cs-webui-pages-in-a-javascript-debugger).
 
 ## Menu bar

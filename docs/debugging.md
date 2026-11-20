@@ -339,7 +339,7 @@ only when all of these hold:
 - the browser is **Chromium-based**: on CS-WebUI the one `CSWEBUI_BROWSER_PATH` names, by its file name, or else
   WebUI's best browser. Another browser, such as Firefox, opens none, and the Window writes a warning. The browser must
   run with a profile of its own (Chromium 136 and later refuse remote debugging in the default profile): on Runic
-  Desktop the generated one or `ProfilePath`, on CS-WebUI WebUI's own `.WebUI/WebUI<Browser>Profile`;
+  Desktop the generated one or `ProfilePath`, on CS-WebUI one of the run's own ([below](#cs-webui-run-profile));
 - the application's own browser arguments do not replace Runic's:
   - **Runic Desktop:** when `SetBrowserArguments` or `DesktopWindowOptions.BrowserArguments` name
     `--remote-debugging-port`, theirs applies as written, in every environment, and Runic adds no second one. Unlike
@@ -347,7 +347,9 @@ only when all of these hold:
   - **CS-WebUI:** WebUI's custom parameters replace its Chromium defaults, so the host passes those defaults itself,
     followed by the port, before `ConfigureWindow` runs. A `WebUiWindow.SetCustomParameters` there replaces them: its
     parameters apply as written, and the Window warns that no endpoint opened unless they open one. While the endpoint
-    is on, the defaults include `--no-proxy-server`, so a `SetProxy` there does not apply.
+    is on, the defaults include `--no-proxy-server`, so a `SetProxy` there does not apply. A `WebUiWindow.SetProfile`
+    there replaces the run's profile, and then the Window reports no free port (`0`), since it reads that port from
+    the run's profile.
 
 Any local process can attach to the endpoint, so it opens only when you or your IDE ask for it (D070.17): a terminal
 `dotnet runic dev` opens none.
@@ -357,23 +359,37 @@ turns the `Runic.Desktop.WebUiRemoteDebugging` feature switch off (both hosts' b
 client, and such a build opens no endpoint even in Development. Only the publish turns it off: a project that sets
 `PublishAot` or `PublishTrimmed` keeps the endpoint in `dotnet build`, `dotnet run` and IDE debugging.
 
-The browser listens on 127.0.0.1. Each window's browser gets its own port. A CS-WebUI process's windows share WebUI's
-profile and so one browser: its endpoint is the first window's, it reaches every window's page, and a later window
-warns that its own port did not open. When the endpoint is open, the Window process
+The browser listens on 127.0.0.1. On Runic Desktop each window's browser gets its own port.
+
+<a id="cs-webui-run-profile"></a>On CS-WebUI the browser runs in a profile of the run's own, instead of WebUI's
+`.WebUI/WebUI<Browser>Profile`, which every WebUI application of the user shares and which persists. It is a new
+`runic-cswebui-devtools-*` directory in the user's temporary folder (on Linux and macOS, mode 0700), and the Window
+deletes it when that browser exits. Other applications do not join that browser, and its cookies and storage do not
+reach the next run. A CS-WebUI process's windows share the profile and so one browser: its endpoint is the first
+window's, and it reaches every window's page. A later window joins that browser and reports nothing of its own. Once
+that browser has exited, the next window starts a new one, with a new profile and endpoint.
+
+When the endpoint is open, the Window process
 prints `RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:<port>/` on its standard output, and
 `RUNIC_APPLICATION_DEBUG_ENDPOINT_CLOSED=http://127.0.0.1:<port>/` when that browser exits. Before it reports an
 endpoint, the Window confirms it:
 
-- **A free port (`0`):** on Runic Desktop, Chromium writes the port it bound into `DevToolsActivePort` in the profile.
-  The CS-WebUI host cannot read WebUI's profile, so it holds a free loopback port itself until the browser starts,
-  passes it, and confirms it as a fixed port below.
+- **A free port (`0`):** Chromium writes the port it bound into `DevToolsActivePort` in the profile: on CS-WebUI the
+  run's own, which only you can write to.
 - **A fixed port:** Chromium writes no such record, so the Window asks `/json/version` on 127.0.0.1. On Linux it also
-  checks that no other user listens on that port. The Window holds a fixed port on 127.0.0.1 and `[::1]` until just
-  before the browser starts. If something holds it already, the browser gets a free port instead, and the Window writes
-  a warning on its standard error (event 3043). Its opened line names the port it really uses.
+  checks that no other user listens on that port. On CS-WebUI, the browser process that WebUI started for the window
+  must hold the listener on 127.0.0.1 too. The Window reads the listener's process from `/proc` on Linux,
+  `GetExtendedTcpTable` on Windows and `lsof` on macOS. A process that started before the window was shown does not
+  count. The Window holds a fixed port on 127.0.0.1 and `[::1]` until just before the browser starts. If something
+  holds it already, the browser gets a free port instead, and the Window writes a warning on its standard error (event
+  3043). Its opened line names the port it really uses.
 - **No endpoint:** if the endpoint cannot be confirmed, the Window writes a warning with the reason on its standard
-  error (event 3042) and no opened line. Typical reasons are another user's listener on the port, or Chromium listening
-  on `[::1]` because 127.0.0.1's port was taken. Do not attach a debugger to that port then.
+  error (event 3042) and no opened line. Typical reasons:
+  - another user's listener on the port;
+  - on CS-WebUI, a listener that is not the window's browser;
+  - Chromium listening on `[::1]` because 127.0.0.1's port was taken.
+
+  Do not attach a debugger to that port then.
 
 When the endpoint opens:
 
@@ -428,7 +444,8 @@ extension can read the port from `debugEndpoints` instead.
 **Turn it off** in any of these ways:
 - leave out `--debug-endpoint` and `--no-window`, or pass `--no-debug-endpoint`;
 - leave the variable unset outside `dev`;
-- set `DevTools = false` in the window's `WebContent` policy;
+- on Runic Desktop, set `DevTools = false` in the window's `WebContent` policy. CS-WebUI has no such switch for a
+  window;
 - run the Window outside Development.
 
 Some things stay true while it is on:
@@ -437,8 +454,9 @@ Some things stay true while it is on:
 - **The variable is inherited** by the processes the application starts.
 - **The browser can outlive the Window.** If the Window process dies without closing its window (a crash, or a kill
   outside `dev`), its browser keeps the endpoint open until you close that browser window. `dev` stops listing it when
-  the Window exits.
-- **A shared profile.** Windows or applications that share one `ProfilePath` join the browser that holds the port.
+  the Window exits. On CS-WebUI, that browser's profile then stays in the temporary folder until you delete it.
+- **A shared profile.** On Runic Desktop, windows or applications that share one `ProfilePath` join the browser that
+  holds the port. On CS-WebUI, only the process's own windows share its run's profile.
 
 What the endpoint exposes is in the [security guide](security.md#development-server).
 

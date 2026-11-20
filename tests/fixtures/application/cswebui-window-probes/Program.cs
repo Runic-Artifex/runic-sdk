@@ -12,7 +12,7 @@ using Runic.Application.Views.CsWebUi;
 // content without one, through the same switch test harnesses use, and the show-failure probe selects a browser
 // that does not exist or exits at once.
 Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
-switch (args.SingleOrDefault())
+switch (args is [var probe, ..] ? probe : null)
 {
     case "--probe-factory-failure":
         await ProbeFactoryFailureAsync();
@@ -60,10 +60,10 @@ switch (args.SingleOrDefault())
 #if RUNIC_DEBUG_ENDPOINT_PROBE
     // DebugEndpointProbe.cs, a real browser window; the package smoke builds Program.cs alone.
     case "--probe-debug-endpoint":
-        return DebugEndpointProbe.Run();
+        return DebugEndpointProbe.Run(fixedPort: args.Contains("--fixed-port"));
 #endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-webview-close-drain | --probe-serve-only-drain | --probe-debug-endpoint");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-webview-close-drain | --probe-serve-only-drain | --probe-debug-endpoint [--fixed-port]");
         return 2;
 }
 WebUiApplication.Clean();

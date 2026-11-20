@@ -438,8 +438,11 @@ terminal `dotnet runic dev` opens none. It is the browser's endpoint, so:
 - **What it exposes.** Whoever connects controls the page completely: they
   run script in it and so call the Window's Bridge as you, read what it shows,
   navigate it, and read its cookies and storage. The browser profile is the
-  Window's own, generated per run unless the application sets `ProfilePath`,
-  so your everyday browser's data is not in it.
+  Window's own, generated per run, so your everyday browser's data is not in
+  it. On Runic Desktop, an application's `ProfilePath` replaces it. On
+  CS-WebUI it is a new 0700 directory for the run, not WebUI's shared
+  `.WebUI` profile: no other WebUI application joins that browser, and the
+  Window deletes the profile when the browser exits.
 - **Who can reach it.** Chromium binds it to 127.0.0.1, so other machines
   cannot. Since Chromium 111 it refuses WebSocket clients that send an
   `Origin`, so web pages in a browser cannot attach, and it answers `/json`
@@ -454,7 +457,8 @@ terminal `dotnet runic dev` opens none. It is the browser's endpoint, so:
 - **A fixed port** (9225) can be held by another user first. The Window then
   uses a free port and warns; it reports a fixed port only after
   `/json/version` answers on 127.0.0.1 and, on Linux, no other user listens
-  there. `dev --no-window` warns and lists 9225 as unavailable when something
+  there. On CS-WebUI, the browser process the Window started must also hold
+  that listener (read from `/proc`, `GetExtendedTcpTable` or `lsof`). `dev --no-window` warns and lists 9225 as unavailable when something
   holds it. Attach to `127.0.0.1`, not `localhost`, which can resolve to
   `[::1]`.
 - **The session file** (`debugEndpoints`) and `[dev] Debugging:` name the
