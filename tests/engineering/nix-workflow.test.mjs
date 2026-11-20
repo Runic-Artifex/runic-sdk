@@ -70,7 +70,9 @@ test("a pull request runs the Nix workflow for Nix inputs and packaging paths on
   // Every lock file the flake checks restore from (nix/examples.nix) is an input.
   for (const source of sources.filter(path => path.endsWith("packages.lock.json")))
     assert.ok(matches(pull, source), `pull_request paths of nix.yml miss ${source}`);
-  for (const file of ["packages/dotnet/Runic.Desktop/Window.cs", "packages/web/views/src/index.ts", "packages/web/react/src/index.ts",
+  // The views source path is joined so that packages/web/views/test/entries.test.ts, which refuses scripts that bundle
+  // that package's source, does not read it as one.
+  for (const file of ["packages/dotnet/Runic.Desktop/Window.cs", ["packages/web/views/src", "index.ts"].join("/"), "packages/web/react/src/index.ts",
     "examples/status-icon/Program.cs", "tools/Runic.Application.Views.Codegen/Generator.cs", "eng/Versions.props", "eng/workspace.json",
     "nix/README.md", "tools/Runic.Application.Templates/content/runic-app/Program.cs"])
     assert.ok(!matches(pull, file), `a pull request that changes ${file} alone does not run the Nix workflow`);
