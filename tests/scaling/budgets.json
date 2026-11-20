@@ -251,10 +251,10 @@
     "aot/executable-bytes": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 7931618,
-      "measured": [7639856, 7776096],
+      "limit": 7588719,
+      "measured": [7303680, 7439920],
       "margin": 0.02,
-      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %. 10,706,240 B at K = 0 before the loopback server replaced HttpListener (#1111). Since #1109 (D072.15) the fixture has every member kind of the descriptor table; with the narrower fixture before it, 7,506,528 B at K = 0 and 7,740,048 B at K = 9"
+      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %. 10,706,240 B at K = 0 before the loopback server replaced HttpListener (#1111). Since #1109 (D072.15) the fixture has every member kind of the descriptor table; with the narrower fixture before it, 7,506,528 B at K = 0 and 7,740,048 B at K = 9. 7,801,024 B at K = 9 before the fixture's publish left Bridge blobs out (#1193: it has no blob member)"
     },
     "aot/framework/System.Net.Http": {
       "class": "total",
@@ -273,10 +273,10 @@
     "aot/assembly/Runic.Application.Views": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 569699,
-      "measured": [542591, 542570],
+      "limit": 529570,
+      "measured": [504373, 504352],
       "margin": 0.05,
-      "note": "mstat bytes owned by Runic.Application.Views (the Views runtime and the generated Bridge support): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
+      "note": "mstat bytes owned by Runic.Application.Views (the Views runtime and the generated Bridge support): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %. 544,645 B before #1193 left the blob store out of a publish without blob members"
     },
     "aot/assembly/Runic.Navigation": {
       "class": "total",
@@ -289,10 +289,10 @@
     "aot/assembly/Runic.Application.Views.CsWebUi": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 157199,
-      "measured": [149713, 149713],
+      "limit": 88297,
+      "measured": [84092, 84092],
       "margin": 0.05,
-      "note": "mstat bytes owned by Runic.Application.Views.CsWebUi (the CS-WebUI host adapter and, since #1111, its own loopback HTTP server: 103,608 B before): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %"
+      "note": "mstat bytes owned by Runic.Application.Views.CsWebUi (the CS-WebUI host adapter and, since #1111, its own loopback HTTP server: 103,608 B before): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %. 149,713 B before #1193 left the blob endpoint out of a publish without blob members"
     },
     "aot/assembly/Runic.Assets": {
       "class": "total",
@@ -305,10 +305,10 @@
     "aot/desktop/executable-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 10820071,
-      "measured": [10607912, 10607912],
+      "limit": 10675296,
+      "measured": [10465976, 10465976],
       "margin": 0.02,
-      "note": "the whole linux-x64 executable of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0); the limit is the measurement plus 2 %. 14,559,552 B before the remote-debugging switch (#1112) and the manifest read without HttpClient (#1113)"
+      "note": "the whole linux-x64 executable of the Runic.Desktop host fixture (DesktopFixture, RunicDesktopServer=None, K = 0); the limit is the measurement plus 2 %. 14,559,552 B before the remote-debugging switch (#1112) and the manifest read without HttpClient (#1113). 10,624,552 B before #1193 left Bridge blobs out"
     },
     "aot/desktop/framework/System.Net.Http": {
       "class": "total",
@@ -327,10 +327,10 @@
     "aot/views-translations/executable-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 8689642,
-      "measured": [8519256, 8519256],
+      "limit": 8312437,
+      "measured": [8149448, 8149448],
       "margin": 0.02,
-      "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. 8,898,760 B with Translations 0.13 (main CI run 44179860685); Translations 0.14's compressed catalogs and message table took it to 8,543,240 B (SDK-5)"
+      "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. 8,898,760 B with Translations 0.13 (main CI run 44179860685); Translations 0.14's compressed catalogs and message table took it to 8,543,240 B (SDK-5). 8,502,408 B before #1193 left Bridge blobs out"
     },
     "fdd/folder-bytes": {
       "class": "total",
