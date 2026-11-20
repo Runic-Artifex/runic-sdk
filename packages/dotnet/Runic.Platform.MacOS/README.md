@@ -265,7 +265,7 @@ access is disposed; outside it they are ordinary bookmarks. Both follow a file
 that was moved or renamed, and report `IsStale` when the bookmark should be
 created again.
 
-See the [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
+See the [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/open-activation.md).
 
 ## Trash
 
@@ -275,7 +275,7 @@ needs no window and no AppKit event loop. A volume without a trash, such as a
 network volume, reports `Unavailable(BackendUnavailable)` and the item stays.
 macOS has no public interface for the Trash's contents, so `ListAsync`,
 `RestoreAsync` and `EmptyAsync` report `Unavailable(BackendUnavailable)`.
-See the [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
+See the [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/trash.md).
 
 ## Thumbnails
 
@@ -284,7 +284,7 @@ from Quick Look's `QLThumbnailGenerator` with only the thumbnail
 representation: a file Quick Look cannot thumbnail gets no thumbnail rather
 than its icon. ImageIO encodes it as PNG. It needs no window and no AppKit
 event loop. See the
-[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/thumbnails.md).
 
 ## Volumes
 
@@ -306,7 +306,7 @@ registry entry's `Locked`), and `MountAsync` reports it `Failed(Locked)`.
 the volume; a wrong passphrase is `Failed(Other)` with diskutil's exit status.
 `MountAsync(id, options, token)` passes `rdonly` and the options to
 `DADiskMountWithArguments`. In the App Sandbox, see [App Sandbox](#app-sandbox).
-See the [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+See the [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/volumes.md).
 
 ## Desktop applications
 
@@ -320,7 +320,7 @@ default with `setDefaultApplicationAtURL:toOpenContentType:completionHandler:`
 applications in `/Applications`, `/System/Applications` and `~/Applications`.
 Requests also take a MIME type, an extension such as `.txt` or
 `x-scheme-handler/<scheme>`. It needs no window and no AppKit event loop. See
-the [desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
+the [desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/desktop-applications.md).
 
 ## Secret storage
 
@@ -346,7 +346,7 @@ Binary secrets of up to 64 KiB are the item's data as is.
   are not moved: read them with a store without the option and write them with
   one that has it.
 
-See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/secret-storage.md).
 
 ## Message boxes
 
@@ -411,7 +411,7 @@ them: the application asks for the action's Authorization Services right, which
 shows the authorization dialog, and sends the authorization's external form and
 the argument vector to the daemon over XPC. The daemon checks the right again
 without interaction and starts the program. The design and its security review
-are in [the privileged operations specification](../../../specs/platform/privileged-operations.md#macos-design).
+are in [the privileged operations specification](../../../docs/design/platform/privileged-operations.md#macos-design).
 
 ### Build
 

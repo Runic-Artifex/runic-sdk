@@ -306,8 +306,7 @@ messages.
   only the same appearance with other properties. `Id` stays the BSD name.
   (I-218: 0.11 reported such a pair as one `Changed`.)
 
-## Out of scope for 1.0
+## Not planned
 
 Formatting and partitioning, powering off a drive, locking a volume again, a
-custom mount path and network locations (GVFS mounts) are not part of 1.0
-(D029.17).
+custom mount path and network locations (GVFS mounts) are left out (D029.17).

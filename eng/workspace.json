@@ -534,7 +534,7 @@
         "packages/dotnet/Runic.Platform.Windows.Elevation",
         "tests/dotnet/Runic.Platform.Windows.Elevation.Tests",
         "tests/native/Runic.Elevation.Smoke",
-        "specs/platform",
+        "docs/design/platform",
         "eng/ci/macos-voiceover.sh",
         "eng/ci/macos-appearance.sh",
         "eng/ci/macos-open-probe.sh",

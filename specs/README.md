@@ -3,13 +3,14 @@
 Normative schemas, protocol contracts, and cross-language conformance corpora live
 here, grouped by the component that owns them. Managed and web tests consume these
 inputs. Translation CLI packages embed their schemas directly from this tree.
+The .NET designs of the native platform services are not contracts; they are in
+[docs/design/platform](../docs/design/platform/README.md).
 
 - [Desktop](desktop): native transport contract and conformance vectors, and the [host protocol](desktop/host-protocol.md)
   between a host application and the guest application whose windows it shows.
 - [Assets](assets): archive format decisions.
 - [Application](application): the Runic Application Views protocol between a producer (the backend of a window) and
   a client (the page), its value types and canonical form, and its [conformance corpus](application/conformance).
-- [Platform](platform): cross-platform designs of native services, such as [privileged operations](platform/privileged-operations.md), [secret storage](platform/secret-storage.md), [opening files and URLs](platform/open-activation.md), the [trash](platform/trash.md), [file transfers](platform/file-transfers.md), [volumes](platform/volumes.md), [desktop applications](platform/desktop-applications.md) and [thumbnails](platform/thumbnails.md).
 
 Runic Application Views selects contracts from explicit .NET Window and View
 types and generates clients during the build. The messages between them follow

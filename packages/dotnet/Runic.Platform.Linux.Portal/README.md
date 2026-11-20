@@ -430,7 +430,7 @@ The Secret Service has no per-application isolation: any process of the same
 user on the session bus can read every item, so a service and account name is
 no access boundary. The Secret portal file is per Flatpak application.
 
-See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/secret-storage.md).
 
 ## Trash
 
@@ -450,7 +450,7 @@ write; it is sent a symbolic link as the link itself, which xdg-desktop-portal
 1.22.1 refuses, so a link reports `Unavailable(BackendUnavailable)` there, as do
 listing, restoring and emptying.
 See the
-[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
+[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/trash.md).
 
 ## Volumes
 
@@ -467,7 +467,7 @@ Snap, connect the `udisks2` interface. `UnlockAsync(id, passphrase, token)`
 unlocks a LUKS container (`Encrypted.Unlock`) and returns its cleartext
 filesystem, a volume with an `Id` of its own; `MountAsync(id, options, token)`
 passes the options, with `ro` for read-only, as UDisks2's `options`. See the
-[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/volumes.md).
 
 ## Network status
 
@@ -538,7 +538,7 @@ Runic.Platform.Linux.DBus; a `Terminal=true` entry reports
 of `$XDG_CONFIG_HOME/mimeapps.list` and keeps every other byte. The icon theme
 comes from the Settings portal, then KDE's `kdeglobals`, then `hicolor`. Inside
 Flatpak or Snap only content types and icons work. See the
-[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
+[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/desktop-applications.md).
 
 ## Thumbnails
 
@@ -555,4 +555,4 @@ thumbnails their file managers already made are returned; running a desktop's
 `--talk-name=org.freedesktop.thumbnails.Thumbnailer1` to the finish arguments;
 without them requests return no thumbnail and the diagnostic sink reports
 `thumbnail-cache-unavailable` or `thumbnailer-access-denied`. See the
-[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/thumbnails.md).

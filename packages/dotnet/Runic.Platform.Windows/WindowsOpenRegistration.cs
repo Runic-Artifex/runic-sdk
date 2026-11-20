@@ -5,7 +5,7 @@ using Windows.Win32.UI.Shell;
 
 namespace Runic.Platform.Windows;
 
-// Per-user URL protocols and file types under HKCU\Software\Classes, as open-activation.md lists them: a protocol key
+// Per-user URL protocols and file types under HKCU\Software\Classes, as docs/design/platform/open-activation.md lists them: a protocol key
 // and a ProgID <applicationId>.<extension> whose command is "<exe>" "%1", the extension's OpenWithProgids entry, and
 // Capabilities registered under RegisteredApplications so Settings > Default apps lists the application. The
 // extension's default is never set: the user chooses defaults. Every key Runic writes carries the application ID, so
