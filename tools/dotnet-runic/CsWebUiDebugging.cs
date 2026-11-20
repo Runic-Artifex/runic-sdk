@@ -123,8 +123,7 @@ internal static partial class CsWebUiDebugging
             listener.Start();
             return true;
         }
-        catch (SocketException error) when (address.AddressFamily == AddressFamily.InterNetworkV6 &&
-            error.SocketErrorCode is SocketError.AddressNotAvailable or SocketError.AddressFamilyNotSupported)
+        catch (SocketException error) when (LoopbackListeners.IsMissingAddress(address, error))
         {
             return true;
         }

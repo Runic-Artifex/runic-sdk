@@ -18,6 +18,22 @@ internal static class PortHolder
     private const int CommandLineLimit = 80;
 
     /// <summary>
+    /// What holds <paramref name="port"/> on 127.0.0.1 or <c>[::1]</c> (DEV-SEC-80): another user's uid, or else this
+    /// user's process as <see cref="Describe"/> names it. A listener on either address takes the port from dev, which
+    /// listens on both (<see cref="LoopbackListeners"/>).
+    /// </summary>
+    internal static (uint? Owner, string? Holder) OnLoopback(LoopbackSockets? sockets, int port)
+    {
+        if (sockets is null) return (null, null);
+        IPAddress[] addresses = [IPAddress.Loopback, IPAddress.IPv6Loopback];
+        foreach (IPAddress address in addresses)
+            if (sockets.ForeignListener(address, port) is { } owner) return (owner, null);
+        foreach (IPAddress address in addresses)
+            if (Describe(sockets, address, port) is { } holder) return (null, holder);
+        return (null, null);
+    }
+
+    /// <summary>
     /// The process of this user that listens on <paramref name="address"/>:<paramref name="port"/>, as a phrase such as
     /// "another dotnet runic dev session (process 4242, in /home/me/OtherApp)", or null when it cannot be told: another
     /// user's process, which <c>/proc</c> does not show, or no listener in the tables.

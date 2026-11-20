@@ -32,7 +32,9 @@ namespace Runic.Application.Tool;
 /// admitted browser's when that browser's next navigation, which the admission's page makes, presents it; then the
 /// previous browser's cookie ends and its open WebSocket connections close. Until then the previous admission stays.
 /// Every other request needs the admitted browser's cookie. On Linux the address also answers only the user who runs dev
-/// (<see cref="CheckPeer"/>).
+/// (<see cref="CheckPeer"/>). It listens on 127.0.0.1 and <c>[::1]</c> (<see cref="LoopbackListeners"/>), with the same
+/// rules on both: Chromium sends <c>&lt;label&gt;.localhost</c> to <c>[::1]</c> first, where another user could
+/// otherwise listen and receive the code (DEV-SEC-80).
 /// </para>
 /// <para>
 /// Forwarding: a request of the bound browser goes to the Window's own loopback server with its <c>Host</c> rewritten
@@ -68,7 +70,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
 
     private const int MaximumHead = 64 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
-    private readonly TcpListener _listener;
+    private readonly LoopbackListeners _listeners;
     private readonly object _gate = new();
     private readonly List<Served> _windows = [];
     // The surface paths of earlier Window processes, by Window index: a page of an earlier process reconnects there.
@@ -88,16 +90,19 @@ internal sealed class BrowserEntry : IAsyncDisposable
     // How long after its close command a Window's address waits for a successor, as when dotnet watch restarts it.
     internal static readonly TimeSpan ClosingGrace = TimeSpan.FromSeconds(5);
 
-    private BrowserEntry(TcpListener listener, LoopbackSockets? sockets, Action<string> report, string? codeFile, string label)
+    private BrowserEntry(LoopbackListeners listeners, LoopbackSockets? sockets, Action<string> report, string? codeFile, string label)
     {
-        _listener = listener;
+        _listeners = listeners;
         _sockets = sockets;
         _report = report;
         CodeFile = codeFile;
         Label = label;
     }
 
-    internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+    internal int Port => _listeners.Port;
+
+    /// <summary>The addresses the entry listens on: 127.0.0.1, and <c>[::1]</c> unless the system has no IPv6.</summary>
+    internal IReadOnlyList<IPAddress> Addresses => [.. _listeners.Listeners.Select(static listener => ((IPEndPoint)listener.LocalEndpoint).Address)];
 
     /// <summary>The address of the Window's first page, without the code.</summary>
     internal string Url => Origin + "/";
@@ -166,7 +171,8 @@ internal sealed class BrowserEntry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Listens on 127.0.0.1:<paramref name="port"/> (0 for any free port); null when the port is taken.
+    /// Listens on 127.0.0.1:<paramref name="port"/> and <c>[::1]</c>:<paramref name="port"/> (0 for a port free on both);
+    /// null when the port is taken on either address, so dev never serves on one while another program has the other.
     /// <paramref name="sockets"/> tells who owns a connection's other end (null: no check, off Linux); <paramref name="report"/>
     /// receives the <c>[dev]</c> line for each user whose request it refused; <paramref name="codeFile"/> is the page
     /// that opens the address with the current code (<see cref="CodeFileName"/> in the session directory), or null.
@@ -174,19 +180,10 @@ internal sealed class BrowserEntry : IAsyncDisposable
     internal static BrowserEntry? TryStart(int port, LoopbackSockets? sockets = null, Action<string>? report = null, string? codeFile = null,
         string? label = null)
     {
-        var listener = new TcpListener(IPAddress.Loopback, port);
-        try
-        {
-            listener.Start();
-        }
-        catch (SocketException)
-        {
-            listener.Dispose();
-            return null;
-        }
-        var entry = new BrowserEntry(listener, sockets, report ?? Console.Error.WriteLine, codeFile, label ?? NewLabel());
+        if (LoopbackListeners.TryStart(port) is not { } listeners) return null;
+        var entry = new BrowserEntry(listeners, sockets, report ?? Console.Error.WriteLine, codeFile, label ?? NewLabel());
         entry.WriteCodeFile();
-        entry._accepting = Task.Run(entry.AcceptAsync);
+        entry._accepting = Task.WhenAll(listeners.Listeners.Select(listener => Task.Run(() => entry.AcceptAsync(listener))));
         return entry;
     }
 
@@ -796,13 +793,13 @@ internal sealed class BrowserEntry : IAsyncDisposable
         return false;
     }
 
-    private async Task AcceptAsync()
+    private async Task AcceptAsync(TcpListener listener)
     {
         try
         {
             while (!_stop.IsCancellationRequested)
             {
-                TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                TcpClient client = await listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
                 lock (_connections)
                 {
                     _connections.RemoveAll(static task => task.IsCompleted);
@@ -1061,7 +1058,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
-        _listener.Stop();
+        _listeners.Stop();
         Task[] connections;
         lock (_connections) connections = [.. _connections];
         try
@@ -1071,7 +1068,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
         catch (Exception error) when (error is not OutOfMemoryException)
         {
         }
-        _listener.Dispose();
+        _listeners.Dispose();
         _stop.Dispose();
         // The code admits no browser once dev has stopped: the page that carries it goes too.
         if (CodeFile is { } path)

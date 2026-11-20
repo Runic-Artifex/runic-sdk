@@ -92,6 +92,11 @@ export const windowsFileReplacePaths = [
 export const windowsPrivateFilePaths = [
   "tools/dotnet-runic/BrowserEntry.cs", "tests/dotnet/Runic.Application.Tool.Tests/DevBrowserCodeFileTests.cs",
 ];
+// dev's loopback listeners on 127.0.0.1 and [::1] (DEV-SEC-80): Windows binds a port on the two addresses by rules of its
+// own. Their checks are in ToolTests' WindowsCommands category, which the native job's Windows x64 leg runs.
+export const windowsLoopbackPaths = [
+  "tools/dotnet-runic/LoopbackListeners.cs", "tests/dotnet/Runic.Application.Tool.Tests/LoopbackFamilyTests.cs",
+];
 export const platformRules = [
   // GTK 4, the Linux providers and the manual global menu check run on the Linux legs only.
   { platforms: [], paths: ["packages/dotnet/Runic.Desktop.Gtk4", "tests/native/Runic.Desktop.Gtk4.Smoke", "tests/native/Runic.Desktop.GlobalMenuCheck",
@@ -142,6 +147,8 @@ export const platformRules = [
   { platforms: ["win-x64"], paths: windowsFileReplacePaths },
   // dev --browser's private code file on Windows (#1187), above.
   { platforms: ["win-x64"], paths: windowsPrivateFilePaths },
+  // dev's listeners on both loopback addresses (DEV-SEC-80), above.
+  { platforms: ["win-x64"], paths: windowsLoopbackPaths },
   // The NVDA leg's driver, which runs in the screen reader job on Windows x64 only.
   { platforms: ["win-x64"], paths: ["eng/ci/windows-nvda.ps1"] },
   // The Windows providers and elevation, on both Windows architectures.

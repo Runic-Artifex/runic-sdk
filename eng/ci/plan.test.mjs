@@ -8,7 +8,7 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
-  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, matchesPath } from './platforms.mjs';
+  globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths, matchesPath } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -477,6 +477,16 @@ test('dotnet runic dev --browser\'s private code file plans the native Windows x
     assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
   }
   assert.deepEqual(plan(['tests/dotnet/Runic.Application.Tool.Tests/DevBrowserTests.cs']).platforms, []);
+});
+
+// DEV-SEC-80: dev's listeners on 127.0.0.1 and [::1] and their checks plan the native Windows x64 leg, which runs them.
+test('dotnet runic dev\'s loopback listeners plan the native Windows x64 leg', () => {
+  assert.deepEqual(windowsLoopbackPaths,
+    ['tools/dotnet-runic/LoopbackListeners.cs', 'tests/dotnet/Runic.Application.Tool.Tests/LoopbackFamilyTests.cs']);
+  for (const file of windowsLoopbackPaths) {
+    assert.ok(existsSync(resolve(root, file)), file);
+    assert.deepEqual(plan([file]).native.include, legsFor(nativeLegs, ['win-x64']), file);
+  }
 });
 
 // The narrow rule above holds only while every process start of the tool goes through CommandRunner, whose callers pass

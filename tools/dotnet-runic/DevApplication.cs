@@ -65,7 +65,8 @@ internal static class DevApplication
     {
         string moved = port == BrowserEntry.DefaultPort
             ? ""
-            : $" Port {BrowserEntry.DefaultPort.ToString(System.Globalization.CultureInfo.InvariantCulture)} was taken, so the address moved; the page opens it.";
+            : $" Port {BrowserEntry.DefaultPort.ToString(System.Globalization.CultureInfo.InvariantCulture)} was taken on 127.0.0.1 or [::1], " +
+                "so the address moved to a port free on both; the page opens it.";
         return $"[dev] Browser: the Window serves without a native window (--browser). Open {codeUrl} " +
             $"in Chrome or Edge, or the page obj/runic/{BrowserEntry.CodeFileName}, as your IDE's launch configuration does. " +
             "The code admits one browser, which keeps the address after the Window restarts: a Runic Desktop page reloads " +
@@ -210,9 +211,8 @@ internal static class DevApplication
             }
             else if (!options.StartWindow)
             {
-                uint? owner = sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
-                throw new DevDevelopmentException(WebKitDebugging.NoWindowCdpPortTakenCode, WebKitDebugging.NoWindowCdpPortTakenMessage(
-                    owner, owner is null ? PortHolder.Describe(sockets, IPAddress.Loopback, WebKitDebugging.DefaultCdpPort) : null));
+                (uint? owner, string? holder) = PortHolder.OnLoopback(sockets, WebKitDebugging.DefaultCdpPort);
+                throw new DevDevelopmentException(WebKitDebugging.NoWindowCdpPortTakenCode, WebKitDebugging.NoWindowCdpPortTakenMessage(owner, holder));
             }
             else
             {

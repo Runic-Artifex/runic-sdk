@@ -13,6 +13,7 @@
 // "Window in Chrome" does for `dotnet runic dev --browser` (#1031): the same scenarios on Chromium.
 //        node dap-scenarios.mjs --jsdebug <js-debug dir> --launch <url> --frontend <Frontend dir> [--browser <executable>] …
 // --launch-file instead launches Chrome at a local page, as the configuration's "file" does: dev --browser's code file (#1187).
+// --browser-arg=<argument> adds an argument to that Chrome's command line.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -35,6 +36,8 @@ const { values: a } = parseArgs({ options: {
   launch: { type: "string" }, browser: { type: "string" },
   // A launch configuration's file instead of its url.
   "launch-file": { type: "string" },
+  // More arguments for the launched Chrome, each as --browser-arg=<argument>.
+  "browser-arg": { type: "string", multiple: true },
 } });
 const app = `${a.frontend}/src/App.tsx`;
 const counterPage = `${a.frontend}/src/pages/CounterPage.tsx`;
@@ -142,7 +145,7 @@ async function attachIde() {
     // Headless without a display; --no-sandbox for CI runners whose kernel refuses Chrome's sandbox.
     ? parent.send("launch", { type: a.type, request: "launch", name: "browser", ...(a["launch-file"] ? { file: a["launch-file"] } : { url: a.launch }),
       webRoot: a.frontend, timeout: 30000,
-      perScriptSourcemaps: a["per-script-sourcemaps"], runtimeExecutable: a.browser ?? "stable", runtimeArgs: ["--headless=new", "--no-sandbox"],
+      perScriptSourcemaps: a["per-script-sourcemaps"], runtimeExecutable: a.browser ?? "stable", runtimeArgs: ["--headless=new", "--no-sandbox", ...(a["browser-arg"] ?? [])],
       ...(a.trace ? { trace: { logFile: a.trace } } : {}) })
     : parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
       perScriptSourcemaps: a["per-script-sourcemaps"],

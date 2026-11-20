@@ -483,6 +483,14 @@ Whoever it admits uses the Window as you do, Bridge included. Since 0.23
   dependency left behind for example, are another origin's and do not reach a
   later session's code, bootstrap or Bridge. Chromium browsers and Firefox
   resolve names under `.localhost` to the loopback interface themselves.
+- **Both loopback addresses.** Chromium connects to `[::1]` first, and any
+  local user can listen there. Since 0.23.0, `dev` listens on 127.0.0.1 and
+  `[::1]` with the same rules, and takes a port only when it is free on both:
+  when another program holds 9224 on either address, the address moves to a
+  port free on both, and the `[dev] Browser:` line says so. The CDP adapter on
+  Linux does the same, as a debugger told `localhost` may also try `[::1]`
+  first. A system without IPv6 has no `[::1]` for anyone to take, and `dev`
+  listens on 127.0.0.1 alone.
 
 - **One browser, by a one-time code.** A request with the current code admits
   its browser, also from another site: the code page that `dev` writes is a

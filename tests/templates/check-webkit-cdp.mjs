@@ -13,10 +13,14 @@
 // file with the same scenarios on Chromium, a Window restart among them: the page reloads itself onto the new Window.
 // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH selects the browser; otherwise js-debug finds the installed Chrome.
 //
+// dev's adapter and --browser's address listen on 127.0.0.1 and [::1] (DEV-SEC-80): the checks run on both, unless the
+// runner has no IPv6 loopback.
+//
 // RUNIC_DEV_TOOL_DLL=<path to dotnet-runic.dll> runs a locally built dev instead of the project's dotnet-runic tool.
 // The project's dotnet-runic must be restored. Needs Xvfb, dbus-run-session and the WebKitGTK of the project's GTK.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createServer } from "node:net";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
@@ -24,6 +28,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { scaled } from "../support/timeouts.mjs";
+
+// Whether this machine has an IPv6 loopback address that a server can listen on.
+const hasIpv6Loopback = await new Promise(resolve => {
+  const server = createServer();
+  server.once("error", () => resolve(false));
+  server.listen(0, "::1", () => server.close(() => resolve(true)));
+});
+const loopbacks = hasIpv6Loopback ? ["127.0.0.1", "[::1]"] : ["127.0.0.1"];
+if (!hasIpv6Loopback) console.log("LOOPBACK|no IPv6 loopback on this machine: the [::1] checks are skipped");
 
 // The js-debug release the check runs (D038: older than a day when pinned), and its archive's SHA-256.
 const jsDebugVersion = "1.140.1";
@@ -127,7 +140,16 @@ try {
     const actual = status(headers);
     if (actual !== expected) throw new Error(`${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
   }
-  console.log("WEBKIT_CDP_SECURITY_OK|loopback without Origin 200|foreign Origin 403|foreign Host 403");
+  // The adapter listens on [::1] too, with the same rules: a debugger told localhost may connect there first.
+  if (hasIpv6Loopback) {
+    const ipv6 = headers => spawnSync("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}",
+      ...headers.flatMap(header => ["-H", header]), `http://[::1]:${port}/json/version`], { encoding: "utf8" }).stdout;
+    for (const [headers, expected] of [[[], "200"], [["Origin: https://example.com"], "403"], [[`Host: example.com:${port}`], "403"]]) {
+      const actual = ipv6(headers);
+      if (actual !== expected) throw new Error(`[::1] ${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
+    }
+  }
+  console.log(`WEBKIT_CDP_SECURITY_OK|${loopbacks.join(" and ")}|loopback without Origin 200|foreign Origin 403|foreign Host 403`);
 
   const run = spawnSync(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--port", port,
     "--frontend", join(project, "Frontend"), "--restart-file", csharp, "--inspector", session.window.environment.WEBKIT_INSPECTOR_SERVER,
@@ -203,38 +225,49 @@ async function checkBrowser() {
 
     // Only the code admits a browser, also from the code file's page (file:, so cross-site), with dev's cookie; then only
     // that browser's own requests reach the Window: not another client, a web page, a foreign Origin or a DNS-rebound name.
-    // curl reaches <label>.localhost on the loopback interface (--resolve), as a browser resolves it itself.
-    const request = (headers, target = url) => {
-      const run = spawnSync("curl", ["-s", "--resolve", `${sessionLabel}.localhost:${port}:127.0.0.1`, "-D", "-", "-w", "\n%{http_code}",
+    // curl reaches <label>.localhost on a loopback address (--resolve), as a browser resolves it itself: on 127.0.0.1 and
+    // on [::1], where Chromium connects first, with the same rules on both (DEV-SEC-80).
+    const requestOn = (loopback, headers, target = url) => {
+      const run = spawnSync("curl", ["-s", "--resolve", `${sessionLabel}.localhost:${port}:${loopback}`, "-D", "-", "-w", "\n%{http_code}",
         ...headers.flatMap(header => ["-H", header]), target], { encoding: "utf8" });
       return { status: run.stdout.slice(-3), cookie: /^set-cookie: ([^\r\n]*)/im.exec(run.stdout)?.[1], text: run.stdout };
     };
-    const check = (label, headers, expected, target) => {
-      const actual = request(headers, target).status;
-      if (actual !== expected) throw new Error(`${label} ${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
+    const checkOn = (loopback, label, headers, expected, target) => {
+      const actual = requestOn(loopback, headers, target).status;
+      if (actual !== expected) throw new Error(`${loopback}: ${label} ${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
     };
-    check("no code", ["Sec-Fetch-Site: none"], "403");
-    // Another name, with the code too, is refused without the label: 127.0.0.1, plain localhost, another label.
-    for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `other.localhost:${port}`]) {
-      for (const target of [url, `${url}?code=${printedCode}`]) {
-        const answer = request([`Host: ${host}`, "Sec-Fetch-Site: none"], target);
-        if (answer.status !== "403" || answer.text.includes(sessionLabel) || answer.cookie || /^location:/im.test(answer.text))
-          throw new Error(`Host ${host}: HTTP ${answer.status}${answer.text.includes(sessionLabel) ? ", the answer names the label" : ""}`);
+    let cookie;
+    for (const loopback of loopbacks) {
+      const request = (headers, target) => requestOn(loopback, headers, target);
+      const check = (label, headers, expected, target) => checkOn(loopback, label, headers, expected, target);
+      // Each pass admits curl with the code that the code file opens now.
+      const currentCode = codeOf();
+      check("no code", ["Sec-Fetch-Site: none"], "403");
+      // Another name, with the code too, is refused without the label: 127.0.0.1, plain localhost, another label.
+      for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `other.localhost:${port}`]) {
+        for (const target of [url, `${url}?code=${currentCode}`]) {
+          const answer = request([`Host: ${host}`, "Sec-Fetch-Site: none"], target);
+          if (answer.status !== "403" || answer.text.includes(sessionLabel) || answer.cookie || /^location:/im.test(answer.text))
+            throw new Error(`Host ${host}: HTTP ${answer.status}${answer.text.includes(sessionLabel) ? ", the answer names the label" : ""}`);
+        }
       }
+      check("a wrong code", ["Sec-Fetch-Site: none"], "403", `${url}?code=guess`);
+      const admitted = request(["Sec-Fetch-Site: cross-site"], `${url}?code=${currentCode}`);
+      if (admitted.status !== "200" || !/; HttpOnly; SameSite=Strict$/.test(admitted.cookie ?? "")) throw new Error(`${loopback}: the code's admission: ${JSON.stringify(admitted)}`);
+      const previous = cookie;
+      cookie = `Cookie: ${admitted.cookie.split(";")[0]}`;
+      if (codeOf() === currentCode) throw new Error("The admission did not replace the code in the code file");
+      check("the used code", ["Sec-Fetch-Site: none"], "403", `${url}?code=${currentCode}`);
+      check("the admitted browser", [cookie, "Sec-Fetch-Site: none"], "302");
+      // One bound browser across both addresses: this admission ended the one on the other address.
+      if (previous) check("the browser admitted on the other address", [previous, "Sec-Fetch-Site: none"], "403");
+      check("a cross-site request", [cookie, "Sec-Fetch-Site: cross-site"], "403");
+      check("a foreign Origin", [cookie, "Origin: https://example.com"], "403");
+      check("a foreign Host", [cookie, `Host: example.com:${port}`], "403");
+      check("127.0.0.1 with the cookie", [cookie, `Host: 127.0.0.1:${port}`], "403");
+      if (/;\s*domain=/i.test(admitted.cookie)) throw new Error(`dev's cookie is not host-only: ${admitted.cookie}`);
     }
-    check("a wrong code", ["Sec-Fetch-Site: none"], "403", `${url}?code=guess`);
-    const admitted = request(["Sec-Fetch-Site: cross-site"], `${url}?code=${printedCode}`);
-    if (admitted.status !== "200" || !/; HttpOnly; SameSite=Strict$/.test(admitted.cookie ?? "")) throw new Error(`The code's admission: ${JSON.stringify(admitted)}`);
-    const cookie = `Cookie: ${admitted.cookie.split(";")[0]}`;
-    if (codeOf() === printedCode) throw new Error("The admission did not replace the code in the code file");
-    check("the used code", ["Sec-Fetch-Site: none"], "403", `${url}?code=${printedCode}`);
-    check("the admitted browser", [cookie, "Sec-Fetch-Site: none"], "302");
-    check("a cross-site request", [cookie, "Sec-Fetch-Site: cross-site"], "403");
-    check("a foreign Origin", [cookie, "Origin: https://example.com"], "403");
-    check("a foreign Host", [cookie, `Host: example.com:${port}`], "403");
-    check("127.0.0.1 with the cookie", [cookie, `Host: 127.0.0.1:${port}`], "403");
-    if (/;\s*domain=/i.test(admitted.cookie)) throw new Error(`dev's cookie is not host-only: ${admitted.cookie}`);
-    console.log("DEV_BROWSER_SECURITY_OK|no code 403|other names 403 without the label|code admits 200 host-only HttpOnly SameSite=Strict|used code 403|admitted 302|cross-site 403|foreign Origin 403|foreign Host 403");
+    console.log(`DEV_BROWSER_SECURITY_OK|${loopbacks.join(" and ")}|no code 403|other names 403 without the label|code admits 200 host-only HttpOnly SameSite=Strict|used code 403|admitted 302|cross-site 403|foreign Origin 403|foreign Host 403`);
 
     // The page in Chrome under js-debug, as VS Code runs the configuration: its file. The Window restarts under the same
     // session, and the page reloads itself onto the new Window, where the breakpoint stops again.
@@ -243,6 +276,9 @@ async function checkBrowser() {
     const run = await new Promise(resolve => {
       const child = spawn(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--launch-file", codeFile,
         "--frontend", webRoot, "--restart-file", csharp, ...(browser ? ["--browser", browser] : []),
+        // Chrome on [::1] only, where Chromium connects first anyway: the page, its Bridge, HMR and the restart's reload all
+        // go through dev's IPv6 listener (DEV-SEC-80). The Host stays <label>.localhost:<port>.
+        ...(hasIpv6Loopback ? [`--browser-arg=--host-resolver-rules=MAP *.localhost [::1]`] : []),
         "--only", values.only ?? "step-in-out,conditional,logpoint,exception,uncaught-output,console-levels,set-variable,reload,window-restart,hmr",
         ...(values.trace ? ["--trace", values.trace] : [])], { stdio: ["ignore", "pipe", "pipe"] });
       let stdout = "";
@@ -258,7 +294,7 @@ async function checkBrowser() {
     if (!/^\[dev\] Browser: a browser used the code\. The next one is http:\/\/[a-z0-9]+\.localhost:\d+\/\?code=[\w-]+; /m.test(output))
       throw new Error("dotnet runic dev --browser printed no line for the browser it admitted");
     // One bound browser: Chrome's admission ended curl's.
-    check("the earlier browser", [cookie, "Sec-Fetch-Site: none"], "403");
+    for (const loopback of loopbacks) checkOn(loopback, "the earlier browser", [cookie, "Sec-Fetch-Site: none"], "403");
     console.log(`DEV_BROWSER_OK|${/^\[[\d.]+s\] (\d+\/\d+) passed$/m.exec(run.stdout)?.[1] ?? "?"}`);
   } catch (error) {
     console.error(tail(output));

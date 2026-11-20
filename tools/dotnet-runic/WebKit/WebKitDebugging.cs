@@ -176,8 +176,7 @@ internal static class WebKitDebugging
         /// <summary>Looks up what holds 9222 and which of the project's attach configurations expect it.</summary>
         internal static DefaultPortTaken Find(LoopbackSockets? sockets, string projectDirectory)
         {
-            uint? owner = sockets?.ForeignListener(IPAddress.Loopback, DefaultCdpPort);
-            string? holder = owner is null ? PortHolder.Describe(sockets, IPAddress.Loopback, DefaultCdpPort) : null;
+            (uint? owner, string? holder) = PortHolder.OnLoopback(sockets, DefaultCdpPort);
             (string? path, IReadOnlyList<string> names) = PortHolder.FixedAttachConfigurations(projectDirectory, DefaultCdpPort);
             string? shown = path;
             if (path is not null && System.IO.Path.GetRelativePath(projectDirectory, path) is var relative &&
