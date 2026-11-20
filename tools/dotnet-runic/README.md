@@ -184,9 +184,9 @@ tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
-The .NET SDK passes at a certified version: SDK 10.0.403, or SDK 11.0.100,
+The .NET SDK passes at a certified version: SDK 10.0.404, or SDK 11.0.100,
 which builds `net10.0` applications too (0.18). It warns for any other SDK from
-10.0.403 on, such as a newer patch or an uncertified newer major version, and
+10.0.404 on, such as a newer patch or an uncertified newer major version, and
 fails for an older SDK or one that cannot build the target framework. A newer
 major SDK does not bring the runtime that a `net10.0` application runs on, so
 `dotnet-runtime` checks with `dotnet --list-runtimes` that the .NET 10 runtime
@@ -400,7 +400,7 @@ Views Window opt-in that `dev` needs too.
 #### `dotnet-sdk`
 
 The .NET SDK that builds the project: passes at a certified version, warns for
-another one from 10.0.403 on, and fails for an older SDK or one that cannot
+another one from 10.0.404 on, and fails for an older SDK or one that cannot
 build the project's target framework. See the paragraph on the .NET SDK above.
 
 #### `dotnet-runtime`

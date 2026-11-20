@@ -52,8 +52,8 @@ let
   windowsTargetingPack = [
     (pkgs.dotnetCorePackages.fetchNupkg {
       pname = "Microsoft.WindowsDesktop.App.Ref";
-      version = "10.0.14";
-      hash = "sha256-Z8cQ60pe4Opa5jdSI7Vi2tcX0h/b2ythN0/5lG1c674=";
+      version = "10.0.15";
+      hash = "sha256-ZIUX1yp3K8RhviXvY3u6PGid5Cbvcfc8/0tMHNY6d6Y=";
     })
   ];
 
