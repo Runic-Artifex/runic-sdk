@@ -53,7 +53,7 @@
         "type": "Direct",
         "requested": "[0.15.0, )",
         "resolved": "0.15.0",
-        "contentHash": "8bP2tLCow1cCu7wgh1fkgWHPfZC+i0BRZdZ5rYTAADT6j9wqeocFzOARyL5Zd1Gb+sFD3jA9R0kg0fu4MVYL5g=="
+        "contentHash": "yKrDHb1y+eo0FSoZzQDqe+GjrONpE6cZIddQLyVCiz1ZeIHWXfe4TDzj4Vtco7diMcJ4/aKnYdVYwE8DJ/49Ew=="
       },
       "RunicArtifex.ReactiveUI.Validation": {
         "type": "Direct",
