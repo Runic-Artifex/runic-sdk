@@ -44,7 +44,7 @@ try
     else
     {
         var expectations = Expectations.For(host, screenReaderName);
-        using var scenario = new Scenario(client, report, expectations, assertiveInPage: host == "webview2");
+        using var scenario = new Scenario(client, report, expectations, assertiveInPage: host is "webview2" or "wpf");
         await scenario.RunAsync(deadline.Token);
         if (screenReader is not null) await new SpeechScenario(client, report, expectations, screenReader, scenario.Kept).RunAsync(deadline.Token);
         await scenario.FinishAsync(deadline.Token);

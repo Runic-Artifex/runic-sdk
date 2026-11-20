@@ -99,9 +99,18 @@ public sealed partial class RunicWebView : HwndHost
     // The announcer of the Desktop window presented here while its page has the keyboard focus, else null. Then the
     // focus is in WebView2's browser process, and NVDA ignores the WPF window's UI Automation notification, as for
     // Runic Desktop's own WebView2 window (I-184); WpfPlatformServices announces through the page's live region instead
-    // (I-203). On the dispatcher.
+    // (I-203). The same holds while the focus is on this control's child window or WebView2's window inside it, or on
+    // the WPF window itself while no WPF element has the keyboard focus: WebView2 activates the WPF window to carry out a
+    // UI Automation action from another process, and the focus passes there while the page's element stays the screen
+    // reader's focus (sdk#1203), as Runic Desktop's window decides (WindowsWebView2Host.IsFocusOnPageOrWindow, sdk#1181).
+    // On the dispatcher.
     internal Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? FocusedPageAnnouncer =>
-        _presentation is { IsOpen: true, AnnounceInPage: { } announce } && WindowsWebView2Host.IsWebContentFocusedIn(_child) ? announce : null;
+        _presentation is { IsOpen: true, AnnounceInPage: { } announce }
+        && WindowsWebView2Host.IsFocusOnPageOrWindowIn(_child, Keyboard.FocusedElement is null || Keyboard.FocusedElement == this ? HostWindow : 0)
+            ? announce : null;
+
+    // The WPF window (its HwndSource) that holds this control, or 0.
+    private nint HostWindow => PresentationSource.FromVisual(this) is HwndSource { IsDisposed: false } source ? source.Handle : 0;
 
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
