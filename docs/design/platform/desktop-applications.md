@@ -461,7 +461,7 @@ macOS 12 or earlier; Runic supports macOS 15 and later.
 - The image is drawn at `Size × Scale` pixels, at most 1024, into an sRGB
   bitmap and encoded with `NSBitmapImageRep` as PNG.
 
-## Out of scope for 1.0
+## Not planned
 
 - Starting `Terminal=true` applications, which needs the desktop's terminal.
 - Startup notification and XDG activation tokens for launched applications.

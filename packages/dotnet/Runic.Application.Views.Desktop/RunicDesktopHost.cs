@@ -644,9 +644,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
-                if (CloseDrainFor(opening.Options).KeepWindow) opening.ReportCloseDrainUnavailable("serve-only mode");
                 opening.ReportOwnerIgnored("serve-only mode shows no window");
-                owner.ServeUntil(ServeOnlyStopped());
+                // sdk#1190: serving ends (a line on standard input) as the Window's close; with a drain the surface keeps
+                // serving, its pages connected, until the Window's work has drained.
+                var serveOnlyDrain = CloseDrainFor(opening.Options);
+                owner.ServeUntil(serveOnlyDrain.KeepWindow ? DrainWhenServingEndsAsync(opening.Window, owner, serveOnlyDrain) : ServeOnlyStopped());
                 // region/1: a browser host's pages show guests' windows in their regions too (host-protocol.md, Browser
                 // hosts), until the Window closes.
                 var servedTransport = transport;
@@ -1063,6 +1065,20 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // A termination signal only requests shutdown, so it ends serving too.
     private Task<Task> ServeOnlyStopped() =>
         Task.WhenAny(NextServeOnlyLine(), Task.Delay(Timeout.Infinite, Desktop.ShutdownRequested));
+
+    // sdk#1190: a serve-only Window's close drain. Serving ends as without one; then the Window leaves
+    // IRunicWindowService.Windows and drains with its pages still connected, and WaitForCloseAsync returns when it ended.
+    // A termination signal ends serving through ShutdownRequested, which then also ends the drain: the host's shutdown
+    // drains only its embedded windows.
+    private async Task DrainWhenServingEndsAsync<TViewModel>(RunicWindow<TViewModel> window, DesktopBridgeWindow<TViewModel> owner,
+        RunicCloseDrain drain) where TViewModel : class
+    {
+        // The task that ended serving: a line, or the shutdown token's cancelled delay, which is not awaited.
+        _ = await ServeOnlyStopped().ConfigureAwait(false);
+        if (owner.CloseStarted.IsCompleted) return;
+        window.MarkClosing();
+        await owner.DrainForCloseAsync(drain.Timeout, Desktop.ShutdownRequested).ConfigureAwait(false);
+    }
 
     // One reader for the process: a line ends serving for every Window serving when it is read, and a Window opened
     // after it waits for the next line (#310). End of input (for example </dev/null) is not a stop request.

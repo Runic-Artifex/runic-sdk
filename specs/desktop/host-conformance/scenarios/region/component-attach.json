@@ -36,6 +36,7 @@
     {"receive":{"kind":"region-page","window":{"$id":"w1"},"page":"connected"},"connection":"c1"},
     {"component":{"request":"upgrade","token":{"$secret":"component-token"},"status":403},"note":"One page at a time."},
     {"send":{"kind":"region-detach","window":{"$id":"w1"},"reason":"removed"},"connection":"c1"},
+    {"component":{"request":"closed"},"note":"region-detach is a push without a reply: the page's closing shows that the guest applied it."},
     {"component":{"request":"upgrade","token":{"$secret":"component-token"},"refused":true}},
     {"component":{"request":"module","status":403}}
   ]

@@ -6,8 +6,9 @@ namespace Runic.Application.Views.CsWebUi;
 // (WebUiWindow.SetCloseHandler): WebView2 on Windows and WebKitGTK on Linux. The handler keeps the window open, the
 // Window's close guard (RunicWindowOpening.CloseGuard) decides in a model turn, and an approved close goes through
 // WebUiWindow.Close, which CS-WebUI never sends through the handler again. RunicWindow.RequestCloseAsync joins the same
-// decision (RunicWindowOpening.UseCloseRequest), so the user and the application never ask twice at once. Without a
-// guard the handler only lets the window close, after reading its placement (sdk#1149).
+// decision (RunicWindowOpening.UseCloseRequest), so the user and the application never ask twice at once. With a close
+// drain (sdk#1190) the decided close keeps the window open until the Window's work has drained, and a user close
+// meanwhile is ignored. Without either, the handler only lets the window close, after reading its placement (sdk#1149).
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
     Justification = "The source only cancels and has no timer; a guard may still hold its token after the window closed.")]
 internal sealed class CsWebUiUserClose
@@ -21,6 +22,8 @@ internal sealed class CsWebUiUserClose
     private readonly CancellationTokenSource _abandoned = new();
     private Task<bool>? _decision;
     private bool _closed;
+    // sdk#1190: set when a decided close starts the Window's drain, cleared when the drain's visible phase ended.
+    private bool _draining;
 
     // guard: the Window's close guard, or null for none. closeWindow: the approved user close (WebUiWindow.Close).
     // closeRequested: the approved close of RunicWindow.RequestCloseAsync, which releases the Window as before.
@@ -46,6 +49,24 @@ internal sealed class CsWebUiUserClose
     // sdk#1149: runs first in each user close, on WebUI's user-interface thread, to read the window's placement.
     internal Action? BeforeUserClose { get; init; }
 
+    // sdk#1190: the visible phase of a decided close (CsWebUiBridgeWindow.DrainForCloseAsync), which closes the window
+    // when it ends; null without a close drain.
+    internal Func<Task>? Drain { get; init; }
+
+    // Why a Window's close drain cannot keep its CS-WebUI window open, for event 1055, or null when it can: a WebView
+    // window where the guard can, and serve-only mode, which drains when serving ends (CsWebUiServeOnlyStop).
+    internal static string? DrainUnavailableReason(bool serveOnly, bool webView, bool customShow, bool closeHandlerSupported) =>
+        serveOnly ? null : GuardUnavailableReason(serveOnly, webView, customShow, closeHandlerSupported);
+
+    // Whether a drain's visible phase runs now, for tests.
+    internal bool IsDraining
+    {
+        get
+        {
+            lock (_gate) return _draining;
+        }
+    }
+
     // Whether a decision runs now, for tests.
     internal bool IsDeciding
     {
@@ -62,8 +83,10 @@ internal sealed class CsWebUiUserClose
         BeforeUserClose?.Invoke();
         lock (_gate)
         {
+            // The drain closes the window when it ends.
+            if (_draining) return false;
             if (_closed || _abandoned.IsCancellationRequested) return true;
-            if (_guard is null)
+            if (_guard is null && Drain is null)
             {
                 _closed = true;
             }
@@ -110,10 +133,31 @@ internal sealed class CsWebUiUserClose
             if (_closed || token.IsCancellationRequested) return true;
             if (!allowed) return false;
             _closed = true;
+            _draining = Drain is not null;
         }
         _closing();
+        if (Drain is { } drain)
+        {
+            // The close is decided: RequestCloseAsync returns now, and the window closes when the drain ends.
+            DrainThenClose(drain);
+            return true;
+        }
         if (userClose) _closeWindow();
         else await _closeRequested(CancellationToken.None).ConfigureAwait(false);
         return true;
+    }
+
+    // The Window's close reports a failed drain; the window closed with it. A continuation rather than an async method,
+    // whose state machine NativeAOT would compile.
+    private void DrainThenClose(Func<Task> drain)
+    {
+        Task drained;
+        try { drained = drain(); }
+        catch (Exception error) { drained = Task.FromException(error); }
+        _ = drained.ContinueWith(static (_, state) =>
+        {
+            var close = (CsWebUiUserClose)state!;
+            lock (close._gate) close._draining = false;
+        }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }

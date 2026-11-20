@@ -481,7 +481,7 @@ The version alone decides where a release goes (`latestEligible` in `registry.mj
 Every npm package is published with `--tag preview`, so `preview` always names the
 newest publication, and `tag-latest` then moves `latest` only to an eligible, higher
 version, never backwards on a late rerun. During the release candidates npm `latest`
-therefore stays at 0.11.0 until 1.0.0 is published (D043.5), as NuGet clients skip
+therefore stays at the last `0.y.z` release until 1.0.0 is published (D043.5), as NuGet clients skip
 prereleases by default. The **Check requested version** step accepts any SemVer
 version without build metadata that `eng/workspace.json` commits: `0.y.z`, a
 prerelease such as `1.0.0-rc.1`, or a stable `x.y.z`.
@@ -514,10 +514,10 @@ release with these differences:
    or behaviour changes. In the dry run of an rc, `tag-latest` reports
    `1.0.0-rc.N is a prerelease: npm latest stays where it is` and `github.mjs release`
    `Would create the prerelease`; for 1.0.0 they report
-   `Would move <package> latest from 0.11.0 to 1.0.0` and `Would create the release`.
+   `Would move <package> latest from <the last 0.y.z> to 1.0.0` and `Would create the release`.
 3. After each rc, move any `PublicAPI.Unshipped.txt` entries to Shipped as in step 6
    (only rc.1 may have some), but leave `RunicPackageValidationBaselineVersion` at the
-   last stable release, 0.11.0: from 1.0 the baseline is never a prerelease, and
+   last `0.y.z` release: from 1.0 the baseline is never a prerelease, and
    `bun eng/version.mjs check` fails once the train is 1.0 or later and the baseline
    has a prerelease suffix. `RunicCsWebUiPackageValidationBaselineVersion` moves to
    the published CsWebUi version as before.
@@ -560,7 +560,7 @@ whose release guides add only their own rules. The
 same policy.
 
 Applications on 0.9 follow the [migration guide to 1.0](../../docs/migration-1.0.md),
-which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0, 0.19.0, 0.20.0, 0.21.0 and 0.22.0.
+which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0, 0.19.0, 0.20.0, 0.21.0, 0.22.0 and 0.23.0.
 
 ### Version numbers
 

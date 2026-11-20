@@ -923,7 +923,7 @@ opens.Opened += (_, request) => { /* worker thread: validate each URI, then disp
 
 `DesktopOpenRequests.FromLaunch` is the argument parser on its own. Treat every
 opened URL and file as untrusted input: any web page can open a URL with the
-application's scheme. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists what
+application's scheme. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/open-activation.md) lists what
 each platform's package registers.
 
 `DesktopOpenOptions.WebLinkHosts` adds `https` links to the application's own
@@ -1004,7 +1004,7 @@ locked store that cannot ask the user to unlock it is `Failed(Locked)`; a
 dismissed unlock or access prompt is `Failed(UserDismissed)`. A request may wait
 while the store asks the user. Hosts without a provider register
 `DesktopSecretStore.Unavailable(reason)`. The
-[secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md) has the
+[secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/secret-storage.md) has the
 per-platform behaviour and its verification.
 
 ## Trash
@@ -1033,7 +1033,7 @@ the item is never deleted permanently instead: it stays where it was unless the
 result is `Success`. A missing item is `Failed(NotFound)`, a refused move
 `Failed(PermissionDenied)`. Hosts without a provider register
 `DesktopTrash.Unavailable(reason)`. The
-[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md)
+[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/trash.md)
 has the per-platform behaviour and its verification.
 
 `MoveAllToTrashAsync` trashes several items one after another with progress,
@@ -1085,7 +1085,7 @@ Inside Flatpak and Snap the host's applications are out of reach and the
 application methods report `Unavailable(BackendUnavailable)`; use
 `IDesktopFileLauncher` there. Hosts without a provider register
 `DesktopApplications.Unavailable(reason)`. The
-[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md)
+[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/desktop-applications.md)
 has the per-platform behaviour, the algorithms and their verification.
 
 ## Copy and move
@@ -1243,7 +1243,7 @@ Cancel aborts the command's `CancellationToken`, which stops the transfer within
 a block and puts back the item in progress. The
 [operations guide](https://docs.runic-artifex.eu/guides/application/guides/operations-and-cancellation/)
 covers pending state and cancellation feedback. The
-[file transfer design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/file-transfers.md)
+[file transfer design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/file-transfers.md)
 has the full behaviour and its verification.
 
 ### Watch a directory
@@ -1318,7 +1318,7 @@ await volumes.MountAsync(stick.Id, new DesktopVolumeMountOptions { ReadOnly = tr
 | macOS | Disk Arbitration, as Finder does; an application with a file open on the volume makes an unmount or eject `Failed(ResourceBusy)`. The startup disk's volumes are never unmounted or ejected. A locked APFS volume is listed and unlocks with its passphrase; mount options go to `DADiskMountWithArguments` |
 
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
-[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/volumes.md)
 has the per-platform behaviour and its verification.
 
 ## Preferred languages
@@ -1445,7 +1445,7 @@ a type no thumbnailer handles or one whose thumbnailing failed, is
 | macOS | Quick Look, as Finder shows them |
 
 Hosts without a provider register `DesktopThumbnails.Unavailable(reason)`. The
-[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md)
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/design/platform/thumbnails.md)
 has the per-platform behaviour and its verification.
 
 ## Screenshots and colour picking

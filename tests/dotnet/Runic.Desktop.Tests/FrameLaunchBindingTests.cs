@@ -215,7 +215,9 @@ public sealed class FrameLaunchBindingTests
             var session = await connected.Task.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
             Assert.Equal(origin, surface.ConnectionOrigin(session));
             Assert.Null(surface.ConnectionOrigin(session + 1));
-            await page.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            // #1222: only the close, without waiting for the surface's answer, which comes when it releases the page. The
+            // page is gone from the count as soon as it is closed, and so is its origin.
+            await page.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
             await WaitUntilAsync(() => surface.ConnectionCount == 0);
             Assert.Null(surface.ConnectionOrigin(session));
         }

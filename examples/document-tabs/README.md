@@ -59,7 +59,7 @@ details. See
   `OpenNotificationAsync` opens a notification's `ActivationUri` the same way.
   To open links from the desktop, register the `document-tabs` scheme for the
   built executable, as the
-  [opening files and URLs design](../../specs/platform/open-activation.md)
+  [opening files and URLs design](../../docs/design/platform/open-activation.md)
   describes.
 - **Back.** The page calls `installBackNavigation()`, so the mouse's Back
   button, Alt+Left and Cmd+[ go back in the selected tab: from a details page to

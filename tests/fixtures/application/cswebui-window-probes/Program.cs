@@ -36,6 +36,8 @@ switch (args.SingleOrDefault())
         break;
     case "--probe-blobs":
         return ProbeBlobs();
+    case "--probe-serve-only-drain":
+        return await ProbeServeOnlyDrainAsync();
     case "--probe-presentation":
         return await ProbePresentationAsync();
     case "--probe-window-locality":
@@ -52,6 +54,8 @@ switch (args.SingleOrDefault())
         return WebViewProbe.RunCloseGuard();
     case "--probe-webview-placement":
         return WebViewProbe.RunPlacement();
+    case "--probe-webview-close-drain":
+        return WebViewProbe.RunCloseDrain();
 #endif
 #if RUNIC_DEBUG_ENDPOINT_PROBE
     // DebugEndpointProbe.cs, a real browser window; the package smoke builds Program.cs alone.
@@ -59,7 +63,7 @@ switch (args.SingleOrDefault())
         return DebugEndpointProbe.Run();
 #endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-debug-endpoint");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-webview-close-drain | --probe-serve-only-drain | --probe-debug-endpoint");
         return 2;
 }
 WebUiApplication.Clean();
@@ -336,6 +340,52 @@ static async Task ProbePlacementSeamsAsync(WebUiWindow native)
         "A closed window's placement changed.");
     Check(await presentation.MaximizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
         { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed }, "A closed window was maximized.");
+}
+
+// sdk#1190: in serve-only mode a line on standard input ends serving, which is the Window's close. With a close drain the
+// server keeps serving while the Window's accepted work runs, and WaitForCloseAsync and Run return once it has ended.
+static async Task<int> ProbeServeOnlyDrainAsync()
+{
+    var input = new ProbeLineReader();
+    Console.SetIn(input);
+    var services = new ServiceCollection();
+    services.AddScoped<ProbeViewModel>();
+    services.AddRunicViews();
+    services.AddRunicWindowService();
+    var log = new RecordingLoggerFactory();
+    services.AddSingleton<ILoggerFactory>(log);
+    using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+    var options = new RunicCsWebUiHostOptions { CloseDrain = RunicCloseDrain.UntilDrained };
+    var result = RunicCsWebUiHost.Run(provider, options, async host =>
+    {
+        var window = await host.OpenWindowAsync<ProbeWindow>();
+        var url = CsWebUiPlatformServices.GetWebUiWindow(window)?.Url ?? throw new InvalidOperationException("The serve-only window has no URL.");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var work = new AcceptedWorkScope();
+        _ = work.RunAsync(() => release.Task);
+        using var drained = window.Services.GetRequiredService<IRunicWindowContext>().DrainOnClose(work);
+        var closed = window.WaitForCloseAsync().AsTask();
+
+        input.Send("stop");
+        await Task.Delay(1000);
+        if (closed.IsCompleted) throw new InvalidOperationException("Serving ended while the Window's work was draining.");
+        // The server still serves its page while it drains.
+        using (var client = new HttpClient { BaseAddress = new UriBuilder(url) { Host = "127.0.0.1", Path = "/" }.Uri })
+        using (var page = await client.GetAsync("_runic/cswebui/texts.js"))
+            if (page.StatusCode != System.Net.HttpStatusCode.OK)
+                throw new InvalidOperationException($"The draining window's server answered {(int)page.StatusCode}.");
+        release.SetResult();
+        await closed.WaitAsync(TimeSpan.FromSeconds(15));
+        await window.DisposeAsync();
+        return 7;
+    });
+    if (result != 7) throw new InvalidOperationException($"Run returned {result} instead of the application's result.");
+    lock (log.Entries)
+        if (log.Entries.Any(static entry => entry.EventId.Id == 1055))
+            throw new InvalidOperationException("A serve-only Window with a close drain logged event 1055.");
+    input.Send(null);
+    Console.WriteLine("CSWEBUI_SERVE_ONLY_DRAIN_OK");
+    return 0;
 }
 
 // Without AddRunicViews(), validation and OpenWindowAsync name the missing Bridge before a native window
@@ -910,6 +960,21 @@ namespace CsWebUiWindowProbes
     }
 
     internal sealed record LogEntry(string Category, EventId EventId, LogLevel Level, string Message);
+
+    // Standard input whose lines the probe sends; null ends it.
+    internal sealed class ProbeLineReader : TextReader
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<string?> _lines = [];
+        private volatile bool _ended;
+        public void Send(string? line) { if (!_ended) _lines.Add(line); }
+        public override string? ReadLine()
+        {
+            if (_ended) return null;
+            var line = _lines.Take();
+            if (line is null) _ended = true;
+            return line;
+        }
+    }
 
     internal sealed class RecordingLoggerFactory : ILoggerFactory
     {

@@ -222,7 +222,7 @@ is.
   CI checks that path, and a team-signed bundle with the entitlement is a
   manual check.
 
-## Out of scope for 1.0
+## Not planned
 
 - Listing accounts, attributes beyond service and account, and secrets above
   64 KiB.
