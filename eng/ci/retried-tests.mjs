@@ -1,7 +1,7 @@
 // The recorded single retry's report (eng/ci/README.md, "Recorded retries"; B1 of D077.25). A [RecordedRetry] test that
 // failed appends one JSON line to the file RUNIC_RETRIED_TESTS names (tests/support/RecordedRetry.cs) before its retry.
 // At the end of the job this prints a "Flaky test retried" warning for each line and lists them in the job summary;
-// .github/actions/retried-tests then uploads the file, and eng/ci/flakes.mjs counts each line as a sighting.
+// .github/actions/flaky-tests then uploads the file, and eng/ci/flakes.mjs counts each line as a sighting.
 //
 //   node eng/ci/retried-tests.mjs report <file>
 import { appendFileSync, existsSync, readFileSync } from "node:fs";

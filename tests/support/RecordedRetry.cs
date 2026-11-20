@@ -1,5 +1,5 @@
 // A recorded single retry for flake-prone tests (eng/ci/README.md, "Recorded retries"; B1 of D077.25). Compiled into a
-// test project by RunicRecordedRetry=true (eng/build/recorded-retry.targets); internal to each project.
+// test project by RunicFlakyTests=true (eng/build/flaky-tests.targets); internal to each project.
 using System;
 using System.IO;
 using System.Linq;
@@ -32,7 +32,7 @@ enum RetryReason
 /// </summary>
 sealed partial class RecordedRetryAttribute(RetryReason reason) : RetryAttribute(1)
 {
-    /// <summary>The variable that names the record file; the CI job sets it (.github/actions/retried-tests).</summary>
+    /// <summary>The variable that names the record file; the CI job sets it (.github/actions/flaky-tests).</summary>
     public const string RecordVariable = "RUNIC_RETRIED_TESTS";
 
     /// <summary>The variable that names the CI leg (an OS and architecture, a screen reader) in the record.</summary>

@@ -658,7 +658,7 @@ A failed test is retried once, and only a test marked for it (B1 of D077.25): a 
 a real window manager, focus, drag or dialog, of what a real screen reader says, of a
 real browser or WebView starting and connecting, or of a wait on real time. The mark is
 `[RecordedRetry(RetryReason.Gui)]` (or `Speech`, `BrowserConnect`, `RealClock`) on the
-class or method, in a project that sets `RunicRecordedRetry` (which compiles
+class or method, in a project that sets `RunicFlakyTests` (which compiles
 `tests/support/RecordedRetry.cs`, a TUnit `RetryAttribute` with one retry). A security
 probe or budget check is never retried: the attribute refuses a test whose method,
 class or category names admission, redaction, an origin, a token, a sandbox, a
@@ -666,7 +666,7 @@ preflight, a permission, elevation, a budget, a size or memory, and
 `contracts.test.mjs` rejects such a mark and any assembly-wide one.
 
 Every retry is recorded. A job that runs these projects starts with
-`.github/actions/retried-tests` (`mode: start`), which names the record file in
+`.github/actions/flaky-tests` (`mode: start`), which names the record file in
 `RUNIC_RETRIED_TESTS`; without it nothing is retried. The test appends a JSON line (the
 test, its assembly and class, the leg, the reason, the first failure's exception, the
 attempt) before the retry. The job's last step (`mode: report`, `if: always()`)

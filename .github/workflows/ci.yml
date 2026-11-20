@@ -252,7 +252,7 @@ jobs:
         with:
           persist-credentials: false
       # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
-      - uses: ./.github/actions/retried-tests
+      - uses: ./.github/actions/flaky-tests
         with:
           mode: start
           leg: linux-x64
@@ -361,7 +361,7 @@ jobs:
         run: bun eng/ci/source-state.mjs check
       - name: Report retried tests
         if: always()
-        uses: ./.github/actions/retried-tests
+        uses: ./.github/actions/flaky-tests
         with:
           mode: report
           leg: linux-x64
@@ -715,7 +715,7 @@ jobs:
         with:
           persist-credentials: false
       # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
-      - uses: ./.github/actions/retried-tests
+      - uses: ./.github/actions/flaky-tests
         with:
           mode: start
           leg: ${{ matrix.rid }}
@@ -807,7 +807,7 @@ jobs:
         run: bun eng/ci/source-state.mjs check
       - name: Report retried tests
         if: always()
-        uses: ./.github/actions/retried-tests
+        uses: ./.github/actions/flaky-tests
         with:
           mode: report
           leg: ${{ matrix.rid }}
@@ -915,7 +915,7 @@ jobs:
         with:
           persist-credentials: false
       # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
-      - uses: ./.github/actions/retried-tests
+      - uses: ./.github/actions/flaky-tests
         with:
           mode: start
           leg: ${{ matrix.rid }}
@@ -2264,7 +2264,7 @@ jobs:
         run: bun eng/dependencies/package-downloads.mjs check
       - name: Report retried tests
         if: always()
-        uses: ./.github/actions/retried-tests
+        uses: ./.github/actions/flaky-tests
         with:
           mode: report
           leg: ${{ matrix.rid }}
@@ -2774,7 +2774,7 @@ jobs:
         with:
           persist-credentials: false
       # Names the record of the recorded single retry (eng/ci/README.md, "Recorded retries").
-      - uses: ./.github/actions/retried-tests
+      - uses: ./.github/actions/flaky-tests
         with:
           mode: start
           leg: ${{ matrix.reader }}
@@ -2852,7 +2852,7 @@ jobs:
           if-no-files-found: ignore
       - name: Report retried tests
         if: always()
-        uses: ./.github/actions/retried-tests
+        uses: ./.github/actions/flaky-tests
         with:
           mode: report
           leg: ${{ matrix.reader }}

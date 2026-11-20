@@ -530,13 +530,13 @@ test('a recorded retry is opt-in, never for security probes or budget checks, an
   const source = readFileSync(resolve(root, 'tests/support/RecordedRetry.cs'), 'utf8');
   const excluded = new RegExp(/GeneratedRegex\("([^"]+)"/.exec(source)[1]);
   const projects = readdirSync(resolve(root, 'tests/dotnet')).filter(name =>
-    readFileSync(resolve(root, 'tests/dotnet', name, `${name}.csproj`), 'utf8').includes('<RunicRecordedRetry>true</RunicRecordedRetry>'));
+    readFileSync(resolve(root, 'tests/dotnet', name, `${name}.csproj`), 'utf8').includes('<RunicFlakyTests>true</RunicFlakyTests>'));
   assert.ok(projects.length >= 1);
   const files = execFileSync('git', ['ls-files', '-z', '*.cs'], { cwd: root, encoding: 'utf8' }).split('\0')
     .filter(path => path && path !== 'tests/support/RecordedRetry.cs' && /RecordedRetry\(/.test(readFileSync(resolve(root, path), 'utf8')));
   assert.ok(files.length >= 1);
   for (const path of files) {
-    assert.ok(projects.some(project => path.startsWith(`tests/dotnet/${project}/`)), `${path}: its project sets RunicRecordedRetry`);
+    assert.ok(projects.some(project => path.startsWith(`tests/dotnet/${project}/`)), `${path}: its project sets RunicFlakyTests`);
     const lines = readFileSync(resolve(root, path), 'utf8').split('\n');
     lines.forEach((line, index) => {
       if (!/RecordedRetry\(/.test(line)) return;
@@ -553,11 +553,11 @@ test('a recorded retry is opt-in, never for security probes or budget checks, an
   const retrying = Object.entries(workflow.jobs).filter(([, job]) => job.steps?.some(step => runs.test(step.run ?? '')));
   assert.deepEqual(retrying.map(([id]) => id).sort(), ['managed', 'native', 'screen-readers', 'wpf']);
   for (const [id, job] of retrying) {
-    const start = job.steps.findIndex(step => step.uses === './.github/actions/retried-tests' && step.with.mode === 'start');
+    const start = job.steps.findIndex(step => step.uses === './.github/actions/flaky-tests' && step.with.mode === 'start');
     const first = job.steps.findIndex(step => runs.test(step.run ?? ''));
     assert.ok(start >= 0 && start < first, `${id}: names the record before its first test step`);
     const report = job.steps.at(-1);
-    assert.deepEqual([report.uses, report.if, report.with], ['./.github/actions/retried-tests', 'always()', { mode: 'report', leg: job.steps[start].with.leg }], id);
+    assert.deepEqual([report.uses, report.if, report.with], ['./.github/actions/flaky-tests', 'always()', { mode: 'report', leg: job.steps[start].with.leg }], id);
   }
 });
 
