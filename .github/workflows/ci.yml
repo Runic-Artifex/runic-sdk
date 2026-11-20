@@ -1541,9 +1541,13 @@ jobs:
       # of the smoke in the runner's default browser, whose requests the smoke requires. Windows: LaunchAsync refuses a
       # .cer file (AssocIsDangerous, a type Windows registers). macOS: an applet that LSSetDefaultHandlerForURLScheme makes
       # the mailto default, if macOS lets it (MACOS REGISTRATION line), receives a launched mailto URI. Unelevated on
-      # Windows, as above: the standard user's own default browser.
+      # Windows, as above: the standard user's own default browser. Not on win-arm64: that image has no default browser
+      # for a new user. #1239 round 3 (run 44660225731) logged http for runic-hosted with no UserChoice and the ProgID
+      # 'Undecided', whose command is C:\Windows\system32\OpenWith.exe "%1" (the "choose an app" prompt), and
+      # ShellExecuteEx failing with 1155 (ERROR_NO_ASSOCIATION), which LaunchUriAsync reports as
+      # Unavailable(BackendUnavailable), as it should. The x64 image has Edge as a new user's default.
       - name: Launch the default browser on Windows and macOS
-        if: runner.os != 'Linux'
+        if: runner.os == 'macOS' || (runner.os == 'Windows' && runner.arch == 'X64')
         timeout-minutes: 6
         env:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
