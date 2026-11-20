@@ -14,7 +14,8 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { activeEntries, classify, loadExpected, matchExpected } from './expected.mjs';
 import { repoKeys, repos, writeNugetConfig } from './nuget.mjs';
-import { createRunner, scenarios } from './scenarios.mjs';
+import { bindingFor, createRunner, scenarios } from './scenarios.mjs';
+import { describeBinding } from './patch.mjs';
 import { followsMain, packageFile, parseSpec, resolveSources, runTrainFeed, upstreamMovement } from './sources.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -46,6 +47,7 @@ function summary(result) {
     lines.push(`| ${input.repository} | \`${input.input}\` | ${input.version} | ${input.run ? `[run ${input.run.id}](${input.run.url}) (${input.run.headSha.slice(0, 9)})` : input.kind === 'local' ? 'local packages' : 'nuget.org'} |`);
   for (const line of result.trainCandidate?.checked ?? []) lines.push('', `Train candidate: ${line}.`);
   for (const line of result.trainCandidate?.problems ?? []) lines.push('', `**Train candidate refused:** ${line}`);
+  for (const line of describeBinding(result.patchBinding ?? {})) lines.push('', `Patch path (D077.23): ${line}.`);
   lines.push('', '| Scenario | Result | Details |', '| --- | --- | --- |');
   for (const scenario of result.scenarios) {
     const details = [...scenario.failures.map(item => `${item.expected ? `expected ${item.expected}: ` : ''}${item.check}: ${item.message}`), ...scenario.notes]
@@ -82,7 +84,7 @@ export async function runGate(values) {
   const result = { schema: RESULT_SCHEMA, row: values.row, createdAt: new Date().toISOString(),
     gate: { repository: process.env.GITHUB_REPOSITORY ?? null, sha: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim() || null,
       run: process.env.GITHUB_RUN_ID ? { id: Number(process.env.GITHUB_RUN_ID), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1) } : null },
-    inputs: {}, trainCandidate: null, scenarios: [], expected: { applied: [], stale: [], entries: [] }, artifactAccess: null, verdict: 'fail' };
+    inputs: {}, trainCandidate: null, patchBinding: null, scenarios: [], expected: { applied: [], stale: [], entries: [] }, artifactAccess: null, verdict: 'fail' };
   const finish = code => {
     writeFileSync(join(out, 'train-result.json'), `${JSON.stringify(result, null, 2)}\n`);
     const text = summary(result);
@@ -162,6 +164,14 @@ export async function runGate(values) {
     packageFile: (repo, id) => packageFile(sources[repo], id, join(work, 'candidates'), {}),
   };
   context.run = createRunner(context);
+  // D077.23: an upstream patch is bound into the scratch template applications instead of runic-sdk main pinning it.
+  try {
+    context.binding = result.patchBinding = await bindingFor(context, values.row);
+  } catch (error) {
+    console.log(`::warning title=Patch path not checked::${error.message}; the gate checks the template's pins as for a minor.`);
+    context.binding = null;
+  }
+  for (const line of describeBinding(context.binding ?? {})) console.log(`Patch path (D077.23): ${line}`);
   // The registry serves runic-sdk's npm candidates and, while Translations is a candidate too, its npm packages: a
   // --translations template locks the Translations Vite plugin of the train, which is not on npm before its release.
   const npmArchives = [sources.sdk, sources.translations].filter(source => source.kind !== 'published').flatMap(source => source.npm.map(item => item.file));

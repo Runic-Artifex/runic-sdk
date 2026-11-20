@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { bundledVersions, nupkgTexts, writeNugetConfig } from './nuget.mjs';
 import { keyCoverage, keysFromJson, keysFromMarkdown, lintLockstep, lintRanges, lintTemplatePins, lintToolPins, rmf2MessageNames } from './checks.mjs';
 import { compareVersions } from './versions.mjs';
+import { bindTemplateApplication, describeBinding, integritySource, patchBinding } from './patch.mjs';
 
 export const scenarios = [
   { id: 'S1', title: 'Command Line app in German through Translations.CommandLine, NativeAOT', required: true, run: commandLineInGerman },
@@ -198,6 +199,15 @@ async function templateApp(context, scenario, name, extra) {
   const output = join(context.work, name);
   const created = context.run(scenario, 'dotnet', ['new', 'runic-app', '-n', name, '-o', output, '--debug:custom-hive', hive, ...extra]);
   if (created.code !== 0) { context.fail(scenario, 'create', `dotnet new runic-app ${extra.join(' ')} failed: ${errorLines(created.output)[0] ?? created.log}`); return null; }
+  // The patch path (D077.23): an upstream Translations patch is bound into this scratch application, so every scenario
+  // builds, tests and runs the candidate although runic-sdk's template still pins an earlier patch of its line.
+  const binding = context.binding?.translations;
+  if (binding) {
+    try {
+      const changed = await bindTemplateApplication(output, binding, context.integrityOf ?? integritySource(context.sources.translations));
+      context.note(scenario, `Patch path (D077.23): Translations ${binding.from.join(', ')} -> ${binding.to} in ${changed.length} files of the generated application.`);
+    } catch (error) { context.fail(scenario, 'patch-binding', error.message); return null; }
+  }
   // A runic-sdk CI candidate's npm packages come from a local registry; the template's npm lock is bound to their
   // integrities exactly as runic-sdk's template tests do (tests/templates).
   if (context.npmRegistry && existsSync(join(output, 'Frontend/package.json'))) {
@@ -338,19 +348,35 @@ async function ranges(context) {
   const failures = [...lintLockstep(context.sources), ...lintRanges(context.sources)];
   const template = await context.packageFile('sdk', 'Runic.Application.Templates');
   if (template) {
-    const pins = lintTemplatePins(nupkgTexts(template, /\.csproj$|dotnet-tools\.json$/), translations);
+    const pins = lintTemplatePins(nupkgTexts(template, /\.csproj$|dotnet-tools\.json$/), translations, { bound: context.binding?.translations?.from ?? [] });
     failures.push(...pins.failures);
     if (!pins.pins.length) failures.push({ check: 'template-pin', message: 'Runic.Application.Templates pins no Runic.Translations version; update lintTemplatePins' });
   }
+  const tools = await bundlingTools(context);
+  failures.push(...lintToolPins(tools, cli, { bound: context.binding?.cli?.from ?? [] }));
+  for (const line of describeBinding(context.binding ?? {})) context.note('S6', `Patch path (D077.23): ${line} (R5 and R1 for patches).`);
+  for (const failure of failures) context.fail('S6', failure.check, failure.message);
+  const count = Object.values(context.sources).reduce((sum, source) => sum + source.packages.length, 0);
+  context.note('S6', `Checked ${count} packages; tools bundling Runic.CommandLine: ${tools.map(tool => `${tool.id} ${tool.bundled.join('/') || '-'}`).join(', ')}.`);
+}
+
+// The tools that may bundle Runic.CommandLine privately, with the versions they bundle.
+async function bundlingTools(context) {
   const tools = [];
   for (const [repo, id] of [['sdk', 'dotnet-runic'], ['sdk', 'Runic.Create'], ['sdk', 'Runic.Assets'], ['translations', 'dotnet-runic-translations']]) {
     const file = await context.packageFile(repo, id);
     if (file) tools.push({ id, version: context.sources[repo].packages.find(item => item.id === id).version, bundled: bundledVersions(file, 'Runic.CommandLine') });
   }
-  failures.push(...lintToolPins(tools, cli));
-  for (const failure of failures) context.fail('S6', failure.check, failure.message);
-  const count = Object.values(context.sources).reduce((sum, source) => sum + source.packages.length, 0);
-  context.note('S6', `Checked ${count} packages; tools bundling Runic.CommandLine: ${tools.map(tool => `${tool.id} ${tool.bundled.join('/') || '-'}`).join(', ')}.`);
+  return tools;
+}
+
+// The patch path's binding for this gate run (eng/train/patch.mjs): from the packed template's Translations pins and
+// the Command Line versions the tools bundle.
+export async function bindingFor(context, row) {
+  const template = await context.packageFile('sdk', 'Runic.Application.Templates');
+  const templatePins = template ? lintTemplatePins(nupkgTexts(template, /\.csproj$|dotnet-tools\.json$/), context.versions.translations).pins : [];
+  const bundled = (await bundlingTools(context)).flatMap(tool => tool.bundled);
+  return patchBinding({ row, versions: context.versions, templatePins, bundled });
 }
 
 // ---- S7 -------------------------------------------------------------------------------------------------------
