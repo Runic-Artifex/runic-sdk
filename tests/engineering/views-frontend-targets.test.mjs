@@ -554,6 +554,25 @@ test("a trimmed or NativeAOT publish turns blobs/1 off unless an assembly's Brid
   assert.deepEqual(blobs(kept, true), [], "RunicBridgeBlobs=true did not keep blobs/1 in a publish.");
 });
 
+// API-30: RunicDevelopmentOnlyViews and RunicBridgeBlobs take auto (the default, also empty) or true, without case.
+// Another value, such as false or a typo, is warning RUNICBRIDGE075 in a build, which goes on as auto.
+test("RUNICBRIDGE075: RunicDevelopmentOnlyViews and RunicBridgeBlobs other than auto or true warn", () => {
+  const app = fixture("auto-properties", { name: "app", private: true });
+  const warnings = properties => {
+    const result = build(app, { targets: "RunicViewsCheckAutoProperties", properties });
+    assert.equal(result.status, 0, result.output);
+    return [...new Set(result.output.split("\n").filter(line => / warning RUNICBRIDGE075:/.test(line))
+      .map(line => line.match(/RUNICBRIDGE075: (\w+) is '([^']*)'/).slice(1, 3).join("=")))].sort();
+  };
+  for (const value of ["", "auto", "true", "AUTO", "True"])
+    assert.deepEqual(warnings([`RunicDevelopmentOnlyViews=${value}`, `RunicBridgeBlobs=${value}`]), [], `'${value}' warned.`);
+  assert.deepEqual(warnings(["RunicDevelopmentOnlyViews=false", "RunicBridgeBlobs=ture"]),
+    ["RunicBridgeBlobs=ture", "RunicDevelopmentOnlyViews=false"]);
+  assert.deepEqual(warnings(["RunicBridgeBlobs=false"]), ["RunicBridgeBlobs=false"]);
+  // The bootstrap pass repeats the project's properties and does not warn again.
+  assert.deepEqual(warnings(["RunicBridgeBlobs=false", "RunicApplicationFrontendBootstrap=true"]), []);
+});
+
 const builds = result => result.commands.filter(command => command === "build").length;
 const lastHost = ({ project }) => readFileSync(join(project, "host.log"), "utf8").trim().split("\n").at(-1);
 const files = root => existsSync(root)

@@ -33,6 +33,7 @@
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE039;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE039</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE053;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE053</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE072;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE072</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE075;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE075</_RunicBridgeWarningsAsErrors>
     <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
@@ -157,6 +158,19 @@
   <!-- Development-only views and members ([RunicDevelopmentOnly], D072.12/D072.13): RunicDevelopmentOnlyViews=auto (the
        default) leaves them out of trimmed and NativeAOT publishes, here for the same reason, so that the trimmer removes
        their Bridges and members; true keeps them in every publish. Builds, dotnet run and untrimmed publishes keep them. -->
+  <!-- RunicDevelopmentOnlyViews and RunicBridgeBlobs take auto (the default, also when empty) or true, compared without
+       case as every MSBuild condition does. Another value, such as false or a typo, is RUNICBRIDGE075 in every build and
+       pass that reads them, and the build goes on as auto (API-30 of the 0.23 API review): false cannot keep
+       either out of an untrimmed publish. Not in the bootstrap pass, which repeats the project's properties. -->
+  <Target Name="RunicViewsCheckAutoProperties" BeforeTargets="PrepareForBuild"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Warning Code="RUNICBRIDGE075" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge075"
+             Condition="'$(RunicDevelopmentOnlyViews)' != '' and '$(RunicDevelopmentOnlyViews)' != 'auto' and '$(RunicDevelopmentOnlyViews)' != 'true'"
+             Text="RunicDevelopmentOnlyViews is '$(RunicDevelopmentOnlyViews)', which is neither auto nor true, so the build uses auto: trimmed and NativeAOT publishes leave development-only views and members out, and builds and untrimmed publishes keep them. Set true to keep them in every publish, or remove the property." />
+    <Warning Code="RUNICBRIDGE075" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge075"
+             Condition="'$(RunicBridgeBlobs)' != '' and '$(RunicBridgeBlobs)' != 'auto' and '$(RunicBridgeBlobs)' != 'true'"
+             Text="RunicBridgeBlobs is '$(RunicBridgeBlobs)', which is neither auto nor true, so the build uses auto: a trimmed or NativeAOT publish leaves Bridge blobs and uploads out when no assembly's Bridges use them. Set true to keep them in every publish, or remove the property." />
+  </Target>
   <Target Name="_RunicViewsPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
     <ItemGroup>
       <RuntimeHostConfigurationOption Include="Runic.Application.DevelopmentServerForwarding" Value="false" Trim="true" />

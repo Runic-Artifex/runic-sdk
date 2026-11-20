@@ -2821,6 +2821,8 @@ static class BridgeDiagnosticCodes
     internal const string RegionCollectionName = "RUNICBRIDGE071";
     /// <summary>A [RunicDevelopmentOnly] declaration has no effect: it is on an interaction or view request.</summary>
     internal const string DevelopmentOnly = "RUNICBRIDGE072";
+    /// <summary>Warning from the build targets: RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true.</summary>
+    internal const string AutoPropertyValue = "RUNICBRIDGE075";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2875,6 +2877,7 @@ static class BridgeDiagnosticCodes
         (RegionCollection, "error", "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"),
         (RegionCollectionName, "error", "A region collection's select or close client method collides with another client member"),
         (DevelopmentOnly, "warning", "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"),
+        (AutoPropertyValue, "warning", "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

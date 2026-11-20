@@ -240,6 +240,11 @@
       "id": "RUNICBRIDGE072",
       "severity": "warning",
       "title": "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"
+    },
+    {
+      "id": "RUNICBRIDGE075",
+      "severity": "warning",
+      "title": "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"
     }
   ]
 }

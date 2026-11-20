@@ -100,6 +100,7 @@ and severities are open.
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator; the analyzer while you type | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
 | [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator; the analyzer while you type | A region collection's select or close client method collides with another client member |
 | [`RUNICBRIDGE072`](#runicbridge072) | Warning | Generator | A `[RunicDevelopmentOnly]` declaration on an interaction or view request has no effect |
+| [`RUNICBRIDGE075`](#runicbridge075) | Warning | Build targets | `RunicDevelopmentOnlyViews` or `RunicBridgeBlobs` is neither auto nor true |
 
 ### Errors and warnings while you type
 
@@ -982,6 +983,19 @@ declaration has no effect, and the member stays in every publish.
 **Fix:** mark the whole ViewModel when the interaction belongs to a development
 tool, or remove the attribute. See
 [Development-only views and members](packaging.md#development-only-views-and-members).
+
+### RUNICBRIDGE075
+
+A warning from the `Runic.Application.Views` build targets (since 0.23).
+`RunicDevelopmentOnlyViews` or `RunicBridgeBlobs` has a value other than `auto`
+(the default, also when the property is empty) or `true`, compared without case,
+such as `false` or a typo. The build goes on as `auto`: a trimmed or NativeAOT
+publish leaves development-only views and members, or Bridge blobs and uploads
+that no Bridge uses, out, and builds and untrimmed publishes keep them. There is
+no `false`: neither can be left out of a build or an untrimmed publish.
+
+**Fix:** remove the property for `auto`, or set `true` to keep them in every
+publish. See [MSBuild properties](msbuild.md#runicapplicationviews).
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
