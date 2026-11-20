@@ -34,7 +34,8 @@ internal static partial class DefaultBrowserSmoke
                     """);
                 Tool("osacompile", "-o", app, script);
                 var plist = Path.Combine(app, "Contents", "Info.plist");
-                Tool("/usr/libexec/PlistBuddy", "-c", $"Set :CFBundleIdentifier {BundleId}", plist);
+                // osacompile's applet has no CFBundleIdentifier.
+                Tool("/usr/libexec/PlistBuddy", "-c", $"Add :CFBundleIdentifier string {BundleId}", plist);
                 Tool("/usr/libexec/PlistBuddy", "-c", "Add :CFBundleURLTypes array", plist);
                 Tool("/usr/libexec/PlistBuddy", "-c", "Add :CFBundleURLTypes:0 dict", plist);
                 Tool("/usr/libexec/PlistBuddy", "-c", "Add :CFBundleURLTypes:0:CFBundleURLName string Runic launch smoke", plist);
