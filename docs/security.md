@@ -852,7 +852,12 @@ What the user's processes that do not run elevated can still do, and what they c
 
 `Runic.Application.Views.CsWebUi` adds no admission of its own. Who can connect
 to a CS-WebUI window is decided by native WebUI: its local server, the token it
-writes into `webui.js` and its single-client default. `SetPublic(true)`,
+writes into `webui.js` and its single-client default. That default admits the
+first local client that loads the window's page. A local process that reaches
+the window's port before the browser does, on a shared machine also another
+user's process, becomes the window's client: it receives the page, WebUI's
+authentication cookie and the `webui.js` token, so it can call the window's
+Bridge, and WebUI refuses the browser's page. `SetPublic(true)`,
 serve-only mode (`RUNIC_APPLICATION_SERVE_ONLY=1`), multi-client configuration
 and your own WebUI build are security decisions. A window that serves an
 embedded frontend through a file handler keeps WebUI's authentication cookie on,
