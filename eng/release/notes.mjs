@@ -133,9 +133,20 @@ const plain = text => text
   .replace(/<[^>]+>/g, '')
   .replace(/[`*_~]/g, '');
 
-// GitHub's anchor for a heading.
+// The text GitHub slugs for a heading: links become their text, code spans keep their
+// content verbatim (so `IProgress<double>` keeps `<double>`), and HTML tags outside code
+// spans are dropped.
+const headingText = text => text
+  .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+  .split(/(`[^`]*`)/)
+  .map((part, index) => index % 2 ? part.slice(1, -1) : part.replace(/<\/?[A-Za-z][^>]*>/g, ''))
+  .join('');
+
+// GitHub's anchor for a heading (github-slugger): lowercase, drop every character that is not
+// a letter, mark, number, connector punctuation, hyphen or space (so `<`, `>`, `.`, `(`, `)`,
+// backticks, `#` and `&` go), then turn each space into a hyphen without collapsing repeats.
 export function anchor(text) {
-  return plain(text).trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc}\- ]/gu, '').replace(/ /g, '-');
+  return headingText(text).trim().toLowerCase().replace(/[^\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc}\- ]/gu, '').replace(/ /g, '-');
 }
 
 function slug(text) {
