@@ -61,7 +61,7 @@
          minor needs a Runic.Translations outside the stamped range, which NuGet reports (NU1608). eng/workspace.test.mjs checks that the three
          versions and .config/dotnet-tools.json agree. Tests also use Runic.Translations for TranslationReference members,
          results and validation texts. -->
-    <PackageVersion Include="Runic.Translations" Version="0.15.0" TrainCommit="e0b0385dec4189120f1ff839bff73184efa0da09" />
+    <PackageVersion Include="Runic.Translations" Version="0.15.0" TrainCommit="efc6dc3a1ae4840ec7d4de9466be81d7ad7d9301" />
     <PackageVersion Include="Runic.Translations.Hosting" Version="0.15.0" />
     <!-- A development dependency: it compiles the catalog and packs its sources; packing removes it from dependencies. -->
     <PackageVersion Include="Runic.Translations.Build" Version="0.15.0" />
