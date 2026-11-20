@@ -77,7 +77,7 @@ function sourceMap(root) {
   return {
     file,
     map: {
-      format: "runic-bridge-sources/1",
+      format: "runic.views.bridge-sources/1",
       viewModels: [{ id: "Demo.CounterViewModel", name: "Counter", route: "counter", contract: "Demo.CounterViewModel:ABC",
         pageKinds: ["counter"], symbol: "Demo.CounterViewModel", location: { file, line: 3, column: 14 } }],
       members: [
