@@ -509,8 +509,10 @@ test("only a trimmed or NativeAOT publish leaves development-only views out, unl
 
 // Bridge blobs and uploads (runic-sdk#1193): a trimmed or NativeAOT publish turns blobs/1 off unless the application or
 // a referenced assembly carries the assembly metadata Runic.Application.Views.Blobs=true, which the generated codecs of a
-// blob or upload member write; RunicBridgeBlobs=true keeps it. The scan reads the attribute's serialized bytes, so a
-// file that holds them stands in for an assembly. A build never turns blobs/1 off.
+// blob or upload member write, or names RunicBlob or RunicUpload in its metadata (Bridges of a generator before 0.23);
+// Runic.Application.Views itself, which defines both, does not count. RunicBridgeBlobs=true keeps it. The scan reads the
+// attribute's serialized bytes and the NUL-terminated names, so a file that holds them stands in for an assembly. A
+// build never turns blobs/1 off.
 test("a trimmed or NativeAOT publish turns blobs/1 off unless an assembly's Bridges use blobs", () => {
   const blobs = (app, publish) => {
     const result = spawnSync("dotnet", ["msbuild", join(app.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
@@ -527,9 +529,14 @@ test("a trimmed or NativeAOT publish turns blobs/1 off unless an assembly's Brid
       Buffer.from([value.length]), value, Buffer.from([0, 0])]));
     return name;
   };
-  const project = (name, property, reference) => fixture(name, { name: "app", private: true },
+  const named = (app, name) => {
+    // A string heap: other names, then a longer type name whose end is RunicUpload, as a compiler may share it.
+    writeFileSync(join(app.project, name), Buffer.from("MZ\0\0\0Other\0LibraryRunicUpload\0Object\0"));
+    return name;
+  };
+  const project = (name, property, reference, item = "ReferencePath") => fixture(name, { name: "app", private: true },
     `  <PropertyGroup><PublishAot>true</PublishAot>${property}</PropertyGroup>\n` +
-    (reference ? `  <ItemGroup><ReferencePath Include="${reference}" /></ItemGroup>\n` : "") + "  <Target Name=\"PrepareForILLink\" />");
+    (reference ? `  <ItemGroup><${item} Include="${reference}" /></ItemGroup>\n` : "") + "  <Target Name=\"PrepareForILLink\" />");
   const unused = project("blobs-unused", "", "Unmarked.dll");
   marked(unused, "Unmarked.dll", false);
   assert.deepEqual(blobs(unused, false), [], "A build turned blobs/1 off.");
@@ -537,6 +544,12 @@ test("a trimmed or NativeAOT publish turns blobs/1 off unless an assembly's Brid
   const used = project("blobs-used", "", "Marked.dll");
   marked(used, "Marked.dll", true);
   assert.deepEqual(blobs(used, true), [], "A referenced assembly that uses blobs did not keep blobs/1.");
+  const older = project("blobs-named", "", "Library.dll", "ReferenceCopyLocalPaths");
+  named(older, "Library.dll");
+  assert.deepEqual(blobs(older, true), [], "An unmarked library that names RunicUpload did not keep blobs/1.");
+  const runtime = project("blobs-runtime", "", "Runic.Application.Views.dll");
+  named(runtime, "Runic.Application.Views.dll");
+  assert.deepEqual(blobs(runtime, true), [{ value: "false", trim: "true" }], "Runic.Application.Views kept blobs/1 by defining the types.");
   const kept = project("blobs-kept", "<RunicBridgeBlobs>true</RunicBridgeBlobs>");
   assert.deepEqual(blobs(kept, true), [], "RunicBridgeBlobs=true did not keep blobs/1 in a publish.");
 });

@@ -166,9 +166,10 @@
   </Target>
   <!-- Bridge blobs and uploads (blobs/1, runic-sdk#1193): the generated codecs of a member that holds a RunicBlob or
        takes a RunicUpload mark their assembly with the assembly metadata Runic.Application.Views.Blobs=true. A trimmed
-       or NativeAOT publish in which neither the application nor a referenced assembly has it turns blobs/1 off, so the
-       trimmer removes the Window's blob store and the hosts' blob endpoints. RunicBridgeBlobs=true keeps them. Only the
-       publish, as above: builds and dotnet run keep blobs/1. -->
+       or NativeAOT publish in which no assembly of the application has it, and none names RunicBlob or RunicUpload in its
+       metadata (one whose Bridges a generator before 0.23 wrote, or a ViewModel that uses them), turns blobs/1 off, so
+       the trimmer removes the Window's blob store and the hosts' blob endpoints. RunicBridgeBlobs=true keeps them. Only
+       the publish, as above: builds and dotnet run keep blobs/1. -->
   <UsingTask TaskName="RunicViewsFindBlobUse" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
@@ -181,9 +182,13 @@
       <Code Type="Method" Language="cs"><![CDATA[
         // The serialized custom attribute blob of [assembly: AssemblyMetadata("Runic.Application.Views.Blobs", "true")]
         // (ECMA-335 II.23.3): the prolog, then each argument as a length-prefixed UTF-8 string, then no named arguments.
-        // The blob heap holds it as it is, so the bytes find it without loading the assembly.
+        // The blob heap holds it as it is, so the bytes find it without loading the assembly. An assembly without it that
+        // references RunicBlob or RunicUpload has the type's name, NUL-terminated, in its string heap: the end of a longer
+        // name may hold it (compilers share suffixes), so the name is searched without a leading NUL, and a longer name
+        // that ends in it only keeps blobs/1. Runic.Application.Views defines both.
         public override bool Execute()
         {
+          var names = new[] { System.Text.Encoding.UTF8.GetBytes("RunicBlob\0"), System.Text.Encoding.UTF8.GetBytes("RunicUpload\0") };
           var key = System.Text.Encoding.UTF8.GetBytes("Runic.Application.Views.Blobs");
           var value = System.Text.Encoding.UTF8.GetBytes("true");
           var pattern = new byte[2 + 1 + key.Length + 1 + value.Length + 2];
@@ -196,7 +201,10 @@
           {
             var path = item.GetMetadata("FullPath");
             if (!File.Exists(path)) continue;
-            if (!Contains(File.ReadAllBytes(path), pattern)) continue;
+            var bytes = File.ReadAllBytes(path);
+            var named = !string.Equals(Path.GetFileName(path), "Runic.Application.Views.dll", StringComparison.OrdinalIgnoreCase)
+              && (Contains(bytes, names[0]) || Contains(bytes, names[1]));
+            if (!named && !Contains(bytes, pattern)) continue;
             UsedBy = Path.GetFileNameWithoutExtension(path);
             return true;
           }
@@ -222,6 +230,8 @@
     <ItemGroup>
       <_RunicViewsBlobCandidate Include="@(IntermediateAssembly)" />
       <_RunicViewsBlobCandidate Include="@(ReferencePath)" Condition="'%(ReferencePath.FrameworkReferenceName)' == ''" />
+      <!-- The implementation of a project or package reference: a reference assembly leaves internal members out. -->
+      <_RunicViewsBlobCandidate Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.dll'" />
     </ItemGroup>
     <RunicViewsFindBlobUse Assemblies="@(_RunicViewsBlobCandidate)">
       <Output TaskParameter="UsedBy" PropertyName="_RunicViewsBlobsUsedBy" />

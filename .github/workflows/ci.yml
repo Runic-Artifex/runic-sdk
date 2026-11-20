@@ -625,10 +625,18 @@ jobs:
       # X509Certificate2Collection's interfaces without its base's (dotnet/runtime#135913, a TypeLoadException when
       # Kestrel binds) and dropped a lock's release from an async finally (dotnet/runtime#136414, a hang on the second
       # call). Last in the job: the RID-specific publish restores the referenced projects for linux-x64.
+      # The example's Bridges use no blobs, so the trimmed publish leaves blobs/1 out (sdk#1193): the smoke checks that the
+      # page connects and calls without it, that upload rejects with unavailable and that nothing reports an error
+      # (RUNIC_SMOKE_BLOBS_OFF), and --probe-presented that the page in a WebKitGTK window under Xvfb presents the counter,
+      # with Runic's Trace output on standard error and no error in it.
       - name: Publish the Runic Desktop Views host self-contained and trimmed, and exercise it
         run: |
           dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -p:ILLinkTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/desktop-views-trimmed
-          RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-trimmed/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
+          RUNIC_SMOKE_BLOBS_OFF=1 RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-trimmed/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a artifacts/desktop-views-trimmed/FirstWindowDesktop --probe-presented 2> "$RUNNER_TEMP/desktop-presented.err" | tee "$RUNNER_TEMP/desktop-presented.out"
+          cat "$RUNNER_TEMP/desktop-presented.err"
+          grep -qx DESKTOP_VIEWS_PRESENTED_OK "$RUNNER_TEMP/desktop-presented.out"
+          if grep -Eiq '\b(error|fail|crit|exception|unhandled)\b' "$RUNNER_TEMP/desktop-presented.err"; then echo "::error::The trimmed Desktop host reported an error without blobs/1."; exit 1; fi
       # ReadyToRun, which docs/packaging.md recommends for framework-dependent publishes, reached the Views generator's
       # own build and its bootstrap pass, which clear the runtime identifier, and failed them with NETSDK1191 (S1), as
       # PublishSingleFile did until 0.22 (D072.7, FD3). The one publish covers both; the smoke runs the single file.
@@ -2084,7 +2092,10 @@ jobs:
           dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --dpi
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
-      # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes and
+      # FirstWindow and the probes use the CS-WebUI host; FirstWindow's Bridges use no blobs, so its NativeAOT publish
+      # leaves blobs/1 out (sdk#1193) and its smoke checks that the page connects and calls without it, that upload
+      # rejects with unavailable, and that neither side reports an error (RUNIC_SMOKE_BLOBS_OFF). menu-bar-probe drives the
+      # probe's in-page menu bar routes and
       # blobs-probe its blobs and uploads (blobs/1) from Chromium. The --probe-webview-* probes open a real WebView2 or
       # WebKitGTK window (sdk#1148, sdk#1149; placement under Openbox, which maximizes) and report themselves skipped on
       # macOS. --probe-debug-endpoint shows a window in the runner's Chrome or Edge and checks that the NativeAOT publish
@@ -2111,7 +2122,7 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-locality
             GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
             GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
-            GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
+            GDK_BACKEND=x11 RUNIC_SMOKE_BLOBS_OFF=1 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
           else
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
@@ -2127,7 +2138,7 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-unowned-dialogs
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
-            RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
+            RUNIC_SMOKE_BLOBS_OFF=1 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
       # D064.25 (#901): in a pull request run labelled ci:all-platforms, the NativeAOT size per bridged
       # ViewModel on Windows and macOS, with the mstat files. The managed job's linux-x64 measurement gates the budgets

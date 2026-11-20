@@ -327,10 +327,10 @@
     "aot/views-translations/executable-bytes": {
       "class": "total",
       "sizes": [0, 0],
-      "limit": 8346367,
-      "measured": [8182712, 8182712],
+      "limit": 8299626,
+      "measured": [8136888, 8136888],
       "margin": 0.02,
-      "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. 8,898,760 B with Translations 0.13 (main CI run 44179860685); Translations 0.14's compressed catalogs and message table took it to 8,543,240 B (SDK-5); 8,519,256 B before #1193 left Bridge blobs out"
+      "note": "the whole linux-x64 executable of the CS-WebUI fixture with Runic.Translations.Hosting and Runic.Application.Views.Translations (TranslationsFixture, K = 0); the limit is the measurement plus 2 %. 8,898,760 B with Translations 0.13 (main CI run 44179860685); Translations 0.14's compressed catalogs and message table took it to 8,543,240 B (SDK-5); 8,519,256 B before #1193 left Bridge blobs out, 8,182,712 B then with Translations 0.14"
     },
     "fdd/folder-bytes": {
       "class": "total",

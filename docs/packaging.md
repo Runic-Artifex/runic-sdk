@@ -157,7 +157,7 @@ of yours:
   does not keep the Window's blob store, the upload folder or the hosts' blob
   endpoints: the generated codecs of a blob or upload member mark their
   assembly, and a trimmed or NativeAOT publish in which no assembly is marked
-  turns `blobs/1` off (`Runic.Application.Views.Blobs`, 0.23). Its pages then
+  or names `RunicBlob` or `RunicUpload` in its metadata turns `blobs/1` off (`Runic.Application.Views.Blobs`, 0.23). Its pages then
   get no upload grant, and `client.upload` rejects with `unavailable`.
   `RunicBridgeBlobs=true` keeps blobs in every publish ([MSBuild](msbuild.md)).
 - On Linux and macOS, the CS-WebUI host serves blobs and uploads from a small
