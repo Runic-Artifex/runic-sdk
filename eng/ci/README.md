@@ -686,6 +686,47 @@ The scripted journey and native smoke steps (the ci.yml "Exercise …" steps) ar
 retried: each is a whole program run with its own waits, and a retry would rerun the
 step, not one check.
 
+## Quarantine
+
+A test with an open flake issue can move out of the required checks while it is fixed
+(B2 of D077.25, D069's "skip that links the issue" made explicit). `eng/ci/flakes.json`
+lists it with its issue:
+
+```json
+{ "quarantine": [
+  { "issue": 1273, "job": "native", "legs": ["linux-x64"], "project": "tests/dotnet/Runic.Desktop.Tests",
+    "class": "BrowserHostTests", "method": "OwnsChromiumProcessProfileRestartAndNaturalExit" }
+] }
+```
+
+`legs` (runtime identifiers, or a screen reader) is optional: without it the test is
+quarantined on every leg of the job. `wrapper` (such as `["xvfb-run", "-a"]`) and
+`arguments` (more test-host arguments) are optional too. Only a test in a project that
+sets `RunicFlakyTests`, run by a job that starts `.github/actions/flaky-tests`
+(`managed`, `native`, `screen-readers`, `wpf`), can be listed.
+
+- **The required steps skip it.** The action's start step sets `RUNIC_QUARANTINE`, and
+  `tests/support/Quarantine.cs` skips a listed test on its legs, with the issue in the
+  skip reason.
+- **It still runs and reports on the same leg.** The action's report step first runs
+  each of the job's and leg's quarantined tests on its own (`eng/ci/quarantine.mjs
+  run`, `dotnet run --project … --treenode-filter /*/*/<class>/<method>`) in a
+  `continue-on-error` step of the same job, so no other runner (or macOS slot) is used.
+  A failure is a `Quarantined test failed` warning, a pass a notice. Both go in the job
+  summary and the `flaky-tests-…` artifact, and `eng/ci/flakes.mjs` counts a failure as
+  a sighting that fails no queue entry.
+- **The list is checked.** `quarantine.test.mjs` rejects an entry without an issue, for
+  another job, or naming a test that does not exist. `flakes.mjs` lists the
+  quarantined tests with their issues' states and names an entry whose issue is closed
+  ("remove the entry"). `node eng/ci/quarantine.mjs check --online` does both.
+- **A release waits for it.** `publish-preview.yml`'s preflight runs
+  `node eng/ci/quarantine.mjs gate`, which fails while the list names any test, open
+  issue or not (offline; `--online` adds each issue's state): fix the test, close the
+  issue and remove the entry, all within the cycle.
+
+Scripted journey and native smoke steps (the "Exercise …" steps) cannot be listed yet;
+a step would need a `continue-on-error` condition from the plan job.
+
 ## GitHub reruns
 
 Use GitHub's **Re-run failed jobs** or select one job to rerun after a transient

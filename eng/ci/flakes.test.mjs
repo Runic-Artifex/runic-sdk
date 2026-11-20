@@ -361,3 +361,31 @@ test('an issue covers an entry by citing its run, quoting its error or naming it
   assert.deepEqual(platforms('Native / osx-arm64'), ['osx-arm64', 'macOS', 'osx']);
   assert.deepEqual(platforms('Managed tests'), []);
 });
+
+test('a quarantined test that failed is a sighting that fails no queue entry, and the list is checked against its issues', async () => {
+  const run = { id: 7, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'merge_group', head_branch: 'gh-readonly-queue/main/pr-70-x',
+    head_sha: 's7', pull_requests: [], created_at: '2026-11-21T01:00:00Z' };
+  const line = outcome => JSON.stringify({ quarantined: true, test: 'OwnsChromiumProcessProfileRestartAndNaturalExit', method: 'OwnsChromiumProcessProfileRestartAndNaturalExit',
+    class: 'BrowserHostTests', issue: 1273, leg: 'linux-x64', outcome, exception: outcome === 'failed' ? 'FailException: Generated profile remains: /tmp/x' : '', at: run.created_at });
+  const source = {
+    json: async path => {
+      if (path.includes('/workflows/ci.yml/runs?')) return [run];
+      if (path.includes('/issues?')) return [
+        { number: 1273, state: 'open', title: 'Flaky: OwnsChromiumProcessProfileRestartAndNaturalExit on linux-x64', body: 'Generated profile remains', html_url: 'u1273' },
+        { number: 988, state: 'closed', closed_at: '2026-11-10T00:00:00Z', title: 'Flaky: NVDA', body: '', html_url: 'u988' }];
+      throw new Error(`unrecorded ${path}`);
+    },
+    log: async () => '',
+    retries: async () => [{ name: 'flaky-tests-native-linux-x64-1', text: `${line('failed')}\n${line('passed')}\n` }],
+  };
+  const result = report(await collect(source, { since: new Date('2026-11-21T00:00:00Z') }), { quarantine: [
+    { issue: 1273, class: 'BrowserHostTests', method: 'OwnsChromiumProcessProfileRestartAndNaturalExit' },
+    { issue: 988, class: 'ScreenReaderChecks', method: 'AccessibilityFixtureInARunicWebView' },
+    { class: 'X', method: 'Y' }] });
+  const group = entry(result, 'OwnsChromiumProcessProfileRestartAndNaturalExit');
+  assert.deepEqual([group.runs, group.status, group.sightings.map(item => item.quarantined)], [1, 'known', [true]]);
+  assert.deepEqual(result.queue, [], 'the passing queue run has no verdict');
+  const text = format(result);
+  assert.match(text, /merge_group pr-70 native-linux-x64 \(quarantined\) \(quarantined, failed\)/);
+  assert.match(text, /Quarantined \(eng\/ci\/flakes\.json; a release waits until the list is empty\):\n {2}BrowserHostTests\.OwnsChromiumProcessProfileRestartAndNaturalExit — #1273 \(open\)\n {2}ScreenReaderChecks\.AccessibilityFixtureInARunicWebView — #988 \(closed\): the issue is closed; remove the entry\n {2}X\.Y — #\? \(none\): names no issue/);
+});

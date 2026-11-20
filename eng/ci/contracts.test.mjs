@@ -561,6 +561,20 @@ test('a recorded retry is opt-in, never for security probes or budget checks, an
   }
 });
 
+test('quarantined tests run without failing their job, and a release waits while any is quarantined', () => {
+  // B2 of D077.25 (eng/ci/README.md, "Quarantine").
+  const steps = yaml('.github/actions/flaky-tests/action.yml').runs.steps;
+  const start = steps.find(step => step.if === "inputs.mode == 'start'");
+  assert.match(start.run, /RUNIC_QUARANTINE=\$GITHUB_WORKSPACE\/eng\/ci\/flakes\.json/);
+  const run = steps.findIndex(step => step.run?.includes('eng/ci/quarantine.mjs run'));
+  const report = steps.findIndex(step => step.run?.includes('eng/ci/retried-tests.mjs report'));
+  assert.ok(run >= 0 && run < report, 'the quarantined tests run before the report');
+  assert.deepEqual([steps[run].if, steps[run]['continue-on-error']], ["inputs.mode == 'report' && !cancelled()", true]);
+  const preflight = yaml('.github/workflows/publish-preview.yml').jobs.preflight;
+  const gate = preflight.steps.findIndex(step => step.run === 'node eng/ci/quarantine.mjs gate');
+  assert.ok(gate > 0 && gate < preflight.steps.findIndex(step => step.id === 'ci'), 'before the release finds its CI run');
+});
+
 test('package checks without a lockfile resolve third-party npm packages published at least a day ago', () => {
   // D038: sdk#772's queue run met devframe@1.3.0, published 3 s after its install started.
   const scripts = execFileSync('git', ['ls-files', '-z', '*.mjs'], { cwd: root, encoding: 'utf8' }).split('\0')

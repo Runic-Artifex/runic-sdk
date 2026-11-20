@@ -222,11 +222,16 @@ export async function collect(source, { repository = defaultRepository, since, c
 export function retriedFailures(run, artifacts, failures = []) {
   return artifacts.flatMap(({ name, text }) => {
     const [, job, attempt] = /^flaky-tests-(.+)-(\d+)$/.exec(name) ?? [, name, String(run.run_attempt ?? 1)];
-    return parseRetries(text).map(record => {
+    // A quarantined test's run that failed is a sighting too; one that passed is not a failure.
+    return parseRetries(text).filter(record => !record.quarantined || record.outcome === "failed").map(record => {
       const test = baseName(record.test);
       const error = normalizeError(record.exception);
       const failedAgain = failures.some(item => item.run === run.id && item.attempt === Number(attempt) && item.test
         && item.name === test && item.error === error);
+      if (record.quarantined) return { name: test, error, raw: record.exception, test: true, job: `${job} (quarantined)`,
+        step: "(quarantine)", run: run.id, attempt: Number(attempt), sha: run.head_sha, passedOnRerun: false, quarantined: true,
+        event: run.event, branch: run.head_branch, pullRequests: (run.pull_requests ?? []).map(item => item.number),
+        url: run.html_url ?? `https://github.com/${defaultRepository}/actions/runs/${run.id}`, at: record.at ?? run.created_at };
       return { name: test, error, raw: record.exception, test: true, job: `${job} (retried)`, step: "(recorded retry)",
         run: run.id, attempt: Number(attempt), sha: run.head_sha, passedOnRerun: false, retried: true, passedOnRetry: !failedAgain,
         event: run.event, branch: run.head_branch, pullRequests: (run.pull_requests ?? []).map(item => item.number),
@@ -282,7 +287,7 @@ const origin = item => String(item.pullRequests?.[0] ?? /^gh-readonly-queue\/[^/
 //   file-issue    the others are flakes by evidence that no open issue names: file or reopen the issue (D069), then
 //                 re-queue;
 //   investigate   a failure is neither: it may be the change.
-export function report({ failures, issues, runs, retriedRuns = 0, cancelled = 0, since, repository }, { min = 2 } = {}) {
+export function report({ failures, issues, runs, retriedRuns = 0, cancelled = 0, since, repository }, { min = 2, quarantine = [] } = {}) {
   const signature = item => `${item.name}\n${item.error}`;
   const groups = new Map();
   for (const failure of failures) {
@@ -332,8 +337,8 @@ export function report({ failures, issues, runs, retriedRuns = 0, cancelled = 0,
     return group.status === "known" || group.status === "infrastructure"
       || group.issues.some(issue => issue.closedAt && Date.parse(issue.closedAt) > Date.parse(item.at) - recent);
   };
-  // A test that passed on its recorded retry did not fail the entry.
-  const failed = failures.filter(item => !item.passedOnRetry);
+  // A test that passed on its recorded retry, or a quarantined one, did not fail the entry.
+  const failed = failures.filter(item => !item.passedOnRetry && !item.quarantined);
   const queue = [...new Set(failed.filter(item => item.event === "merge_group").map(item => item.run))].map(run => {
     const inRun = failed.filter(item => item.run === run);
     const keys = [...new Set(inRun.map(signature))];
@@ -344,13 +349,18 @@ export function report({ failures, issues, runs, retriedRuns = 0, cancelled = 0,
     return { run, branch: first.branch, url: first.url.replace(/\/job\/\d+$/, ""), verdict, failures: keys,
       unknown: unknown.map(group => group.key) };
   });
-  return { repository, since, runs, retriedRuns, cancelled, groups: all, queue };
+  // The quarantine list (eng/ci/flakes.json) against the issues: an entry needs an issue, and one whose issue closed goes.
+  const quarantined = quarantine.map(entry => {
+    const issue = issues.find(item => item.number === entry.issue);
+    return { ...entry, state: issue?.state ?? (Number.isInteger(entry.issue) ? "unknown" : "none"), url: issue?.url };
+  });
+  return { repository, since, runs, retriedRuns, cancelled, groups: all, queue, quarantined };
 }
 
 const sighting = item => `${item.event}${item.pullRequests.length ? ` #${item.pullRequests.join(",#")}` : item.event === "merge_group"
   ? ` ${item.branch.replace(/^gh-readonly-queue\/main\/(pr-\d+).*/, "$1")}` : ` ${item.branch}`} ${item.job}`
   + `${item.attempt > 1 ? ` (attempt ${item.attempt})` : ""}${item.passedOnRerun ? " (passed on rerun)" : ""}`
-  + `${item.retried ? item.passedOnRetry ? " (retried, passed)" : " (retried, failed again)" : ""}`
+  + `${item.retried ? item.passedOnRetry ? " (retried, passed)" : " (retried, failed again)" : ""}${item.quarantined ? " (quarantined, failed)" : ""}`
   + ` (${item.at.slice(0, 16).replace("T", " ")}Z) ${item.url}`;
 
 export function format(result) {
@@ -376,6 +386,9 @@ export function format(result) {
     ...section("Infrastructure: a runner, mirror, registry or artifact service failed (rerun; ci.yml retries most of these)", by("infrastructure"), () => ""),
     ...section("Fixed: only closed issues mention them, and no failure since they closed", by("fixed"), group => ` —${issueList(group)}`),
     ...section("Seen once", by("first-sighting"), group => `${group.test ? "" : " (the log names no test; read it)"}${weak(group)}`),
+    ...result.quarantined?.length ? ["Quarantined (eng/ci/flakes.json; a release waits until the list is empty):",
+      ...result.quarantined.map(entry => `  ${entry.class}.${entry.method} — #${entry.issue ?? "?"} (${entry.state})${
+        entry.state === "closed" ? ": the issue is closed; remove the entry" : entry.state === "none" ? ": names no issue; add one or remove the entry" : ""}`), ""] : [],
     ...result.queue.length ? [
       `Failed merge queue entries (${verdicts.map(([verdict, count]) => `${verdict} ${count}`).join(", ")}):`,
       ...result.queue.flatMap(entry => [
@@ -422,7 +435,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const repository = option("--repo", defaultRepository);
   const source = { ...ghSource, log: jobId => gh("--allow-escape-sequences", `repos/${repository}/actions/jobs/${jobId}/logs`),
     retries: retriesOf(repository, ghSource.json) };
+  const quarantine = JSON.parse(readFileSync(new URL("./flakes.json", import.meta.url), "utf8")).quarantine ?? [];
   const result = report(await collect(source, { repository, since: sinceDate(option("--since", "2d")), retries: !args.includes("--no-retries") }),
-    { min: Number(option("--min", "2")) });
+    { min: Number(option("--min", "2")), quarantine });
   console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : format(result));
 }

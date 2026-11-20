@@ -1,9 +1,11 @@
-name: Record retried tests
+name: Flaky tests
 description: >-
-  The recorded single retry (eng/ci/README.md, "Recorded retries"). With mode start, before the tests: names the record
-  file in RUNIC_RETRIED_TESTS, without which no [RecordedRetry] test is retried. With mode report, as the job's last
-  step (if: always()): a "Flaky test retried" warning and a job summary line for each retry, and the record as the
-  artifact flaky-tests-<job>-<leg>-<attempt>, which eng/ci/flakes.mjs counts as a sighting of each test.
+  The recorded single retry and the quarantine (eng/ci/README.md, "Recorded retries" and "Quarantine"). With mode
+  start, before the tests: names the record file in RUNIC_RETRIED_TESTS, without which no [RecordedRetry] test is
+  retried, and the quarantine list in RUNIC_QUARANTINE, so the tests it lists are skipped. With mode report, as the
+  job's last step (if: always()): runs this job and leg's quarantined tests without failing the job, then a warning
+  and a job summary line for each retry and each quarantined test that failed, and the record as the artifact
+  flaky-tests-<job>-<leg>-<attempt>, which eng/ci/flakes.mjs counts as a sighting of each test.
 inputs:
   mode:
     description: start or report
@@ -22,6 +24,15 @@ runs:
       run: |
         echo "RUNIC_RETRIED_TESTS=$RUNNER_TEMP/retried-tests.jsonl" >> "$GITHUB_ENV"
         echo "RUNIC_RETRIED_TESTS_LEG=$LEG" >> "$GITHUB_ENV"
+        echo "RUNIC_QUARANTINE=$GITHUB_WORKSPACE/eng/ci/flakes.json" >> "$GITHUB_ENV"
+    # The quarantined tests run here, after the job's own steps, on the same leg; their failure is recorded, not fatal.
+    - name: Run the quarantined tests
+      if: inputs.mode == 'report' && !cancelled()
+      continue-on-error: true
+      shell: bash
+      env:
+        LEG: ${{ inputs.leg }}
+      run: node eng/ci/quarantine.mjs run --job "$GITHUB_JOB" --leg "$LEG"
     - name: Report retried tests
       id: report
       if: inputs.mode == 'report'

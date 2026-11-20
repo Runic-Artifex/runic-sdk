@@ -1,8 +1,12 @@
 <Project>
-  <!-- RunicFlakyTests=true compiles the recorded single retry (tests/support/RecordedRetry.cs) into a TUnit test
-       project: [RecordedRetry(RetryReason.…)] on a GUI, speech, browser-connect or real-clock test retries it once and
-       records the retry for eng/ci/flakes.mjs (eng/ci/README.md, "Recorded retries"). Internal to each project. -->
+  <!-- RunicFlakyTests=true compiles the flaky-test support into a TUnit test project (eng/ci/README.md, "Recorded
+       retries" and "Quarantine"); internal to each project:
+       - tests/support/RecordedRetry.cs: [RecordedRetry(RetryReason.…)] on a GUI, speech, browser-connect or real-clock
+         test retries it once and records the retry for eng/ci/flakes.mjs;
+       - tests/support/Quarantine.cs: in the CI jobs that set RUNIC_QUARANTINE, a test that eng/ci/flakes.json lists
+         is skipped, and the job's quarantine step runs it without failing the job. -->
   <ItemGroup Condition="'$(RunicFlakyTests)' == 'true'">
     <Compile Include="$(MSBuildThisFileDirectory)../../tests/support/RecordedRetry.cs" Link="TestSupport/RecordedRetry.cs" Visible="false" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../tests/support/Quarantine.cs" Link="TestSupport/Quarantine.cs" Visible="false" />
   </ItemGroup>
 </Project>
