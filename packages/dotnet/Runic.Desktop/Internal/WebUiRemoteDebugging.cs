@@ -216,11 +216,13 @@ internal static class WebUiRemoteDebugging
         writeLine(ClosedLine(port));
     }
 
-    // The checks of a fixed port, replaceable in tests.
+    // The checks of a fixed port, replaceable in tests. ForeignListener, when set, names why the listener on 127.0.0.1's
+    // port is not the browser's, or returns null when it is (the CS-WebUI host's browser process check, DEV-SEC-84).
     internal sealed record Probes(
         Func<IPAddress, int, CancellationToken, Task<bool>> Answers,
         Func<int, IReadOnlyList<uint>> ListenerOwners,
-        uint CurrentUser)
+        uint CurrentUser,
+        Func<int, string?>? ForeignListener = null)
     {
         internal static Probes System { get; } = new(
             AnswersVersionAsync,
@@ -243,6 +245,7 @@ internal static class WebUiRemoteDebugging
                     throw new ForeignListenerException(
                         $"another user (uid {foreign[0].ToString(CultureInfo.InvariantCulture)}) listens on its port");
                 }
+                if (probes.ForeignListener?.Invoke(port) is { } reason) throw new ForeignListenerException(reason);
                 if (await probes.Answers(IPAddress.IPv6Loopback, port, cancellationToken).ConfigureAwait(false))
                 {
                     throw new ForeignListenerException("[::1] answers on the same port too, so the listener on 127.0.0.1 may not be the browser's");

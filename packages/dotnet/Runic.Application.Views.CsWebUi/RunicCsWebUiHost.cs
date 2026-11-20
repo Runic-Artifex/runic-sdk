@@ -369,7 +369,8 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 // Before ConfigureWindow: an application that sets a close handler of its own there replaces the guard's.
                 if (userClose is not null) native.SetCloseHandler(userClose.OnUserClose);
                 // sdk#1221: the Development DevTools Protocol endpoint a browser window's Chromium opens when
-                // RUNIC_WEBUI_REMOTE_DEBUGGING_PORT asks; before ConfigureWindow, whose own custom parameters replace it.
+                // RUNIC_WEBUI_REMOTE_DEBUGGING_PORT asks, with the run's own profile (DEV-SEC-85); before ConfigureWindow,
+                // whose own custom parameters or profile replace them.
                 using var debugging = CsWebUiRemoteDebugging.ForWindow(native,
                     browserWindow: !UseWebView && !customShow && !serveOnly);
                 ConfigureWindow?.Invoke(native);
