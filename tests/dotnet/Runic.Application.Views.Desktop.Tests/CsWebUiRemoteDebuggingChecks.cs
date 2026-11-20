@@ -164,8 +164,10 @@ internal sealed class CsWebUiRemoteDebuggingChecks : IDisposable
     {
         foreach (var foreign in new[] { "the listener there is not the browser process 4242", null })
         {
+            var port = FreePort();
             var session = new Session();
-            using var debugging = Request(session, "9225") ?? throw new InvalidOperationException("No endpoint.");
+            using var debugging = Request(session, port.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                ?? throw new InvalidOperationException("No endpoint.");
             debugging.ReleasePort();
             var lines = new List<string>();
             var warnings = new List<string>();
@@ -174,13 +176,13 @@ internal sealed class CsWebUiRemoteDebuggingChecks : IDisposable
                 (address, _, _) => Task.FromResult(address.Equals(IPAddress.Loopback)), _ => [], 0,
                 port => { checkedPort = port; return foreign; });
             await debugging.ReportAsync(Task.Delay(TimeSpan.FromMilliseconds(300)), processId: 4242, lines.Add, warnings.Add, probes);
-            Require(checkedPort == 9225, $"The listener of port {checkedPort} was checked.");
+            Require(checkedPort == port, $"The listener of port {checkedPort} was checked, not {port}.");
             if (foreign is null)
-                Require(lines.Count == 2 && lines[0] == "RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:9225/" && warnings.Count == 0,
+                Require(lines.Count == 2 && lines[0] == $"RUNIC_APPLICATION_DEBUG_ENDPOINT=chromium cdp http://127.0.0.1:{port}/" && warnings.Count == 0,
                     $"Lines: {string.Join(" | ", lines)}; warnings: {string.Join(" | ", warnings)}");
             else
                 Require(lines.Count == 0 && warnings.Single().Contains(foreign, StringComparison.Ordinal)
-                    && warnings[0].Contains("127.0.0.1:9225", StringComparison.Ordinal),
+                    && warnings[0].Contains($"127.0.0.1:{port}", StringComparison.Ordinal),
                     $"A foreign listener: lines {string.Join(" | ", lines)}; warnings {string.Join(" | ", warnings)}");
         }
     }
@@ -188,7 +190,8 @@ internal sealed class CsWebUiRemoteDebuggingChecks : IDisposable
     [Test]
     public async Task ABrowserWebUiDidNotFindReportsNoEndpoint()
     {
-        using var debugging = Request(new Session(), "9225") ?? throw new InvalidOperationException("No endpoint.");
+        using var debugging = Request(new Session(), FreePort().ToString(System.Globalization.CultureInfo.InvariantCulture))
+            ?? throw new InvalidOperationException("No endpoint.");
         debugging.ReleasePort();
         var lines = new List<string>();
         var warnings = new List<string>();
@@ -270,6 +273,13 @@ internal sealed class CsWebUiRemoteDebuggingChecks : IDisposable
             if (DateTime.UtcNow > deadline) throw new InvalidOperationException(message);
             await Task.Delay(25);
         }
+    }
+
+    private static int FreePort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
     private static bool CanListen(int port)
