@@ -278,7 +278,7 @@
     {
       "name": "Translations",
       "repository": "Runic-Artifex/runic-translations-sdk",
-      "version": "0.15.0",
+      "version": "0.15.1",
       "nuget": [
         "Runic.Translations",
         "Runic.Translations.*",
