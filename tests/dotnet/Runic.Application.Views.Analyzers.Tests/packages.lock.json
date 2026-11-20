@@ -174,8 +174,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.23.0, )",
-          "Runic.Platform": "[0.23.0, )"
+          "Runic.Navigation": "[0.24.0, )",
+          "Runic.Platform": "[0.24.0, )"
         }
       },
       "runic.application.views.analyzers": {
@@ -184,7 +184,7 @@
       "runic.application.views.analyzers.codefixes": {
         "type": "Project",
         "dependencies": {
-          "Runic.Application.Views.Analyzers": "[0.23.0, )"
+          "Runic.Application.Views.Analyzers": "[0.24.0, )"
         }
       },
       "runic.navigation": {

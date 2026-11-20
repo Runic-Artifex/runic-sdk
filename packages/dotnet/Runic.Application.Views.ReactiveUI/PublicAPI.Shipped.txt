@@ -40,7 +40,4 @@ static Runic.Application.Views.ReactiveUI.ReactiveUIBuilderExtensions.WithRunicM
 Runic.Application.Views.ReactiveUI.ReactiveCommandExecutionExtensions
 static Runic.Application.Views.ReactiveUI.ReactiveCommandExecutionExtensions.RunAsync<TInput, TResult>(this ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 static Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(object! viewModel) -> ReactiveUI.Primitives.Concurrency.ISequencer!
-Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider
-Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider
-static Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
 static Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<TInput, TOutput>(string! name, string! contract, System.Func<object!, ReactiveUI.Binding.IInteraction<TInput, TOutput>!>! getInteraction, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput, System.TimeSpan? timeout = null) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor!

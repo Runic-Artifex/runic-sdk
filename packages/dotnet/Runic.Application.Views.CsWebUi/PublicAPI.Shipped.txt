@@ -53,3 +53,8 @@ Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.ge
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.init -> void
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumPendingUploadBytes.get -> long?
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumPendingUploadBytes.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHost.Placement.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Application.Views.RunicWindowPlacement?>?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.CloseDrain.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Placement.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Application.Views.RunicWindowPlacement?>?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Placement.init -> void

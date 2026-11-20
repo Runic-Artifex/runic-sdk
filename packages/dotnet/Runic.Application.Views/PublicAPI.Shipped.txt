@@ -635,11 +635,6 @@ Runic.Application.Views.RunicWindowParameter<TParameter>
 Runic.Application.Views.RunicWindowParameter<TParameter>.RunicWindowParameter(TParameter! value) -> void
 Runic.Application.Views.RunicWindowParameter<TParameter>.Value.get -> TParameter!
 static Runic.Application.Views.RunicWindowHostExtensions.OpenWindowAsync<TWindow, TParameter>(this Runic.Application.Views.IRunicWindowHost! host, TParameter! parameter, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
-Runic.Application.Views.IAsyncBridgeTransport
-Runic.Application.Views.IBridgeArguments
-Runic.Application.Views.IBridgeUtf8Transport
-Runic.Application.Views.RunicBridgeJsonIgnoreAttribute
-Runic.Application.Views.RunicBridgeJsonIgnoreAttribute.RunicBridgeJsonIgnoreAttribute() -> void
 Runic.Application.Views.RunicPresentation
 static Runic.Application.Views.RunicPresentation.Renew(object! viewModel) -> void
 static Runic.Application.Views.RunicPresentation.WaitForPresentedAsync(object! viewModel, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
@@ -1360,3 +1355,11 @@ Runic.Application.Views.RunicDevelopmentOnlyAttribute
 Runic.Application.Views.RunicDevelopmentOnlyAttribute.RunicDevelopmentOnlyAttribute() -> void
 static Runic.Application.Views.RunicDevelopmentOnly.IsSupported.get -> bool
 static Runic.Application.Views.RunicDevelopmentOnly.Removed(System.Type! viewModel) -> System.InvalidOperationException!
+const Runic.Application.Views.RunicInteractionTimeoutAttribute.MaximumMilliseconds = 86400000 -> int
+Runic.Application.Views.RunicFileDrop.InSidePanel.get -> bool
+Runic.Application.Views.RunicFileDrop.InSidePanel.init -> void
+Runic.Application.Views.RunicInteractionTimeoutAttribute
+Runic.Application.Views.RunicInteractionTimeoutAttribute.Milliseconds.get -> int
+Runic.Application.Views.RunicInteractionTimeoutAttribute.RunicInteractionTimeoutAttribute(int milliseconds) -> void
+Runic.Application.Views.RunicInteractionTimeoutAttribute.Timeout.get -> System.TimeSpan
+static Runic.Application.Views.RunicOperationProgress.Current.get -> System.IProgress<double>!

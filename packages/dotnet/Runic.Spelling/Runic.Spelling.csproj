@@ -7,9 +7,8 @@
     <PackageId>Runic.Spelling</PackageId>
     <!-- A preview package outside the 1.0 promise, like CsWebUi (D074.10): its own version (eng/Versions.props). -->
     <PackageVersion>$(RunicSpellingPackageVersion)</PackageVersion>
-    <!-- Never published: no baseline to validate against until its first release (eng/build/README.md, "Public API"). -->
-    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.23.0</RunicPackageFirstReleaseVersion>
+    <!-- Validated against its own last release, not the train's (eng/build/public-api.targets). -->
+    <PackageValidationBaselineVersion>$(RunicSpellingPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
     <Description>An application's own spell checker: Hunspell dictionaries (English bundled, the system's, others downloaded on request) and a checker that skips the ranges an application names.</Description>
     <PackageTags>runic-artifex;spelling;spell-checker;hunspell;dotnet;nativeaot</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
