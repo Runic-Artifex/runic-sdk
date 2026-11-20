@@ -112,6 +112,13 @@ the release notes, which give the full detail and the pull requests:
   [CS-WebUI pages in a JavaScript debugger](../eng/release/notes/0.22.0.md#cs-webui-pages-in-a-javascript-debugger),
   [Runic DevKit](../eng/release/notes/0.22.0.md#runic-devkit-the-runicapplication-capability-and-the-templates-vsconfig),
   [Fixes](../eng/release/notes/0.22.0.md#fixes)
+- 0.23.0: [Upgrading from 0.22](../eng/release/notes/0.23.0.md#upgrading-from-022),
+  [Behaviour and output changes](../eng/release/notes/0.23.0.md#behaviour-and-output-changes),
+  [Interaction lifetime](../eng/release/notes/0.23.0.md#the-lifetime-of-an-interaction-and-questions-without-a-deadline-1146),
+  [`dotnet runic dev --browser`](../eng/release/notes/0.23.0.md#dotnet-runic-dev---browser-an-address-of-its-own-for-each-session-for-one-browser-1187),
+  [The application icon](../eng/release/notes/0.23.0.md#the-application-icon-from-one-source-1207),
+  [Fixes](../eng/release/notes/0.23.0.md#fixes),
+  [Known issues](../eng/release/notes/0.23.0.md#known-issues)
 
 ## Before you start
 
@@ -1670,8 +1677,11 @@ Details: 0.22.0 [Upgrading from 0.21](../eng/release/notes/0.22.0.md#upgrading-f
 
 ## From 0.22 to 0.23
 
-Update every Runic NuGet and npm package to 0.23.0 together and rebuild, so that the generated clients and Bridges are
-regenerated. 0.23.0 removes what 0.22.0 deprecated.
+0.23.0 closes the open work before 1.0: it removes what 0.22.0 deprecated and adds no deprecations of its own. Update
+every Runic NuGet and npm package to 0.23.0 together and rebuild, so that the generated clients and Bridges are
+regenerated. Views protocol 4 is unchanged, so a 0.22 page and a 0.23 host connect. An application that uses Runic
+Translations moves every Translations package, NuGet and npm, to 0.15.1; one that uses Runic Command Line itself moves
+to 0.14.0. Update Runic's editor extensions to 0.23.0 once they are published.
 
 ### Removed in 0.23
 
@@ -1682,4 +1692,35 @@ regenerated. 0.23.0 removes what 0.22.0 deprecated.
 | Code that names a type removed in 0.9 or 0.13 failed with `CS0619`, whose message named the replacement: `RunicBridgeJsonIgnoreAttribute`, `IAsyncBridgeTransport`, `IBridgeUtf8Transport`, `IBridgeArguments` (`Runic.Application.Views`), `RunicReactiveSchedulerProvider`, `IRunicReactiveSchedulerProvider` (`Runic.Application.Views.ReactiveUI` and `.Reactive`), `BridgeTestArguments` (`Runic.Application.Testing`), `INativePickerOwner` (`Runic.Platform.Runtime`) | These error tombstones are gone, so such code fails with `CS0246`. The replacements are in [Removed types](#removed-types) |
 | vite-plugin-runic read a development source map (`sources.json`) of the 0.20 name `runic-bridge-sources/1` as `runic.views.bridge-sources/1` | It reads only `runic.views.bridge-sources/1`; a map with the old name counts as none. Only a 0.20 generator writes it: rebuild, which regenerates the map |
 
-Details: the 0.23.0 release notes, "Upgrading".
+Details: 0.23.0 [Upgrading from 0.22](../eng/release/notes/0.23.0.md#upgrading-from-022).
+
+### Behaviour
+
+| 0.22 | 0.23 |
+| --- | --- |
+| `Runic.Application.Views.Translations` required Runic Translations `[0.14.0, 0.15.0)`; the tools bundled Runic Command Line 0.13.0 | It requires `[0.15.1, 0.16.0)`: move every Translations package, NuGet and npm, to 0.15.1, and keep `Runic.Translations` and `Runic.Translations.Build` at the same version, since the 0.15 catalog (RMF2 runtime ABI 5) needs the 0.15 runtime. An application with ESM translations regenerates them with 0.15.1, which a build with the 0.15.1 Vite plugin or tool does. `dotnet-runic`, `Runic.Create` and the asset packer bundle Command Line 0.14.0; an application that uses Command Line itself moves to 0.14.0. `dotnet runic doctor` checks for both ([Translations 0.15.0 notes](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.0/eng/release/notes/0.15.0.md#upgrading-from-014), [Translations 0.15.1 notes](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.1/eng/release/notes/0.15.1.md)) |
+| `dotnet runic dev --browser` served the Window at `http://127.0.0.1:9224/` | At `http://<label>.localhost:9224/`, with a random label for each `dev` run, for one browser admitted by a one-time code; `127.0.0.1:9224` and `localhost:9224` answer 403. Open the `[dev] Browser:` line's address or `obj/runic/dev-browser.html`, match the page by URL with `http://*.localhost:9224/*`, and read `browser.codeFile` from the session file, whose `browser.url` and `browser.windows[].url` are now patterns with `*` for the label. `dev` listens on 127.0.0.1 and `[::1]` and moves `--browser` to another port when either holds 9224 ([Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser), [security guide](security.md#development-server)) |
+| A bridged ReactiveUI `Interaction` always gave the page two minutes; `ViewQuestion` and `BridgeInteractionRouter` took at most ten minutes | `[RunicInteractionTimeout]` sets the lifetime, up to 24 hours or `Timeout.Infinite`. Without the attribute nothing changes. A page built before 0.23 still aborts its handler after ten minutes: rebuild the frontend with 0.23 for longer questions ([Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime)) |
+| A trimmed or NativeAOT publish kept the Bridge blob and upload machinery | It leaves it out when no Bridge of the application or its references uses `RunicBlob` or `RunicUpload`: the page gets no upload grant, and `client.upload` rejects with `unavailable`. Set `<RunicBridgeBlobs>true</RunicBridgeBlobs>` when only reflection reaches a `RunicBlob`. Builds, `dotnet run` and untrimmed publishes are unchanged |
+| An application without `ApplicationIcon` had the .NET default executable icon and generic Runic Desktop window icons | The build derives the Windows executable's icon, the default window icon (Windows, and macOS outside a bundle) and the macOS development bundle's `icon.icns` from `icons/icon.png` or `RunicPackageIcon`. An icon that is not a square PNG of at least 256 px is warning `RUNICICON001` to `RUNICICON003`, which fails a build that treats warnings as errors: replace the icon, or set `<RunicApplicationIconGenerationEnabled>false</RunicApplicationIconGenerationEnabled>`. An application with its own `ApplicationIcon` keeps it, and its windows now show it ([the application icon](packaging.md#the-application-icon)) |
+| `RunicDevelopmentOnlyViews` and `RunicBridgeBlobs` silently took another value, such as `false`, as `auto` | Such a value is warning `RUNICBRIDGE075`; the build still goes on as `auto` ([MSBuild properties](msbuild.md)) |
+| CS-WebUI (preview): a guarded Window in a `UseWebView` window closed unguarded, and a close drain closed at once | `Runic.Application.Views.CsWebUi` needs CsWebUi 2.5.0-beta.4.10. On Windows and Linux a `UseWebView` window stays open while `CanCloseAsync` decides, and drains a closing Window with `RunicCsWebUiHostOptions.CloseDrain`. Serve-only mode drains on both hosts. The Development DevTools Protocol endpoint runs in a temporary browser profile of the run's own; a `WebUiWindow.SetCustomParameters` or `SetProfile` in `ConfigureWindow` replaces the endpoint or that profile ([CS-WebUI pages in a JavaScript debugger](debugging.md#cs-webui-pages-in-a-javascript-debugger)) |
+
+Details: 0.23.0 [Behaviour and output changes](../eng/release/notes/0.23.0.md#behaviour-and-output-changes) and
+[Fixes](../eng/release/notes/0.23.0.md#fixes).
+
+### Templates
+
+Nothing has to change beyond the `--browser` launch configuration: applications created from the 0.22 template keep
+working. These rows bring one up to the 0.23 template:
+
+| 0.22 | 0.23 |
+| --- | --- |
+| `.vscode/launch.json`: `Window in Chrome` opens `"url": "http://127.0.0.1:9224/"` | `"file": "${workspaceFolder}/obj/runic/dev-browser.html"`, the page that admits the browser and opens the session's address. The old URL answers 403 in 0.23 |
+| `.vscode/launch.json`: `Attach to the page (JavaScript)` names no address | `"address": "127.0.0.1"`, since `dev`'s debugging endpoint now also listens on `[::1]` |
+| `.vscode/tasks.json`: the `dotnet runic dev` tasks' `$msCompile` matcher | A pattern that skips the `[host] `, `[app] ` or `[vite] ` label, so a build error after an edit opens its file; copy the `problemMatcher` from a new project ([IDE contract](../tools/dotnet-runic/README.md#ide-contract)) |
+| `icons/icon.ico` and an `ApplicationIcon` line in the project | Neither: the build derives the `.ico` from `icons/icon.png`. Delete both to use the derived icon |
+| No developer tools menu item | View ▸ Developer Tools in Development on Windows and Linux, `DesktopMenuItem.OpenDevToolsCommandId` ([Runic.Desktop](../packages/dotnet/Runic.Desktop/README.md#the-webview2-devtools-window-and-devtools-extensions)) |
+| Translations: `dotnet-runic-translations`, `Runic.Translations`, `.Build` and `@runic-artifex/vite-plugin-runic-translations` 0.14.0 | 0.15.1 |
+
+Details: 0.23.0 [Upgrading from 0.22](../eng/release/notes/0.23.0.md#upgrading-from-022).
