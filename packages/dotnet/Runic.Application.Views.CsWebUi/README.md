@@ -420,7 +420,12 @@ the endpoint answers, which `dev` turns into its `[dev] Debugging:` line. A
 `UseWebView`, `ShowWindow` or serve-only window opens none, nor does a
 non-Chromium browser or a trimmed or NativeAOT publish. The host passes WebUI's
 Chromium defaults with the port as the window's custom parameters, before
-`ConfigureWindow`. See
+`ConfigureWindow`. The browser then runs in a profile of the run's own, a new
+0700 temporary directory set with `SetProfile`, instead of WebUI's shared
+`.WebUI` profile, and the Window deletes it when that browser exits. The
+process's windows share that browser: the first window's endpoint reaches every
+page, and a later window reports none of its own. A fixed port is reported only
+when the browser process WebUI started holds its listener. See
 [CS-WebUI pages in a JavaScript debugger](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#cs-webui-pages-in-a-javascript-debugger).
 
 ## Menu bar
@@ -670,10 +675,19 @@ decisions:
   window's server is then reachable from the network, not only from this
   machine, and any client that can load the page can call the Bridge. Leave it
   off unless the application authenticates its users itself.
+- **The first client.** WebUI admits one client per window by default: the
+  first local client that loads the window's page. The window's port is open on
+  loopback from the moment its server starts, before the browser has started
+  and connected. A local process that reaches the port first, on a shared
+  machine also another user's process, becomes the window's client instead of
+  the browser. It receives the page, WebUI's authentication cookie and the
+  token in `webui.js`, so it can call the window's Bridge as the application's
+  user, and WebUI refuses the browser's page. This holds for every CS-WebUI
+  window. On a machine shared with other users, prefer Runic Desktop.
 - **Serve-only mode.** With `RUNIC_APPLICATION_SERVE_ONLY=1` the window writes
   its URL to standard output and waits for a client. The first local client to
-  connect gets the window, and on a shared machine that can be another user's
-  process. Use it for test harnesses on machines you control.
+  connect gets the window, as above, and on a shared machine that can be another
+  user's process. Use it for test harnesses on machines you control.
 - **Multiple clients.**
   `WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, true)` lets
   every client that reaches the server share the window. `IRunicConnections`

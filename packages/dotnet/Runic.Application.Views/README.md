@@ -678,8 +678,8 @@ after a user close.
   matters. `RequestCloseAsync` still asks there, because the application is
   the one closing.
 - A guard that agreed does not have to wait for the Window's work itself: a
-  [close drain](#closing-after-the-windows-work-has-drained) (0.19,
-  experimental) keeps the window open after every guard agreed until that work
+  [close drain](#closing-after-the-windows-work-has-drained) (since 0.19,
+  stable since 0.22) keeps the window open after every guard agreed until that work
   has ended. A guard that waits commits to nothing either:
   `AcceptedWorkScope.WaitForAcceptedAsync` waits without closing the scope's
   admission, so a later guard that keeps the Window open leaves the scope
@@ -1616,7 +1616,7 @@ API shapes were removed rather than deprecated. Since 0.9 the old build property
 and item names no longer apply: each fails the build with
 [RUNICBRIDGE017](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge017),
 which names the new one. Angular's `RunicViewOutlet` remains a deprecated alias,
-removed in the next major release. The old package IDs get no further releases, so replace them
+removed in 2.0. The old package IDs get no further releases, so replace them
 in `PackageReference` and `Directory.Packages.props`; namespaces are unchanged.
 
 | Before | Now |
@@ -4800,8 +4800,8 @@ await shell.Main.PushAsync(NavigationTarget.Create<ReportViewModel>(),
 The registry of operations is per Window: a second Window, or a second launch,
 cannot observe an operation the first Window started, and closing the Window
 waits for its operations up to the close timeout, then cancels them. An
-operation declared `[RunicOperationClose(RunicOperationClose.Durable)]` (0.19,
-experimental) is never cancelled by the close: the Window's scope stays until it
+operation declared `[RunicOperationClose(RunicOperationClose.Durable)]` (since
+0.19, stable since 0.22) is never cancelled by the close: the Window's scope stays until it
 ended (see [Closing after the Window's work has drained](#closing-after-the-windows-work-has-drained)). Work that
 must outlive a Window, or that several Windows observe, belongs to an
 application-owned service registered outside the Window's scope, as

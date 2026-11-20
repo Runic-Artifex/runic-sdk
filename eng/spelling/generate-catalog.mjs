@@ -2,7 +2,7 @@
 // Generates Runic.Spelling's catalogue of downloadable Hunspell dictionaries,
 // packages/dotnet/Runic.Spelling/catalogue/catalogue.json:
 //
-//   bun eng/spelling/generate-catalogue.mjs
+//   bun eng/spelling/generate-catalog.mjs
 //
 // The dictionaries come from two repositories, each at the fixed commit below (never a branch):
 //

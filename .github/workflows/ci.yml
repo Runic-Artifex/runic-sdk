@@ -960,6 +960,14 @@ jobs:
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release --
           --treenode-filter "/*/*/CsWebUiBlobEndpointChecks/*" --timeout 5m --output detailed
+      # The managed job runs these cases on Linux. A fixed DevTools Protocol port is reported only when the browser process
+      # holds its listener, which Windows reads through GetExtendedTcpTable and macOS through lsof (CsWebUiListenerOwner).
+      - name: Test the CS-WebUI DevTools endpoint's listener check on Windows and macOS
+        if: runner.os != 'Linux' && matrix.cswebui
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release --
+          --treenode-filter "/*/*/CsWebUiRemoteDebuggingChecks/*" --timeout 3m --output detailed
       # The endpoint is an http.sys registration on Windows. As a standard user, it must keep every other process, of the
       # same user and of another standard user, from registering a URL under it, and must not use a port that a URL
       # reservation names (CsWebUiBlobEndpointChecks.HttpSys.cs). The script creates the users and reservations on this
@@ -982,8 +990,9 @@ jobs:
         if: runner.os == 'Linux'
         uses: ./.github/actions/apt-install
         with:
-          # hunspell-en-us: a dictionary for the spell-checking smoke (#662).
-          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool hunspell-en-us
+          # hunspell-en-us: a dictionary for the spell-checking smoke (#662). xdg-desktop-portal: the OpenURI portal of
+          # the default handler smoke (#1174).
+          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool hunspell-en-us xdg-desktop-portal
       # A window manager for the GTK 4 placement check (#663), without Openbox's recommended configuration tools.
       - name: Install Openbox for the X11 placement check
         if: runner.os == 'Linux'
@@ -1026,6 +1035,15 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
+      # #1174: the desktop's default mailto handler, which the smoke registers for the run and which records the URI it
+      # is given, launched by the window's and the application's LaunchUriAsync (the OpenURI portal) and by a clicked
+      # link (gtk_show_uri_on_window with GTK 3, GtkUriLauncher with GTK 4). It runs on a session bus of its own.
+      - name: Launch the default mailto handler with GTK 3 and GTK 4
+        if: runner.os == 'Linux'
+        timeout-minutes: 6
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser gtk4
       # S10: WebKitGTK's prefers-reduced-motion and prefers-contrast follow GTK's gtk-enable-animations and theme name
       # while the window is open.
       - name: Follow the desktop's contrast and motion in the GTK 3 window
@@ -1535,6 +1553,22 @@ jobs:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
           RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
         run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --region-appearance
+      # #1174: the window's and the application's LaunchUriAsync (ShellExecuteEx, NSWorkspace openURL:) open loopback URLs
+      # of the smoke in the runner's default browser, whose requests the smoke requires. Windows: LaunchAsync refuses a
+      # .cer file (AssocIsDangerous, a type Windows registers). macOS: an applet that LSSetDefaultHandlerForURLScheme makes
+      # the mailto default, if macOS lets it (MACOS REGISTRATION line), receives a launched mailto URI. Unelevated on
+      # Windows, as above: the standard user's own default browser. Not on win-arm64: that image has no default browser
+      # for a new user. #1239 round 3 (run 44660225731) logged http for runic-hosted with no UserChoice and the ProgID
+      # 'Undecided', whose command is C:\Windows\system32\OpenWith.exe "%1" (the "choose an app" prompt), and
+      # ShellExecuteEx failing with 1155 (ERROR_NO_ASSOCIATION), which LaunchUriAsync reports as
+      # Unavailable(BackendUnavailable), as it should. The x64 image has Edge as a new user's default.
+      - name: Launch the default browser on Windows and macOS
+        if: runner.os == 'macOS' || (runner.os == 'Windows' && runner.arch == 'X64')
+        timeout-minutes: 6
+        env:
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
+        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser
       # The host cases against real guest processes on the native platforms: the Windows job object (started suspended,
       # kill-on-close, grandchildren), the macOS process group, the same-user check against the real parent (Windows
       # token users), pending starts, windows that open after the guest ended, and the Windows guest's inherited handles.

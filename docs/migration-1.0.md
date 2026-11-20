@@ -9,8 +9,10 @@ added APIs but changed some defaults; 0.12.0 changed macOS behaviour and macOS
 packaging, which needed breaking changes; 0.13.0 replaced Views protocol 3 with
 protocol 4, which 1.0 keeps; 0.21.0 renamed APIs added since 0.12 after the API
 review before 1.0; the `1.0.0-rc.N` releases and 1.0.0 take fixes only.
-An application already on 0.12 needs only [From 0.12 to 0.13](#from-012-to-013),
-and one on 0.11 also [From 0.11 to 0.12](#from-011-to-012). Each section links
+An application on 0.y needs every section from its own release on: one on 0.22
+needs only [From 0.22 to 0.23](#from-022-to-023), one on 0.12 every section from
+[From 0.12 to 0.13](#from-012-to-013), and one on 0.11 also
+[From 0.11 to 0.12](#from-011-to-012). Each section links
 the release notes, which give the full detail and the pull requests:
 
 - 0.10.0: [Upgrading](../eng/release/notes/0.10.0.md#upgrading),
@@ -240,7 +242,7 @@ the code fails with `CS0246` again; the tables give the replacement.
 | `mockTypedView` from `@runic-artifex/views/mock`; `isViewClient`, `viewSourceIdentity` from `@runic-artifex/views` | `@runic-artifex/views/generated/mock` (rebuilding regenerates `*.mock.ts`); `@runic-artifex/views/bindings` | 0.9.0 |
 | Core types (`ViewSource`, `ViewClient`, `CollectionViewport`, …) from `@runic-artifex/react`, `vue`, `svelte` or `angular` | `from "@runic-artifex/views"` | 0.9.0 |
 | `runicSpaPageOptions` from `@runic-artifex/sveltekit` | `from "@runic-artifex/sveltekit/page-options"` | 0.9.0 |
-| `RunicViewOutlet` (`@runic-artifex/angular`) | `ViewOutlet`; the old name is a deprecated alias, removed in the next major release | 0.7.0-preview.7 |
+| `RunicViewOutlet` (`@runic-artifex/angular`) | `ViewOutlet`; the old name is a deprecated alias, removed in 2.0 | 0.7.0-preview.7 |
 | `BridgeErrorKind` `disconnected` for a released View; views-effect `ViewDisconnected` for it | `released`; `ViewReleased` | 0.8.0-preview.6 |
 | `ViewReference`, `"timedOut"`, `client.startSaveWithRequestId(id, input)`, `waitForBridge(5000)`, views-effect `ViewBridgeTimeout`, `ViewCommandFailed` | `PageReference`, `"timed-out"`, `client.startSave(input, { requestId: id })`, `waitForBridge({ timeout: 5000 })`, `ViewTimeout`, `ViewFailed` | 0.9.0 |
 | `dotnet runic … --output json`, `Runic.Assets.Packer … --output json`; tool-specific exit codes | `--format json`; 0, 1, 2, 3 and 130 as below. See [CLI tools](#cli-tools) | 0.9.0 |

@@ -1,5 +1,4 @@
-using System.Net;
-using System.Net.Sockets;
+using System.Globalization;
 using CsWebUi;
 using Runic.Desktop.Internal;
 
@@ -14,10 +13,17 @@ namespace Runic.Application.Views.CsWebUi;
 //   IsSupported);
 // - a browser window that this host shows: not UseWebView, ShowWindow or serve-only mode;
 // - a Chromium-based browser: CSWEBUI_BROWSER_PATH's, or WebUI's best one.
-// WebUI starts each Chromium window with its own WebUI profile, shared by the process's windows, and the host does not know
-// its path, so it cannot read DevToolsActivePort: for 0 it reserves a free loopback port itself and confirms the endpoint
-// as for a fixed port, through /json/version (and on Linux the listener's owner). WebUI's custom parameters replace its
-// Chromium defaults, so the parameters repeat them (WebUiChromiumDefaults) before the port.
+// The browser then runs with a profile of this run's own (DEV-SEC-85): a new 0700 temporary directory, set with SetProfile
+// before ConfigureWindow, instead of WebUI's .WebUI/WebUI<Browser>Profile, which every WebUI application of the user shares
+// and which persists. The process's windows share it, and so one browser: the first window's browser opens the endpoint
+// (the opener), and a window shown while that browser runs joins it, asks for no port and reports nothing, since the
+// opener's endpoint reaches its page too. Once that browser exits, its profile is deleted, and the next window opens a new
+// one. The host confirms the endpoint before it reports it (DEV-SEC-84):
+// - port 0: Chromium writes the port it bound into DevToolsActivePort in that profile, which only the user can write;
+// - a fixed port: Chromium writes no record, so beyond WebUiRemoteDebugging's checks the browser process that WebUI
+//   started must hold the listener on 127.0.0.1 (CsWebUiListenerOwner).
+// WebUI's custom parameters replace its Chromium defaults, so the parameters repeat them (WebUiChromiumDefaults) before the
+// port.
 internal sealed class CsWebUiRemoteDebugging : IDisposable
 {
     // The switches WebUI 24c7d196 passes a Chromium window without custom parameters (webui.c, _webui_get_browser_args),
@@ -30,24 +36,45 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
         "--auto-accept-camera-and-microphone-capture", "--no-proxy-server",
     ];
 
+    // The profile name WebUI requires beside the path; Chromium uses only the path.
+    internal const string ProfileName = "RunicDevelopment";
+
+    internal const string ProfilePrefix = "runic-cswebui-devtools-";
+
     private static readonly string[] ChromiumNames = ["chrome", "chromium", "msedge", "edge", "brave", "vivaldi", "yandex", "epic"];
 
+    private readonly Session _session;
     private WebUiRemoteDebugging.Reservation? _reservation;
+    private DateTime _shownAfter;
+    private bool _pending = true;
 
-    private CsWebUiRemoteDebugging(WebUiRemoteDebugging.Reservation reservation, int requested)
+    private CsWebUiRemoteDebugging(Session session, string profile, bool opens, int port, int requested,
+        WebUiRemoteDebugging.Reservation? reservation)
     {
-        _reservation = reservation;
-        Port = reservation.Port;
+        _session = session;
+        Profile = profile;
+        Opens = opens;
+        Port = port;
         Requested = requested;
+        _reservation = reservation;
     }
 
-    // The port Chromium listens on, and the one the variable asked for (0 for any).
+    // The per-run profile directory the window's browser uses.
+    internal string Profile { get; }
+
+    // Whether this window's browser opens the endpoint; false when it joins the browser of an earlier window.
+    internal bool Opens { get; }
+
+    // The port Chromium is asked for (0 for any; the record names the one it bound), and the one the variable asked for.
     internal int Port { get; }
 
     internal int Requested { get; }
 
-    // The browser's command-line parameters for the window.
-    internal string Parameters => string.Join(' ', [.. WebUiChromiumDefaults, WebUiRemoteDebugging.Argument(Port)]);
+    // The browser's command-line parameters for the window: a joining window's browser is the opener's, which ignores them,
+    // but they apply if that browser exited meanwhile, and then open no second endpoint.
+    internal string Parameters => Opens
+        ? string.Join(' ', [.. WebUiChromiumDefaults, WebUiRemoteDebugging.Argument(Port)])
+        : string.Join(' ', WebUiChromiumDefaults);
 
     // Whether the browser WebUI starts is Chromium-based: the one CSWEBUI_BROWSER_PATH names, else WebUI's best one.
     internal static bool IsChromiumBased(string? configuredPath, WebUiBrowser best)
@@ -61,10 +88,10 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
             or WebUiBrowser.Vivaldi or WebUiBrowser.Epic or WebUiBrowser.Yandex;
     }
 
-    // The endpoint a browser window asks for, with its port reserved until ReleasePort, or null for none. A non-Chromium
-    // browser writes a warning instead.
+    // The endpoint a browser window asks for, with a fixed port reserved until ReleasePort, or null for none. A
+    // non-Chromium browser writes a warning instead.
     internal static CsWebUiRemoteDebugging? Request(Func<string, string?> readEnvironment, bool browserWindow, Func<bool> chromiumBased,
-        Action<string> warn)
+        Action<string> warn, Session session)
     {
         if (!WebUiRemoteDebugging.IsSupported || !browserWindow) return null;
         if (WebUiRemoteDebugging.RequestedPort(readEnvironment, devTools: null) is not int requested) return null;
@@ -73,26 +100,26 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
             warn($"warning: Runic: {WebUiRemoteDebugging.PortVariable} asks for a DevTools Protocol endpoint, but the CS-WebUI window's browser is not Chromium-based, so it opens none.");
             return null;
         }
-        var reservation = requested == 0 ? null : WebUiRemoteDebugging.Reserve(requested);
-        if (reservation is { FellBack: true })
-            warn($"warning: Runic: port {requested} for the browser's DevTools Protocol endpoint is taken on 127.0.0.1 or [::1]; the browser uses a free port instead, which the {WebUiRemoteDebugging.OpenedPrefix.TrimEnd('=')} line names. Do not attach a debugger to port {requested}.");
-        if (reservation is null or { FellBack: true }) reservation = ReserveFree();
-        return reservation is null ? null : new CsWebUiRemoteDebugging(reservation, requested);
-    }
-
-    // A free port held on 127.0.0.1 and [::1], as WebUiRemoteDebugging.Reserve holds a fixed one.
-    private static WebUiRemoteDebugging.Reservation? ReserveFree()
-    {
-        for (var attempt = 0; attempt < 20; attempt++)
+        lock (session.Gate)
         {
-            var first = new TcpListener(IPAddress.Loopback, 0);
-            first.Start();
-            var port = ((IPEndPoint)first.LocalEndpoint).Port;
-            first.Dispose();
-            var reservation = WebUiRemoteDebugging.Reserve(port);
-            if (!reservation.FellBack) return reservation;
+            var profile = session.Profile ??= Directory.CreateTempSubdirectory(ProfilePrefix).FullName;
+            if (session.Opener is not null)
+            {
+                session.Joining++;
+                return new CsWebUiRemoteDebugging(session, profile, opens: false, port: 0, requested, reservation: null);
+            }
+            // A record that an earlier browser of this profile left would name a port nobody listens on.
+            WebUiRemoteDebugging.DeleteStaleRecord(profile);
+            var reservation = requested == 0 ? null : WebUiRemoteDebugging.Reserve(requested);
+            if (reservation is { FellBack: true })
+            {
+                warn($"warning: Runic: port {requested} for the browser's DevTools Protocol endpoint is taken on 127.0.0.1 or [::1]; the browser uses a free port instead, which the {WebUiRemoteDebugging.OpenedPrefix.TrimEnd('=')} line names. Do not attach a debugger to port {requested}.");
+                reservation = null;
+            }
+            var opener = new CsWebUiRemoteDebugging(session, profile, opens: true, reservation?.Port ?? 0, requested, reservation);
+            session.Opener = opener;
+            return opener;
         }
-        return null;
     }
 
     // Just before the browser starts.
@@ -100,20 +127,30 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
     {
         _reservation?.Dispose();
         _reservation = null;
+        _shownAfter = DateTime.UtcNow;
     }
 
-    public void Dispose() => ReleasePort();
+    // Without Start, the window was not shown: an opener gives way to the next window.
+    public void Dispose()
+    {
+        ReleasePort();
+        Started(processId: null);
+    }
 
-    // The endpoint of a window the host is about to show, with the window's parameters set, or null for none.
+    // The endpoint of a window the host is about to show, with the window's profile and parameters set, or null for none.
     internal static CsWebUiRemoteDebugging? ForWindow(WebUiWindow window, bool browserWindow)
     {
         // First, so a trimmed build, where the switch is off, keeps none of the code below or its delegates.
         if (!WebUiRemoteDebugging.IsSupported) return null;
         var debugging = Request(Environment.GetEnvironmentVariable, browserWindow,
             () => IsChromiumBased(Environment.GetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable), window.BestBrowser),
-            WebUiRemoteDebugging.WriteWarning);
+            WebUiRemoteDebugging.WriteWarning, Session.Process);
         if (debugging is null) return null;
-        try { window.SetCustomParameters(debugging.Parameters); }
+        try
+        {
+            window.SetProfile(ProfileName, debugging.Profile);
+            window.SetCustomParameters(debugging.Parameters);
+        }
         catch
         {
             debugging.Dispose();
@@ -122,25 +159,129 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
         return debugging;
     }
 
-    // Once the window is shown: reports the endpoint in the background, until the browser exits.
+    // Once the window is shown: an opener reports the endpoint in the background, until its browser exits.
     internal void Start(WebUiWindow window)
     {
         nuint processId;
         try { processId = window.BrowserProcessId; }
-        catch (ObjectDisposedException) { return; }
-        _ = ReportAsync(BrowserExited(processId), WebUiRemoteDebugging.WriteLine, WebUiRemoteDebugging.WriteWarning);
+        catch (ObjectDisposedException) { processId = 0; }
+        if (Started(processId) is not { } exited) return;
+        _ = ReportAsync(exited, processId, WebUiRemoteDebugging.WriteLine, WebUiRemoteDebugging.WriteWarning);
+    }
+
+    // Ends the window's pending state. For an opener with a browser process, returns that browser's exit, after which the
+    // session forgets the opener and deletes the profile. For an opener whose browser WebUI did not find, a completed task:
+    // the session forgets it, so the next window opens anew. Null for a joining window, a second call, or a window that
+    // was not shown.
+    internal Task? Started(nuint? processId)
+    {
+        lock (_session.Gate)
+        {
+            if (!_pending) return null;
+            _pending = false;
+            if (!Opens)
+            {
+                _session.Joining--;
+                return null;
+            }
+            if (processId is not { } pid || pid == 0)
+            {
+                // The browser may run all the same, so its profile stays for the next opener.
+                _session.Forget(this, browserExited: false);
+                return processId is null ? null : Task.CompletedTask;
+            }
+        }
+        var exited = _session.BrowserExited(processId.Value);
+        _ = exited.ContinueWith(static (_, state) =>
+        {
+            var self = (CsWebUiRemoteDebugging)state!;
+            lock (self._session.Gate) self._session.Forget(self, browserExited: true);
+        }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return exited;
     }
 
     // After the browser started: confirms the endpoint, writes RUNIC_APPLICATION_DEBUG_ENDPOINT (standard output), and its
     // end when the browser exits; or a warning on standard error when it cannot be confirmed.
-    internal Task ReportAsync(Task exited, Action<string> writeLine, Action<string> warn) =>
-        WebUiRemoteDebugging.ReportAsync(exited, profilePath: string.Empty, Port, writeLine, (port, reason) =>
-            warn($"warning: Runic: the CS-WebUI window's browser opened no DevTools Protocol endpoint on 127.0.0.1:{port}: {reason}. Do not attach a debugger to that port."));
+    internal Task ReportAsync(Task exited, nuint processId, Action<string> writeLine, Action<string> warn,
+        WebUiRemoteDebugging.Probes? probes = null, TimeProvider? time = null)
+    {
+        if (processId == 0)
+        {
+            warn("warning: Runic: the CS-WebUI window's DevTools Protocol endpoint is not reported: WebUI found no browser process for the window.");
+            return Task.CompletedTask;
+        }
+        var shownAfter = _shownAfter;
+        probes ??= WebUiRemoteDebugging.Probes.System with
+        {
+            ForeignListener = port => CsWebUiListenerOwner.ForeignListener(processId, shownAfter, port),
+        };
+        return WebUiRemoteDebugging.ReportAsync(exited, Profile, Port, writeLine, (port, reason) =>
+            warn(port == 0
+                ? $"warning: Runic: the CS-WebUI window's browser opened no DevTools Protocol endpoint: {reason}."
+                : $"warning: Runic: the CS-WebUI window's browser opened no DevTools Protocol endpoint on 127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)}: {reason}. Do not attach a debugger to that port."),
+            time, probes);
+    }
 
-    // Completes when the browser process exits, or never when WebUI reports none.
+    // The process's per-run profile and the window whose browser holds the endpoint.
+    internal sealed class Session
+    {
+        private static Session? s_process;
+
+        internal static Session Process
+        {
+            get
+            {
+                if (s_process is { } existing) return existing;
+                var created = new Session();
+                return Interlocked.CompareExchange(ref s_process, created, null) ?? created;
+            }
+        }
+
+        internal readonly Lock Gate = new();
+
+        // The directory, created for the first window that asks and deleted once its browser exits.
+        internal string? Profile;
+
+        // The window whose browser opens the endpoint, from its Request until that browser exits or it was not shown.
+        internal CsWebUiRemoteDebugging? Opener;
+
+        // Windows that joined the opener and are not shown yet: the profile stays while one may still start a browser.
+        internal int Joining;
+
+        // Completes when the browser process exits; replaceable in tests.
+        internal Func<nuint, Task> BrowserExited { get; init; } = CsWebUiRemoteDebugging.BrowserExited;
+
+        // Under Gate. The profile is deleted only once its browser exited and no joining window can start another.
+        internal void Forget(CsWebUiRemoteDebugging opener, bool browserExited)
+        {
+            if (!ReferenceEquals(Opener, opener)) return;
+            Opener = null;
+            if (!browserExited || Joining != 0 || Profile is not { } profile) return;
+            Profile = null;
+            _ = DeleteProfileAsync(profile);
+        }
+
+        // The browser's helper processes can hold files for a moment after it exits.
+        internal static async Task DeleteProfileAsync(string profile)
+        {
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                try
+                {
+                    if (Directory.Exists(profile)) Directory.Delete(profile, recursive: true);
+                    return;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(250)).ConfigureAwait(false);
+                }
+            }
+        }
+    }
+
+    // Completes when the browser process exits, or at once when it is gone already.
     internal static Task BrowserExited(nuint processId)
     {
-        if (processId == 0) return Task.Delay(Timeout.Infinite);
         try
         {
             var process = System.Diagnostics.Process.GetProcessById(checked((int)processId));

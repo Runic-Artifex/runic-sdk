@@ -2821,6 +2821,10 @@ static class BridgeDiagnosticCodes
     internal const string RegionCollectionName = "RUNICBRIDGE071";
     /// <summary>A [RunicDevelopmentOnly] declaration has no effect: it is on an interaction or view request.</summary>
     internal const string DevelopmentOnly = "RUNICBRIDGE072";
+    /// <summary>A ReactiveUI interaction's [RunicInteractionTimeout] is neither Timeout.Infinite nor 1 ms to 24 hours (sdk#1146).</summary>
+    internal const string InteractionTimeout = "RUNICBRIDGE073";
+    /// <summary>A [RunicInteractionTimeout] is on a view question, which takes its timeout in its constructor (sdk#1146).</summary>
+    internal const string ViewQuestionTimeout = "RUNICBRIDGE074";
     /// <summary>Warning from the build targets: RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true.</summary>
     internal const string AutoPropertyValue = "RUNICBRIDGE075";
 
@@ -2877,6 +2881,8 @@ static class BridgeDiagnosticCodes
         (RegionCollection, "error", "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"),
         (RegionCollectionName, "error", "A region collection's select or close client method collides with another client member"),
         (DevelopmentOnly, "warning", "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"),
+        (InteractionTimeout, "error", "A ReactiveUI interaction's [RunicInteractionTimeout] is not a timeout"),
+        (ViewQuestionTimeout, "error", "A [RunicInteractionTimeout] is on a view question"),
         (AutoPropertyValue, "warning", "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"),
     ];
 

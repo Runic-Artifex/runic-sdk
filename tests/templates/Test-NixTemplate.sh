@@ -153,18 +153,38 @@ serve() {
   : > "$log"
   setsid env RUNIC_APPLICATION_SERVE_ONLY=1 "$program" > "$log" 2>&1 < /dev/null &
   served=$!
-  local url=""
+  local url="" started=$SECONDS
+  # I-223: the host writes RUNIC_APPLICATION_URL=<url> once the Window's server listens. Only a complete line
+  # counts (read skips an unterminated last line), so a URL caught mid-write is not fetched.
+  reported_url() {
+    local line
+    while IFS= read -r line; do
+      if [[ "$line" =~ RUNIC_APPLICATION_URL=([^[:space:]]+) ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+        return 0
+      fi
+    done < "$log"
+    return 1
+  }
   for _ in $(seq 1 120); do
-    url="$(grep -o 'RUNIC_APPLICATION_URL=[^[:space:]]*' "$log" | head -n 1 | cut -d= -f2- || true)"
+    url="$(reported_url || true)"
     [[ -n "$url" ]] && break
     kill -0 "$served" 2>/dev/null || break
     sleep 0.5
   done
   if [[ -z "$url" ]]; then
+    echo "$program did not report its URL within $((SECONDS - started)) s:" >&2
     cat "$log" >&2
     return 1
   fi
-  curl -fsSL "$url" | grep -q '<script' || { echo "The page at $url has no script." >&2; return 1; }
+  # Fetch once; a refused connection after the report is a failure worth seeing, not something to retry past.
+  local page="$work/served.html"
+  if ! curl -fsSL "$url" -o "$page"; then
+    echo "Fetching $url, which $program reported, failed:" >&2
+    cat "$log" >&2
+    return 1
+  fi
+  grep -q '<script' "$page" || { echo "The page at $url has no script:" >&2; head -c 2000 "$page" >&2; return 1; }
   kill -9 -- "-$served" 2>/dev/null || true
   served=""
 }

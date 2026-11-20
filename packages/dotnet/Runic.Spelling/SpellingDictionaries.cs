@@ -6,13 +6,13 @@ namespace Runic.Spelling;
 
 /// <summary>
 /// The Hunspell dictionaries an application can check spelling with, from three sources, and the one a language is
-/// checked with. Safe to use from several threads; each call looks at the folders again, so a dictionary another Runic
+/// checked with. Safe to use from several threads; each call looks at the directories again, so a dictionary another Runic
 /// application downloaded is found without a restart.
 /// </summary>
 /// <remarks>
-/// <para>Sources, the first of a name winning: the application's own folders (<see cref="SpellingDictionarySource.Bundled"/>:
-/// <see cref="FolderVariable"/>, then the package's English dictionaries beside the program, or
-/// <see cref="SpellingDictionariesOptions.ApplicationFolders"/>), then downloaded dictionaries
+/// <para>Sources, the first of a name winning: the application's own directories (<see cref="SpellingDictionarySource.Bundled"/>:
+/// <see cref="DirectoryEnvironmentVariable"/>, then the package's English dictionaries beside the program, or
+/// <see cref="SpellingDictionariesOptions.ApplicationDirectories"/>), then downloaded dictionaries
 /// (<see cref="SpellingDictionarySource.Downloaded"/>), then the computer's (<see cref="SpellingDictionarySource.System"/>).
 /// A dictionary that matches a language better wins over one of an earlier source that matches it worse: <c>de-CH</c>
 /// takes the system's <c>de_CH</c> over a downloaded <c>de</c>.</para>
@@ -21,10 +21,10 @@ namespace Runic.Spelling;
 /// </remarks>
 public sealed partial class SpellingDictionaries
 {
-    /// <summary>The environment variable naming a folder of dictionaries that comes before every other, for development
+    /// <summary>The environment variable naming a directory of dictionaries that comes before every other, for development
     /// or a dictionary of the user's own: <c>RUNIC_SPELLING_DICTIONARIES</c>. Its dictionaries count as
     /// <see cref="SpellingDictionarySource.Bundled"/>.</summary>
-    public const string FolderVariable = "RUNIC_SPELLING_DICTIONARIES";
+    public const string DirectoryEnvironmentVariable = "RUNIC_SPELLING_DICTIONARIES";
 
     private readonly SpellingEnvironment _environment;
     private readonly IReadOnlyList<string> _applicationFolders;
@@ -38,26 +38,26 @@ public sealed partial class SpellingDictionaries
     {
         options ??= new();
         _environment = options.Environment ?? SpellingEnvironment.Current;
-        _applicationFolders = SpellingFolders.ApplicationFolders(_environment, options.ApplicationFolders);
-        DownloadFolder = options.DownloadFolder ?? SpellingFolders.DownloadFolder(_environment);
+        _applicationFolders = SpellingFolders.ApplicationDirectories(_environment, options.ApplicationDirectories);
+        DownloadDirectory = options.DownloadDirectory ?? SpellingFolders.DownloadDirectory(_environment);
         _useSystem = options.UseSystemDictionaries;
         _userLanguages = options.UserLanguages ?? (CultureInfo.CurrentUICulture.Name is { Length: > 0 } culture ? [culture] : []);
         _httpClient = options.HttpClient;
-        Catalogue = options.Catalogue ?? SpellingCatalogue.Default;
+        Catalog = options.Catalog ?? SpellingCatalog.Default;
         _allowLoopback = options.AllowLoopbackDownloads;
     }
 
-    /// <summary>The folder all Runic applications of the user share for downloaded dictionaries:
+    /// <summary>The directory all Runic applications of the user share for downloaded dictionaries:
     /// <c>$XDG_DATA_HOME/runic/dictionaries</c> (by default <c>~/.local/share/runic/dictionaries</c>) on Linux,
     /// <c>%LOCALAPPDATA%\Runic\dictionaries</c> on Windows, <c>~/Library/Application Support/Runic/dictionaries</c> on
     /// macOS.</summary>
-    public static string SharedDownloadFolder => SpellingFolders.DownloadFolder(SpellingEnvironment.Current);
+    public static string SharedDownloadDirectory => SpellingFolders.DownloadDirectory(SpellingEnvironment.Current);
 
-    /// <summary>The folder downloaded dictionaries are installed in, one folder each.</summary>
-    public string DownloadFolder { get; }
+    /// <summary>The directory downloaded dictionaries are installed in, one directory each.</summary>
+    public string DownloadDirectory { get; }
 
     /// <summary>The dictionaries that can be downloaded.</summary>
-    public SpellingCatalogue Catalogue { get; }
+    public SpellingCatalog Catalog { get; }
 
     /// <summary>Every installed dictionary, the first of a name in the order of the sources; in that order.</summary>
     public IReadOnlyList<SpellingDictionary> GetInstalled() => [.. Installed().Values];
@@ -85,9 +85,9 @@ public sealed partial class SpellingDictionaries
         ArgumentNullException.ThrowIfNull(languageTag);
         var installed = Installed();
         var current = Choose(languageTag, installed.Keys) is { } name ? installed[name] : null;
-        SpellingCatalogueEntry? download = null;
-        if (Choose(languageTag, [.. installed.Keys, .. Catalogue.Entries.Select(entry => entry.Name)]) is { } best && !installed.ContainsKey(best))
-            download = Catalogue.Find(best);
+        SpellingCatalogEntry? download = null;
+        if (Choose(languageTag, [.. installed.Keys, .. Catalog.Entries.Select(entry => entry.Name)]) is { } best && !installed.ContainsKey(best))
+            download = Catalog.Find(best);
         return new(languageTag, current, download);
     }
 
@@ -150,8 +150,8 @@ public sealed partial class SpellingDictionaries
         string[] folders;
         try
         {
-            if (!Directory.Exists(DownloadFolder)) return [];
-            folders = [.. Directory.EnumerateDirectories(DownloadFolder).Where(folder => !Path.GetFileName(folder).StartsWith('.')).Order(StringComparer.Ordinal)];
+            if (!Directory.Exists(DownloadDirectory)) return [];
+            folders = [.. Directory.EnumerateDirectories(DownloadDirectory).Where(folder => !Path.GetFileName(folder).StartsWith('.')).Order(StringComparer.Ordinal)];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

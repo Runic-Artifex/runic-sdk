@@ -44,7 +44,7 @@ public sealed class BundledDictionaryTests
     [Test]
     public async Task EachDictionaryReadsItsEnglish()
     {
-        var dictionaries = new SpellingDictionaries(new() { ApplicationFolders = [Environments.Bundled], UseSystemDictionaries = false, DownloadFolder = Path.GetTempPath() + "none" });
+        var dictionaries = new SpellingDictionaries(new() { ApplicationDirectories = [Environments.Bundled], UseSystemDictionaries = false, DownloadDirectory = Path.GetTempPath() + "none" });
         var american = await SpellChecker.LoadAsync(dictionaries.Find("en-US")!);
         var british = await SpellChecker.LoadAsync(dictionaries.Find("en-GB")!);
         const string text = "The colour of the harbour, the color of the sea.";

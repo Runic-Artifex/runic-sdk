@@ -118,4 +118,23 @@ test("support validation rejects incomplete entries", () => {
   assert.throws(() => validateSupport(unsupported), /remediation/);
   assert.match(renderSupportMarkdown(support), /\| `linux-x64` \| CI-verified \| CI-verified \|/);
   assert.throws(() => renderReadme("no markers", support), /must contain/);
+  // A limit belongs to a CI-verified pair only, and is not empty.
+  const limitedUnsupported = clone();
+  limitedUnsupported.hosts.find(host => host.id === "cswebui").targets.find(target => target.status === "unsupported").limitations = "x";
+  assert.throws(() => validateSupport(limitedUnsupported), /limitations/);
+  const emptyLimit = clone();
+  emptyLimit.hosts[0].targets[0].limitations = "";
+  assert.throws(() => validateSupport(emptyLimit), /limitations/);
+});
+
+// D077.3: CI-verified pairs that CI does not cover in full are marked, with their limits, as accepted 1.0 limitations.
+test("the README marks the CI-verified pairs with limits", () => {
+  const desktop = support.hosts.find(host => host.id === "desktop");
+  const limited = desktop.targets.filter(target => target.limitations).map(target => target.rid).sort();
+  assert.deepEqual(limited, ["linux-musl-arm64", "linux-musl-x64", "win-arm64"]);
+  const markdown = renderSupportMarkdown(support);
+  assert.match(markdown, /\| `win-arm64` \| CI-verified, with limits \| Unsupported \|/);
+  assert.match(markdown, /\| `linux-x64` \| CI-verified \| CI-verified \|/);
+  assert.match(markdown, /- Runic Desktop, `win-arm64`: Drag-and-drop with WebView2/);
+  assert.match(markdown, /- Runic Desktop, `linux-musl-x64`: `Runic.Desktop.Gtk4`/);
 });

@@ -7,7 +7,13 @@
     <OutputType>Exe</OutputType>
     <!-- The smoke checks the experimental runic-host/1 window mode. -->
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DefaultBrowserSmoke clicks a link through XTEST on Linux. -->
+    <Compile Include="../Runic.Desktop.WebViewSmoke/XTestPointer.cs" Link="XTestPointer.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- This executable is the host and, with its guest argument, each guest application. -->

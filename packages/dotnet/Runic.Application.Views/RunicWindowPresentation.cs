@@ -273,9 +273,9 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// <remarks>
     /// <para>
     /// The panel's page is a second connection of the Window and binds to the same ViewModel tree, for example to a
-    /// <c>SidePanel</c> property of the root ViewModel; its address and history are its own. Only Runic Desktop's own
-    /// windows on Windows (WebView2) open one in 0.19; every other presentation refuses with
-    /// <see cref="RunicSidePanelRefusal.Unsupported"/>: macOS and Linux for now, an installed browser, a serve-only
+    /// <c>SidePanel</c> property of the root ViewModel; its address and history are its own. Runic Desktop's own
+    /// windows open one on Windows (WebView2), macOS (WKWebView) and Linux (WebKitGTK, on GTK 3 and GTK 4); every other
+    /// presentation refuses with <see cref="RunicSidePanelRefusal.Unsupported"/>: an installed browser, a serve-only
     /// application, a custom window host, WPF, CS-WebUI and a hosted application's Window or region.
     /// <see cref="RunicWindowPresentationFeatures.SidePanel"/> in <see cref="Features"/> says the host has one; the
     /// Window's state can still refuse (maximized, full-screen, snapped, minimized, no room). Once the Window closed,
