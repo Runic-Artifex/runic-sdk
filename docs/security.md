@@ -483,6 +483,14 @@ Whoever it admits uses the Window as you do, Bridge included. Since 0.23
   dependency left behind for example, are another origin's and do not reach a
   later session's code, bootstrap or Bridge. Chromium browsers and Firefox
   resolve names under `.localhost` to the loopback interface themselves.
+- **Both loopback addresses.** Chromium connects to `[::1]` first, and any
+  local user can listen there. Since 0.23.0, `dev` listens on 127.0.0.1 and
+  `[::1]` with the same rules, and takes a port only when it is free on both:
+  when another program holds 9224 on either address, the address moves to a
+  port free on both, and the `[dev] Browser:` line says so. The CDP adapter on
+  Linux does the same, as a debugger told `localhost` may also try `[::1]`
+  first. A system without IPv6 has no `[::1]` for anyone to take, and `dev`
+  listens on 127.0.0.1 alone.
 
 - **One browser, by a one-time code.** A request with the current code admits
   its browser, also from another site: the code page that `dev` writes is a
@@ -852,7 +860,12 @@ What the user's processes that do not run elevated can still do, and what they c
 
 `Runic.Application.Views.CsWebUi` adds no admission of its own. Who can connect
 to a CS-WebUI window is decided by native WebUI: its local server, the token it
-writes into `webui.js` and its single-client default. `SetPublic(true)`,
+writes into `webui.js` and its single-client default. That default admits the
+first local client that loads the window's page. A local process that reaches
+the window's port before the browser does, on a shared machine also another
+user's process, becomes the window's client: it receives the page, WebUI's
+authentication cookie and the `webui.js` token, so it can call the window's
+Bridge, and WebUI refuses the browser's page. `SetPublic(true)`,
 serve-only mode (`RUNIC_APPLICATION_SERVE_ONLY=1`), multi-client configuration
 and your own WebUI build are security decisions. A window that serves an
 embedded frontend through a file handler keeps WebUI's authentication cookie on,

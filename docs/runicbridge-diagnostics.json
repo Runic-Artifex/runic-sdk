@@ -240,6 +240,16 @@
       "id": "RUNICBRIDGE072",
       "severity": "warning",
       "title": "A [RunicDevelopmentOnly] declaration on an interaction or view request has no effect"
+    },
+    {
+      "id": "RUNICBRIDGE073",
+      "severity": "error",
+      "title": "A ReactiveUI interaction's [RunicInteractionTimeout] is not a timeout"
+    },
+    {
+      "id": "RUNICBRIDGE074",
+      "severity": "error",
+      "title": "A [RunicInteractionTimeout] is on a view question"
     }
   ]
 }

@@ -92,6 +92,11 @@ export const windowsFileReplacePaths = [
 export const windowsPrivateFilePaths = [
   "tools/dotnet-runic/BrowserEntry.cs", "tests/dotnet/Runic.Application.Tool.Tests/DevBrowserCodeFileTests.cs",
 ];
+// dev's loopback listeners on 127.0.0.1 and [::1] (DEV-SEC-80): Windows binds a port on the two addresses by rules of its
+// own. Their checks are in ToolTests' WindowsCommands category, which the native job's Windows x64 leg runs.
+export const windowsLoopbackPaths = [
+  "tools/dotnet-runic/LoopbackListeners.cs", "tests/dotnet/Runic.Application.Tool.Tests/LoopbackFamilyTests.cs",
+];
 // Runic.Spelling's personal word list (DEV-SEC-88): readable only by its user, which on Windows is an access list of that
 // user alone with nothing inherited, written as dev --browser's code file is (PrivateFiles.cs). Its check is in
 // Runic.Spelling.Tests' WindowsPrivateFiles category, which the native job's Windows x64 leg runs.
@@ -149,6 +154,8 @@ export const platformRules = [
   { platforms: ["win-x64"], paths: windowsFileReplacePaths },
   // dev --browser's private code file on Windows (#1187), above.
   { platforms: ["win-x64"], paths: windowsPrivateFilePaths },
+  // dev's listeners on both loopback addresses (DEV-SEC-80), above.
+  { platforms: ["win-x64"], paths: windowsLoopbackPaths },
   // Runic.Spelling's private word list on Windows (DEV-SEC-88), above.
   { platforms: ["win-x64"], paths: windowsSpellingPrivateFilePaths },
   // The NVDA leg's driver, which runs in the screen reader job on Windows x64 only.

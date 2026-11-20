@@ -100,6 +100,8 @@ and severities are open.
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator; the analyzer while you type | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
 | [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator; the analyzer while you type | A region collection's select or close client method collides with another client member |
 | [`RUNICBRIDGE072`](#runicbridge072) | Warning | Generator | A `[RunicDevelopmentOnly]` declaration on an interaction or view request has no effect |
+| [`RUNICBRIDGE073`](#runicbridge073) | Error | Generator | A ReactiveUI interaction's `[RunicInteractionTimeout]` is not a timeout |
+| [`RUNICBRIDGE074`](#runicbridge074) | Error | Generator | A `[RunicInteractionTimeout]` is on a view question |
 
 ### Errors and warnings while you type
 
@@ -326,15 +328,11 @@ read-only, non-nullable collection of DTO rows, or its key is not a non-nullable
 
 ### RUNICBRIDGE011
 
-A ReactiveUI interaction has no public getter or has a public setter. Since
-0.23 also: its `[RunicInteractionTimeout]` is not a timeout, neither
-`Timeout.Infinite` nor 1 to 86 400 000 milliseconds (24 hours). The generator
-reports this one; the analyzer does not.
+A ReactiveUI interaction has no public getter or has a public setter. An
+interaction's `[RunicInteractionTimeout]` that is not a timeout is
+[`RUNICBRIDGE073`](#runicbridge073).
 
-**Fix:** expose the interaction as a get-only property, and give
-`[RunicInteractionTimeout]` a timeout in that range, or `Timeout.Infinite` for
-none. See
-[Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime).
+**Fix:** expose the interaction as a get-only property.
 
 ### RUNICBRIDGE012
 
@@ -748,15 +746,12 @@ A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` member of a ViewModel
 attaches the instance it reads when the ViewModel is presented, so a replaced
 instance would never reach the page.
 
-Since 0.23 also: a `ViewQuestion<TInput, TOutput>` has
-`[RunicInteractionTimeout]`, which applies to ReactiveUI interactions only. The
-generator reports this one; the analyzer does not.
+`[RunicInteractionTimeout]` on a view question is
+[`RUNICBRIDGE074`](#runicbridge074).
 
 **Fix:** expose the member as a get-only property, such as
 `public ViewRequest<FocusTarget> Focus { get; } = new();`. See
-[View requests](../specs/application/README.md#view-requests). Give a view
-question its lifetime in its constructor instead:
-`new ViewQuestion<Request, bool>(timeout: Timeout.InfiniteTimeSpan)`.
+[View requests](../specs/application/README.md#view-requests).
 
 ### RUNICBRIDGE036
 
@@ -982,6 +977,26 @@ declaration has no effect, and the member stays in every publish.
 **Fix:** mark the whole ViewModel when the interaction belongs to a development
 tool, or remove the attribute. See
 [Development-only views and members](packaging.md#development-only-views-and-members).
+
+### RUNICBRIDGE073
+
+An error from the Bridge generator (since 0.23). A ReactiveUI interaction's
+`[RunicInteractionTimeout]` is not a timeout: neither `Timeout.Infinite` nor 1
+to 86 400 000 milliseconds (24 hours). The analyzer does not report it.
+
+**Fix:** give `[RunicInteractionTimeout]` a timeout in that range, or
+`Timeout.Infinite` for none. See
+[Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime).
+
+### RUNICBRIDGE074
+
+An error from the Bridge generator (since 0.23). A
+`ViewQuestion<TInput, TOutput>` member has `[RunicInteractionTimeout]`, which
+applies to ReactiveUI interactions only. The analyzer does not report it.
+
+**Fix:** remove the attribute, and give the view question its lifetime in its
+constructor: `new ViewQuestion<Request, bool>(timeout: Timeout.InfiniteTimeSpan)`.
+See [Interaction lifetime](../packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#interaction-lifetime).
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

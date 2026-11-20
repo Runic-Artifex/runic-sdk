@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -79,7 +80,7 @@ internal sealed class CdpServer : IAsyncDisposable
 {
     private const int MaximumRequestHead = 16 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
-    private readonly TcpListener _listener;
+    private readonly LoopbackListeners _listeners;
     private readonly WebKitDebugEndpoint _endpoint;
     private readonly IReadOnlySet<string> _allowedOrigins;
     private readonly LoopbackSockets? _sockets;
@@ -90,46 +91,41 @@ internal sealed class CdpServer : IAsyncDisposable
     private readonly List<Task> _connections = [];
     private Task _accepting = Task.CompletedTask;
 
-    private CdpServer(TcpListener listener, WebKitDebugEndpoint endpoint, IReadOnlySet<string> allowedOrigins, LoopbackSockets? sockets, Action<string> report)
+    private CdpServer(LoopbackListeners listeners, WebKitDebugEndpoint endpoint, IReadOnlySet<string> allowedOrigins, LoopbackSockets? sockets, Action<string> report)
     {
-        _listener = listener;
+        _listeners = listeners;
         _endpoint = endpoint;
         _allowedOrigins = allowedOrigins;
         _sockets = sockets;
         _report = report;
     }
 
-    internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+    internal int Port => _listeners.Port;
+
+    /// <summary>The addresses the endpoint listens on: 127.0.0.1, and <c>[::1]</c> unless the system has no IPv6.</summary>
+    internal IReadOnlyList<IPAddress> Addresses => [.. _listeners.Listeners.Select(static listener => ((IPEndPoint)listener.LocalEndpoint).Address)];
 
     /// <summary>
-    /// Listens on 127.0.0.1:<paramref name="port"/>; null when the port is taken. <paramref name="sockets"/> tells who owns a
-    /// connection's other end (null: no check, off Linux); <paramref name="report"/> receives the <c>[dev]</c> line for a
-    /// refused connection.
+    /// Listens on 127.0.0.1:<paramref name="port"/> and <c>[::1]</c>:<paramref name="port"/> (<see cref="LoopbackListeners"/>):
+    /// a debugger told <c>localhost</c> may connect to <c>[::1]</c> first (DEV-SEC-80). Null when the port is taken on either.
+    /// <paramref name="sockets"/> tells who owns a connection's other end (null: no check, off Linux); <paramref name="report"/>
+    /// receives the <c>[dev]</c> line for a refused connection.
     /// </summary>
     internal static CdpServer? TryStart(int port, WebKitDebugEndpoint endpoint, IReadOnlySet<string>? allowedOrigins, LoopbackSockets? sockets, Action<string> report)
     {
-        var listener = new TcpListener(IPAddress.Loopback, port);
-        try
-        {
-            listener.Start();
-        }
-        catch (SocketException)
-        {
-            listener.Dispose();
-            return null;
-        }
-        var server = new CdpServer(listener, endpoint, allowedOrigins ?? new HashSet<string>(StringComparer.Ordinal), sockets, report);
-        server._accepting = Task.Run(server.AcceptAsync);
+        if (LoopbackListeners.TryStart(port) is not { } listeners) return null;
+        var server = new CdpServer(listeners, endpoint, allowedOrigins ?? new HashSet<string>(StringComparer.Ordinal), sockets, report);
+        server._accepting = Task.WhenAll(listeners.Listeners.Select(listener => Task.Run(() => server.AcceptAsync(listener))));
         return server;
     }
 
-    private async Task AcceptAsync()
+    private async Task AcceptAsync(TcpListener listener)
     {
         try
         {
             while (!_stop.IsCancellationRequested)
             {
-                TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                TcpClient client = await listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
                 // A debugger answers each small message before the next one comes, as at each instrumentation pause:
                 // Nagle's algorithm would hold every answer back for the delayed acknowledgement (#1051).
                 client.NoDelay = true;
@@ -288,7 +284,7 @@ internal sealed class CdpServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
-        _listener.Stop();
+        _listeners.Stop();
         Task[] connections;
         lock (_connections) connections = [.. _connections];
         try
@@ -298,7 +294,7 @@ internal sealed class CdpServer : IAsyncDisposable
         catch (Exception error) when (error is not OutOfMemoryException)
         {
         }
-        _listener.Dispose();
+        _listeners.Dispose();
         _stop.Dispose();
     }
 }

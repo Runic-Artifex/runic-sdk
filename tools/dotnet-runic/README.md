@@ -711,7 +711,10 @@ names. The session file lists both under `debugEndpoints`.
 
 - **Security.** The endpoint can script the Window's page and its Bridge, so
   it admits only debuggers of the user who runs `dev`:
-  - It listens on 127.0.0.1 only. It refuses (403) a request whose `Host` is
+  - It listens on 127.0.0.1 and `[::1]`, on the same port, since 0.23: a
+    debugger told `localhost` may connect to `[::1]` first, where another
+    user could otherwise listen. When either address's port is taken, the
+    port counts as taken. It refuses (403) a request whose `Host` is
     not an IP address or `localhost`, and any request with an `Origin`, so a
     web page in a browser cannot reach it. Its WebSocket paths carry a random
     secret that only `/json/version` and `/json/list` reveal.
@@ -813,12 +816,13 @@ and the window's own commands report `OwnerUnavailable`, a Window with
 
 The Window's own address changes with every start and carries its server's
 credential, so `dev` does not print it. Instead it serves the Window's pages at
-a stable address of its own, `http://<label>.localhost:9224/` (another free
-port when 9224 is taken; the lines say which), for one browser that a one-time
+a stable address of its own, `http://<label>.localhost:9224/` (another port
+when 9224 is taken on 127.0.0.1 or `[::1]`; the lines say which), for one browser that a one-time
 code admits. `<label>` is 26 random lowercase letters and digits, new for each
 `dev` run and the same across its Window restarts. Chromium browsers (Chrome,
 Edge) and Firefox resolve names under `.localhost` to the loopback interface
-themselves.
+themselves; Chromium connects to `[::1]` first, Firefox to 127.0.0.1, so `dev`
+listens on both.
 `/` is the Window's first page, `/windows/2` and so on the Windows the
 application opens after it. Until the Window serves, and while `dotnet watch`
 restarts it, the address shows a page that reloads itself every second.
@@ -915,8 +919,8 @@ restart. Other IDEs open the same page from their own JavaScript debug
 configuration, such as Rider's "JavaScript Debug" with its `file://` URL, or the
 address with the code from the `[dev] Browser:` line.
 
-- **Security.** The address listens on 127.0.0.1 only and answers only its
-  own `Host`, `<label>.localhost:<port>`, which also keeps out DNS rebinding. A
+- **Security.** The address listens on 127.0.0.1 and `[::1]`, with the same
+  rules on both, and answers only its own `Host`, `<label>.localhost:<port>`, which also keeps out DNS rebinding. A
   request with the current code (a `GET` of `/` or `/windows/<n>`) is admitted
   from any site, since the code page is a `file:` document; every other request
   needs the admitted browser's cookie, no `Origin` other than the address's own,

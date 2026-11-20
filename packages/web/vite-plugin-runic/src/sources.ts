@@ -21,8 +21,6 @@ export { openPath, sourcesPath };
 export const sourceMapVariable = "RUNIC_APPLICATION_DEV_SOURCE_MAP";
 const projectVariable = "RUNIC_APPLICATION_DEV_PROJECT";
 export const sourceMapFormat = "runic.views.bridge-sources/1";
-/** The format of the maps that the generators of 0.20 wrote, which the map reader still accepts through 0.21. */
-const legacySourceMapFormat = "runic-bridge-sources/1";
 const sourceMapFileName = "sources.json";
 // A larger file is not a map the generator wrote.
 const maximumMapBytes = 16 * 1024 * 1024;
@@ -166,13 +164,10 @@ function isFile(path: string): boolean {
   catch { return false; }
 }
 
-/**
- * The map with its well-formed entries, or undefined when it is not a `runic.views.bridge-sources/1` map. A map of the
- * 0.20 name `runic-bridge-sources/1`, the same format, is read as one and answered with the new name.
- */
+/** The map with its well-formed entries, or undefined when it is not a `runic.views.bridge-sources/1` map. */
 export function parseSourceMap(value: unknown): RunicSourceMap | undefined {
   const format = typeof value === "object" && value !== null ? (value as { format?: unknown }).format : undefined;
-  if (format !== sourceMapFormat && format !== legacySourceMapFormat) return undefined;
+  if (format !== sourceMapFormat) return undefined;
   const { viewModels, members } = value as { viewModels?: unknown; members?: unknown };
   const strings = (entry: Record<string, unknown>, ...names: string[]): boolean =>
     names.every((name) => typeof entry[name] === "string");

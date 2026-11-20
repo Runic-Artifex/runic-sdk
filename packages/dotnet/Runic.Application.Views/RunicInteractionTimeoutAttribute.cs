@@ -24,10 +24,10 @@ namespace Runic.Application.Views;
 /// </code>
 /// <para>
 /// It applies to the property of a ReactiveUI <c>Interaction</c> (<c>IInteraction&lt;TInput, TOutput&gt;</c>). On a
-/// <see cref="ViewQuestion{TInput, TOutput}"/> the Bridge generator reports RUNICBRIDGE035, because a view question
+/// <see cref="ViewQuestion{TInput, TOutput}"/> the Bridge generator reports RUNICBRIDGE074, because a view question
 /// takes its timeout in its constructor; on another member it has no effect. A value that is neither
 /// <see cref="System.Threading.Timeout.Infinite"/> nor between 1 and <see cref="MaximumMilliseconds"/> is reported as
-/// RUNICBRIDGE011. The lifetime is .NET-side only: the generated TypeScript and contract hash do not change.
+/// RUNICBRIDGE073. The lifetime is .NET-side only: the generated TypeScript and contract hash do not change.
 /// </para>
 /// <para>
 /// A page of <c>@runic-artifex/views</c> before 0.23 still aborts its handler after ten minutes, so with such a page a

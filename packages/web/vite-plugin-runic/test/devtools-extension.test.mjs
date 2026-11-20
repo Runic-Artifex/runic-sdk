@@ -15,7 +15,7 @@ const { callRows, describeSections, formatDuration, formatValue, locationLabel, 
 
 const file = "/src/Demo/EditorViewModel.cs";
 const map = {
-  format: "runic-bridge-sources/1",
+  format: "runic.views.bridge-sources/1",
   viewModels: [
     { id: "Demo.EditorViewModel", name: "Editor", route: "editor", contract: "Demo.EditorViewModel:F1", pageKinds: ["editor"],
       symbol: "Demo.EditorViewModel", location: { file, line: 5, column: 14 } },
