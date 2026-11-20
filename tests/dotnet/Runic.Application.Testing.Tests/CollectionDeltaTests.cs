@@ -150,13 +150,15 @@ internal sealed class CollectionDeltaTests
             model.Items.Insert(0, new("a", "again"));
             using (var failure = await NextAsync(transport, "keyed"))
                 Require(Kind(failure) == "failure", "The duplicate key was not reported.");
-            model.Items.Insert(0, new("x", "shift"));
-            model.Items.Insert(0, new("y", "shift"));
-            await Task.Delay(200);
-            Require(transport.TakePushes("keyed").Count == 0, "Shifted rows reported the same duplicate key again.");
+            // Each shift is its own unit: the batch publishes it when the scope ends, before the next change, and the
+            // route delivers its pushes in order. So the probe's recovery frame being the only push proves the shifts
+            // published nothing (I-224: no fixed wait).
+            using (BridgeSnapshotBatch.Begin(model)) model.Items.Insert(0, new("x", "shift"));
+            using (BridgeSnapshotBatch.Begin(model)) model.Items.Insert(0, new("y", "shift"));
             model.Items.RemoveAt(2);
             using (var recovered = await NextAsync(transport, "keyed"))
-                Require(SetOf(recovered, "rows") is { } rows && rows.GetArrayLength() == 4, "The route did not recover after shifted rows.");
+                Require(SetOf(recovered, "rows") is { } rows && rows.GetArrayLength() == 4,
+                    $"Shifted rows reported the same duplicate key again, or the route did not recover after them: {recovered.RootElement.GetRawText()}");
 
             // A command that ran says so when its effects cannot be published: no revision, the reason state-withheld.
             using (var reply = JsonDocument.Parse(transport.Command("keyed", "addDuplicate")))
