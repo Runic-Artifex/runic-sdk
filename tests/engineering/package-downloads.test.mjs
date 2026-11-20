@@ -48,7 +48,8 @@ test("the list is sorted, unique, hashed and names the current validation baseli
   }
   const versions = readFileSync(resolve(root, "eng/Versions.props"), "utf8");
   const property = name => new RegExp(`<${name}>([^<]+)</${name}>`).exec(versions)[1];
-  const baselines = [property("RunicPackageValidationBaselineVersion"), property("RunicCsWebUiPackageValidationBaselineVersion")];
+  const baselines = ["RunicPackageValidationBaselineVersion", "RunicCsWebUiPackageValidationBaselineVersion", "RunicSpellingPackageValidationBaselineVersion"]
+    .map(property);
   const runic = list.filter(item => item.id.startsWith("Runic."));
   expect(runic.length).toBeGreaterThan(0);
   for (const item of runic) expect(baselines).toContain(item.version);
