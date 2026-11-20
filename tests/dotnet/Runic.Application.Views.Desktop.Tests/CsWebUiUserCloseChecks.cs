@@ -76,6 +76,57 @@ internal sealed class CsWebUiUserCloseChecks
         Require(fixture.Close.OnUserClose(), "The handler kept a window open that closes anyway.");
     }
 
+    // sdk#1190: with a close drain the decided close keeps the window open until the drain ends, and a user close
+    // meanwhile is ignored; RequestCloseAsync returns once the close is decided.
+    [Test]
+    public async Task ADecidedCloseDrainsBeforeTheWindowCloses()
+    {
+        var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drains = 0;
+        var closings = 0;
+        var close = new CsWebUiUserClose(null, () => throw new InvalidOperationException("The window closed without the drain."),
+            _ => throw new InvalidOperationException("The request released the Window without the drain."), () => Interlocked.Increment(ref closings))
+        {
+            Drain = () =>
+            {
+                Interlocked.Increment(ref drains);
+                return drained.Task;
+            },
+        };
+        Require(!close.OnUserClose(), "An unguarded window with a drain closed at the user's close.");
+        await WaitUntil(() => Volatile.Read(ref drains) == 1 && close.IsDraining);
+        Require(!close.OnUserClose() && !close.OnUserClose(), "A user close during the drain let the window close.");
+        Require(await close.RequestAsync(CancellationToken.None).AsTask().WaitAsync(Limit), "A request during the drain did not report the close.");
+        Require(Volatile.Read(ref drains) == 1 && Volatile.Read(ref closings) == 1, $"Drained {drains} times, closing {closings} times.");
+        drained.SetResult();
+        await WaitUntil(() => !close.IsDraining);
+        Require(close.OnUserClose(), "The handler kept a window open after its drain.");
+
+        // A guarded request: the guard first, then the drain, and the request returns before the drain ends.
+        var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var guarded = new CsWebUiUserClose(_ => ValueTask.FromResult(true), () => { }, _ => ValueTask.CompletedTask, () => { })
+        {
+            Drain = () => pending.Task,
+        };
+        Require(await guarded.RequestAsync(CancellationToken.None).AsTask().WaitAsync(Limit) && guarded.IsDraining,
+            "A request did not return once the close was decided, with the drain running.");
+        pending.SetResult();
+        await WaitUntil(() => !guarded.IsDraining);
+    }
+
+    [Test]
+    public void TheDrainIsAvailableForTheWebViewAndServeOnly()
+    {
+        Require(CsWebUiUserClose.DrainUnavailableReason(serveOnly: true, webView: false, customShow: false, closeHandlerSupported: false) is null,
+            "Serve-only mode did not drain.");
+        Require(CsWebUiUserClose.DrainUnavailableReason(serveOnly: false, webView: true, customShow: false, closeHandlerSupported: true) is null,
+            "A WebView window on Windows or Linux did not drain.");
+        Require(CsWebUiUserClose.DrainUnavailableReason(serveOnly: false, webView: false, customShow: false, closeHandlerSupported: true) is { } browser
+            && browser.Contains("browser window", StringComparison.Ordinal), "A browser window drained.");
+        Require(CsWebUiUserClose.DrainUnavailableReason(serveOnly: false, webView: true, customShow: false, closeHandlerSupported: false) is { } mac
+            && mac.Contains("macOS", StringComparison.Ordinal), "A macOS WebView drained.");
+    }
+
     [Test]
     public void TheGuardIsAvailableOnlyForTheHostsOwnWebViewWhereWebUiAsks()
     {

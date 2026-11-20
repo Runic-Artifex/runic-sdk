@@ -87,6 +87,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         _maximumPendingUploadBytes = options.MaximumPendingUploadBytes;
         _assets = options.Assets;
         Placement = options.Placement;
+        _closeDrain = options.CloseDrain;
         _menuBar = new CsWebUiMenuBar(options.MenuBar ?? throw new ArgumentNullException(nameof(options), "MenuBar is null."));
     }
 
@@ -110,6 +111,8 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     /// <exception cref="ArgumentException">A menu or item is incomplete; see <see cref="RunicCsWebUiHostOptions.MenuBar"/>.</exception>
     public void SetMenuBar(IReadOnlyList<DesktopMenu> menus) => _menuBar.Set(menus);
 
+    // RunicCsWebUiHostOptions.CloseDrain: the drain of the Windows whose options set none (sdk#1190).
+    private readonly RunicCloseDrain? _closeDrain;
     private readonly bool? _includeFailureDetail;
     private readonly bool? _flowCultureFromLocale;
     private readonly Runic.Assets.IAssetSource? _assets;
@@ -313,18 +316,25 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             menu.Attach(new CsWebUiMenuBarPageWindow(_menuBar, menuCommands), menuCommands);
             var native = window;
             bool serveOnly = Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1", customShow = ShowWindow is not null;
-            // sdk#1148: a WebView window on Windows or Linux asks before it closes, so a guarded Window keeps it open while
-            // CanCloseAsync decides. A browser window closes without asking the application, a macOS WebView tells WebUI
-            // only afterwards, and serve-only mode has no window: there a guarded Window opens unguarded, with a warning
-            // (D018.10).
             // sdk#1149: serve-only shows no window, so the Window then has no presentation.
             var presentation = serveOnly ? null : new CsWebUiWindowPresentation(native, UseWebView && !customShow);
             host.Presentation = presentation;
             // RunicCsWebUiHostOptions.Placement, chosen once the ViewModel is set; a callback that throws fails the open.
             var initialPlacement = serveOnly ? null : Placement?.Invoke(opening.Window);
-            var userClose = CreateUserClose(opening, host, native, presentation, serveOnly, UseWebView, customShow);
-            // A CS-WebUI window cannot stay open while the Window drains (sdk#900); the Window's scope still waits for durable work.
-            if (opening.Options.CloseDrain is { KeepWindow: true }) opening.ReportCloseDrainUnavailable("CS-WebUI");
+            // sdk#1190: a WebView window on Windows or Linux stays open while the Window drains (sdk#900), and serve-only
+            // mode drains when serving ends. Elsewhere the window closes at once, with a warning; the Window's scope still
+            // waits for durable work.
+            var drain = opening.Options.CloseDrain ?? _closeDrain ?? RunicCloseDrain.None;
+            if (drain.KeepWindow && CsWebUiUserClose.DrainUnavailableReason(serveOnly, UseWebView, customShow, WebUiWindow.IsCloseHandlerSupported) is { } noDrain)
+            {
+                opening.ReportCloseDrainUnavailable(noDrain);
+                drain = RunicCloseDrain.None;
+            }
+            // sdk#1148: a WebView window on Windows or Linux asks before it closes, so a guarded Window keeps it open while
+            // CanCloseAsync decides. A browser window closes without asking the application, a macOS WebView tells WebUI
+            // only afterwards, and serve-only mode has no window: there a guarded Window opens unguarded, with a warning
+            // (D018.10).
+            var userClose = CreateUserClose(opening, host, native, presentation, serveOnly ? RunicCloseDrain.None : drain, serveOnly, UseWebView, customShow);
             opening.ReportOwnerIgnored("CS-WebUI cannot own windows");
 
             var options = opening.Options;
@@ -381,6 +391,16 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                     _ = closed.ContinueWith(static (_, state) => ((CsWebUiUserClose)state!).Abandon(), userClose,
                         CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
+            if (serveOnly && drain.KeepWindow)
+            {
+                var serving = opening.Window;
+                var timeout = drain.Timeout;
+                host.ServeOnlyDrain = CsWebUiServeOnlyStop.Register(() =>
+                {
+                    serving.MarkClosing();
+                    return host.DrainForCloseAsync(timeout, CancellationToken.None);
+                });
+            }
             // Unowned file dialogs (AddRunicPlatformServices(unownedFileDialogs)) open only for a window no other computer
             // can reach; each request checks the window again, as an application may make it public later.
             scope.ServiceProvider.GetService<CsWebUiWindowLocality>()?.Attach(() => CsWebUiWindowLocality.For(serveOnly, customShow, () => (int)native.Port));
@@ -406,9 +426,11 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     // the user's close, after reporting event 1053 where WebUI cannot keep the window open; RunicWindow.RequestCloseAsync
     // then joins the user's decision, and its approved close releases the Window as before. sdk#1149: the handler reads
     // the window's placement before it closes.
+    // sdk#1190: with a close drain, a decided close, the user's or RequestCloseAsync's, keeps the window open while the
+    // Window drains.
     private static CsWebUiUserClose? CreateUserClose<TViewModel>(RunicWindowOpening<TViewModel> opening,
-        CsWebUiBridgeWindow<TViewModel> host, WebUiWindow native, CsWebUiWindowPresentation? presentation, bool serveOnly, bool webView,
-        bool customShow) where TViewModel : class
+        CsWebUiBridgeWindow<TViewModel> host, WebUiWindow native, CsWebUiWindowPresentation? presentation, RunicCloseDrain drain,
+        bool serveOnly, bool webView, bool customShow) where TViewModel : class
     {
         var guard = opening.CloseGuard;
         if (guard is not null && CsWebUiUserClose.GuardUnavailableReason(serveOnly, webView, customShow, WebUiWindow.IsCloseHandlerSupported) is { } reason)
@@ -416,7 +438,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             opening.ReportCloseGuardUnavailable(reason);
             guard = null;
         }
-        if (guard is null && presentation is not { ReportsPlacement: true }) return null;
+        if (guard is null && !drain.KeepWindow && presentation is not { ReportsPlacement: true }) return null;
         var window = opening.Window;
         var userClose = new CsWebUiUserClose(guard,
             () =>
@@ -428,9 +450,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             window.MarkClosing)
         {
             BeforeUserClose = presentation is null ? null : () => presentation.Refresh(),
+            Drain = drain.KeepWindow ? () => host.DrainForCloseAsync(drain.Timeout, CancellationToken.None) : null,
         };
         host.UserClose = userClose;
-        if (guard is not null) opening.UseCloseRequest(userClose.RequestAsync);
+        if (guard is not null || drain.KeepWindow) opening.UseCloseRequest(userClose.RequestAsync);
         return userClose;
     }
 

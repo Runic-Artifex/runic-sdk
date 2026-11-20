@@ -170,4 +170,24 @@ public sealed record RunicCsWebUiHostOptions
     /// </para>
     /// </remarks>
     public Func<IRunicWindow, RunicWindowPlacement?>? Placement { get; init; }
+
+    /// <summary>
+    /// How long each Window stays visible after its close was decided, while its accepted work drains, for Windows whose
+    /// <see cref="RunicWindowOptions.CloseDrain"/> is <see langword="null"/>. <see langword="null"/>, the default, is
+    /// <see cref="RunicCloseDrain.None"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <see cref="UseWebView"/> window on Windows (WebView2) or Linux (WebKitGTK) stays open after the user's close,
+    /// or <see cref="RunicWindow{TViewModel}.RequestCloseAsync"/>, was decided, with its page connected, until the
+    /// Window's operations, awaited commands and drained scopes have ended or the drain's time passed, as Runic Desktop's
+    /// embedded window does; a second user close meanwhile is ignored. Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> the
+    /// Windows drain when serving ends, with a line on standard input, before WebUI's wait ends.
+    /// </para>
+    /// <para>
+    /// A browser window, a macOS WebView and a window that <see cref="ShowWindow"/> shows close at once and log
+    /// <c>WindowCloseDrainUnavailable</c> (event 1055); the Window's scope still waits for durable work.
+    /// </para>
+    /// </remarks>
+    public RunicCloseDrain? CloseDrain { get; init; }
 }

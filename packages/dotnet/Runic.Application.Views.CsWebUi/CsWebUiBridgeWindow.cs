@@ -32,6 +32,9 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
     private IDisposable? _attachment;
     private Task<RunicWindowCloseResult>? _closeAdmission;
     private Task? _closeCompletion;
+    // RunicCloseDrain (sdk#1190): ends the visible phase of a drain early, and completes when it ended.
+    private CancellationTokenSource? _endDrain;
+    private readonly TaskCompletionSource _visibleEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _admissionReleased;
     private bool _finalized;
 
@@ -61,6 +64,9 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
 
     // sdk#1148: the guard of the user's close, when WebUI can keep this window open; the window's own close abandons it.
     internal CsWebUiUserClose? UserClose { get; set; }
+
+    // sdk#1190: the window's drain when serving ends in serve-only mode (CsWebUiServeOnlyStop), released as it closes.
+    internal IDisposable? ServeOnlyDrain { get; set; }
 
     // sdk#1149: the window's presentation, which reads its placement once more before the host closes the window.
     internal CsWebUiWindowPresentation? Presentation { get; set; }
@@ -98,9 +104,10 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         Console.Out.Write(ServeOnlyAnnouncement.Lines(url, windowType));
         Console.Out.Flush();
         // End of input (for example </dev/null) is not a stop request.
+        // sdk#1190: the Windows with a close drain drain first (CsWebUiServeOnlyStop).
         new Thread(static () =>
         {
-            if (Console.In.ReadLine() is not null) WebUiApplication.Exit();
+            if (Console.In.ReadLine() is not null) CsWebUiServeOnlyStop.Request();
         })
         { IsBackground = true, Name = "Runic serve-only input" }.Start();
         return true;
@@ -132,11 +139,46 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         // A user close being decided ends: this close does not ask.
         UserClose?.Abandon();
         Task<RunicWindowCloseResult> admission;
+        CancellationTokenSource? drain;
         lock (_closeGate)
-            admission = _closeAdmission ??= BeginCloseAsync(timeout);
-        _closeStarted.TrySetResult();
+        {
+            drain = _endDrain;
+            admission = _closeAdmission ??= BeginCloseAsync(timeout, draining: false, CancellationToken.None);
+        }
+        // The application's own close during a drain keeps its timeout: the visible window closes then at the latest.
+        if (drain is not null && !_visibleEnded.Task.IsCompleted) EndDrainAfter(drain, timeout);
+        else _closeStarted.TrySetResult();
         return new(admission.WaitAsync(cancellationToken));
     }
+
+    private static void EndDrainAfter(CancellationTokenSource drain, TimeSpan timeout)
+    {
+        try
+        {
+            if (timeout == TimeSpan.Zero) drain.Cancel();
+            else if (timeout != Timeout.InfiniteTimeSpan) drain.CancelAfter(timeout);
+        }
+        catch (ObjectDisposedException) { /* The drain ended meanwhile. */ }
+    }
+
+    // RunicCloseDrain on CS-WebUI (sdk#1190): the visible phase of a decided close, after the user's close that the
+    // window refused (CsWebUiUserClose), RequestCloseAsync, or the end of serving in serve-only mode. Admission stops, the
+    // pages get closing with draining: true and stay attached, and this returns once the Window's work has ended, the
+    // timeout passed or endDrain was cancelled, and the window closed. A close of the application's own that started
+    // first ends the visible window instead.
+    internal Task DrainForCloseAsync(TimeSpan timeout, CancellationToken endDrain)
+    {
+        lock (_closeGate)
+        {
+            if (_closeAdmission is not null) return _closeStarted.Task;
+            var end = _endDrain = CancellationTokenSource.CreateLinkedTokenSource(endDrain);
+            _closeAdmission = BeginCloseAsync(timeout, draining: true, end.Token);
+        }
+        return _visibleEnded.Task;
+    }
+
+    // Whether a drain runs, between its decision and the end of its visible phase.
+    internal bool IsDraining => Volatile.Read(ref _endDrain) is not null && !_visibleEnded.Task.IsCompleted;
 
     /// <summary>
     /// Completes when <see cref="CloseAsync"/> or <see cref="DisposeAsync"/> starts closing the window, or when WebUI
@@ -170,21 +212,31 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
+    // draining: the visible phase of a decided close with a drain (sdk#1190). The page stays attached while the window is
+    // visible, so it receives the Window's state; without a drain it detaches at once.
+    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout, bool draining, CancellationToken endDrain)
     {
         var errors = new List<Exception>();
-        Capture(ReleaseAdmissionRoutes, errors);
+        if (!draining) Capture(ReleaseAdmissionRoutes, errors);
         RunicWindowCloseResult result;
         try
         {
-            result = await _content.DrainAsync(timeout).ConfigureAwait(false);
+            try { result = await _content.DrainAsync(timeout, draining, endDrain).ConfigureAwait(false); }
+            // The visible phase ended early: from here on a close without a timeout, which asks the remaining operations
+            // to cancel, except durable ones.
+            catch (OperationCanceledException) when (endDrain.IsCancellationRequested)
+            {
+                result = await _content.DrainAsync(TimeSpan.Zero, draining, CancellationToken.None).ConfigureAwait(false);
+            }
         }
         catch (Exception error)
         {
             errors.Add(error);
+            if (draining) EndVisiblePhase(errors);
             errors.AddRange(await FinalizeResourcesAsync().ConfigureAwait(false));
             throw new AggregateException(errors);
         }
+        if (draining) EndVisiblePhase(errors);
         if (result.Drained)
         {
             errors.AddRange(await FinalizeResourcesAsync().ConfigureAwait(false));
@@ -194,12 +246,30 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         // A visible closed window must not leave command callbacks active.
         // The content session stays alive solely to own accepted operations.
         Capture(_transport.Dispose, errors);
-        Capture(EndPresentation, errors);
-        Capture(_window.Close, errors);
+        if (!draining)
+        {
+            Capture(EndPresentation, errors);
+            Capture(_window.Close, errors);
+        }
         Task completion;
         lock (_closeGate)
             completion = _closeCompletion ??= DrainThenFinalizeAsync(errors);
-        return new(false, result.RemainingOperations, completion) { PagesAcknowledged = result.PagesAcknowledged };
+        return new(false, result.RemainingOperations, completion)
+        {
+            PagesAcknowledged = result.PagesAcknowledged,
+            RemainingDurableWork = result.RemainingDurableWork,
+        };
+    }
+
+    // The end of a drain's visible phase: the page detaches and the window closes through WebUiWindow.Close, which
+    // CS-WebUI does not send through the close handler.
+    private void EndVisiblePhase(List<Exception> errors)
+    {
+        Capture(ReleaseAdmissionRoutes, errors);
+        Capture(EndPresentation, errors);
+        Capture(_window.Close, errors);
+        _closeStarted.TrySetResult();
+        _visibleEnded.TrySetResult();
     }
 
     private async Task DrainThenFinalizeAsync(List<Exception> errors)
@@ -232,6 +302,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         var errors = new List<Exception>();
         Capture(_connectionBinding.Dispose, errors);
         if (_attachment is not null) Capture(_attachment.Dispose, errors);
+        if (ServeOnlyDrain is { } serveOnlyDrain) Capture(serveOnlyDrain.Dispose, errors);
         if (errors.Count > 0) throw new AggregateException(errors);
     }
 

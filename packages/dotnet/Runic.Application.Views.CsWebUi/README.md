@@ -316,6 +316,41 @@ the window, because the application is the one closing. The host sets its
 close handler before `ConfigureWindow` runs, so an application that calls
 `WebUiWindow.SetCloseHandler` there replaces the guard for the user's close.
 
+### Closing after the Window's work has drained
+
+Since 0.23 (#1190) a Window with a close drain (`RunicWindowOptions.CloseDrain`,
+or `RunicCsWebUiHostOptions.CloseDrain` for every Window) keeps a `UseWebView`
+window on Windows and Linux open after its close was decided, the user's once
+the guard agreed or `RequestCloseAsync`'s, as Runic Desktop's embedded window
+does: operation admission stops, the page receives `closing` with
+`draining: true` and stays connected, and the window closes through
+`WebUiWindow.Close` once the Window's operations, awaited commands and
+drained scopes have ended or the drain's time passed. A user close meanwhile is
+ignored. `RequestCloseAsync` returns once the close is decided, and
+`WaitForCloseAsync` once the window closes. `CloseAsync(timeout)` during the
+drain ends it at its timeout, and `DisposeAsync` at once (see
+[Closing after the Window's work has drained](../Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained)).
+
+Under `RUNIC_APPLICATION_SERVE_ONLY=1` the end of serving is the Window's close:
+a line on standard input. A closing browser tab, the last one included, is no
+close, because the server outlives its clients and a reload connects again.
+With a drain, the line makes every serving Window with one drain first, its
+pages still connected and served, and WebUI's wait, and with it
+`WaitForCloseAsync`, ends once they have all drained. Lines read meanwhile are
+ignored.
+
+| Window | Close drain |
+| --- | --- |
+| `UseWebView` on Windows (WebView2) and Linux (WebKitGTK) | Yes |
+| `RUNIC_APPLICATION_SERVE_ONLY=1` | Yes, when serving ends |
+| `UseWebView` on macOS (WKWebView) | No: the window closes at once, event 1055; WebUI learns of the close only afterwards |
+| Browser window | No: event 1055; the browser closes its window without asking, and no Runic host can keep an installed browser's window open (D077.3) |
+| `RunicCsWebUiHostOptions.ShowWindow` | No: event 1055; the host cannot tell how the window is shown |
+
+The CS-WebUI host handles no termination signal (Ctrl+C, SIGTERM): the process
+ends without a drain. Where a Window does not drain, its scope still waits for
+durable work.
+
 ## Window placement
 
 Since 0.23 (#1149) a `UseWebView` window on Windows and Linux reports its
