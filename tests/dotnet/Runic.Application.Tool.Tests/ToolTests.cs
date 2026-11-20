@@ -3189,9 +3189,27 @@ internal sealed partial class ToolTests
             return path;
         }
 
+        // #1268: a process that a Job object ended (the stop's TerminateJobObject) keeps its working directory open for
+        // a moment after it counts as exited. The job's ActiveProcesses is already 0 and the process handle signalled,
+        // but Windows closes the directory handle a fraction of a millisecond later, and no handle or job reports that.
+        // A workspace that was such a process's working directory is deleted on a short retry on Windows.
         public void Dispose()
         {
-            if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
+            var deadline = Stopwatch.StartNew();
+            while (true)
+            {
+                try
+                {
+                    if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
+                    return;
+                }
+                catch (Exception exception) when (OperatingSystem.IsWindows()
+                    && exception is IOException or UnauthorizedAccessException
+                    && deadline.Elapsed < TimeSpan.FromSeconds(5))
+                {
+                    Thread.Sleep(20);
+                }
+            }
         }
     }
 }
