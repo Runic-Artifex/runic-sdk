@@ -69,15 +69,16 @@ internal static class InteractionCodeEmitter
             if (owner.GetProperty(property.Name, AllDeclared) is { } declared)
                 attribute = Runic.Application.Views.BridgeAttributeNames.Find(declared, TimeoutAttribute);
         if (attribute is null) return null;
+        // Their own codes (API-29): RUNICBRIDGE011 and RUNICBRIDGE035 keep their accessor meaning.
         if (interaction.ShapeDiagnostic != BridgeDiagnosticCodes.Interaction)
-            throw new BridgeDiagnosticException(interaction.ShapeDiagnostic,
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewQuestionTimeout,
                 $"{modelName}.{property.Name}: [RunicInteractionTimeout] applies to a ReactiveUI Interaction; a {interaction.Kind} "
                 + "takes its timeout in its constructor (new ViewQuestion<TInput, TOutput>(fallback, timeout)).", property);
         var milliseconds = attribute.FixedArguments?.Invoke() is [var argument]
             ? Convert.ToInt64(argument, System.Globalization.CultureInfo.InvariantCulture) : 0;
         if (milliseconds == System.Threading.Timeout.Infinite) return "global::System.Threading.Timeout.InfiniteTimeSpan";
         if (milliseconds is <= 0 or > MaximumTimeoutMilliseconds)
-            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.InteractionTimeout,
                 $"{modelName}.{property.Name}: [RunicInteractionTimeout({milliseconds})] is not a timeout; use 1 to "
                 + $"{MaximumTimeoutMilliseconds} milliseconds (24 hours), or Timeout.Infinite for no deadline.", property);
         return $"global::System.TimeSpan.FromMilliseconds({milliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
