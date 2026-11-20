@@ -124,7 +124,8 @@ export function lintRanges(sources) {
 }
 
 // The literal pins of runic-sdk's template (R5): Runic.Translations, .Build and the dotnet-runic-translations tool.
-export function lintTemplatePins(files, translationsVersion) {
+// `bound`: earlier patches of the candidate's line that the patch path binds to it (eng/train/patch.mjs, D077.23).
+export function lintTemplatePins(files, translationsVersion, { bound = [] } = {}) {
   const failures = [], found = [];
   for (const { name, text } of files) {
     for (const match of text.matchAll(/<PackageReference\s+Include="(Runic\.Translations(?:\.[A-Za-z]+)?)"\s+Version="([^"]+)"/g))
@@ -133,17 +134,18 @@ export function lintTemplatePins(files, translationsVersion) {
       found.push({ name, id: 'dotnet-runic-translations', version: match[1] });
   }
   for (const pin of found)
-    if (pin.version !== translationsVersion)
+    if (pin.version !== translationsVersion && !bound.includes(pin.version))
       failures.push({ check: 'template-pin', message: `Runic.Application.Templates ${pin.name}: ${pin.id} ${pin.version}, but this train's Translations is ${translationsVersion} (R5)` });
   return { failures, pins: found };
 }
 
-// A tool that carries Runic.CommandLine privately carries this train's Command Line (D061.15, R1).
-export function lintToolPins(tools, cliVersion) {
+// A tool that carries Runic.CommandLine privately carries this train's Command Line (D061.15, R1), or, for a Command
+// Line patch, an earlier patch of its line (`bound`; eng/train/patch.mjs, D077.23).
+export function lintToolPins(tools, cliVersion, { bound = [] } = {}) {
   const failures = [];
   for (const { id, version, bundled } of tools) {
     if (!bundled.length) continue;
-    if (bundled.length !== 1 || bundled[0] !== cliVersion)
+    if (bundled.length !== 1 || (bundled[0] !== cliVersion && !bound.includes(bundled[0])))
       failures.push({ check: 'tool-pin', message: `${id} ${version} bundles Runic.CommandLine ${bundled.join(', ')}, but this train's Command Line is ${cliVersion}` });
   }
   return failures;

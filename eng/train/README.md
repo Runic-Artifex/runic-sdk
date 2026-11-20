@@ -9,7 +9,8 @@ D061.20). The audit that designed it and the incompatibilities it names (I1 to I
 - `.github/workflows/train-compat.yml` runs it on GitHub (Linux x64 only).
 - `eng/train/gate.mjs` is the gate. The other modules are `sources.mjs` (inputs, nuget.org, CI artifacts),
   `nuget.mjs` (repositories, nuspecs, the isolated `nuget.config`), `scenarios.mjs` (the consumers), `checks.mjs`
-  (key coverage, ranges and pins), `expected.mjs` with `expected-failures.json` (the allow-list) and `versions.mjs`.
+  (key coverage, ranges and pins), `expected.mjs` with `expected-failures.json` (the allow-list), `patch.mjs` (the
+  patch path, "Patch releases") and `versions.mjs`.
 - `train.test.mjs` runs in the engineering job of `ci.yml`. A change below `eng/train/` plans no product jobs
   (`engineeringOnly` in `eng/run.mjs`), and a pull request that changes the gate runs `train-compat.yml` itself.
 
@@ -131,8 +132,8 @@ All consumers build with `TreatWarningsAsErrors` and NuGet audit on, outside the
 | S2 | Key coverage | Every key of Command Line's key list has a German message in the adapter's packed `runic-command-line/de.rmf2`, no removed key has one, and every message names a key. The key list is `text-keys.json` in the `Runic.CommandLine` package (D061.19, below). |
 | S3 | `dotnet new runic-app --translations true --tests true`, plus `Runic.Translations.Hosting`, `Runic.Application.Views.Translations` and a `cli` front end through Translations.CommandLine (the README patterns) | `dotnet tool restore`, `dotnet build`, `dotnet test`; `cli hello` without its argument exits 2 in German |
 | S4 | `dotnet new runic-app --host cswebui --frontend svelte --translations true --tests true` | `dotnet tool restore`, build, test |
-| S5 | The template's `.config/dotnet-tools.json` | It pins this train's `dotnet-runic` and `dotnet-runic-translations` (R5); both restore and report their version; `dotnet runic doctor` passes after a restore, apart from its checks of the machine (`desktop-runtime`, `platform-services`, `browser`, `javascript-runtime`, `package-manager`) |
-| S6 | Every candidate nuspec, the template package and the tools | One release per repository; every cross-repository dependency, and Translations.CommandLine, Hosting and Wpf on `Runic.Translations` (D061.16), is `[F, x.(y+1).0-0.0)` with F on this train's line (lockstep minors), the upper bound in the `-0.0` form (D061.13) and never `-0`; the template's `Runic.Translations`, `.Build` and tool pins equal the Translations version; `dotnet-runic`, `Runic.Create`, `Runic.Assets` and `dotnet-runic-translations` bundle this train's `Runic.CommandLine` (D061.15). `Runic.Application.Views.Translations` → `Runic.Translations.Hosting` stays open by design (Q6). |
+| S5 | The template's `.config/dotnet-tools.json` | It pins this train's `dotnet-runic` and `dotnet-runic-translations` (R5; for a Translations patch, after the patch path bound it); both restore and report their version; `dotnet runic doctor` passes after a restore, apart from its checks of the machine (`desktop-runtime`, `platform-services`, `browser`, `javascript-runtime`, `package-manager`) |
+| S6 | Every candidate nuspec, the template package and the tools | One release per repository; every cross-repository dependency, and Translations.CommandLine, Hosting and Wpf on `Runic.Translations` (D061.16), is `[F, x.(y+1).0-0.0)` with F on this train's line (lockstep minors), the upper bound in the `-0.0` form (D061.13) and never `-0`; the template's `Runic.Translations`, `.Build` and tool pins equal the Translations version, or are an earlier patch of its line that the patch path binds; `dotnet-runic`, `Runic.Create`, `Runic.Assets` and `dotnet-runic-translations` bundle this train's `Runic.CommandLine` (D061.15), or for a Command Line patch an earlier patch of its line. `Runic.Application.Views.Translations` → `Runic.Translations.Hosting` stays open by design (Q6). |
 | S7 | WPF library with `Runic.Application.Views.Wpf`, `.Views.Translations`, `Runic.Translations.Wpf`, `.Hosting`, `Runic.CommandLine` (`EnableWindowsTargeting`) | restore and build on Linux |
 | S8 | The Translations editor at the Translations input's commit, built with `RunicSdkDependencyVersion` set to the SDK input | restore and build without its frontend; **informational**, never fails the gate |
 
@@ -244,21 +245,57 @@ Follow-up per repository:
 
 ## Choreography
 
-### Most changes need no train
+### When a train is needed
 
-A release train is needed only when runic-sdk cannot build against the published upstream release and the new one
-at once. D069.3 (from 0.22) makes cross-repository breaking changes ship with a one-minor transition: the upstream
-release adds the new name and keeps the old one `[Obsolete]` for one minor. Then:
+The version rules (COMPATIBILITY.md 3.6) decide it, not the size of the change:
 
-1. The upstream repository (Translations, say 0.14.0) publishes on its own; its P-tr gate runs against the published
-   runic-sdk (`sdk: published`) or runic-sdk `main` (`run@<gate SHA>`), and nothing in runic-sdk waits for it.
-2. runic-sdk adopts the published release in an ordinary pull request (`Directory.Packages.props`, lock files,
-   template pins), moving off the obsolete names. No train feed, no freeze.
-3. The upstream removes the old names in the next minor, which runic-sdk already no longer uses.
+- **R1 lockstep.** Each Translations minor supports exactly one Command Line minor, and runic-sdk's
+  `Runic.Application.Views.Translations` follows each Translations minor (its range is `[x.y.0, x.(y+1).0-0.0)`).
+- **R5 literal pins.** runic-sdk's template pins `Runic.Translations`, `.Build`, the `dotnet-runic-translations`
+  tool and the Translations Vite plugin's npm version literally, and the gate checks them against the release under
+  test (S5, S6).
 
-Only an unavoidable break (a change that cannot keep the old shape for a minor) runs the train below. 0.20 and 0.21
-were trains because Translations renamed `Add` → `AddCatalog` and removed `RUNIC_TRANSLATIONS_EDIT_ALLOW` without a
-transition (I5).
+So:
+
+| Upstream release | runic-sdk must pin it before it publishes? | Path |
+| --- | --- | --- |
+| A **patch** of Translations or Command Line (`x.y.z`, z > 0) | No: the gate binds it ("Patch releases" below) | Publish on its own; runic-sdk adopts it afterwards |
+| A Command Line **minor** | Yes: R1 needs a Translations minor that covers it in the same train | A train (Command Line, then Translations, then runic-sdk) |
+| A Translations **minor** | Yes: R1 (Views.Translations' range names the previous minor) and R5 (the template pins it) | A train ("A Translations-then-SDK train") |
+| A **breaking** change across repositories | Yes, as for its minor | A train, made smaller by D069.3's one-minor transition |
+
+**A train is unavoidable for every Command Line or Translations minor** while R1 and R5 hold, whether or not it
+breaks anything: P-tr and T run against runic-sdk `main`, and `main` still names the previous minor. Translations
+0.14.0 was planned as a standalone release and became a 13-hour train on exactly this (PLAN-0.22). D069.3's
+transitions (the upstream adds the new name and keeps the old one `[Obsolete]` for one minor) still help: they keep
+the train's runic-sdk candidate to a version and lock change instead of code adaptations, and they let runic-sdk
+move off the old names in an ordinary pull request afterwards. They do not remove the train.
+
+**A patch needs no train** (D077.23): it publishes like any release, P-tr (or T) passes against runic-sdk `main`
+through the patch path, and runic-sdk adopts it in an ordinary pull request.
+
+### Patch releases
+
+For an upstream patch, a Translations or Command Line release `x.y.z` with z > 0, the gate does not require runic-sdk
+`main` to pin the candidate first (D077.23, which amends R5 for patches; `eng/train/patch.mjs`):
+
+- **Translations.** When the packed template pins an earlier patch of the candidate's line (the 0.15.1 case:
+  runic-sdk `main` pins 0.15.0, the candidate is 0.15.1), the gate binds the candidate into each template application
+  it generates (S3, S4, S5), in its own scratch directory: the `Runic.Translations` and `.Build` pins of the project,
+  `dotnet-runic-translations` in `.config/dotnet-tools.json`, and the Translations npm packages in the frontend's
+  `package.json` and `package-lock.json`, with the candidate archive's integrity (or npm's, for a published patch),
+  before the usual binding of the lock to the candidate registry. Every scenario then builds, tests and runs the
+  candidate. S6 accepts the earlier patch in the packed template's pins and notes it.
+- **Command Line.** The template pins no Command Line version; the tools bundle `Runic.CommandLine` privately. S6
+  accepts a bundled earlier patch of the candidate's line and notes it. S1, S3 and S7 build against the candidate.
+- **Not bound:** a minor (R5 holds; a train), a pin on another line or later than the candidate, a prerelease, and
+  row P-sdk: runic-sdk's own publish needs its template to pin what its `Directory.Packages.props` builds against.
+- The result (`train-result.json`, `patchBinding`) and the summary say what was bound.
+
+After the patch publishes, runic-sdk adopts it in an ordinary pull request (`Directory.Packages.props`, lock files,
+template pins and locks), whose CI and the next P-sdk check R5 as before. A security patch is adopted promptly, with a
+runic-sdk patch release when the template pins the affected version exactly; other patches are adopted by the next
+regular release (D077.23).
 
 ### A Translations-then-SDK train
 
