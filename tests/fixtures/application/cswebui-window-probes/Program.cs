@@ -61,9 +61,12 @@ switch (args is [var probe, ..] ? probe : null)
     // DebugEndpointProbe.cs, a real browser window; the package smoke builds Program.cs alone.
     case "--probe-debug-endpoint":
         return DebugEndpointProbe.Run(fixedPort: args.Contains("--fixed-port"));
+    // BrowserLifetimeProbe.cs: the browser ends with a killed application (sdk#1263).
+    case "--probe-browser-lifetime":
+        return BrowserLifetimeProbe.Run(args);
 #endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-webview-close-drain | --probe-serve-only-drain | --probe-debug-endpoint [--fixed-port]");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs | --probe-webview-close-guard | --probe-webview-placement | --probe-webview-close-drain | --probe-serve-only-drain | --probe-debug-endpoint [--fixed-port] | --probe-browser-lifetime");
         return 2;
 }
 WebUiApplication.Clean();

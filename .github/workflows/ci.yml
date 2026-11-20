@@ -2187,6 +2187,19 @@ jobs:
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
             RUNIC_SMOKE_BLOBS_OFF=1 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
+      # sdk#1263: --probe-browser-lifetime kills an untrimmed Development application (the NativeAOT publish opens no
+      # DevTools Protocol endpoint) whose window's Chrome or Edge has an endpoint, and checks that the browser, its port and
+      # its profile end with it, also after a normal exit, while a browser the probe started with a profile of its own
+      # keeps running. The linux-x64 runner has Google Chrome and Windows Edge; the others no Chromium-based browser.
+      - name: End a killed application's Development browser with it
+        if: matrix.cswebui && (matrix.rid == 'linux-x64' || runner.os == 'Windows')
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          dotnet build tests/fixtures/application/cswebui-window-probes/CsWebUiWindowProbes.csproj -c Release
+          probe=tests/fixtures/application/cswebui-window-probes/bin/Release/net10.0/CsWebUiWindowProbes.dll
+          if [[ "$RUNNER_OS" == Linux ]]; then GDK_BACKEND=x11 xvfb-run -a dotnet "$probe" --probe-browser-lifetime
+          else dotnet "$probe" --probe-browser-lifetime; fi
       # D064.25 (#901): in a pull request run labelled ci:all-platforms, the NativeAOT size per bridged
       # ViewModel on Windows and macOS, with the mstat files. The managed job's linux-x64 measurement gates the budgets
       # (D064.5); this one only reports, in the job summary and the artifact.

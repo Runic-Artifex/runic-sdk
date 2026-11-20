@@ -22,6 +22,8 @@ namespace Runic.Application.Views.CsWebUi;
 // - port 0: Chromium writes the port it bound into DevToolsActivePort in that profile, which only the user can write;
 // - a fixed port: Chromium writes no record, so beyond WebUiRemoteDebugging's checks the browser process that WebUI
 //   started must hold the listener on 127.0.0.1 (CsWebUiListenerOwner).
+// sdk#1263: that browser also ends with the application when the application is ended without a close of its own, such as
+// a debugger's Stop (CsWebUiBrowserGuard), and a profile such an end left behind is deleted by the next run.
 // WebUI's custom parameters replace its Chromium defaults, so the parameters repeat them (WebUiChromiumDefaults) before the
 // port.
 internal sealed class CsWebUiRemoteDebugging : IDisposable
@@ -40,6 +42,9 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
     internal const string ProfileName = "RunicDevelopment";
 
     internal const string ProfilePrefix = "runic-cswebui-devtools-";
+
+    // sdk#1263: the file a run holds open in its profile while the profile is in use (Session.SweepStaleProfiles).
+    internal const string OwnerFile = "runic-owner.lock";
 
     private static readonly string[] ChromiumNames = ["chrome", "chromium", "msedge", "edge", "brave", "vivaldi", "yandex", "epic"];
 
@@ -102,7 +107,7 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
         }
         lock (session.Gate)
         {
-            var profile = session.Profile ??= Directory.CreateTempSubdirectory(ProfilePrefix).FullName;
+            var profile = session.Profile ??= session.CreateProfile();
             if (session.Opener is not null)
             {
                 session.Joining++;
@@ -191,6 +196,7 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
                 return processId is null ? null : Task.CompletedTask;
             }
         }
+        _session.HoldBrowser(processId.Value, _shownAfter);
         var exited = _session.BrowserExited(processId.Value);
         _ = exited.ContinueWith(static (_, state) =>
         {
@@ -223,7 +229,8 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
     }
 
     // The process's per-run profile and the window whose browser holds the endpoint.
-    internal sealed class Session
+    // The process's session is never disposed: its owner file and watcher end with the process.
+    internal sealed class Session : IDisposable
     {
         private static Session? s_process;
 
@@ -232,12 +239,23 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
             get
             {
                 if (s_process is { } existing) return existing;
-                var created = new Session();
+                var created = new Session { Guards = true };
                 return Interlocked.CompareExchange(ref s_process, created, null) ?? created;
             }
         }
 
         internal readonly Lock Gate = new();
+
+        // sdk#1263: whether the session's profiles and browsers are guarded (CsWebUiBrowserGuard) and a run's stale ones are
+        // swept: the process's session; tests opt in.
+        internal bool Guards { get; init; }
+
+        // The current profile's owner file, held open while the profile is in use, and its watcher.
+        private FileStream? _owner;
+        private CsWebUiBrowserGuard.Watcher? _watcher;
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        private CsWebUiBrowserGuard.Job? _job;
+        private bool _swept;
 
         // The directory, created for the first window that asks and deleted once its browser exits.
         internal string? Profile;
@@ -258,7 +276,147 @@ internal sealed class CsWebUiRemoteDebugging : IDisposable
             Opener = null;
             if (!browserExited || Joining != 0 || Profile is not { } profile) return;
             Profile = null;
+            ReleaseProfile();
             _ = DeleteProfileAsync(profile);
+        }
+
+        // Under Gate: a new 0700 profile directory, with its owner file and, on Linux and macOS, its watcher; the first
+        // also starts the sweep of the profiles earlier runs left.
+        internal string CreateProfile()
+        {
+            var profile = Directory.CreateTempSubdirectory(ProfilePrefix).FullName;
+            if (!Guards) return profile;
+            try
+            {
+                _owner = new FileStream(Path.Combine(profile, OwnerFile), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Without it, a later run's sweep leaves the profile alone until it is a day old.
+            }
+            _watcher = CsWebUiBrowserGuard.WatchProfile(profile);
+            if (!_swept)
+            {
+                _swept = true;
+                var root = Path.GetTempPath();
+                _ = Task.Run(() => SweepStaleProfiles(root, profile, DateTime.UtcNow));
+            }
+            return profile;
+        }
+
+        // Releases the profile's owner file and watcher without deleting the profile.
+        public void Dispose()
+        {
+            lock (Gate) ReleaseProfile();
+        }
+
+        // Under Gate: the profile is about to be deleted, so its owner file closes and its watcher is released.
+        private void ReleaseProfile()
+        {
+            _owner?.Dispose();
+            _owner = null;
+            _watcher?.Dispose();
+            _watcher = null;
+        }
+
+        // Windows: puts an opener's browser in the session's kill-on-close job (CsWebUiBrowserGuard.Job).
+        internal void HoldBrowser(nuint processId, DateTime shownAfter)
+        {
+            if (!Guards || !OperatingSystem.IsWindows()) return;
+            CsWebUiBrowserGuard.Job job;
+            lock (Gate) job = _job ??= new CsWebUiBrowserGuard.Job();
+            _ = job.Hold(processId, shownAfter);
+        }
+
+        // Deletes the runic-cswebui-devtools-* profiles in root that no run uses any more: an application that was ended
+        // without its own close leaves its profile (sdk#1263). A profile is in use while its owner file is held open
+        // (FileShare.None: a share mode on Windows, flock elsewhere) or its browser runs (Chromium's lock: lockfile, held
+        // open on Windows; SingletonLock, a link to <host>-<pid>, elsewhere). A profile without an owner file, as 0.23
+        // made, or whose owner file cannot be read, counts only when its browser is gone and it is a day old. Only
+        // directories that are not links and that no other user can enter are considered. Returns those deleted.
+        internal static List<string> SweepStaleProfiles(string root, string? current, DateTime now)
+        {
+            var deleted = new List<string>();
+            IEnumerable<DirectoryInfo> candidates;
+            try { candidates = new DirectoryInfo(root).EnumerateDirectories(ProfilePrefix + "*").ToList(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                return deleted;
+            }
+            foreach (var directory in candidates)
+            {
+                try
+                {
+                    if (string.Equals(directory.FullName, current, StringComparison.Ordinal) || directory.LinkTarget is not null) continue;
+                    if (!OperatingSystem.IsWindows() &&
+                        (directory.UnixFileMode & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                            UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0)
+                    {
+                        continue;
+                    }
+                    FileStream? owner = null;
+                    try
+                    {
+                        var ownerPath = Path.Combine(directory.FullName, OwnerFile);
+                        if (File.Exists(ownerPath))
+                        {
+                            // Held by its run: in use. Opened here, it also keeps another run's sweep away meanwhile.
+                            try { owner = new FileStream(ownerPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+                            catch (IOException) { continue; }
+                        }
+                        if (owner is null && now - directory.CreationTimeUtc < TimeSpan.FromDays(1)) continue;
+                        if (BrowserRuns(directory.FullName)) continue;
+                        owner?.Dispose();
+                        owner = null;
+                        directory.Delete(recursive: true);
+                        deleted.Add(directory.FullName);
+                    }
+                    finally
+                    {
+                        owner?.Dispose();
+                    }
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+                {
+                    // In use after all, or another run deleted it meanwhile.
+                }
+            }
+            return deleted;
+        }
+
+        // Whether a Chromium browser holds the profile's lock.
+        internal static bool BrowserRuns(string profile)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var lockFile = Path.Combine(profile, "lockfile");
+                if (!File.Exists(lockFile)) return false;
+                try
+                {
+                    using var _ = new FileStream(lockFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    return false;
+                }
+                catch (IOException) { return true; }
+                catch (UnauthorizedAccessException) { return true; }
+            }
+            string? target;
+            try { target = new FileInfo(Path.Combine(profile, "SingletonLock")).LinkTarget; }
+            catch (IOException) { return true; }
+            if (target is null) return File.Exists(Path.Combine(profile, "SingletonLock"));
+            // <host>-<pid>; a browser of another host (a shared temporary directory) counts as running.
+            var dash = target.LastIndexOf('-');
+            if (dash <= 0 || !int.TryParse(target.AsSpan(dash + 1), System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var pid)) return true;
+            if (!string.Equals(target[..dash], System.Net.Dns.GetHostName(), StringComparison.Ordinal)) return true;
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById(pid);
+                return !process.HasExited;
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         // The browser's helper processes can hold files for a moment after it exits.

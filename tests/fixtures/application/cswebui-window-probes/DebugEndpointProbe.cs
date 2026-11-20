@@ -138,7 +138,7 @@ internal static class DebugEndpointProbe
         list.Split("\"type\": \"page\"", StringSplitOptions.None).Length - 1;
 
     // Standard output, passed on and kept, so the probe reads the Window's protocol lines.
-    private sealed class LineCapture(TextWriter inner) : TextWriter
+    internal sealed class LineCapture(TextWriter inner) : TextWriter
     {
         private readonly StringBuilder _text = new();
 
