@@ -163,14 +163,14 @@ export const platformRules = [
   { platforms: ["win-x64"], paths: windowsSpellingPrivateFilePaths },
   // The NVDA leg's driver, which runs in the screen reader job on Windows x64 only.
   { platforms: ["win-x64"], paths: ["eng/ci/windows-nvda.ps1"] },
+  // The native job's NativeAOT publishes (C1 of D077.25) run on every leg.
+  { platforms: all, paths: ["eng/ci/native-aot-publish.mjs"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications",
     // The Windows legs' CI scripts: the first-sign-in dismissal (native and WPF jobs) and the test host runner with its
     // crash report (native job).
-    "eng/ci/windows-dismiss-oobe.ps1", "eng/ci/windows-native-run.mjs", "eng/ci/windows-crash-report.ps1",
-    // The native job's NativeAOT publishes (C1 of D077.25) on every leg.
-    "eng/ci/native-aot-publish.mjs"] },
+    "eng/ci/windows-dismiss-oobe.ps1", "eng/ci/windows-native-run.mjs", "eng/ci/windows-crash-report.ps1"] },
   // WPF hosts, the navigation engine they host, the ReactiveUI adapters (the WPF suite checks their failure bookkeeping
   // under WPF's dispatcher; Runic.Navigation also carries their model-turn flow), the Bridge generator, the IDE host
   // and Windows administration.
