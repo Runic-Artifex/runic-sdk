@@ -138,7 +138,7 @@ public sealed class BrowserHostTests
         }
     }
 
-    [Test]
+    [Test, RecordedRetry(RetryReason.BrowserConnect)]
     public async Task OwnsChromiumProcessProfileRestartAndNaturalExit()
     {
         var browser = FindChromiumBrowser();
@@ -680,7 +680,7 @@ public sealed class BrowserHostTests
         }
     }
 
-    [Test]
+    [Test, RecordedRetry(RetryReason.BrowserConnect)]
     public async Task CanDisposeOwnedBrowserFromItsBindingCallback()
     {
         var browser = FindChromiumBrowser();
@@ -717,6 +717,103 @@ public sealed class BrowserHostTests
         {
             await window.DisposeAsync();
             WebUiApplication.SetConnectionTimeout(15);
+        }
+    }
+
+    // Google Chrome's Linux launcher puts the browser's standard output and error behind two `cat` processes before it
+    // starts the browser, so its helpers hold those cats' pipes, not Runic's (#1273). A kill of the browser's tree ends
+    // the cats first; their exit closes Runic's pipes while the network service still writes the profile. Closing must
+    // wait for every process that names the profile, not only for the pipes.
+    [Test]
+    public async Task ClosingBrowserWaitsForHelpersThatDoNotHoldItsPipes()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-launcher-");
+        var window = new WebUiWindow();
+        try
+        {
+            var executable = Path.Combine(folder.FullName, ChromeExecutableName());
+            Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+            await File.WriteAllTextAsync(executable, """
+                #!/usr/bin/env bash
+                for arg do
+                  case "$arg" in
+                    --user-data-dir=*) profile=${arg#*=} ;;
+                    --gate=*) gate=${arg#*=} ;;
+                  esac
+                done
+                # As /opt/google/chrome/google-chrome does before it starts the browser.
+                exec < /dev/null
+                exec > >(exec cat)
+                exec 2> >(exec cat >&2)
+                # A helper that names the profile, as Chromium's do, and writes it once released.
+                sh -c 'while [ ! -f "$1/release-helper" ]; do sleep 0.02; done; mkdir -p "$2/Default"; printf late > "$2/Default/helper-write"; touch "$1/helper-finished"' \
+                  helper "$gate" "$profile" "--user-data-dir=$profile" &
+                touch "$gate/ready"
+                while [ ! -f "$gate/exit-parent" ]; do sleep 0.02; done
+                exit 0
+                """);
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            WebUiApplication.SetBrowserFolder(folder.FullName);
+            WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, false);
+            window.SetBrowserArguments($"--gate=\"{folder.FullName}\"");
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
+            await window.ShowInBrowserAsync(Page("launcher"), WebUiBrowser.Chrome, timeout.Token);
+            var profile = window.GeneratedProfilePath;
+            var processId = checked((int)window.BrowserProcessId);
+            while (!File.Exists(Path.Combine(folder.FullName, "ready")))
+                await Task.Delay(10, timeout.Token);
+
+            // The tree kill reaches the launcher's cats first: Runic's pipes close while the helper still runs.
+            foreach (var cat in ChildProcesses(processId).Where(child => child.Name == "cat"))
+                Process.GetProcessById(cat.Id).Kill();
+            await File.WriteAllTextAsync(Path.Combine(folder.FullName, "exit-parent"), string.Empty, timeout.Token);
+            await WaitForProcessExitAsync(processId, timeout.Token);
+            var close = window.CloseAsync(timeout.Token);
+            await Assert.ThrowsAsync<TimeoutException>(() => close.WaitAsync(TimeSpan.FromMilliseconds(300)));
+            Assert.True(Directory.Exists(profile));
+            await File.WriteAllTextAsync(Path.Combine(folder.FullName, "release-helper"), string.Empty, timeout.Token);
+            await close;
+            Assert.True(File.Exists(Path.Combine(folder.FullName, "helper-finished")));
+            AssertProfileDeleted(window, profile);
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(Path.Combine(folder.FullName, "exit-parent"), string.Empty);
+            await File.WriteAllTextAsync(Path.Combine(folder.FullName, "release-helper"), string.Empty);
+            await window.DisposeAsync();
+            WebUiApplication.SetBrowserFolder(string.Empty);
+            WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, true);
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Test]
+    public void ABrowserProcessNamesAProfileOnlyByItsExactArgument()
+    {
+        static byte[] CommandLine(params string[] arguments) => System.Text.Encoding.UTF8.GetBytes(string.Join('\0', arguments) + "\0");
+        var argument = System.Text.Encoding.UTF8.GetBytes("--user-data-dir=/tmp/runic-desktop-chrome-a");
+        Assert.True(BrowserProfileProcesses.NamesArgument(CommandLine("chrome", "--type=renderer", "--user-data-dir=/tmp/runic-desktop-chrome-a"), argument));
+        Assert.False(BrowserProfileProcesses.NamesArgument(CommandLine("chrome", "--user-data-dir=/tmp/runic-desktop-chrome-ab"), argument));
+        Assert.False(BrowserProfileProcesses.NamesArgument(CommandLine("chrome", "x--user-data-dir=/tmp/runic-desktop-chrome-a"), argument));
+        Assert.False(BrowserProfileProcesses.NamesArgument([], argument));
+    }
+
+    // The direct children of a Linux process, from /proc.
+    private static IEnumerable<(int Id, string Name)> ChildProcesses(int parent)
+    {
+        foreach (var entry in Directory.EnumerateDirectories("/proc"))
+        {
+            if (!int.TryParse(Path.GetFileName(entry), out var id)) continue;
+            string stat;
+            try { stat = File.ReadAllText(Path.Combine(entry, "stat")); }
+            catch (IOException) { continue; }
+            // pid (comm) state ppid ...: comm can hold spaces and parentheses, so read after the last ')'.
+            var close = stat.LastIndexOf(')');
+            var fields = stat[(close + 2)..].Split(' ');
+            if (int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture) == parent)
+                yield return (id, stat[(stat.IndexOf('(') + 1)..close]);
         }
     }
 

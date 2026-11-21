@@ -457,9 +457,8 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         {
             for (var attempt = 0; attempt < 50; attempt++)
             {
-                using var probe = new TcpListener(IPAddress.Loopback, 0);
-                probe.Start();
-                var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+                // Released for the endpoint, which binds it next; no bind(0) takes a leased port meanwhile.
+                var port = TestPorts.Lease().Release();
                 if (!_given.Contains(port) && !BlobEndpoint.IsHeld(IPAddress.IPv6Loopback, port)) return port;
             }
             throw new InvalidOperationException("No port of 127.0.0.1 is free on ::1.");

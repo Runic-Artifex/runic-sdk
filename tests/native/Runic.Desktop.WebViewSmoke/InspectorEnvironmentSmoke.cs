@@ -161,52 +161,9 @@ internal static partial class InspectorEnvironmentSmoke
         return start;
     }
 
-    // A free loopback port that no bind(0) or connect() can be handed meanwhile: on Linux one below the ephemeral range (or
-    // above it when the range starts low), which nothing in the socket tables uses yet.
-    private static int InspectorPort()
-    {
-        if (OperatingSystem.IsLinux() && EphemeralRange() is (int low, int high))
-        {
-            var (first, last) = low > 11_000 ? (10_000, low - 1) : high < 64_000 ? (high + 1, 65_535) : (0, -1);
-            for (var attempt = 0; first <= last && attempt < 100; attempt++)
-            {
-                var port = Random.Shared.Next(first, last + 1);
-                if (!PortListeners.InUse(port) && Binds(port)) return port;
-            }
-        }
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
-        finally { listener.Stop(); }
-    }
-
-    private static (int Low, int High)? EphemeralRange()
-    {
-        try
-        {
-            var fields = File.ReadAllText("/proc/sys/net/ipv4/ip_local_port_range").Split((char[])['\t', ' ', '\n'], StringSplitOptions.RemoveEmptyEntries);
-            return (int.Parse(fields[0], System.Globalization.CultureInfo.InvariantCulture), int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture));
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or IndexOutOfRangeException)
-        {
-            return null;
-        }
-    }
-
-    private static bool Binds(int port)
-    {
-        try
-        {
-            var listener = new TcpListener(IPAddress.Loopback, port);
-            listener.Start();
-            listener.Stop();
-            return true;
-        }
-        catch (SocketException)
-        {
-            return false;
-        }
-    }
+    // A free loopback port that no bind(0) or connect() can be handed meanwhile: a leased port outside the ephemeral range
+    // that no socket uses yet (TestPorts), released for the child.
+    private static int InspectorPort() => TestPorts.Lease().Release();
 
     private static async Task<bool> TreeListensAsync(int port, TimeSpan wait)
     {
@@ -248,9 +205,6 @@ internal static partial class InspectorEnvironmentSmoke
             return [.. sockets.Select(row => new Listener(row.Address, row.Uid,
                 holders.TryGetValue(row.Inode, out var pids) ? [.. pids.Select(pid => (pid, Name(pid), InTree(pid)))] : []))];
         }
-
-        // Any socket on the port, listening or not: the local end of a connection keeps WebKit from binding it too.
-        internal static bool InUse(int port) => Rows().Any(row => row.Port == port);
 
         private static IEnumerable<(string Address, int Port, string State, uint Uid, string Inode)> Rows()
         {

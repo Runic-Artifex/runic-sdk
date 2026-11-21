@@ -1,0 +1,37 @@
+name: Record retried tests
+description: >-
+  The recorded single retry (eng/ci/README.md, "Recorded retries"). With mode start, before the tests: names the record
+  file in RUNIC_RETRIED_TESTS, without which no [RecordedRetry] test is retried. With mode report, as the job's last
+  step (if: always()): a "Flaky test retried" warning and a job summary line for each retry, and the record as the
+  artifact flaky-tests-<job>-<leg>-<attempt>, which eng/ci/flakes.mjs counts as a sighting of each test.
+inputs:
+  mode:
+    description: start or report
+    required: true
+  leg:
+    description: The job's leg in the artifact name and the record (an OS and architecture, a screen reader)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Name the retried-tests record
+      if: inputs.mode == 'start'
+      shell: bash
+      env:
+        LEG: ${{ inputs.leg }}
+      run: |
+        echo "RUNIC_RETRIED_TESTS=$RUNNER_TEMP/retried-tests.jsonl" >> "$GITHUB_ENV"
+        echo "RUNIC_RETRIED_TESTS_LEG=$LEG" >> "$GITHUB_ENV"
+    - name: Report retried tests
+      id: report
+      if: inputs.mode == 'report'
+      shell: bash
+      run: node eng/ci/retried-tests.mjs report "$RUNIC_RETRIED_TESTS"
+    # A diagnostic upload (continue-on-error): the warnings above already name every retry in the run's annotations.
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: inputs.mode == 'report' && steps.report.outputs.retried == 'true'
+      continue-on-error: true
+      with:
+        name: flaky-tests-${{ github.job }}-${{ inputs.leg }}-${{ github.run_attempt }}
+        path: ${{ env.RUNIC_RETRIED_TESTS }}
+        retention-days: 30

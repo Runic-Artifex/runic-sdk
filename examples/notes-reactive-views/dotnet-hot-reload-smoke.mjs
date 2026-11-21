@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { freePort } from "../../tests/support/ports.mjs";
 import { fileURLToPath } from "node:url";
 import { launchChromium, pause, waitFor, viewsProbe } from "../shared/smoke.mjs";
 
@@ -13,13 +13,8 @@ let browser;
 // The outer catch appends the dotnet watch output.
 const detail = async () => browser ? await browser.diagnostics() : "browser: not started";
 const retry = (condition, timeout = 30_000) => waitFor(condition, { timeout, interval: 100, label: ".NET Hot Reload", detail });
-async function availablePort() {
-  const server = createServer();
-  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  const port = server.address().port;
-  await new Promise(resolve => server.close(resolve));
-  return port;
-}
+// A leased port, which no bind(0) or connection takes before the server binds it.
+const availablePort = () => freePort();
 
 // Fail before starting dotnet watch when the edit point is missing or ambiguous.
 if ((await readFile(source, "utf8")).split(before).length !== 2)

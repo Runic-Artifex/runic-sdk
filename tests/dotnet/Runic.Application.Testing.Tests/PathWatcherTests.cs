@@ -269,7 +269,7 @@ internal sealed class PathWatcherTests
     // moveAway: as `mv checkout checkout.old && git clone`, which reports no deleted entries in the old directory's
     // watch; deleting it reports them on Linux, while on Windows they can be lost when a later watcher restarts the
     // shared watch (#1008). Either way the parent's event and the new file's identity report the replacement.
-    [Test]
+    [Test, RecordedRetry(RetryReason.RealClock)]
     [Arguments(false)]
     [Arguments(true)]
     public async Task DirectoryReplacedWithoutAReadIsWatchedAgain(bool moveAway)
