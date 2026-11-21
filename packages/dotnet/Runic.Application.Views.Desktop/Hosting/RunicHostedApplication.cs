@@ -679,8 +679,9 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await AnswerAsync(request.FailAsync("failed", null, "The application ended while its window opened.")).ConfigureAwait(false);
             return;
         }
-        // WindowOpened before the reply, and before the window's Closed handler can raise WindowClosed: the guest can
-        // close the window as soon as the reply arrives, and the events are raised in order.
+        // WindowOpened is queued before the reply, and before the window's Closed handler can raise WindowClosed: the guest
+        // can close the window as soon as the reply arrives, and the events are delivered in order, on a thread-pool
+        // thread, possibly after the guest received the reply.
         _owner.RaiseWindowOpened(window);
         // The host's pushes for the window (host-protocol.md, Activity and placement).
         adapter.ActivityChanged += (_, e) =>

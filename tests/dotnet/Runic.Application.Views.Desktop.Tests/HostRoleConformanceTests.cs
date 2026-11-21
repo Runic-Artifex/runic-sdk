@@ -109,6 +109,10 @@ internal sealed class HostRoleConformanceTests
         {
             var (action, value) = step.First(member => member.Key is not ("connection" or "note"));
             var connection = step["connection"]?.GetValue<string>();
+            // The host queues WindowOpened and WindowClosed before its reply and delivers them on the thread pool: the user
+            // and the expectations act on the windows the host's events reported (#1281).
+            if (action is "user" or "expect" && _fixture?.Applications is RunicHostedApplications applications)
+                await applications.EventsDelivered.WaitAsync(TestTimeouts.Scale(StepTimeout));
             switch (action)
             {
                 case "start": await StartAsync(); break;

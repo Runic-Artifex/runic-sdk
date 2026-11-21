@@ -140,6 +140,13 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
         if (handler is not null) Post(() => handler(this, new RunicHostedRegionEventArgs(region, RunicHostedRegionEventArgs.ReasonOf(reason))));
     }
 
+    // Completes once every window and region event raised so far was delivered to its handlers, for tests that act on the
+    // host's state after a reply (#1281): the events are queued before the reply, not raised.
+    internal Task EventsDelivered
+    {
+        get { lock (_eventGate) return _events; }
+    }
+
     // A region's event, in the same order as the window events (Raise).
     internal void Post(Action action)
     {
