@@ -13,6 +13,8 @@ namespace Runic.Application.Testing.Tests;
 
 // Producer performance (0.14): what a publication unit encodes, how often notification units run, the subscription
 // graph's sweeps, the pooled buffers and the drain's model turns. tests/benchmarks measures the same paths.
+// Runs alone: it measures process-wide allocations or the thread pool (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class ProducerPublicationTests
 {
     // A set's reply publishes the change; the unit its notification requested finds nothing new and encodes nothing.

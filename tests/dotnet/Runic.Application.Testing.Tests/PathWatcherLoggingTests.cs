@@ -7,6 +7,8 @@ using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
+// Runs alone: it listens on Trace.Listeners (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class PathWatcherLoggingTests
 {
     // A directory an application creates on its first start is not a problem to warn about (#312): without a

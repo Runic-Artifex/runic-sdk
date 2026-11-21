@@ -9,6 +9,8 @@ namespace Runic.Application.Testing.Tests;
 
 // The platform fakes of Runic.Application.Testing follow the contracts of the real services: leases are single-use or
 // write through one transaction at a time, commits detect other writers, and closing the window ends everything.
+// Runs alone: it sets environment variables (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class PlatformFakeTests
 {
     private static readonly byte[] s_png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];

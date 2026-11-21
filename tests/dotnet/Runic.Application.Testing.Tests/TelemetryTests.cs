@@ -19,6 +19,8 @@ namespace Runic.Application.Testing.Tests;
 
 // NET-2: a configured ILoggerFactory receives structured failure entries, and the
 // Views ActivitySource and Meter report calls, failures and snapshot frames.
+// Runs alone: it listens to the Views ActivitySource and Meter (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class TelemetryTests
 {
     // FailingCommandIsLoggedTracedAndMeasuredAsync runs with the window's failure detail off and on.
