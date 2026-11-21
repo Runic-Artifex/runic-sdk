@@ -16,6 +16,8 @@ namespace Runic.Application.Testing.Tests;
 // page's own window starts the departure: the shell's Back command from the same browser connection, or the window's
 // guarded close. An interaction never reaches another window or connection, .NET handlers keep ReactiveUI's
 // latest-first order, and a prompt whose View or window goes away fails closed.
+// Runs alone: it installs ReactiveUI's main-thread scheduler (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class LeaveGuardRoutingTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);

@@ -5,6 +5,8 @@ using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
+// Runs alone: it counts ChildView's static lifetimes (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class GeneratedInteractionTests
 {
     [Test]

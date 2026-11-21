@@ -9,6 +9,8 @@ using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
+// Runs alone: it installs ReactiveUI's main-thread scheduler (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class ReactiveNavigationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);

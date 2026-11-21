@@ -7,6 +7,8 @@ namespace Runic.Application.Testing.Tests;
 /// the build integration rather than merely testing manifest implementation
 /// details in-process.
 /// </summary>
+// One at a time: these cases share the generated-client process lock under obj/ (GeneratedHarnessProcess).
+[NotInParallel("GeneratedHarnessProcess")]
 internal sealed class CodegenCacheTests
 {
     private const string ManifestFileName = ".runic-bridge-generation-cache.json";

@@ -19,8 +19,11 @@ direnv exec . dotnet run --project tests/dotnet/Runic.Application.Testing.Tests 
 ```
 
 `ContinuationTests`, `AcceptedWorkScopeTests` and `RunicWindowHostTests` are
-selected the same way, by class name. The cases run one at a time
-(`[assembly: NotInParallel]` in `AssemblyInfo.cs`).
+selected the same way, by class name. The cases run in parallel, except the
+classes that use process-wide state, which run alone (`[NotInParallel]`, with
+the reason beside it), and the generated-client harnesses, which run one at a
+time (`AssemblyInfo.cs`). `ThreadPoolWarmUp` raises the thread pool's minimum
+so that the cases that block a pool thread are not starved by the others.
 
 `PathWatcherTests` (category `FileSystem`) watch real temporary files,
 symbolic links and Git repositories. The managed CI job runs them on Linux and

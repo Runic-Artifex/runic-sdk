@@ -9,6 +9,8 @@ namespace Runic.Application.Testing.Tests;
 // The Window/View host checks that the former Program.cs ran first. The root host case counts ChildView's static
 // lifetime calls, so the other cases that present a ChildView (HostDriverTests, ServiceHostTests) depend on it and
 // run after it, as they did in the former runner.
+// Runs alone: it counts ChildView's static lifetimes (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class WindowViewHostTests
 {
     [Test]

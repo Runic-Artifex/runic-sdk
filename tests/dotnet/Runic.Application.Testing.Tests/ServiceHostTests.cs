@@ -9,6 +9,8 @@ namespace Runic.Application.Testing.Tests;
 
 // RunicWindowTestHost.Create resolves what the Desktop and CS-WebUI windows resolve
 // from the window's scope, so a test needs no service lookups of its own.
+// Runs alone: it installs ReactiveUI's main-thread scheduler (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class ServiceHostTests
 {
     [Test]

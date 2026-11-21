@@ -10,6 +10,8 @@ namespace Runic.Application.Testing.Tests;
 
 // Session-level content lifecycle: re-exposure of a still-mounted reference,
 // and release of per-item state for churning collections.
+// Runs alone: it measures process-wide allocations or the thread pool (AssemblyInfo.cs).
+[NotInParallel]
 public sealed class ContentLifecycleTests
 {
     // A transport reconnect keeps the page, so the generated client re-sends
