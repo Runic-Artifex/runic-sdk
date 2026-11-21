@@ -120,6 +120,7 @@ internal sealed class HostRoleConformanceTests
                 case "line": await LineAsync(value!.AsObject()); break;
                 case "accept": await AcceptAsync(value!.GetValue<string>()); break;
                 case "receive": await ReceiveAsync(connection!, value!.AsObject()); break;
+                case "receiveAll": await ReceiveAllAsync(connection!, value!.AsArray()); break;
                 case "send": await SendAsync(connection!, value!.AsObject()); break;
                 case "closed": await ClosedAsync(value!.AsObject()); break;
                 case "disconnect": await HostChannel.CloseAsync(_connections[value!.GetValue<string>()], WebSocketCloseStatus.NormalClosure, ""); break;
@@ -259,6 +260,43 @@ internal sealed class HostRoleConformanceTests
             var message = await HostChannel.ReceiveAsync(_connections[name], timeout.Token)
                 ?? throw new InvalidOperationException("The host closed the connection.");
             Match(expected, message, "message");
+        }
+
+        // The host's next messages, as many as listed, in any order: a reply and the push its request caused are sent
+        // independently (host-protocol.md: a request is answered when the window was asked; the push reports the result).
+        private async Task ReceiveAllAsync(string name, JsonArray expected)
+        {
+            var messages = new List<JsonObject>();
+            for (var i = 0; i < expected.Count; i++)
+            {
+                using var timeout = TestTimeouts.Cancellation(StepTimeout);
+                messages.Add(await HostChannel.ReceiveAsync(_connections[name], timeout.Token)
+                    ?? throw new InvalidOperationException($"The host closed the connection after {i} of {expected.Count} messages."));
+            }
+            var left = expected.ToList();
+            foreach (var message in messages)
+            {
+                var matched = left.FindIndex(candidate => TryMatch(candidate, message));
+                Check(matched >= 0, $"{message.ToJsonString()} matches none of {new JsonArray([.. left.Select(static m => m!.DeepClone())]).ToJsonString()}.");
+                left.RemoveAt(matched);
+            }
+        }
+
+        // Match without binding anything when it fails.
+        private bool TryMatch(JsonNode? expected, JsonNode? actual)
+        {
+            var bindings = new Dictionary<string, JsonNode?>(_bindings, StringComparer.Ordinal);
+            try
+            {
+                Match(expected, actual, "message");
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                _bindings.Clear();
+                foreach (var (key, value) in bindings) _bindings[key] = value;
+                return false;
+            }
         }
 
         private Task SendAsync(string name, JsonObject message) =>

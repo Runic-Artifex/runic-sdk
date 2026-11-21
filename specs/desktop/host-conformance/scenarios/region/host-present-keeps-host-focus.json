@@ -40,8 +40,6 @@
     {"expect":{"window":"w1","region":{"focused":false}},"note":"The focus stays where the user has it: no region-focus came before the reply."},
     {"user":{"action":"focusHost","window":"h1","focused":false},"note":"The page holds no focus."},
     {"send":{"id":{"$id":"p2"},"kind":"present","window":"w1"},"connection":"c1"},
-    {"receive":{"id":{"$id":"p2"},"ok":true,"outcome":"success"},"connection":"c1"},
-    {"receive":{"kind":"region-focus","window":"w1","focus":"enter","direction":"programmatic"},"connection":"c1"},
-    {"receive":{"kind":"activity","window":"w1","active":true,"minimized":false,"visible":true},"connection":"c1"}
+    {"receiveAll":[{"id":{"$id":"p2"},"ok":true,"outcome":"success"},{"kind":"region-focus","window":"w1","focus":"enter","direction":"programmatic"},{"kind":"activity","window":"w1","active":true,"minimized":false,"visible":true}],"connection":"c1","note":"The reply and the pushes its present caused come in any order."}
   ]
 }
