@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { coveringRun, github, PLAN_ARTIFACT } from './covered.mjs';
-import { planFor, affected, planRecord, reusedPlan } from './plan.mjs';
+import { coveringPush, coveringRun, github, PLAN_ARTIFACT, unionPlan } from './covered.mjs';
+import { planFor, affected, planRecord, reusedPlan, coveredPlan, validPlan, skippableJobs } from './plan.mjs';
 
 const repository = 'Runic-Artifex/runic-sdk', sha = 'a'.repeat(40);
 const url = id => `https://github.com/${repository}/actions/runs/${id}`;
@@ -66,6 +66,75 @@ test('an entry that reused a pull request run is covered by that run\'s plan', a
     ['a record that reused again', reused({}, { plans: { 5: planRecord(reusedPlan(url(4)), url(4)) } })],
   ]) assert.equal(await coveringRun(lookup), null, why);
   assert.equal(await coveringRun(fake({ plans: { 9: planRecord(reusedPlan('elsewhere'), 'elsewhere') } })), null, 'no run id');
+});
+
+// A coalesced push: main moved from `before` through `commits` (oldest first), each with the queue runs `runs[sha]`.
+const before = '0123456789'.repeat(4), [first, second, third] = ['1', '2', '3'].map(digit => digit.repeat(40));
+const queue = (id, head) => run(id, { head_sha: head });
+const coalesced = ({ commits = [first, second], runs = { [first]: [queue(1, first)], [second]: [queue(2, second)] }, plans, compare = {} } = {}) => {
+  const paths = [];
+  const api = async path => {
+    paths.push(path);
+    const listing = /^actions\/workflows\/ci\.yml\/runs\?event=merge_group&head_sha=([0-9a-f]{40})&per_page=20$/.exec(path);
+    if (listing) return { workflow_runs: runs[listing[1]] ?? [] };
+    if (/^actions\/runs\/\d+\/jobs\?per_page=100$/.test(path)) return verify('success');
+    if (path === `compare/${before}...${commits.at(-1)}?per_page=100`)
+      return { status: 'ahead', total_commits: commits.length, commits: commits.map(item => ({ sha: item })), ...compare };
+    throw new Error(`unexpected ${path}`);
+  };
+  return { repository, sha: commits.at(-1), before, api, planOf: async item => plans[item.id] ?? null, paths };
+};
+
+const managedOnly = planFor(affected(['packages/dotnet/Runic.Application/Runic.Application.csproj']));
+const svelteOnly = planFor(affected(['packages/web/svelte/src/index.ts']));
+const pushPlan = planFor(affected(['packages/dotnet/Runic.Application/Runic.Application.csproj', 'packages/web/svelte/src/index.ts']));
+
+test('a coalesced push is covered by the union of the plans of every commit\'s queue run', async () => {
+  const plans = { 1: planRecord(managedOnly), 2: planRecord(svelteOnly) };
+  const found = await coveringPush(coalesced({ plans }));
+  assert.equal(found.url, `${url(1)} (111111111) and run ${url(2)} (222222222)`);
+  assert.ok(validPlan(found.plan));
+  // Before: the newest commit's run alone left the first commit's jobs to run again.
+  assert.notDeepEqual(coveredPlan(pushPlan, svelteOnly, url(2)).skip.toSorted(), skippableJobs.toSorted().filter(job => job !== 'native-libraries'));
+  // Now the push runs nothing that either queue run ran.
+  const left = coveredPlan(pushPlan, found.plan, found.url);
+  for (const job of skippableJobs.filter(job => !pushPlan.skip.includes(job) && job !== 'native-libraries'))
+    assert.ok(left.skip.includes(job), `${job} ran in a queue run`);
+  // A job one plan skipped and the other ran counts as run; one both skipped stays skipped.
+  const union = unionPlan([managedOnly, svelteOnly]);
+  assert.deepEqual(union.skip, managedOnly.skip.filter(job => svelteOnly.skip.includes(job)));
+  assert.deepEqual(union.managed, managedOnly.managed);
+  assert.deepEqual(union.native.include, managedOnly.native.include);
+  // An entry that reused a pull request run counts with that run's plan.
+  const reused = { ...plans, 1: planRecord(reusedPlan(url(5)), url(5)), 5: planRecord(managedOnly) };
+  const pull = { id: 5, event: 'pull_request', path: '.github/workflows/ci.yml', head_sha: 'd'.repeat(40), repository: { full_name: repository },
+    head_repository: { full_name: repository }, html_url: url(5) };
+  const lookup = coalesced({ plans: reused });
+  const inner = lookup.api;
+  lookup.api = async path => path === 'actions/runs/5' ? pull : inner(path);
+  assert.deepEqual((await coveringPush(lookup)).plan, union);
+});
+
+test('a coalesced push with any commit not covered, or an unusable range, keeps the pushed commit\'s run alone', async () => {
+  const plans = { 1: planRecord(managedOnly), 2: planRecord(svelteOnly), 3: planRecord(managedOnly) };
+  const alone = { url: url(2), plan: svelteOnly };
+  for (const [why, lookup] of [
+    ['a direct push in between', coalesced({ plans, runs: { [second]: [queue(2, second)] } })],
+    ['a failed queue run in between', coalesced({ plans: { ...plans, 1: null } })],
+    ['before is not an ancestor', coalesced({ plans, compare: { status: 'diverged' } })],
+    ['more commits than one page', coalesced({ plans, compare: { total_commits: 300 } })],
+    ['a range that ends elsewhere', coalesced({ plans, compare: { commits: [{ sha: first }, { sha: third }] } })],
+  ]) assert.deepEqual(await coveringPush(lookup), alone, why);
+  // One commit is the pushed commit's run alone; without a usable before there is no range to compare.
+  assert.deepEqual(await coveringPush(coalesced({ plans, commits: [second] })), alone);
+  const lookup = coalesced({ plans });
+  for (const value of [undefined, '', '0'.repeat(40), 'main']) {
+    lookup.paths.length = 0;
+    assert.deepEqual(await coveringPush({ ...lookup, before: value }), alone);
+    assert.ok(!lookup.paths.some(path => path.startsWith('compare/')));
+  }
+  // Without a run of the pushed commit, nothing covers the push.
+  assert.equal(await coveringPush(coalesced({ plans, runs: { [first]: [queue(1, first)] } })), null);
 });
 
 // One stored or deflated entry, as upload-artifact zips the ci-plan file.

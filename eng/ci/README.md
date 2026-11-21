@@ -413,9 +413,13 @@ it) plus the pull request, and runs `ci.yml` on it as a `merge_group` event. The
   libraries' cache entries have exact keys (a new one with every `native/` change, the
   post-release version bump included), so its lookup job runs and builds and saves only a
   missing library. The other caches (NuGet, Bun, apt) fall back to an older entry until the
-  nightly run saves new ones. `verify` still reports on `main`. Otherwise (a group of several entries merged at once
-  whose earlier entries planned more, for example) `build` and the remaining jobs and legs
-  run. The plan's step summary and `verify`'s summary link the covering run. Without such
+  nightly run saves new ones. `verify` still reports on `main`. When several entries merge
+  close together, `main`'s concurrency group supersedes the earlier push runs and the
+  surviving push's `before..after` diff spans them all. When every commit of that range has
+  such a queue run (the compare API lists them; `main` is linear), the push keeps only what
+  none of them ran: the union of their plans (`unionPlan`). When any commit has none (a direct
+  push in between, a failed lookup), only the pushed commit's run counts. Otherwise `build`
+  and the remaining jobs and legs run. The plan's step summary and `verify`'s summary link the covering run. Without such
   a run (a direct or admin push, a run older than the plan records, a failed lookup), the
   push plans as before: every Linux job and the legs its diff needs. The lookup can only
   make a push run more, never less, than its queue run left out.

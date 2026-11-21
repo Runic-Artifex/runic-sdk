@@ -4,7 +4,11 @@
 // run), with the plan its ci-plan artifact records; prints nothing when there is none. The plan step then plans with
 // `--covered`. A failed lookup prints nothing, so the push plans as before: it can only run more, never skip more.
 //
-//   bun eng/ci/covered.mjs <commit>        (GH_TOKEN, GITHUB_REPOSITORY)
+// Coalesced pushes: when entries merge close together, main's concurrency group supersedes the earlier push runs, and
+// the surviving push's before..after diff spans several queue entries. When every commit of before..after has such a
+// run, the push is covered by the union of their plans (unionPlan); otherwise only the pushed commit's run covers it.
+//
+//   bun eng/ci/covered.mjs <commit> [<before>]        (GH_TOKEN, GITHUB_REPOSITORY)
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -43,6 +47,49 @@ export async function coveringRun({ repository, sha, api, planOf }) {
   return null;
 }
 
+// The plan that ran whatever any of `plans` ran: a job is skipped only when every plan skipped it, and a job's suites
+// and legs are those of the plans that ran it.
+export function unionPlan(plans) {
+  const ran = job => plans.filter(plan => !plan.skip.includes(job));
+  const unique = list => [...new Map(list.map(item => [JSON.stringify(item), item])).values()];
+  const legs = job => ({ include: unique(ran(job).flatMap(plan => plan[job].include)) });
+  return {
+    full: plans.some(plan => plan.full),
+    components: unique(plans.flatMap(plan => plan.components)),
+    managed: unique(ran("managed").flatMap(plan => plan.managed)),
+    web: unique(ran("web").flatMap(plan => plan.web)),
+    frameworks: ran("web").some(plan => plan.frameworks),
+    native: legs("native"),
+    wpf: legs("wpf"),
+    packaging: legs("packaging"),
+    "screen-readers": legs("screen-readers"),
+    platforms: unique(plans.flatMap(plan => plan.platforms)),
+    why: plans.map(plan => plan.why).join("; "),
+    skip: plans[0].skip.filter(job => plans.every(plan => plan.skip.includes(job))),
+  };
+}
+
+// The push of `sha` from `before`: the union of the covering runs of every commit of before..sha when each has one
+// (main is linear: squash merges only), else the covering run of `sha` alone. `api` also answers compare/<a>...<b>.
+export async function coveringPush({ repository, sha, before, api, planOf }) {
+  const own = await coveringRun({ repository, sha, api, planOf });
+  if (!own || !/^[0-9a-f]{40}$/.test(before ?? "") || /^0+$/.test(before)) return own;
+  const { status, total_commits: total, commits = [] } = await api(`compare/${before}...${sha}?per_page=100`);
+  const shas = commits.map(commit => commit.sha);
+  if (status !== "ahead" || total !== shas.length || shas.at(-1) !== sha || shas.length < 2) return own;
+  const found = [];
+  for (const commit of shas.slice(0, -1)) {
+    const run = await coveringRun({ repository, sha: commit, api, planOf });
+    if (!run) return own;
+    found.push({ ...run, sha: commit });
+  }
+  found.push({ ...own, sha });
+  return {
+    url: found.map(run => `${run.url} (${run.sha.slice(0, 9)})`).join(" and run "),
+    plan: unionPlan(found.map(run => run.plan)),
+  };
+}
+
 // The GitHub REST client of the CLI: GH_TOKEN, retrying server errors.
 export function github(repository, token, fetchImpl = fetch) {
   const headers = { accept: "application/vnd.github+json", authorization: `Bearer ${token}`, "x-github-api-version": "2022-11-28",
@@ -79,12 +126,12 @@ export function github(repository, token, fetchImpl = fetch) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { GITHUB_REPOSITORY: repository, GH_TOKEN: token } = process.env;
-  const sha = process.argv[2];
+  const [sha, before] = process.argv.slice(2);
   try {
     if (!repository || !token) throw new Error("GH_TOKEN and GITHUB_REPOSITORY are required");
-    const found = await coveringRun({ repository, sha, ...github(repository, token) });
+    const found = await coveringPush({ repository, sha, before, ...github(repository, token) });
     if (found) {
-      console.error(`Merge queue run ${found.url} passed ${sha}.`);
+      console.error(`Merge queue run ${found.url} passed ${before && found.url.includes(" and run ") ? `${before.slice(0, 9)}..${sha}` : sha}.`);
       console.log(JSON.stringify(found));
     } else console.error(`No passed merge queue run with a plan record tested ${sha}; planning as a push without one.`);
   } catch (error) {
