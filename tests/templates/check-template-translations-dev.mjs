@@ -47,13 +47,19 @@ async function waitForOutput(application, pattern) {
 
 async function stopApplication(application) {
   if (application.exited) return;
+  const stopping = Date.now();
   // dotnet runic dev stops its development server and host on SIGTERM.
   try { process.kill(-application.child.pid, "SIGTERM"); } catch { /* already gone */ }
-  const stopped = await Promise.race([application.exit, new Promise(resolve => setTimeout(resolve, scaled(30_000), null))]);
+  let timer;
+  const stopped = await Promise.race([application.exit, new Promise(resolve => { timer = setTimeout(resolve, scaled(30_000), null); })]);
+  // A pending timer keeps this process alive for the whole wait (120 s in CI) after the application stopped.
+  clearTimeout(timer);
   if (!stopped) {
     try { process.kill(-application.child.pid, "SIGKILL"); } catch { /* already gone */ }
     await application.exit;
   }
+  // How the stop ended, so a host that stops slowly shows in the template lane's timing.
+  console.log(`STOP|${stopped ? "exited" : "killed"} after ${((Date.now() - stopping) / 1000).toFixed(1)} s`);
 }
 
 async function check(url, viteOrigin, catalog) {
