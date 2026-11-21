@@ -18,15 +18,10 @@ internal sealed class CsWebUiBrowserGuardChecks : IDisposable
     {
         foreach (var process in _processes)
         {
-            try { if (!process.HasExited) process.Kill(); }
-            catch (InvalidOperationException) { }
+            TestProcesses.StopTreeAsync(process).GetAwaiter().GetResult();
             process.Dispose();
         }
-        foreach (var directory in _directories)
-        {
-            try { Directory.Delete(directory, recursive: true); }
-            catch (DirectoryNotFoundException) { }
-        }
+        foreach (var directory in _directories) TestProcesses.DeleteDirectory(directory);
     }
 
     private static string Directory_(string root, string name)

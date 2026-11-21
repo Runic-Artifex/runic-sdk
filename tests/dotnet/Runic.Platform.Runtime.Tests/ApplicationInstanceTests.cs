@@ -180,8 +180,9 @@ internal sealed class ApplicationInstanceTests
         finally
         {
             ForegroundRights.Granted = null;
-            if (!primary.HasExited) primary.Kill();
-            System.IO.Directory.Delete(directory, recursive: true);
+            // The instance's directory holds its lock and pipe files: delete it once the instance has let go of them.
+            await TestProcesses.StopTreeAsync(primary);
+            TestProcesses.DeleteDirectory(directory);
         }
     }
 
@@ -581,9 +582,8 @@ internal sealed class ApplicationInstanceTests
         }
         finally
         {
-            if (!primary.HasExited) primary.Kill();
-            await primary.WaitForExitAsync();
-            System.IO.Directory.Delete(directory, recursive: true);
+            await TestProcesses.StopTreeAsync(primary);
+            TestProcesses.DeleteDirectory(directory);
         }
     }
 
