@@ -264,8 +264,9 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
   assert.equal(args[args.indexOf('--matrix') + 1], 'os:ubuntu-24.04');
   assert.deepEqual(args.slice(-2), ['--job', 'templates']);
   // The Arm entries run on runners act does not map, so local runs keep linux-x64.
-  assert.deepEqual(nativeLegs.map(item => [item.rid, item.os]),
-    [['linux-x64', 'ubuntu-24.04'], ['linux-arm64', 'ubuntu-24.04-arm'], ['win-x64', 'windows-latest'], ['win-arm64', 'windows-11-arm'], ['osx-arm64', 'macos-26']]);
+  assert.deepEqual(nativeLegs.map(item => [item.rid, item.os, item.shard]),
+    [['linux-x64', 'ubuntu-24.04', undefined], ['linux-arm64', 'ubuntu-24.04-arm', undefined], ['win-x64', 'windows-latest', 'window'],
+      ['win-x64', 'windows-latest', 'platform'], ['win-arm64', 'windows-11-arm', undefined], ['osx-arm64', 'macos-26', undefined]]);
   // act passes no container engine into its jobs, so the musl container step does not run there.
   const musl = workflow.jobs['native-musl'];
   assert.deepEqual(musl.strategy.matrix.include.map(item => [item.rid, item.os]),

@@ -16,7 +16,10 @@ export const nativeLegs = [
   // window probes (eng/support.json).
   { os: "ubuntu-24.04", rid: "linux-x64", provider: "Linux", extension: "", cswebui: true },
   { os: "ubuntu-24.04-arm", rid: "linux-arm64", provider: "Linux", extension: "", cswebui: true },
-  { os: "windows-latest", rid: "win-x64", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
+  // win-x64, the longest leg, runs as two shards of about equal time (C2 of D077.25; the shard
+  // conditions are in ci.yml's native job). Both are release jobs.
+  { os: "windows-latest", rid: "win-x64", shard: "window", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
+  { os: "windows-latest", rid: "win-x64", shard: "platform", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
   { os: "windows-11-arm", rid: "win-arm64", provider: "Windows", extension: ".exe", cswebui: false, platform: "win-arm64" },
   { os: "macos-26", rid: "osx-arm64", provider: "MacOS", extension: "", cswebui: true, platform: "osx-arm64" },
 ];
@@ -58,10 +61,12 @@ export const packagingLegs = [
   { os: "ubuntu-24.04", target: "flathub" },
 ];
 
+// The native job's name for a leg, as ci.yml's `name:` gives it.
+export const nativeJob = leg => `Native / ${leg.rid}${leg.shard ? ` (${leg.shard})` : ""}`;
 // The job names, as GitHub reports them, of every Windows and macOS leg. Pull requests run only
 // the legs their changes need, so a release requires one successful main run with all of them.
 export const releaseJobs = [
-  ...nativeLegs.filter(leg => leg.platform).map(leg => `Native / ${leg.rid}`),
+  ...nativeLegs.filter(leg => leg.platform).map(nativeJob),
   ...wpfLegs.map(leg => `WPF navigation / ${leg.rid}`),
   ...packagingLegs.filter(leg => leg.platform).map(leg => `Packaging / ${leg.target}`),
 ];
