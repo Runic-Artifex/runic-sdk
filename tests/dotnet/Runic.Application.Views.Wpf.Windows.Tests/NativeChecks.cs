@@ -125,7 +125,9 @@ internal sealed partial class NativeChecks
     // vwpf-01: Tab enters the document at its first or last tab stop and leaves it again, in both directions, to the
     // surrounding WPF controls. The keys come through the DevTools protocol, which reaches the page without the
     // window being in the foreground; WebView2 raises MoveFocusRequested for them as for a user's Tab.
-    [Test, NotInParallel("WpfSuite", Order = 16)]
+    // #1274: two failures on win-x64 with the page's focus still on its last field; a retry is recorded with the
+    // diagnostics below.
+    [Test, NotInParallel("WpfSuite", Order = 16), RecordedRetry(RetryReason.Gui)]
     public async Task TabEntersAndLeavesTheChildWebView()
     {
         using var child = new RunicWebView { Height = 200 };
