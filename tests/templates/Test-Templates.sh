@@ -339,6 +339,43 @@ serve_and_fetch() {
   stop_served
 }
 
+# Per-phase timing (C3 of D077.25): `phase <name>` ends the running phase and starts <name>; phase_report prints one
+# TEMPLATE_PHASES line per combination with the seconds of each phase and, in CI, adds a row to the step summary.
+phase_name=""
+phase_started=""
+phase_times=()
+phase_microseconds() { local now="${EPOCHREALTIME//[.,]/}"; echo "$((10#$now))"; }
+phase() {
+  local now
+  now="$(phase_microseconds)"
+  if [[ -n "$phase_name" ]]; then
+    local tenths=$(( (now - phase_started) / 100000 ))
+    phase_times+=("$phase_name=$((tenths / 10)).$((tenths % 10))")
+  fi
+  phase_name="$1"
+  phase_started="$now"
+}
+phase_report() {
+  local combination="$1" total=0 item tenths
+  phase ""
+  for item in "${phase_times[@]}"; do
+    tenths="${item#*=}"
+    total=$(( total + ${tenths%.*} * 10 + ${tenths#*.} ))
+  done
+  local joined
+  joined="$(IFS='|'; echo "${phase_times[*]}")"
+  echo "TEMPLATE_PHASES|$combination|total=$((total / 10)).$((total % 10))|$joined"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    if [[ "${phase_summary_header:-}" != written ]]; then
+      printf '\n| Template combination | Seconds | Phases (s) |\n|---|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+      phase_summary_header=written
+    fi
+    printf '| %s | %s | %s |\n' "$combination" "$((total / 10)).$((total % 10))" "${joined//|/, }" >> "$GITHUB_STEP_SUMMARY"
+  fi
+  phase_name=""
+  phase_times=()
+}
+
 verify_template() {
   local framework="$1"
   local manager="$2"
@@ -395,6 +432,7 @@ verify_template() {
   declared_manager_version="$expected_manager_version"
   [[ "$manager" != npm ]] || declared_manager_version="$npm_version"
 
+  phase generate
   dotnet new runic-app \
     --name "$project_name" \
     --output "$output" \
@@ -589,6 +627,7 @@ verify_template() {
 
   # The documented first run, verbatim: dotnet tool restore, then
   # dotnet runic dev. doctor must already work before anything is restored.
+  phase doctor-and-dev
   (cd "$output" && dotnet tool restore)
   if ! (cd "$output" && dotnet runic doctor) > "$output/doctor-unrestored.txt"; then
     cat "$output/doctor-unrestored.txt" >&2
@@ -648,6 +687,7 @@ verify_template() {
     mv "$output/settings.html.kept" "$output/Frontend/settings.html"
   fi
 
+  phase restore
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
   test -f "$output/packages.lock.json"
   # The runic-view item template adds a View and a Window with their ViewModels to the restored project, in its
@@ -694,6 +734,7 @@ verify_template() {
     fi
   fi
 
+  phase build
   # A plain build installs the frontend packages with the selected manager.
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   # The executable's icon, written from icons/icon.png because the project sets no ApplicationIcon (sdk#1207).
@@ -772,6 +813,7 @@ verify_template() {
     exit 1
   fi
   grep -rFq 'Runic template rebuild check' "$output/bin/Release/net10.0/www"
+  phase publish
   if [[ "$html_inputs" == true && "$manager" == npm ]]; then
     dotnet publish "$output/$project_name.csproj" --configuration Release --no-restore --no-build \
       --output "$output/publish" > "$output/publish.log"
@@ -827,6 +869,7 @@ verify_template() {
       exit 1
     fi
   done <<< "$layout_paths"
+  phase typecheck
   if [[ "$framework" == vue && "$manager" == bun ]]; then
     # vue-tsc finds no .vue files under the Bun runtime and passes, so check
     # with Node as a plain `bun run` does.
@@ -836,37 +879,45 @@ verify_template() {
   fi
   # The frontend test runs the page against the generated typed mocks, which the build wrote.
   test -f "$output/Frontend/src/generated/workspace.mock.ts"
+  phase frontend-test
   frontend_script "$manager" "$output/Frontend" test
+  phase serve-release
   if [[ "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   fi
+  phase dock-dev
   # #954: under dotnet runic dev the Counter button's command is a row of the Runic dock with its [RelayCommand]
   # method, which the row opens in the editor. Once per Vite frontend: its CS-WebUI CommunityToolkit.Mvvm variant.
   if [[ "$browser_check" == 1 && "$framework" != angular && "$manager" == npm && "$host" == cswebui && "$view_models" == toolkit ]]; then
     run_dock_dev_check "$output" "$framework" "$host"
   fi
+  phase translations-dev
   # #944: under dotnet runic dev an edited, added or removed message reaches the page without a build.
   if [[ "$browser_check" == 1 && "$translations" == translations && "$framework" != angular ]]; then
     run_translations_dev_check "$output" "$framework" "$host"
   fi
+  phase browser
   # Each frontend's page runs in Chromium under its policy on both hosts: the default Runic Desktop project and the
   # CS-WebUI variant, both with npm. The policy depends on the frontend alone, so the GTK 4 variant adds nothing.
   if [[ "$browser_check" == 1 && "$manager" == npm && "$linux_gtk" == 3 ]]; then
     run_browser_check "$output" "$project_name" "$framework" "$host"
   fi
+  phase desktop-smoke
   # The smoke lane opens the default Runic Desktop (GTK 3) project once, with
   # npm, and every GTK 4 variant.
   if [[ "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]] &&
     [[ "$linux_gtk" == 4 || ( "$host" == desktop && "$manager" == npm ) ]]; then
     run_desktop_smoke "$output" "$project_name" "$host_label" "$linux_gtk"
   fi
+  phase dotnet-test
   if [[ "$tests" == tests ]]; then
     # --translations replaces the welcome test with three: the greeting in English and German, and a regional or
     # unknown language.
     if [[ "$translations" == translations ]]; then run_generated_tests "$output" "$project_name" 5
     else run_generated_tests "$output" "$project_name" 3; fi
   fi
+  phase_report "$framework|$manager|$host_label|$view_models|${tests:-no-tests}${restore:+|restore}${translations:+|translations}"
   printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" \
     "${restore:+|restore}" "${translations:+|translations}"
 }
@@ -976,7 +1027,9 @@ run_browser_check() {
     cat "$log" >&2
     exit 1
   fi
-  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
+  # The check's result line, then how its application stopped (STOP|…).
+  printf '%s|%s|%s\n' "$(grep -E '^[A-Z_]+_OK\|' "$log" | tail -n 1)" "$framework" "$host"
+  grep -E '^STOP\|' "$log" | tail -n 1 || true
 }
 
 # Opens the page of a translated Vite frontend under dotnet runic dev in Chromium, edits a message of its catalog and
@@ -993,7 +1046,9 @@ run_translations_dev_check() {
     cat "$log" >&2
     exit 1
   fi
-  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
+  # The check's result line, then how its application stopped (STOP|…).
+  printf '%s|%s|%s\n' "$(grep -E '^[A-Z_]+_OK\|' "$log" | tail -n 1)" "$framework" "$host"
+  grep -E '^STOP\|' "$log" | tail -n 1 || true
 }
 
 # Opens the page of a CommunityToolkit.Mvvm Vite frontend under dotnet runic dev in Chromium, increments the Counter
@@ -1010,7 +1065,9 @@ run_dock_dev_check() {
     cat "$log" >&2
     exit 1
   fi
-  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
+  # The check's result line, then how its application stopped (STOP|…).
+  printf '%s|%s|%s\n' "$(grep -E '^[A-Z_]+_OK\|' "$log" | tail -n 1)" "$framework" "$host"
+  grep -E '^STOP\|' "$log" | tail -n 1 || true
 }
 
 # Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:
