@@ -470,9 +470,18 @@ internal sealed class WindowsWebView2Controller : IDisposable
         AddEvent<IWebViewMoveFocusRequested>(_controller, WindowsWebView2Interop.ControllerMoveFocusRequestedSlot, new WebViewEvent(args =>
         {
             var reason = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.MoveFocusReasonSlot);
-            if (reason is 1 or 2 && moveFocus(reason))
-                WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.MoveFocusHandledSlot, 1);
+            var handled = reason is 1 or 2 && moveFocus(reason);
+            if (handled) WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.MoveFocusHandledSlot, 1);
+            Interlocked.Increment(ref _moveFocusRequests);
+            _lastMoveFocusRequest = (reason, handled);
         }));
+
+    // For the native checks' diagnostics (#1274): how many MoveFocusRequested events arrived, and the last one's reason
+    // and whether the embedding host handled it. Written on the UI thread that raises the event.
+    private int _moveFocusRequests;
+    private (int Reason, bool Handled)? _lastMoveFocusRequest;
+    internal int MoveFocusRequests => Volatile.Read(ref _moveFocusRequests);
+    internal (int Reason, bool Handled)? LastMoveFocusRequest => _lastMoveFocusRequest;
 
     // The page took the keyboard focus, from a click, Tab, MoveFocus or a UI Automation client.
     internal void RegisterGotFocus(Action gotFocus) =>
