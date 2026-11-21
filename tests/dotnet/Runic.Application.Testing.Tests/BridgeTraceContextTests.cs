@@ -13,7 +13,8 @@ namespace Runic.Application.Testing.Tests;
 // trace context parents its runic.bridge.* span, which parents the ViewModel's own spans; in Development a request that
 // asks for it gets its C# handler's name and duration in the reply. Both are optional members that a side without the
 // feature ignores, in both directions of version skew.
-[NotInParallel(nameof(BridgeTraceContextTests))]
+// Runs alone: it listens to the Views ActivitySource (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class BridgeTraceContextTests
 {
     private const string TraceId = "4bf92f3577b34da6a3ce929d0e0e4736";

@@ -503,7 +503,8 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
-    [Test]
+    // Runs alone: its composition step sets RUNIC_BRIDGE_CODEGEN_TEST_INTERNAL_ERROR, which every generator run reads.
+    [Test, NotInParallel]
     public async Task GeneratorRejectsUnsupportedModelsWithLocatedDiagnosticsAsync()
     {
         var root = FindWorkspaceRoot();

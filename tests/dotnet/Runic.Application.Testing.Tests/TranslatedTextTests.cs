@@ -13,6 +13,8 @@ namespace Runic.Application.Testing.Tests;
 
 // translation-text/1 (specs/application/README.md, "Translated text"; values.md, "text-reference"): TranslationReference
 // and RunicTextReference values, the text of validation errors, and the window's locale.
+// Runs alone: it sets the process culture (AssemblyInfo.cs).
+[NotInParallel]
 public sealed class TranslatedTextTests
 {
     private const string Feature = "translation-text/1";

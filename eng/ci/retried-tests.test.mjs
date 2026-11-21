@@ -23,7 +23,7 @@ test('the report sets the retried output the upload depends on', () => {
     const printed = [];
     assert.deepEqual(report(join(directory, 'missing.jsonl'), { env, log: text => printed.push(text) }), []);
     assert.equal(readFileSync(env.GITHUB_OUTPUT, 'utf8'), 'retried=false\n');
-    assert.deepEqual(printed, ['No test was retried.']);
+    assert.deepEqual(printed, ['No test was retried or quarantined.']);
     const file = join(directory, 'retried-tests.jsonl');
     writeFileSync(file, `${JSON.stringify(line)}\n${JSON.stringify({ ...line, test: 'NativeMessageBoxesAsync' })}\n`);
     printed.length = 0;

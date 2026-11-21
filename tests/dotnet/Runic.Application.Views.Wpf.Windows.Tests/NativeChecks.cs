@@ -125,7 +125,9 @@ internal sealed partial class NativeChecks
     // vwpf-01: Tab enters the document at its first or last tab stop and leaves it again, in both directions, to the
     // surrounding WPF controls. The keys come through the DevTools protocol, which reaches the page without the
     // window being in the foreground; WebView2 raises MoveFocusRequested for them as for a user's Tab.
-    [Test, NotInParallel("WpfSuite", Order = 16)]
+    // #1274: two failures on win-x64 with the page's focus still on its last field; a retry is recorded with the
+    // diagnostics below.
+    [Test, NotInParallel("WpfSuite", Order = 16), RecordedRetry(RetryReason.Gui)]
     public async Task TabEntersAndLeavesTheChildWebView()
     {
         using var child = new RunicWebView { Height = 200 };
@@ -172,9 +174,16 @@ internal sealed partial class NativeChecks
                 try { await UntilAsync(() => FocusManager.GetFocusedElement(window) == target); }
                 catch (TimeoutException)
                 {
-                    var page = await view.Surface.ExecuteJavaScriptAsync("return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                    var page = await view.Surface.ExecuteJavaScriptAsync(
+                        "return `${document.activeElement?.id || '-'} hasFocus=${document.hasFocus()}`;", TimeSpan.FromSeconds(15));
+                    // #1274: which side dropped the Tab. WebView2 raises MoveFocusRequested when Tab leaves the document;
+                    // RunicWebView's handler moves WPF's focus on.
+                    var request = controller.LastMoveFocusRequest is { } last ? $"last reason {last.Reason}, handled {last.Handled}" : "none";
+                    var tabOut = child.LastTabOut is { } handler ? $"reason {handler.Reason}, moved {handler.Moved}" : "never ran";
                     throw new InvalidOperationException(
-                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}.");
+                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}. "
+                        + $"Window active {window.IsActive}, keyboard focus {Keyboard.FocusedElement?.ToString() ?? "none"}; "
+                        + $"MoveFocusRequested events {controller.MoveFocusRequests} ({request}); TabOut {tabOut}.");
                 }
             }
 

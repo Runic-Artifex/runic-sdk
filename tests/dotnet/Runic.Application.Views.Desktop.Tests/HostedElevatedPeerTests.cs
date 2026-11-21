@@ -167,15 +167,17 @@ internal sealed class HostedElevatedPeerTests
         }
     }
 
-    // The status line a raw GET of path receives, or null when the listener closed the connection without one.
+    // The status line a raw GET of path receives, or null when the listener closed the connection without one. A refused
+    // peer's connection is reset (linger 0), and the reset can arrive before the connect completes: the client then sees
+    // it in ConnectAsync rather than in the write or the read.
     private static async Task<string?> StatusLineAsync(Uri listener, string path)
     {
         using var client = new TcpClient(listener.HostNameType == UriHostNameType.IPv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork);
-        await client.ConnectAsync(IPAddress.Parse(listener.DnsSafeHost), listener.Port);
-        var stream = client.GetStream();
         using var timeout = TestTimeouts.Cancellation(StepTimeout);
         try
         {
+            await client.ConnectAsync(IPAddress.Parse(listener.DnsSafeHost), listener.Port, timeout.Token);
+            var stream = client.GetStream();
             await stream.WriteAsync(Encoding.ASCII.GetBytes($"GET {path} HTTP/1.1\r\nHost: {listener.Authority}\r\nConnection: close\r\n\r\n"), timeout.Token);
             var buffer = new byte[256];
             var read = await stream.ReadAsync(buffer, timeout.Token);
@@ -185,6 +187,7 @@ internal sealed class HostedElevatedPeerTests
             return end < 0 ? text : text[..end];
         }
         catch (IOException) { return null; }
+        catch (SocketException error) when (error.SocketErrorCode == SocketError.ConnectionReset) { return null; }
     }
 
     // The guest's standard output: its channel line.

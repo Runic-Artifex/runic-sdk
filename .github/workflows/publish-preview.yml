@@ -44,6 +44,9 @@ jobs:
             echo "Commit the requested version before publishing" >&2
             exit 1
           fi
+      # B2 (D077.25): a release waits while eng/ci/flakes.json quarantines a test (eng/ci/README.md, "Quarantine").
+      - name: Check that no test is quarantined
+        run: node eng/ci/quarantine.mjs gate
       - name: Find the successful CI run for this commit
         id: ci
         env:

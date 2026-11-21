@@ -9,6 +9,8 @@ namespace Runic.Application.Testing.Tests;
 
 // WindowContentSessionOptions.FlowCultureFromLocale (S6): a page's setters, commands and validation run in the culture of
 // the window's locale when the window opts in, in both MVVM flavors, and in the process's culture otherwise.
+// Runs alone: it sets the process culture (AssemblyInfo.cs).
+[NotInParallel]
 public sealed class LocaleCultureTests
 {
     [Test]

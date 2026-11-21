@@ -8,6 +8,8 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests;
 
 // W230-002 slice 2: a NavigationRegion<TContent> slot reaching the frontend (design record §7, §13).
+// Runs alone: it measures process-wide allocations or the thread pool (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class NavigationPresentationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);

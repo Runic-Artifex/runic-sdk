@@ -7,6 +7,8 @@ namespace Runic.Application.Testing.Tests;
 
 // #887: a PropertyChanged reads the getters of the member it names, not of every bridged member; the unit it requests
 // reads each member once. A replaced collection or observed sub-object is still picked up before the unit publishes.
+// Runs alone: it measures process-wide allocations (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class NotificationCostTests
 {
     private const string Route = "cost";

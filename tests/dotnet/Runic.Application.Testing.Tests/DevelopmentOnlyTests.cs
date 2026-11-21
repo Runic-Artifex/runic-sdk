@@ -9,6 +9,8 @@ namespace Runic.Application.Testing.Tests;
 // them; a trimmed or NativeAOT publish turns RunicDevelopmentOnly.IsSupported off, which these tests stand in for with
 // the feature switch (the assembly's tests run one at a time). The generated client is the same in both
 // (developmentTools.contract.d.ts in CodegenShapeTests' sense: optional state members, notes on the calls).
+// Runs alone: it sets an AppContext switch (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed class DevelopmentOnlyTests
 {
     // The development-only members of DevelopmentToolsViewModel, in declaration order.

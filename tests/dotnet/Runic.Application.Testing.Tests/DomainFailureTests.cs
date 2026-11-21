@@ -20,6 +20,8 @@ namespace Runic.Application.Testing.Tests;
 // W130-029: a command's declared failure ([RunicFailure] + RunicFailureException)
 // crosses the Bridge as domain-failed with its encoded value. Codegen does not
 // emit failure encoders yet, so these descriptors carry a hand-written one.
+// Runs alone: it listens to the Views ActivitySource and Meter (AssemblyInfo.cs).
+[NotInParallel]
 internal sealed partial class DomainFailureTests
 {
     // The first three cases run with the window's failure detail off and on (D-1: a domain failure never carries

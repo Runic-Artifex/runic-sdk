@@ -3,6 +3,8 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests;
 
 /// <summary>Runs lifecycle checks against the generated Interaction browser client.</summary>
+// One at a time: these cases share the generated-client process lock under obj/ (GeneratedHarnessProcess).
+[NotInParallel("GeneratedHarnessProcess")]
 internal sealed class GeneratedInteractionClientHarness
 {
     [Test]

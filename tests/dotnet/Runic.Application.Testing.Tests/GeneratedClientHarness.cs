@@ -5,6 +5,8 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests;
 
 /// <summary>Runs the generated-client Bun harnesses: type checks, the live clients against their generated bridges, and the mock harnesses.</summary>
+// One at a time: these cases share the generated-client process lock under obj/ (GeneratedHarnessProcess).
+[NotInParallel("GeneratedHarnessProcess")]
 internal sealed class GeneratedClientHarness
 {
     [Test]

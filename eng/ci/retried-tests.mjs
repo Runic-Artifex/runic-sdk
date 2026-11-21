@@ -1,7 +1,9 @@
 // The recorded single retry's report (eng/ci/README.md, "Recorded retries"; B1 of D077.25). A [RecordedRetry] test that
 // failed appends one JSON line to the file RUNIC_RETRIED_TESTS names (tests/support/RecordedRetry.cs) before its retry.
 // At the end of the job this prints a "Flaky test retried" warning for each line and lists them in the job summary;
-// .github/actions/flaky-tests then uploads the file, and eng/ci/flakes.mjs counts each line as a sighting.
+// .github/actions/flaky-tests then uploads the file, and eng/ci/flakes.mjs counts each line as a sighting. The job's
+// quarantine step (eng/ci/quarantine.mjs run) appends a line with `quarantined: true` and its outcome for each
+// quarantined test it ran (eng/ci/README.md, "Quarantine").
 //
 //   node eng/ci/retried-tests.mjs report <file>
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -24,25 +26,37 @@ export function parseRetries(text) {
 const data = text => String(text).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
 
 export function warning(record) {
+  if (record.quarantined) {
+    const text = `${record.test} (#${record.issue}, ${record.leg ?? "?"}) ${record.outcome === "passed" ? "passed" : record.outcome === "not-run"
+      ? "did not run: its filter matched no test; check eng/ci/flakes.json" : `failed: ${record.exception.replace(/\.$/, "")}`}`
+      + ". It is quarantined, so it does not fail the job; a release waits for its issue (eng/ci/flakes.json).";
+    return `::${record.outcome === "passed" ? "notice" : "warning"} title=Quarantined test ${record.outcome === "passed" ? "passed" : record.outcome === "not-run" ? "did not run" : "failed"}::${data(text)}`;
+  }
   return `::warning title=Flaky test retried::${data(`${record.test} (${record.assembly ?? "?"}, ${record.leg ?? "?"}) failed`
     + ` and was retried once (${record.reason ?? "?"}): ${record.exception.replace(/\.$/, "")}. A retry counts as a flake sighting (eng/ci/flakes.mjs).`)}`;
 }
 
 export function summary(records) {
   const cell = text => String(text ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
-  return ["### Flaky tests retried", "", "Each failed once and was retried once; `eng/ci/flakes.mjs` counts it as a flake sighting.", "",
-    "| Test | Assembly | Leg | Reason | First failure |", "| --- | --- | --- | --- | --- |",
-    ...records.map(record => `| ${cell(record.test)} | ${cell(record.assembly)} | ${cell(record.leg)} | ${cell(record.reason)} | ${cell(record.exception)} |`),
-    ""].join("\n");
+  const retried = records.filter(record => !record.quarantined);
+  const quarantined = records.filter(record => record.quarantined);
+  return [
+    ...retried.length ? ["### Flaky tests retried", "", "Each failed once and was retried once; `eng/ci/flakes.mjs` counts it as a flake sighting.", "",
+      "| Test | Assembly | Leg | Reason | First failure |", "| --- | --- | --- | --- | --- |",
+      ...retried.map(record => `| ${cell(record.test)} | ${cell(record.assembly)} | ${cell(record.leg)} | ${cell(record.reason)} | ${cell(record.exception)} |`), ""] : [],
+    ...quarantined.length ? ["### Quarantined tests", "", "Listed in `eng/ci/flakes.json`: they ran without failing the job.", "",
+      "| Test | Issue | Leg | Outcome | Failure |", "| --- | --- | --- | --- | --- |",
+      ...quarantined.map(record => `| ${cell(record.test)} | #${cell(record.issue)} | ${cell(record.leg)} | ${cell(record.outcome)} | ${cell(record.exception)} |`), ""] : [],
+  ].join("\n");
 }
 
-// Reports the file's retries; returns them.
+// Reports the file's retries and quarantined runs; returns them.
 export function report(file, { env = process.env, log = console.log } = {}) {
   const records = file && existsSync(file) ? parseRetries(readFileSync(file, "utf8")) : [];
   for (const record of records) log(warning(record));
   if (records.length && env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, summary(records) + "\n");
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `retried=${records.length > 0}\n`);
-  if (!records.length) log("No test was retried.");
+  if (!records.length) log("No test was retried or quarantined.");
   return records;
 }
 

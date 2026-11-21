@@ -6,6 +6,8 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests;
 
 // Exercises the generated codecs for CodegenShapeViewModel through its routes.
+// One at a time: these cases share the generated-client process lock under obj/ (GeneratedHarnessProcess).
+[NotInParallel("GeneratedHarnessProcess")]
 internal sealed class CodegenShapeTests
 {
     [Test]
