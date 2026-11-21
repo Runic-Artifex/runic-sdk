@@ -525,6 +525,42 @@ test('CI tries an artifact download and a .NET SDK install twice', () => {
   }
 });
 
+test('a recorded retry is opt-in, never for security probes or budget checks, and every job that can retry reports it', () => {
+  // B1 of D077.25 (eng/ci/README.md, "Recorded retries").
+  const source = readFileSync(resolve(root, 'tests/support/RecordedRetry.cs'), 'utf8');
+  const excluded = new RegExp(/GeneratedRegex\("([^"]+)"/.exec(source)[1]);
+  const projects = readdirSync(resolve(root, 'tests/dotnet')).filter(name =>
+    readFileSync(resolve(root, 'tests/dotnet', name, `${name}.csproj`), 'utf8').includes('<RunicFlakyTests>true</RunicFlakyTests>'));
+  assert.ok(projects.length >= 1);
+  const files = execFileSync('git', ['ls-files', '-z', '*.cs'], { cwd: root, encoding: 'utf8' }).split('\0')
+    .filter(path => path && path !== 'tests/support/RecordedRetry.cs' && /RecordedRetry\(/.test(readFileSync(resolve(root, path), 'utf8')));
+  assert.ok(files.length >= 1);
+  for (const path of files) {
+    assert.ok(projects.some(project => path.startsWith(`tests/dotnet/${project}/`)), `${path}: its project sets RunicFlakyTests`);
+    const lines = readFileSync(resolve(root, path), 'utf8').split('\n');
+    lines.forEach((line, index) => {
+      if (!/RecordedRetry\(/.test(line)) return;
+      assert.doesNotMatch(line, /assembly:/, `${path}:${index + 1}: by class or method, not assembly`);
+      assert.match(line, /RecordedRetry\(RetryReason\.(Gui|Speech|BrowserConnect|RealClock)\)/, `${path}:${index + 1}`);
+      // The class or method it marks, and the categories on the same line.
+      const target = lines.slice(index).map(next => /\b(?:class|Task|void)\s+(\w+)/.exec(next)?.[1]).find(Boolean);
+      assert.doesNotMatch(target, excluded, `${path}:${index + 1}: ${target} is a security probe or budget check`);
+      for (const category of line.matchAll(/Category\("([^"]+)"\)/g)) assert.doesNotMatch(category[1], excluded, `${path}:${index + 1}`);
+    });
+  }
+  // Jobs that run one of these projects name the record before their tests and report it last, also after a failure.
+  const runs = new RegExp(`${projects.map(name => name.replace(/\./g, '\\.')).join('|')}|test-managed\\.mjs`);
+  const retrying = Object.entries(workflow.jobs).filter(([, job]) => job.steps?.some(step => runs.test(step.run ?? '')));
+  assert.deepEqual(retrying.map(([id]) => id).sort(), ['managed', 'native', 'screen-readers', 'wpf']);
+  for (const [id, job] of retrying) {
+    const start = job.steps.findIndex(step => step.uses === './.github/actions/flaky-tests' && step.with.mode === 'start');
+    const first = job.steps.findIndex(step => runs.test(step.run ?? ''));
+    assert.ok(start >= 0 && start < first, `${id}: names the record before its first test step`);
+    const report = job.steps.at(-1);
+    assert.deepEqual([report.uses, report.if, report.with], ['./.github/actions/flaky-tests', 'always()', { mode: 'report', leg: job.steps[start].with.leg }], id);
+  }
+});
+
 test('package checks without a lockfile resolve third-party npm packages published at least a day ago', () => {
   // D038: sdk#772's queue run met devframe@1.3.0, published 3 s after its install started.
   const scripts = execFileSync('git', ['ls-files', '-z', '*.mjs'], { cwd: root, encoding: 'utf8' }).split('\0')

@@ -5,11 +5,16 @@
 // mentions its test or error needs an issue the same day; one with an open issue is a known flake, so a queue entry that
 // failed only in known flakes is re-queued. Read-only: it never reruns, comments or files anything.
 //
-//   bun eng/ci/flakes.mjs [--since 2d|36h|<ISO date>] [--repo owner/name] [--min 2] [--json]
+// A test that passed on its recorded retry (eng/ci/README.md, "Recorded retries") counts as a sighting too.
+//
+//   bun eng/ci/flakes.mjs [--since 2d|36h|<ISO date>] [--repo owner/name] [--min 2] [--json] [--no-retries]
 import { execFile } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { parseRetries } from "./retried-tests.mjs";
 
 export const defaultRepository = "Runic-Artifex/runic-sdk";
 // Aggregate jobs that fail because another one did; they name no failure of their own.
@@ -167,9 +172,11 @@ export async function withSmallerPages(get, path) {
   }
 }
 
-// `source` reads GitHub: `json(path)` returns a REST response (paginated paths return every item), `log(jobId)` a job log.
+// `source` reads GitHub: `json(path)` returns a REST response (paginated paths return every item), `log(jobId)` a job log,
+// and `retries(run)`, when present, the recorded retries of a run (eng/ci/README.md, "Recorded retries"): its
+// flaky-tests-<job>-<leg>-<attempt> artifacts, each as `{ name, text }` with the record's JSON lines.
 // The CLI passes ghSource; the tests pass recorded responses.
-export async function collect(source, { repository = defaultRepository, since, concurrency = 4 }) {
+export async function collect(source, { repository = defaultRepository, since, concurrency = 4, retries = true }) {
   const day = since.toISOString().slice(0, 10);
   const listed = (await withSmallerPages(source.json, `repos/${repository}/actions/workflows/ci.yml/runs?created=%3E%3D${day}&per_page=100`))
     .filter(run => new Date(run.created_at) >= since && run.status === "completed");
@@ -196,13 +203,36 @@ export async function collect(source, { repository = defaultRepository, since, c
       }));
     });
   })).flat(2);
+  // Every completed run that was not cancelled may have retried a test, passed or not: one artifact listing each.
+  const retried = retries && source.retries ? (await mapLimited(listed.filter(run => run.conclusion !== "cancelled"), concurrency,
+    async run => retriedFailures(run, await source.retries(run), failures))).flat() : [];
+  failures.push(...retried);
   // Issues updated in the last 90 days, opened or closed, to match tests and errors against.
   const issueSince = new Date(since.getTime() - 90 * dayMs).toISOString();
   const issues = (await withSmallerPages(source.json, `repos/${repository}/issues?state=all&since=${issueSince}&per_page=100`))
     .filter(issue => !issue.pull_request)
     .map(issue => ({ number: issue.number, state: issue.state, closedAt: issue.closed_at ?? null, title: issue.title,
       text: `${issue.title}\n${issue.body ?? ""}`, url: issue.html_url }));
-  return { repository, since: since.toISOString(), runs: runs.length, cancelled, failures, issues };
+  return { repository, since: since.toISOString(), runs: runs.length, retriedRuns: new Set(retried.map(item => item.run)).size,
+    cancelled, failures, issues };
+}
+
+// A recorded retry as a failure: the test failed once and ran again. It passed on that retry unless the job's log names
+// the same failure of the same attempt (it failed twice, so the job failed).
+export function retriedFailures(run, artifacts, failures = []) {
+  return artifacts.flatMap(({ name, text }) => {
+    const [, job, attempt] = /^flaky-tests-(.+)-(\d+)$/.exec(name) ?? [, name, String(run.run_attempt ?? 1)];
+    return parseRetries(text).map(record => {
+      const test = baseName(record.test);
+      const error = normalizeError(record.exception);
+      const failedAgain = failures.some(item => item.run === run.id && item.attempt === Number(attempt) && item.test
+        && item.name === test && item.error === error);
+      return { name: test, error, raw: record.exception, test: true, job: `${job} (retried)`, step: "(recorded retry)",
+        run: run.id, attempt: Number(attempt), sha: run.head_sha, passedOnRerun: false, retried: true, passedOnRetry: !failedAgain,
+        event: run.event, branch: run.head_branch, pullRequests: (run.pull_requests ?? []).map(item => item.number),
+        url: run.html_url ?? `https://github.com/${defaultRepository}/actions/runs/${run.id}`, at: record.at ?? run.created_at };
+    });
+  });
 }
 
 // Failures of the runners and services rather than the code: a mirror or registry that did not answer, an artifact
@@ -252,7 +282,7 @@ const origin = item => String(item.pullRequests?.[0] ?? /^gh-readonly-queue\/[^/
 //   file-issue    the others are flakes by evidence that no open issue names: file or reopen the issue (D069), then
 //                 re-queue;
 //   investigate   a failure is neither: it may be the change.
-export function report({ failures, issues, runs, cancelled = 0, since, repository }, { min = 2 } = {}) {
+export function report({ failures, issues, runs, retriedRuns = 0, cancelled = 0, since, repository }, { min = 2 } = {}) {
   const signature = item => `${item.name}\n${item.error}`;
   const groups = new Map();
   for (const failure of failures) {
@@ -288,7 +318,7 @@ export function report({ failures, issues, runs, cancelled = 0, since, repositor
       : infrastructureFailure(group) ? "infrastructure"
       : closed ? (group.sightings.some(item => item.at > closed) ? "regressed" : "fixed")
       : runs < min ? "first-sighting" : group.test ? "needs-issue" : "repeated-step";
-    const flake = group.sightings.some(item => item.passedOnRerun);
+    const flake = group.sightings.some(item => item.passedOnRerun || item.passedOnRetry);
     const { raw, ...rest } = group;
     return { ...rest, runs, status, flake, evidence: flake || new Set(group.sightings.map(origin)).size > 1,
       issues: matched.map(({ number, state, title, url, closedAt, how }) => ({ number, state, title, url, closedAt, how })),
@@ -302,8 +332,10 @@ export function report({ failures, issues, runs, cancelled = 0, since, repositor
     return group.status === "known" || group.status === "infrastructure"
       || group.issues.some(issue => issue.closedAt && Date.parse(issue.closedAt) > Date.parse(item.at) - recent);
   };
-  const queue = [...new Set(failures.filter(item => item.event === "merge_group").map(item => item.run))].map(run => {
-    const inRun = failures.filter(item => item.run === run);
+  // A test that passed on its recorded retry did not fail the entry.
+  const failed = failures.filter(item => !item.passedOnRetry);
+  const queue = [...new Set(failed.filter(item => item.event === "merge_group").map(item => item.run))].map(run => {
+    const inRun = failed.filter(item => item.run === run);
     const keys = [...new Set(inRun.map(signature))];
     const unknown = [...new Set(inRun.filter(item => !knownFailure(item)).map(signature))].map(key => byKey.get(key));
     const verdict = unknown.length === 0 ? "re-queue"
@@ -312,18 +344,19 @@ export function report({ failures, issues, runs, cancelled = 0, since, repositor
     return { run, branch: first.branch, url: first.url.replace(/\/job\/\d+$/, ""), verdict, failures: keys,
       unknown: unknown.map(group => group.key) };
   });
-  return { repository, since, runs, cancelled, groups: all, queue };
+  return { repository, since, runs, retriedRuns, cancelled, groups: all, queue };
 }
 
 const sighting = item => `${item.event}${item.pullRequests.length ? ` #${item.pullRequests.join(",#")}` : item.event === "merge_group"
   ? ` ${item.branch.replace(/^gh-readonly-queue\/main\/(pr-\d+).*/, "$1")}` : ` ${item.branch}`} ${item.job}`
   + `${item.attempt > 1 ? ` (attempt ${item.attempt})` : ""}${item.passedOnRerun ? " (passed on rerun)" : ""}`
+  + `${item.retried ? item.passedOnRetry ? " (retried, passed)" : " (retried, failed again)" : ""}`
   + ` (${item.at.slice(0, 16).replace("T", " ")}Z) ${item.url}`;
 
 export function format(result) {
   const section = (title, groups, describe) => groups.length === 0 ? [] : [`${title}:`, ...groups.flatMap(group => [
     `  ${group.name}: ${group.runs} run${group.runs === 1 ? "" : "s"}, ${group.jobs.join(", ")}${describe(group)}`
-      + `${group.flake ? " — flake: passed on a rerun of the same commit" : ""}`,
+      + `${group.flake ? ` — flake: passed on ${group.sightings.some(item => item.passedOnRetry) ? "its recorded retry" : "a rerun of the same commit"}` : ""}`,
     ...group.error ? [`    ${group.error}`] : [],
     ...group.sightings.map(item => `    ${sighting(item)}`),
   ]), ""];
@@ -335,7 +368,7 @@ export function format(result) {
   const verdicts = ["re-queue", "file-issue", "investigate"].map(verdict => [verdict, result.queue.filter(entry => entry.verdict === verdict).length]);
   return [
     `${result.repository}: ${result.runs} failed or rerun ci.yml runs since ${result.since.slice(0, 16).replace("T", " ")}Z`
-      + `; ${result.cancelled} cancelled (not classified)`, "",
+      + `${result.retriedRuns ? `, ${result.retriedRuns} with a recorded retry` : ""}; ${result.cancelled} cancelled (not classified)`, "",
     ...section("Seen twice or more, no issue mentions it (file one today; fix or skip it, linking the issue, within the cycle)", by("needs-issue"), weak),
     ...section("Failed again after its issue closed (reopen it or file one)", by("regressed"), group => ` —${issueList(group)}`),
     ...section("Seen twice or more in a step whose log names no test (read one: a real break or a flake)", by("repeated-step"), weak),
@@ -364,16 +397,32 @@ export const ghSource = {
   json: async path => {
     // --paginate --slurp gives one array of pages; list endpoints wrap items in an object.
     const pages = JSON.parse(await gh("--paginate", "--slurp", path));
-    return pages.flatMap(page => Array.isArray(page) ? page : page.workflow_runs ?? page.jobs ?? []);
+    return pages.flatMap(page => Array.isArray(page) ? page : page.workflow_runs ?? page.jobs ?? page.artifacts ?? []);
   },
   log: jobId => gh("--allow-escape-sequences", `repos/${defaultRepository}/actions/jobs/${jobId}/logs`),
+};
+// A run's recorded retries: its flaky-tests-* artifacts, downloaded and unpacked by `gh run download`.
+const retriesOf = (repository, json) => async run => {
+  const names = (await json(`repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`))
+    .filter(artifact => /^flaky-tests-/.test(artifact.name) && !artifact.expired).map(artifact => artifact.name);
+  return Promise.all(names.map(async name => {
+    const directory = mkdtempSync(join(tmpdir(), "runic-flaky-tests-"));
+    try {
+      await exec("gh", ["run", "download", String(run.id), "--repo", repository, "--name", name, "--dir", directory]);
+      return { name, text: readdirSync(directory).map(file => readFileSync(join(directory, file), "utf8")).join("\n") };
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }));
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
   const repository = option("--repo", defaultRepository);
-  const source = { ...ghSource, log: jobId => gh("--allow-escape-sequences", `repos/${repository}/actions/jobs/${jobId}/logs`) };
-  const result = report(await collect(source, { repository, since: sinceDate(option("--since", "2d")) }), { min: Number(option("--min", "2")) });
+  const source = { ...ghSource, log: jobId => gh("--allow-escape-sequences", `repos/${repository}/actions/jobs/${jobId}/logs`),
+    retries: retriesOf(repository, ghSource.json) };
+  const result = report(await collect(source, { repository, since: sinceDate(option("--since", "2d")), retries: !args.includes("--no-retries") }),
+    { min: Number(option("--min", "2")) });
   console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : format(result));
 }

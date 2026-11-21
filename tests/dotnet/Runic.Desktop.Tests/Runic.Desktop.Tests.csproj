@@ -2,6 +2,7 @@
   <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
     <RunicTestTimeouts>true</RunicTestTimeouts>
+    <RunicFlakyTests>true</RunicFlakyTests>
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <IsPackable>false</IsPackable>

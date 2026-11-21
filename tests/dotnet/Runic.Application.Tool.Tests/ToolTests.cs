@@ -404,7 +404,7 @@ internal sealed partial class ToolTests
         await running.DisposeAsync();
     }
 
-    [Test, DisplayName("Vite readiness needs the dev session that vite-plugin-runic confirms")]
+    [Test, DisplayName("Vite readiness needs the dev session that vite-plugin-runic confirms"), RecordedRetry(RetryReason.RealClock)]
     public void ViteReadinessConfirmsTheSession() => VerifyViteSessionAsync().GetAwaiter().GetResult();
 
     private static async Task VerifyViteSessionAsync()

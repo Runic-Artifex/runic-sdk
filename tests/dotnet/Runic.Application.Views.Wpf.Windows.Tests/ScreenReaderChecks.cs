@@ -15,7 +15,7 @@ using TUnit.Core;
 //     --test-parameter receipt=<receipt.json> [--test-parameter nvda=<nvda.exe>]
 internal sealed partial class ScreenReaderChecks
 {
-    [Test, Explicit, Category("ScreenReader"), NotInParallel("WpfSuite", Order = 40)]
+    [Test, Explicit, Category("ScreenReader"), NotInParallel("WpfSuite", Order = 40), RecordedRetry(RetryReason.Speech)]
     public async Task AccessibilityFixtureInARunicWebView()
     {
         var probe = Parameter("probe") ?? throw new InvalidOperationException("Pass --test-parameter probe=<Runic.Desktop.AccessibilityProbe.exe>.");
