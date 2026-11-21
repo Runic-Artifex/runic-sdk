@@ -265,12 +265,8 @@ public sealed class WebUiRemoteDebuggingTests : IDisposable
         _ => owners,
         CurrentUser: 1000);
 
-    private static int FreePort()
-    {
-        using var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        probe.Start();
-        return ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
-    }
+    // A port that no bind(0) or connection takes before the product binds it, which callers do next (TestPorts).
+    private static int FreePort() => TestPorts.Lease().Release();
 
     // A real browser, when the machine has one: in Development the variable opens a loopback endpoint that answers CDP, and
     // the window reports it, with a free port (DevToolsActivePort) and with a fixed one (/json/version, DEV-SEC-54).

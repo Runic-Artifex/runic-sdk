@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { freePort } from "../../tests/support/ports.mjs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchChromium, pause, tail, waitFor, viewsProbe } from "../shared/smoke.mjs";
@@ -24,13 +24,8 @@ let browser;
 const detail = async () => `${browser ? await browser.diagnostics() : "browser: not started"}\n` +
   `host stdout:\n${tail(hostOutput)}\nhost stderr:\n${tail(hostErrors)}\ndev server:\n${tail(serverOutput)}`;
 const retry = (condition, timeout = 15_000) => waitFor(condition, { timeout, label: `${frontend} Reactive Notes HMR`, detail });
-async function availablePort() {
-  const server = createServer();
-  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  const port = server.address().port;
-  await new Promise(resolve => server.close(resolve));
-  return port;
-}
+// A leased port, which no bind(0) or connection takes before the server binds it.
+const availablePort = () => freePort();
 
 const host = viaRunicDev
   ? spawn("node", [devTool, "--project", project, "--frontend", frontendDir, "--framework", frontend],

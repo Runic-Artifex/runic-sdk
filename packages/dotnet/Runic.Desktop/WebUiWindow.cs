@@ -2756,10 +2756,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             _generatedProfilePath = null;
             // Waiting for the browser's main process does not wait for all of its
-            // descendants. Give their profile handles a bounded interval to close.
+            // descendants. Give their profile handles a bounded interval to close,
+            // and on Linux wait for the processes that still name the profile: the
+            // output pipes are not held by every helper (BrowserProfileProcesses).
             long cleanupStarted = Stopwatch.GetTimestamp();
             var deleted = false;
-            while (!(deleted = TryDeleteGeneratedProfile(profilePath))
+            while (!(deleted = TryDeleteUnusedProfile(profilePath))
                 && Stopwatch.GetElapsedTime(cleanupStarted) < TimeSpan.FromSeconds(5))
             {
                 await Task.Delay(50).ConfigureAwait(false);
@@ -2780,7 +2782,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         for (var retry = 0; retry < 60; retry++)
         {
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-            if (WebUiApplication.TryDeleteGeneratedProfile(path))
+            if (BrowserProfileProcesses.FindUser(path) is null && WebUiApplication.TryDeleteGeneratedProfile(path))
             {
                 return;
             }
@@ -4591,6 +4593,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var host = factory.Create();
         (host as DesktopWindowHostAdapter)?.AttachPageAnnouncer(AnnounceInPageAsync);
         return host;
+    }
+
+    // Deletes a generated profile once no process of its browser names it; a helper that still runs would write it again.
+    private bool TryDeleteUnusedProfile(string path)
+    {
+        if (BrowserProfileProcesses.FindUser(path) is { } processId)
+        {
+            LastProfileCleanupFailure = new IOException(
+                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Browser process {processId} still uses the profile."));
+            return false;
+        }
+        return TryDeleteGeneratedProfile(path);
     }
 
     private bool TryDeleteGeneratedProfile(string path)

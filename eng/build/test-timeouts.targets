@@ -1,8 +1,10 @@
 <Project>
-  <!-- RunicTestTimeouts=true compiles the shared TestTimeouts helper (tests/support/TestTimeouts.cs) into a test
-       or smoke project: condition waits scaled by RUNIC_TEST_TIMEOUT_SCALE (eng/ci/README.md, "Test timeouts").
-       It is internal to each project and never part of a shipping package. -->
+  <!-- RunicTestTimeouts=true compiles the shared test helpers into a test or smoke project: TestTimeouts
+       (tests/support/TestTimeouts.cs), condition waits scaled by RUNIC_TEST_TIMEOUT_SCALE (eng/ci/README.md, "Test
+       timeouts"), and TestPorts (tests/support/TestPorts.cs), loopback ports leased outside the ephemeral range for a
+       child to bind. They are internal to each project and never part of a shipping package. -->
   <ItemGroup Condition="'$(RunicTestTimeouts)' == 'true'">
     <Compile Include="$(MSBuildThisFileDirectory)../../tests/support/TestTimeouts.cs" Link="TestSupport/TestTimeouts.cs" Visible="false" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../tests/support/TestPorts.cs" Link="TestSupport/TestPorts.cs" Visible="false" />
   </ItemGroup>
 </Project>

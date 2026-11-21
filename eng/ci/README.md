@@ -217,9 +217,29 @@ narrow its own plan; a change to `eng/workspace.json` is a shared input and runs
 everything. The pull request's checkout then enumerates the suites (`--plan`). Scheduled
 and manual runs, local `act` runs and an unavailable diff or base result plan every job.
 
-A pull request is planned against the base it was opened or last updated on. Every
-push to `main` runs every Linux job, so a change that only breaks in combination
-with newer `main` commits is caught there.
+A pull request is planned against the base it was opened or last updated on. Its merge
+queue entry is planned against the `main` it merges into (with the entries ahead of it),
+so a change that only breaks in combination with newer `main` commits is caught there,
+and the nightly run runs every job on every platform. A push to `main` that no passed
+merge queue run covers (a direct or admin push) runs every Linux job.
+
+**Version-only pull requests** (E2). The base checkout's planner also classifies the
+diff (`--diff-kind`, `diffKind` in `eng/ci/plan.mjs`). A diff is version-only when every
+changed file is a release notes file (`eng/release/notes/**`), a
+`PublicAPI.Unshipped.txt` → `PublicAPI.Shipped.txt` move (per directory, the lines removed
+from Unshipped are the lines added to Shipped, a `*REMOVED*` entry removing its Shipped
+line), a deleted `CompatibilitySuppressions.xml`, a baseline package in
+`eng/dependencies/package-downloads.json` moved to a validation baseline version that
+`eng/Versions.props` names, or a version file (those `bun eng/version.mjs bump` rewrites,
+the CLI compatibility set, and Markdown) whose every changed line differs only in version
+numbers. Anything else, such as code, a test, a project file, an added line, a third-party
+lock entry, `global.json` or `Directory.Packages.props`, makes it not version-only. A
+version-only pull request (a post-release commit, for example) runs its Linux jobs and the
+Linux packaging legs but no Windows or macOS leg. Its merge queue entry plans its legs as
+usual, every leg when it changes `eng/Versions.props` (see [Merge queue](#merge-queue)), and
+the nightly run runs them all. The `ci:all-platforms` label still
+plans every leg. Check a branch with
+`git diff --no-renames -U0 origin/main... | bun eng/ci/plan.mjs --diff-kind`.
 
 ### Windows and macOS legs
 
@@ -256,17 +276,22 @@ Other runs choose legs this way:
   runs and the label does not start a run, so after adding it push again or use
   **Re-run all jobs**. If the labels cannot be read, every leg runs.
 - **Merge queue entries** (`merge_group`) plan like an unlabelled pull request from
-  their merge group's diff; see [Merge queue](#merge-queue).
-- **Pushes to `main`** run every Linux job and the legs that the diff between the
-  previous and the new head needs. Without that diff (a new branch, a force push whose
-  old head cannot be fetched), every leg runs. Pushes queue rather than cancel each other.
+  their merge group's diff, except that release and train steps run every leg; see
+  [Merge queue](#merge-queue).
+- **Pushes to `main`** whose commit a passed merge queue run tested run only what that
+  run skipped, usually nothing; see [Merge queue](#merge-queue). Other pushes run every
+  Linux job and the legs that the diff between the previous and the new head needs.
+  Without that diff (a new branch, a force push whose old head cannot be fetched), every
+  leg runs. Pushes queue rather than cancel each other.
 - **Nightly and manual runs** (`schedule`, `workflow_dispatch`) run everything. They have
   their own concurrency group, so a push cannot replace one that is waiting.
-- **Releases** need one successful run on `main` of the released commit that ran every
-  Windows and macOS leg ([eng/release/README.md](../release/README.md)).
+- **Releases** need one successful run of the released commit that ran every Windows
+  and macOS leg: a run on `main`, or the merge queue run of the commit
+  ([eng/release/README.md](../release/README.md)).
 
 - `plan` always runs. `build` and `engineering` run in every plan except a merge queue
-  entry's reuse of a passed pull request run (see [Merge queue](#merge-queue)). `build`
+  entry's reuse of a passed pull request run and a push whose merge queue run covered it
+  (see [Merge queue](#merge-queue)). `build`
   checks generated files; `engineering` lints workflows and runs the contract and Markdown
   link tests.
 - Markdown outside `packages/`, `tools/` and `tests/`, the `*.test.mjs` files the
@@ -354,6 +379,13 @@ it) plus the pull request, and runs `ci.yml` on it as a `merge_group` event. The
   macOS legs its diff needs, even when the pull request has `ci:all-platforms`; that
   label's run already happened on the pull request. Without a usable diff the entry
   runs everything.
+- **Release and train steps run every leg** (D077.22). An entry whose diff changes
+  `eng/Versions.props` (a version bump or the post-release baselines), a `TrainCommit` in
+  `Directory.Packages.props` (a train candidate, its step 6 or its feed exit) or an
+  assembled release notes file `eng/release/notes/<version>.md` (a release pull request)
+  plans every Windows and macOS leg and is never reused, because its run is the green
+  `main` run that the train gate and the release take. The base checkout's planner
+  decides that (`--diff-kind`, `release`).
 - **Reuse.** When `verify` passes on a pull request from this repository, it uploads a
   marker artifact `ci-passed-<base>-<tree>` (kept 7 days) naming its merge commit's base
   parent and tree. A squash entry on the same base has the same tree, so it tests identical
@@ -361,23 +393,48 @@ it) plus the pull request, and runs `ci.yml` on it as a `merge_group` event. The
   `pull_request` run from this repository whose `verify` job succeeded, and then skips every
   job, `build` and `engineering` included, so `verify` passes within about a minute. When
   `main` moved, another entry is ahead, the pull request changed since, or any lookup fails,
-  the entry plans as above. The push run on `main` after the merge and the release rules
-  are unchanged.
+  the entry plans as above. A release or train step is never reused.
 - **Concurrency.** Each entry has its own ref and so its own concurrency group: queue
   runs do not cancel each other, pull request runs or pushes. When GitHub removes an
   entry, for example because one ahead of it failed, it rebuilds the later entries
   and starts new runs for them.
-- **After the merge.** The queue fast-forwards `main` to the tested commit, which
-  starts the usual push run (every Linux job and the legs the `before..after` diff
-  needs). Releases still take only push, scheduled or manual runs on `main`
-  ([eng/release/README.md](../release/README.md)); a queue run does not count.
+- **Every run records its plan.** The `plan` job uploads a `ci-plan` artifact (kept 7
+  days) with what it planned (`planRecord` in `eng/ci/plan.mjs`), and for a reused entry
+  the pull request run it reused.
+- **After the merge: the queue run is the `main` run** (D077.22, A1 of D077.25). The queue
+  fast-forwards `main` to exactly the commit its run tested, so that run's `head_sha` is the
+  push's. The push run's plan looks it up (`eng/ci/covered.mjs`): the newest `ci.yml`
+  `merge_group` run of the commit from this repository whose `verify` passed, with its
+  `ci-plan` record (or, for a reused entry, the passed pull request run it reused). The push
+  then plans what its own `before..after` diff needs, without the every-Linux-job sweep,
+  and keeps only what that run did not run: the suites, legs and jobs it skipped. Usually
+  that is nothing, and the push run skips every job, `build` and `engineering` included,
+  except `native-libraries`: only runs on `main` save caches, and the native server
+  libraries' cache entries have exact keys (a new one with every `native/` change, the
+  post-release version bump included), so its lookup job runs and builds and saves only a
+  missing library. The other caches (NuGet, Bun, apt) fall back to an older entry until the
+  nightly run saves new ones. `verify` still reports on `main`. Otherwise (a group of several entries merged at once
+  whose earlier entries planned more, for example) `build` and the remaining jobs and legs
+  run. The plan's step summary and `verify`'s summary link the covering run. Without such
+  a run (a direct or admin push, a run older than the plan records, a failed lookup), the
+  push plans as before: every Linux job and the legs its diff needs. The lookup can only
+  make a push run more, never less, than its queue run left out.
+- **Who reads `main` runs.** The release (`eng/release/ci-run.mjs`) and the train gate's
+  `run@<commit>`, `run:<id>` and `run` inputs (`eng/train/sources.mjs`) take a passed
+  `merge_group` run of a commit on `main` as that commit's `main` run, with its package
+  artifact (`runic-sdk-<run id>`, kept 30 days). A covered push run has no artifact and no
+  Windows or macOS leg, so they pass over it to the queue run. `eng/ci/flakes.mjs` reads
+  every event, so it is unaffected. The nightly run is unchanged: every job on every
+  platform.
 - **Flakes.** A failed entry leaves the queue and its pull request stays open. After a
   transient failure, queue the pull request again (the same command or button);
   rerunning the failed queue run's jobs does not put it back, because its temporary
   branch is gone. Fix a reproducible failure with a new commit to the pull request.
 
 Preview a queue entry's plan with
-`bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`, as for a pull request.
+`bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`, as for a pull request,
+and whether it is a release or train step with
+`git diff --no-renames -U0 origin/main... | bun eng/ci/plan.mjs --diff-kind`.
 
 ## NuGet lock files
 

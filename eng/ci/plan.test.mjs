@@ -2,11 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
-  testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
+  testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages, diffKind, parseDiffKind, versionOnly, coveredPlan, validPlan,
+  parseCovered, reusedPlan, planRecord, versionFiles, coveredSkip } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
   globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths,
   windowsSpellingPrivateFilePaths, matchesPath } from './platforms.mjs';
@@ -16,8 +18,9 @@ const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci
 const tracked = (...patterns) => execFileSync('git', ['ls-files', ...patterns], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
 const runs = (result, job) => !result.skip.includes(job);
 const everything = plan(null);
-const cli = (args, input = '') => {
-  const result = spawnSync(process.execPath, [resolve(root, 'eng/ci/plan.mjs'), ...args], { cwd: root, input, encoding: 'utf8' });
+const cli = (args, input = '', env = {}) => {
+  const result = spawnSync(process.execPath, [resolve(root, 'eng/ci/plan.mjs'), ...args], { cwd: root, input, encoding: 'utf8',
+    env: { ...process.env, CI_PLAN_RECORD: '', GITHUB_STEP_SUMMARY: '', ...env } });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 };
@@ -628,7 +631,13 @@ const planStep = (event, env, commits, responses = () => ({}), { merge = false }
     const tree = git('rev-parse', 'HEAD^{tree}');
     git('remote', 'add', 'origin', directory);
     mkdirSync(resolve(directory, 'stub'));
-    writeFileSync(resolve(directory, 'stub/bun'), '#!/usr/bin/env bash\nif [[ "$2" == --affected ]]; then xargs -0 echo; else echo "bun $*"; fi\n', { mode: 0o755 });
+    // --diff-kind answers STUB_DIFF_KIND (the diff it read goes to diff-kind-input), eng/ci/covered.mjs STUB_COVERED.
+    writeFileSync(resolve(directory, 'stub/bun'), `#!/usr/bin/env bash
+if [[ "$2" == --affected ]]; then xargs -0 echo
+elif [[ "$2" == --diff-kind ]]; then cat > "${resolve(directory, 'diff-kind-input')}"; printf '%s\\n' "$STUB_DIFF_KIND"
+elif [[ "$1" == eng/ci/covered.mjs ]]; then printf '%s' "$STUB_COVERED"; [[ "$2" =~ ^[0-9a-f]{40}$ ]]
+else echo "bun $*"; fi
+`, { mode: 0o755 });
     mkdirSync(resolve(directory, 'responses'));
     for (const [endpoint, body] of Object.entries(responses({ shas, tree })))
       writeFileSync(resolve(directory, 'responses', endpoint.replace(/[^A-Za-z0-9]/g, '_')), JSON.stringify(body));
@@ -646,7 +655,8 @@ file="${resolve(directory, 'responses')}/\${endpoint//[^A-Za-z0-9]/_}"
     const script = workflow.jobs.plan.steps.find(item => item.id === 'plan').run;
     const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], { cwd: directory, encoding: 'utf8', env: { ...process.env,
       PATH: `${resolve(directory, 'stub')}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: output,
-      RUNNER_TEMP: resolve(directory, 'temp'), GITHUB_REPOSITORY: repository, ...env(shas) } });
+      RUNNER_TEMP: resolve(directory, 'temp'), GITHUB_REPOSITORY: repository, STUB_DIFF_KIND: '{"versionOnly":false,"release":null}',
+      STUB_COVERED: '', ...env(shas) } });
     assert.equal(result.status, 0, result.stderr);
     return readFileSync(output, 'utf8').trim();
   } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -932,3 +942,213 @@ test('the CI scripts of platform steps belong to the component whose job runs th
   }
 });
 
+
+// Recorded `git diff --no-renames -U0` output of two real post-release commits: 07829c0b8 (#795, after 0.15.1: baselines
+// and the Nix guide's tag) and eb0493963 (#1079, after 0.21.0: shipped API moves, baselines, suppressions removed and the
+// version bump to 0.22.0 across manifests and lock files).
+const fixture = name => resolve(root, 'eng/ci/fixtures/diff-kind', name);
+const postRelease = {
+  '0.15.1': readFileSync(fixture('post-release-0.15.1.diff'), 'utf8'),
+  '0.21.0': gunzipSync(readFileSync(fixture('post-release-0.21.0.diff.gz'))).toString('utf8'),
+};
+const hunk = (path, removed, added, header = '') => [`diff --git a/${path} b/${path}`, header, `--- ${removed.length || !header.includes('new') ? `a/${path}` : '/dev/null'}`,
+  `+++ ${added.length || !header.includes('deleted') ? `b/${path}` : '/dev/null'}`, '@@ -1 +1 @@', ...removed.map(line => `-${line}`), ...added.map(line => `+${line}`)]
+  .filter(line => line !== '').join('\n') + '\n';
+
+test('a real post-release diff is version-only, and a release or train step', () => {
+  for (const [version, diff] of Object.entries(postRelease))
+    assert.deepEqual(diffKind(diff), { versionOnly: true, release: 'it changes eng/Versions.props' }, version);
+  // The 0.21.0 diff moves shipped API, deletes suppressions and rewrites versions in manifests and lock files.
+  const paths = [...postRelease['0.21.0'].matchAll(/^diff --git a\/(\S+)/gm)].map(match => match[1]);
+  for (const pattern of [/PublicAPI\.Shipped\.txt$/, /PublicAPI\.Unshipped\.txt$/, /CompatibilitySuppressions\.xml$/, /packages\.lock\.json$/,
+    /^bun\.lock$/, /^eng\/workspace\.json$/, /^eng\/dependencies\/package-downloads\.json$/, /^packages\/web\/[^/]+\/package\.json$/])
+    assert.ok(paths.some(path => pattern.test(path)), `${pattern} in the 0.21.0 diff`);
+});
+
+test('a diff that also touches code, a test or a toolchain pin is not version-only', () => {
+  const diff = postRelease['0.21.0'];
+  for (const [why, extra] of [
+    ['code', hunk('packages/dotnet/Runic.Desktop/Window.cs', ['    const int Limit = 3;'], ['    const int Limit = 4;'])],
+    ['a test', hunk('tests/dotnet/Runic.Desktop.Tests/WindowTests.cs', ['        Assert.Equal("0.20.0", version);'], ['        Assert.Equal("0.21.0", version);'])],
+    ['the .NET SDK pin', hunk('global.json', ['    "version": "10.0.403",'], ['    "version": "10.0.404",'])],
+    ['a third-party package', hunk('Directory.Packages.props', ['    <PackageVersion Include="TUnit" Version="1.2.3" />'], ['    <PackageVersion Include="TUnit" Version="1.2.4" />'])],
+    ['a third-party lock entry', hunk('examples/status-icon/packages.lock.json', ['        "contentHash": "AAAA"'], ['        "contentHash": "BBBB"'])],
+    ['a .NET runtime pack in the downloads', hunk('eng/dependencies/package-downloads.json',
+      ['    "version": "10.0.14",', '    "contentHash": "AAAA"'], ['    "version": "10.0.15",', '    "contentHash": "BBBB"'])],
+    ['an added line in a version file', hunk('eng/workspace.json', [], ['  "extra": true,'])],
+    ['an edited suppression file', hunk('packages/dotnet/Runic.Desktop/CompatibilitySuppressions.xml', ['<a/>'], ['<b/>'])],
+    ['a new Unshipped entry', hunk('packages/dotnet/Runic.Desktop/PublicAPI.Unshipped.txt', [], ['Runic.Desktop.Window.Extra() -> void'])],
+    ['a Shipped line that Unshipped did not have', hunk('packages/dotnet/Runic.Desktop/PublicAPI.Shipped.txt', [], ['Runic.Desktop.Window.Other() -> void'])],
+    ['an analyzer release file', hunk('packages/dotnet/Runic.Platform.Analyzers/AnalyzerReleases.Shipped.md', ['## Release 0.20.0'], ['## Release 0.21.0'])],
+  ]) assert.equal(diffKind(diff + extra).versionOnly, false, why);
+  assert.equal(diffKind('').versionOnly, false, 'an empty diff');
+  assert.equal(diffKind(hunk('docs/guide.md', ['Runic 0.20.0 adds windows.'], ['Runic 0.21.0 adds menus.'])).versionOnly, false, 'prose');
+});
+
+test('version-only parts: shipped API moves, baselines, release notes and version numbers', () => {
+  const baselines = { baselines: ['0.20.0'] };
+  const move = hunk('packages/dotnet/Runic.Desktop/PublicAPI.Unshipped.txt', ['Runic.Desktop.Window.Show() -> void', '*REMOVED*Runic.Desktop.Window.Old() -> void'], [])
+    + hunk('packages/dotnet/Runic.Desktop/PublicAPI.Shipped.txt', ['Runic.Desktop.Window.Old() -> void'], ['Runic.Desktop.Window.Show() -> void']);
+  assert.deepEqual(diffKind(move, baselines), { versionOnly: true, release: null });
+  assert.deepEqual(diffKind(hunk('eng/release/notes/0.21.0/fixes/12.md', [], ['- A fix.'], 'new file mode 100644'), baselines), { versionOnly: true, release: null });
+  assert.deepEqual(diffKind(hunk('packages/dotnet/Runic.Desktop/CompatibilitySuppressions.xml', ['<a/>'], [], 'deleted file mode 100644'), baselines),
+    { versionOnly: true, release: null });
+  // A baseline package moves to a version eng/Versions.props names as a baseline (before the diff, or in it).
+  const download = (from, to) => hunk('eng/dependencies/package-downloads.json', [`    "version": "${from}",`, '    "contentHash": "AAAA"'],
+    [`    "version": "${to}",`, '    "contentHash": "BBBB"']);
+  assert.equal(diffKind(download('0.19.0', '0.20.0'), baselines).versionOnly, true);
+  assert.equal(diffKind(download('0.20.0', '0.21.0'), baselines).versionOnly, false);
+  assert.equal(diffKind(download('0.20.0', '0.21.0') + hunk('eng/Versions.props',
+    ['    <RunicPackageValidationBaselineVersion>0.20.0</RunicPackageValidationBaselineVersion>'],
+    ['    <RunicPackageValidationBaselineVersion>0.21.0</RunicPackageValidationBaselineVersion>']), baselines).versionOnly, true);
+  assert.equal(diffKind(hunk('eng/dependencies/package-downloads.json', ['    "contentHash": "AAAA"'], ['    "contentHash": "BBBB"']), baselines).versionOnly, false,
+    'a hash without its version');
+  for (const path of ['eng/workspace.json', 'bun.lock', 'packages/web/views/package.json', 'tests/dotnet/Runic.Desktop.Tests/packages.lock.json',
+    'native/Cargo.toml', 'packages/web/views/src/version.ts', 'nix/README.md'])
+    assert.equal(diffKind(hunk(path, ['  "version": "0.20.0",'], ['  "version": "0.21.0",']), baselines).versionOnly, true, path);
+  assert.ok(versionFiles.some(pattern => pattern.test('tools/dotnet-runic/metadata/runic.compatibility-set.json')));
+});
+
+test('release and train steps: eng/Versions.props, a TrainCommit or assembled release notes', () => {
+  const kind = text => diffKind(text, { baselines: [] }).release;
+  assert.equal(kind(hunk('eng/release/notes/0.24.0.md', [], ['# Runic SDK 0.24.0'], 'new file mode 100644')),
+    'it changes the assembled release notes eng/release/notes/0.24.0.md');
+  assert.equal(kind(hunk('Directory.Packages.props', ['    <PackageVersion Include="Runic.Translations" Version="0.15.0" />'],
+    ['    <PackageVersion Include="Runic.Translations" Version="0.15.1" TrainCommit="' + 'a'.repeat(40) + '" />'])),
+  'it changes a TrainCommit in Directory.Packages.props');
+  assert.equal(kind(hunk('Directory.Packages.props', ['    <PackageVersion Include="TUnit" Version="1.2.3" />'], ['    <PackageVersion Include="TUnit" Version="1.2.4" />'])), null);
+  assert.equal(kind(hunk('eng/release/notes/0.24.0/fixes/12.md', [], ['- A fix.'])), null, 'a fragment');
+  assert.equal(kind(hunk('eng/Versions.props', ['<A>1</A>'], ['<A>2</A>'])), 'it changes eng/Versions.props');
+  // An older base planner prints a plan instead of a diff kind: neither kind.
+  for (const text of ['', 'skip=[]', '[]', 'null', '{"versionOnly":"yes","release":3}'])
+    assert.deepEqual(parseDiffKind(text), { versionOnly: false, release: null }, text);
+  assert.deepEqual(parseDiffKind(cli(['--diff-kind'], postRelease['0.15.1'])), { versionOnly: true, release: 'it changes eng/Versions.props' });
+});
+
+test('a version-only pull request plans Linux and the Linux packaging legs; the label still plans every leg', () => {
+  const decided = affected(['eng/Versions.props', 'bun.lock', 'packages/dotnet/Runic.Desktop/PublicAPI.Shipped.txt']);
+  assert.deepEqual(decided.platforms, platforms, 'eng/Versions.props alone would plan every leg');
+  const result = planFor(versionOnly(decided));
+  assert.deepEqual(result.platforms, []);
+  assert.match(result.why, /^no Windows or macOS leg: a version-only diff/);
+  assert.deepEqual(result.packaging.include, packagingLegs.filter(leg => !leg.platform));
+  assert.deepEqual(result.native.include, nativeLegs.filter(leg => !leg.platform));
+  assert.deepEqual(result.skip, ['wpf']);
+  // A shipped API move in one library adds the Linux packaging legs to that library's plan.
+  const moved = planFor(versionOnly(affected(['packages/dotnet/Runic.Assets/PublicAPI.Shipped.txt', 'packages/dotnet/Runic.Assets/PublicAPI.Unshipped.txt'])));
+  assert.deepEqual([moved.platforms, moved.packaging.include], [[], packagingLegs.filter(leg => !leg.platform)]);
+  const cliVersionOnly = outputsOf(cli(['--plan', JSON.stringify(decided), '--version-only']));
+  assert.deepEqual([cliVersionOnly.platforms, cliVersionOnly.skip], [[], ['wpf']]);
+  const labelled = outputsOf(cli(['--plan', JSON.stringify(decided), '--all-platforms', 'label ci:all-platforms', '--version-only']));
+  assert.deepEqual(labelled.platforms, platforms);
+});
+
+test('a push covered by a passed merge queue run runs only what that run skipped', () => {
+  const url = `https://github.com/${repository}/actions/runs/21`;
+  const linux = planFor(affected(['packages/dotnet/Runic.Platform.MacOS/MacOSPlatformProvider.cs']));
+  // The same plan: nothing runs, build and engineering included, except the native server libraries' lookup, which
+  // builds and caches a library only when main has no cache entry for it.
+  assert.deepEqual(coveredSkip, reusedSkip.filter(job => job !== 'native-libraries'));
+  const same = coveredPlan(linux, linux, url);
+  assert.deepEqual(same.skip, coveredSkip);
+  assert.deepEqual([same.platforms, same.managed, same.web, same.native, same.frameworks], [[], [], [], { include: [] }, false]);
+  assert.equal(same.why, `covered by ${url}, which passed this commit with every job and leg this push plans`);
+  // The queue ran a Linux-only plan of a web package, the push's diff plans the macOS provider too (a group of two entries).
+  const queued = planFor(affected(['packages/web/svelte/src/index.ts']));
+  const both = planFor(affected(['packages/web/svelte/src/index.ts', 'packages/dotnet/Runic.Platform.MacOS/MacOSPlatformProvider.cs']));
+  const rest = coveredPlan(both, queued, url);
+  assert.deepEqual(rest.platforms, ['osx-arm64']);
+  assert.ok(rest.native.include.every(leg => !queued.native.include.some(done => done.rid === leg.rid)));
+  assert.ok(!rest.web.includes('svelte'), 'the queue ran the svelte tests');
+  assert.ok(rest.skip.includes('engineering') && !rest.skip.includes('build') && !rest.skip.includes('native-libraries'));
+  assert.ok(!rest.skip.includes('native'));
+  assert.match(rest.why, new RegExp(`^covered by ${url} except .*native.*\\(legs osx-arm64\\)$`));
+  // A queue run that planned more covers less; one that reused a run (ran nothing) covers nothing.
+  assert.deepEqual(coveredPlan(linux, plan(null), url).skip, coveredSkip);
+  const nothing = coveredPlan(both, reusedPlan(url), url);
+  assert.deepEqual(nothing.native, both.native);
+  assert.deepEqual(skippableJobs.filter(job => !nothing.skip.includes(job)), skippableJobs.filter(job => !both.skip.includes(job)));
+  // The command line: --covered plans the push's diff (not every Linux job) and subtracts.
+  const decided = affected(['packages/dotnet/Runic.Platform.MacOS/MacOSPlatformProvider.cs']);
+  const summary = resolve(mkdtempSync(resolve(tmpdir(), 'runic-ci-covered-')), 'summary.md');
+  try {
+    const covered = outputsOf(cli(['--plan', JSON.stringify(decided), '--covered', JSON.stringify({ url, plan: linux })], '', { GITHUB_STEP_SUMMARY: summary }));
+    assert.deepEqual(covered.skip, coveredSkip);
+    assert.match(readFileSync(summary, 'utf8'), new RegExp(`passed merge queue run ${url}\\. This push runs nothing else`));
+  } finally { rmSync(dirname(summary), { recursive: true, force: true }); }
+  const partial = outputsOf(cli(['--plan', JSON.stringify(decided), '--covered', JSON.stringify({ url, plan: queued })]));
+  assert.deepEqual(partial.platforms, ['osx-arm64']);
+  // An unusable value plans the push as one without a queue run: every Linux job.
+  for (const value of ['', '{}', JSON.stringify({ url, plan: { ...linux, skip: ['unknown'] } }), JSON.stringify({ plan: linux })]) {
+    assert.equal(parseCovered(value), null, value);
+    const fallback = outputsOf(cli(['--plan', JSON.stringify(decided), '--covered', value]));
+    assert.deepEqual([fallback.full, fallback.platforms], [true, ['osx-arm64']], value);
+  }
+  // No usable diff: everything is planned, then the covered part is subtracted.
+  assert.deepEqual(outputsOf(cli(['--all', 'push run without a usable diff', '--covered', JSON.stringify({ url, plan: plan(null) })])).skip, coveredSkip);
+});
+
+test('every run records its plan for a later push of the same commit', () => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'runic-ci-record-'));
+  try {
+    const file = resolve(directory, 'ci-plan/plan.json');
+    const decided = affected(['packages/web/svelte/src/index.ts']);
+    cli(['--plan', JSON.stringify(decided)], '', { CI_PLAN_RECORD: file });
+    const recorded = JSON.parse(readFileSync(file, 'utf8'));
+    assert.deepEqual(recorded, planRecord(planFor(decided)));
+    assert.ok(validPlan(recorded.plan));
+    const url = `https://github.com/${repository}/actions/runs/11`;
+    cli(['--reused', url], '', { CI_PLAN_RECORD: file });
+    assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), planRecord(reusedPlan(url), url));
+    // The base planner's calls record nothing.
+    rmSync(file);
+    cli(['--affected'], 'a.txt\0', { CI_PLAN_RECORD: file });
+    cli(['--diff-kind'], '', { CI_PLAN_RECORD: file });
+    assert.equal(existsSync(file), false);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+  const { plan: job } = workflow.jobs;
+  const step = job.steps.find(item => item.id === 'plan');
+  assert.equal(step.env.CI_PLAN_RECORD, '${{ runner.temp }}/ci-plan/plan.json');
+  const upload = job.steps[job.steps.indexOf(step) + 1];
+  assert.equal(upload.uses, workflow.jobs.build.steps.find(item => item.uses?.startsWith('actions/upload-artifact@')).uses);
+  assert.equal(upload['continue-on-error'], true);
+  assert.deepEqual(upload.with, { name: 'ci-plan', path: '${{ runner.temp }}/ci-plan/plan.json', 'if-no-files-found': 'error',
+    'retention-days': 7, 'compression-level': 0 });
+});
+
+test('the plan step: version-only pull requests, release and train entries in the queue, covered pushes', () => {
+  const pull = () => ({ PULL_REQUEST: '7', HEAD_REPOSITORY: repository, LABEL: allPlatformsLabel });
+  const labels = (names = []) => () => ({ [`repos/${repository}/issues/7/labels`]: names.map(name => ({ name })) });
+  const kind = value => shas => ({ ...pull(), STUB_DIFF_KIND: JSON.stringify(value) });
+  const strip = text => text.split('\n').filter(line => !line.startsWith('tested-')).join('\n');
+  // A pull request: the base planner's diff kind; version-only adds --version-only, a release kind does nothing here.
+  assert.equal(strip(planStep('pull_request', kind({ versionOnly: true, release: 'it changes eng/Versions.props' }), ['a.txt', 'b.txt'], labels(), { merge: true })),
+    'bun eng/ci/plan.mjs --plan b.txt --version-only');
+  assert.equal(strip(planStep('pull_request', kind({ versionOnly: true, release: null }), ['a.txt', 'b.txt'], labels([allPlatformsLabel]), { merge: true })),
+    'bun eng/ci/plan.mjs --plan b.txt --all-platforms label ci:all-platforms --version-only');
+  for (const value of [{ versionOnly: false, release: 'it changes eng/Versions.props' }, 'skip=["wpf"]', ''])
+    assert.equal(strip(planStep('pull_request', shas => ({ ...pull(), STUB_DIFF_KIND: typeof value === 'string' ? value : JSON.stringify(value) }),
+      ['a.txt', 'b.txt'], labels(), { merge: true })), 'bun eng/ci/plan.mjs --plan b.txt', JSON.stringify(value));
+  // A merge queue entry: a release or train step plans every leg and never reuses; version-only changes nothing.
+  const queued = value => shas => ({ QUEUE_BASE: shas[0], QUEUE_HEAD: shas.at(-1), STUB_DIFF_KIND: JSON.stringify(value) });
+  const reusable = ({ shas, tree }) => ({
+    [`repos/${repository}/actions/artifacts?name=ci-passed-${shas[0]}-${tree}&per_page=100`]: { artifacts: [{ expired: false, workflow_run: { id: 11 } }] },
+    [`repos/${repository}/actions/runs/11`]: { event: 'pull_request', path: '.github/workflows/ci.yml', head_repository: { full_name: repository },
+      html_url: `https://github.com/${repository}/actions/runs/11` },
+    [`repos/${repository}/actions/runs/11/jobs?per_page=100`]: { jobs: [{ name: 'verify', conclusion: 'success' }] },
+  });
+  assert.equal(planStep('merge_group', queued({ versionOnly: true, release: 'it changes eng/Versions.props' }), ['a.txt', 'b.txt'], reusable),
+    'bun eng/ci/plan.mjs --plan b.txt --all-platforms a release or train step: it changes eng/Versions.props');
+  assert.equal(planStep('merge_group', queued({ versionOnly: true, release: null }), ['a.txt', 'b.txt'], reusable),
+    `bun eng/ci/plan.mjs --reused https://github.com/${repository}/actions/runs/11`);
+  assert.equal(planStep('merge_group', queued({ versionOnly: true, release: null }), ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --plan b.txt');
+  // A push: a passed queue run of the commit replaces --all-linux with --covered; without one it plans as before.
+  const covered = JSON.stringify({ url: 'https://github.com/r/actions/runs/21', plan: { skip: [] } });
+  assert.equal(planStep('push', shas => ({ BEFORE: shas[0], STUB_COVERED: covered }), ['a.txt', 'b.txt']), `bun eng/ci/plan.mjs --plan b.txt --covered ${covered}`);
+  assert.equal(planStep('push', shas => ({ BEFORE: 'f'.repeat(40), STUB_COVERED: covered }), ['a.txt', 'b.txt']),
+    `bun eng/ci/plan.mjs --all push run without a usable diff --covered ${covered}`);
+  assert.equal(planStep('push', shas => ({ BEFORE: shas[0] }), ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --plan b.txt --all-linux');
+  assert.equal(planStep('push', shas => ({ BEFORE: 'f'.repeat(40) }), ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --all push run without a usable diff');
+  // Schedules and dispatches never look a queue run up.
+  assert.equal(planStep('schedule', () => ({ STUB_COVERED: covered }), ['a.txt']), 'bun eng/ci/plan.mjs --all schedule run');
+});
