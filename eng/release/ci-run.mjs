@@ -1,10 +1,15 @@
-// Find a successful run of ci.yml on main for this exact commit that ran every Windows and
+// Find a successful run of ci.yml for this exact commit on main that ran every Windows and
 // macOS leg, and the package artifact it uploaded. Publication reuses those verified bytes
 // instead of rerunning the tests, packing and package verification.
 // Pull requests and pushes run only the Windows and macOS legs their changes need
 // (eng/ci/platforms.mjs), so a push run may lack some; a scheduled (nightly) or manual run
-// of main runs all of them. A release thus keeps the guarantee that its commit passed CI on
-// every platform.
+// of main runs all of them, and so does the merge queue run of a release pull request (it
+// assembles the release notes; eng/ci/plan.mjs, diffKind). A release thus keeps the guarantee
+// that its commit passed CI on every platform.
+// The merge queue run counts as the main run (D077.22): the queue moves main to exactly the
+// commit its run tested, and that run uploads the same package artifact. It is taken only for
+// a commit that is on main, and a push run on main that its queue run covered (eng/ci/covered.mjs)
+// runs none of the legs, so the queue run is the one found.
 // Runs with the runner's Node before any toolchain setup: Node built-ins only.
 import assert from 'node:assert/strict';
 import { appendFileSync } from 'node:fs';
@@ -13,18 +18,24 @@ import { releaseJobs } from '../ci/platforms.mjs';
 
 export const CI_WORKFLOW = '.github/workflows/ci.yml';
 export const CI_EVENTS = ['push', 'schedule', 'workflow_dispatch'];
+// A merge queue entry's run: head_branch gh-readonly-queue/main/pr-<n>-<base sha>.
+export const QUEUE_EVENT = 'merge_group';
+export const QUEUE_BRANCH = 'gh-readonly-queue/main/';
 export const artifactName = runId => `runic-sdk-${runId}`;
 const dispatch = `Dispatch SDK CI on main (gh workflow run ci.yml --ref main) and publish after it succeeds.`;
 
-// The successful runs of ci.yml on main for the commit, newest first.
+const onMainBranch = run => (CI_EVENTS.includes(run.event) && run.head_branch === 'main')
+  || (run.event === QUEUE_EVENT && run.head_branch?.startsWith(QUEUE_BRANCH));
+
+// The successful runs of ci.yml on main, and of the merge queue, for the commit, newest first.
 export function successfulCiRuns(runs, {repository, sha}) {
-  const candidates = runs.filter(run => run.head_sha === sha && CI_EVENTS.includes(run.event) && run.head_branch === 'main'
+  const candidates = runs.filter(run => run.head_sha === sha && onMainBranch(run)
     && run.path?.split('@')[0] === CI_WORKFLOW && run.repository?.full_name === repository
     && run.head_repository?.full_name === repository);
   const green = candidates.filter(run => run.status === 'completed' && run.conclusion === 'success').sort((a, b) => b.id - a.id);
   if (green.length) return green;
   const latest = candidates.sort((a, b) => b.id - a.id)[0];
-  if (!latest) throw new Error(`No run of ${CI_WORKFLOW} on main exists for ${sha}. Publish only a commit on main whose CI succeeded.`);
+  if (!latest) throw new Error(`No run of ${CI_WORKFLOW} on main or in its merge queue exists for ${sha}. Publish only a commit on main whose CI succeeded.`);
   if (latest.status !== 'completed') throw new Error(`CI for ${sha} is still ${latest.status} (${latest.html_url}). Dispatch again after it succeeds.`);
   throw new Error(`CI for ${sha} concluded ${latest.conclusion} (${latest.html_url}). Rerun its failed jobs; publish needs a successful run.`);
 }
@@ -35,11 +46,17 @@ export function missingReleaseJobs(jobs) {
     .map(name => `${name}=${jobs.find(job => job.name === name)?.conclusion ?? 'missing'}`);
 }
 
-// The newest successful run that passed every Windows and macOS leg. `jobsOf(run)` lists its jobs.
-export async function selectCiRun(runs, {repository, sha}, jobsOf) {
+// The newest successful run that passed every Windows and macOS leg. `jobsOf(run)` lists its jobs; `onMain()` says
+// whether the commit is on main, which a merge queue run needs (a queue entry whose group failed never reaches main).
+export async function selectCiRun(runs, {repository, sha}, jobsOf, onMain = async () => false) {
   const green = successfulCiRuns(runs, {repository, sha});
   const missing = [];
+  let main;
   for (const run of green) {
+    if (run.event === QUEUE_EVENT && !(main ??= await onMain())) {
+      missing.push(`${run.html_url} (${run.event}): ${sha} is not on main`);
+      continue;
+    }
     const absent = missingReleaseJobs(await jobsOf(run));
     if (!absent.length) return run;
     missing.push(`${run.html_url} (${run.event}): ${absent.join(', ')}`);
@@ -78,10 +95,17 @@ export async function findCiPackages({repository, sha, token, fetchImpl = fetch}
     if (!response.ok) throw new Error(`GitHub API ${path.split('?')[0]} failed: ${response.status}`);
     return response.json();
   };
-  const query = new URLSearchParams({head_sha: sha, branch: 'main', per_page: '100'});
+  const runs = new Map();
+  for (const query of [new URLSearchParams({head_sha: sha, branch: 'main', per_page: '100'}),
+    new URLSearchParams({head_sha: sha, event: QUEUE_EVENT, per_page: '100'})])
+    for (const run of (await api(`actions/workflows/ci.yml/runs?${query}`)).workflow_runs ?? []) runs.set(run.id, run);
   // The latest attempt's jobs; a full run has fewer than 100.
   const jobsOf = async run => (await api(`actions/runs/${run.id}/jobs?per_page=100`)).jobs;
-  const run = await selectCiRun((await api(`actions/workflows/ci.yml/runs?${query}`)).workflow_runs, {repository, sha}, jobsOf);
+  // main is the commit or a descendant of it.
+  const onMain = async () => {
+    try { return ['identical', 'ahead'].includes((await api(`compare/${sha}...main?per_page=1`)).status); } catch { return false; }
+  };
+  const run = await selectCiRun([...runs.values()], {repository, sha}, jobsOf, onMain);
   refuseTrainFeed((await api(`actions/runs/${run.id}/artifacts?name=${TRAIN_FEED_ARTIFACT}`)).artifacts, run);
   const artifact = selectArtifact((await api(`actions/runs/${run.id}/artifacts?name=${artifactName(run.id)}`)).artifacts, run);
   // Download by id: re-uploading under the same name creates a new id, so the bytes

@@ -251,22 +251,24 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
     // A new query or refresh: a new generation of pages and count. The gate is held.
     private void Restart()
     {
+        // The new generation is complete before anything is cancelled: a source whose cancellation completes its call at
+        // once runs the waiting requests' retries inside Cancel, on this thread, and they must read the new query's
+        // count and cancellation, not the old ones (#1270).
         _generation++;
         _version++;
-        foreach (var page in _pages.Values.ToArray())
-        {
-            Remove(page, cancelUnwaited: false);
-            // Requests that wait for a page of the old query read the new one instead.
-            page.TryCancel();
-        }
-        // The count and the key searches of the old generation stop, so a burst of query changes does not leave a count
-        // per change running.
-        _generationCancel.Cancel();
-        _generationCancel.Dispose();
+        var replaced = _pages.Values.ToArray();
+        foreach (var page in replaced) Remove(page, cancelUnwaited: false);
+        var ended = _generationCancel;
         _generationCancel = new();
-        // The new generation is counted when a page next loads rows, so a burst of changes counts the last query only.
+        // The new generation is counted when a page next loads rows.
         _count = null;
         _countGeneration = -1;
+        // Requests that wait for a page of the old query read the new one instead.
+        foreach (var page in replaced) page.TryCancel();
+        // The count and the key searches of the old generation stop, so a burst of query changes does not leave a count
+        // per change running.
+        ended.Cancel();
+        ended.Dispose();
     }
 
     internal async Task<BridgeQueryRows> LoadCoreAsync(int start, int count, CancellationToken cancellationToken)

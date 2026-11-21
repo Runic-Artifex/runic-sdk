@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareVersions, lineUpperBound, parseRange, rangeContains, sameLine } from './versions.mjs';
 import { nugetConfig, parseNuspec, repoOf } from './nuget.mjs';
-import { followsMain, parseSpec, selectRunAtOrAfter, successfulMainRuns, upstreamMovement, versionForRelease } from './sources.mjs';
+import { followsMain, isNamedCiRun, parseSpec, selectRunAtOrAfter, successfulMainRuns, upstreamMovement, versionForRelease } from './sources.mjs';
 import { refuseFollowingMain } from './gate.mjs';
 import { repos as allRepos } from './nuget.mjs';
 import { keyCoverage, keysFromJson, keysFromMarkdown, lintLockstep, lintRanges, lintTemplatePins, lintToolPins, rmf2MessageNames } from './checks.mjs';
@@ -222,7 +222,7 @@ test('run@<commit> names a full commit; a bare run follows main and only informa
 });
 
 // A fake GitHub API: run listings of ci.yml, compare results by head commit and artifacts by run id.
-function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [] }) {
+function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [], onMain = [] }) {
   const requests = [];
   const repo = allRepos.sdk;
   const fetchImpl = async url => {
@@ -230,13 +230,17 @@ function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [] }) {
     const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
     const { pathname, searchParams } = new URL(url);
     if (pathname.endsWith('/actions/workflows/ci.yml/runs')) {
-      let listed = runs.filter(run => !searchParams.get('head_sha') || run.head_sha === searchParams.get('head_sha'));
+      let listed = runs.filter(run => !searchParams.get('head_sha') || run.head_sha === searchParams.get('head_sha'))
+        .filter(run => searchParams.get('event') ? (run.event ?? 'push') === searchParams.get('event') : true)
+        .filter(run => searchParams.get('branch') ? (run.head_branch ?? 'main') === searchParams.get('branch') : true);
       // GitHub's status filter omitted a successful run for over an hour (I2): a selection that used it would miss run 30.
       if (searchParams.get('status') === 'success') listed = listed.filter(run => run.conclusion === 'success' && !missing.includes(run.id));
       return reply({ workflow_runs: listed.map(run => ({ head_branch: 'main', event: 'push', path: '.github/workflows/ci.yml',
         repository: { full_name: repo.repository }, html_url: `https://github.com/${repo.repository}/actions/runs/${run.id}`, ...run })) });
     }
-    const compare = /\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)$/.exec(pathname);
+    const compare = /\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+|main)$/.exec(pathname);
+    // `<commit>...main`: whether main is at or after the commit (onMain lists the commits on main).
+    if (compare?.[2] === 'main') return reply({ status: onMain.includes(compare[1]) ? 'ahead' : 'diverged' });
     if (compare) return ahead ? reply({ status: ahead[compare[2]] ?? 'behind' }) : reply({ message: 'Not Found' }, 404);
     const artifact = /\/actions\/runs\/(\d+)\/artifacts$/.exec(pathname);
     if (artifact) {
@@ -284,7 +288,7 @@ test('without a run at or after the commit the error names the commit and every 
     artifacts: { 50: false },
   });
   const error = await selectRunAtOrAfter(repo, pinned, { fetchImpl }).catch(caught => caught);
-  expect(error.message).toContain(`Runic-Artifex/runic-sdk has no successful ci.yml run on main at or after ${pinned}`);
+  expect(error.message).toContain(`Runic-Artifex/runic-sdk has no successful ci.yml run on main (or merge queue run of a commit on main) at or after ${pinned}`);
   expect(error.message).toContain('60 (b20000000, push, queued): not a success');
   expect(error.message).toContain('50 (b20000000, push, completed/success): no unexpired runic-sdk-50 artifact');
   expect(error.message).toContain('10 (c30000000, push, completed/success): behind a10000000, not at or after it');
@@ -297,6 +301,34 @@ test('without a run at or after the commit the error names the commit and every 
   const unknown = fakeGitHub({ runs: [{ id: 20, head_sha: later, status: 'completed', conclusion: 'success' }] });
   await expect(selectRunAtOrAfter(unknown.repo, pinned, { fetchImpl: unknown.fetchImpl })).rejects.toThrow(`has no commit ${pinned}`);
   await expect(selectRunAtOrAfter(unknown.repo, 'a1', { fetchImpl: unknown.fetchImpl })).rejects.toThrow('Expected a full commit SHA');
+});
+
+// D077.22: the merge queue moves main to exactly the commit its run tested.
+const queue = (id, head_sha, extra = {}) => ({ id, head_sha, event: 'merge_group', head_branch: `gh-readonly-queue/main/pr-7-${'d'.repeat(40)}`,
+  status: 'completed', conclusion: 'success', ...extra });
+test('a passed merge queue run of a commit on main counts as its main run', async () => {
+  const pinned = sha('a1'), ejected = sha('e5');
+  // The push run of the commit ran nothing (its queue run covered it) and uploaded no artifact.
+  const covered = fakeGitHub({ runs: [{ id: 21, head_sha: pinned, status: 'completed', conclusion: 'success' }, queue(20, pinned)],
+    ahead: {}, artifacts: { 21: false }, onMain: [pinned] });
+  expect((await selectRunAtOrAfter(covered.repo, pinned, { fetchImpl: covered.fetchImpl })).id).toBe(20);
+  expect(covered.requests.some(url => new URL(url).searchParams.get('event') === 'merge_group')).toBe(true);
+  // A queue run of a commit that never reached main (its group failed) is not taken.
+  const off = fakeGitHub({ runs: [queue(30, ejected), { id: 10, head_sha: pinned, status: 'completed', conclusion: 'success' }],
+    ahead: { [ejected]: 'ahead' }, onMain: [pinned] });
+  expect((await selectRunAtOrAfter(off.repo, pinned, { fetchImpl: off.fetchImpl })).id).toBe(10);
+  const none = fakeGitHub({ runs: [queue(30, ejected)], ahead: { [ejected]: 'ahead' }, onMain: [] });
+  await expect(selectRunAtOrAfter(none.repo, pinned, { fetchImpl: none.fetchImpl }))
+    .rejects.toThrow(`30 (e50000000, merge_group, completed/success): a merge queue run of a commit not on main`);
+  // The listing rules: queue runs by their queue ref, other runs only on main.
+  expect(successfulMainRuns([queue(3, pinned), queue(4, pinned, { head_branch: 'gh-readonly-queue/other/pr-1' }), { id: 5, head_branch: 'feature',
+    status: 'completed', conclusion: 'success' }]).map(run => run.id)).toEqual([3]);
+  const repo = allRepos.sdk;
+  const named = extra => ({ path: '.github/workflows/ci.yml', repository: { full_name: repo.repository }, head_repository: { full_name: repo.repository },
+    ...queue(3, pinned), ...extra });
+  expect(isNamedCiRun(named({}), repo)).toBe(true);
+  expect(isNamedCiRun(named({ head_branch: 'feature' }), repo)).toBe(false);
+  expect(isNamedCiRun(named({ path: '.github/workflows/nix.yml' }), repo)).toBe(false);
 });
 
 test('an upstream candidate must be the commit, or the same bytes, that runic-sdk\'s train feed served', () => {

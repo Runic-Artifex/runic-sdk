@@ -14,11 +14,16 @@ const GITHUB = 'https://api.github.com';
 export const NUGET_OWNER = 'runic-artifex';
 export const CI_WORKFLOW = 'ci.yml';
 const CI_EVENTS = ['push', 'schedule', 'workflow_dispatch'];
+// A merge queue entry's ci.yml run: the queue moves main to exactly the commit it tested, so a passed run of a commit
+// on main counts as that commit's main run (D077.22; eng/ci/README.md, "Merge queue"). Only runic-sdk has a queue.
+export const QUEUE_EVENT = 'merge_group';
+const QUEUE_BRANCH = 'gh-readonly-queue/main/';
 
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // `published` (the newest version on nuget.org), `published:<version>`, `run@<commit>` (the newest successful ci.yml
-// run on main at or after that commit), `run:<run id>`, `run` (the newest successful main run; only for the
+// run on main at or after that commit, a passed merge queue run of a commit on main included), `run:<run id>`, `run`
+// (the newest successful main run; only for the
 // informational N-main row, never for a train row) or, locally, `local:<dir>` (packages packed in a checkout,
 // <dir>/nuget and <dir>/npm).
 export const COMMIT = /^[0-9a-f]{40}$/;
@@ -103,10 +108,12 @@ async function resolvePublished(repo, spec, owned, options) {
 }
 
 const isCiRun = (run, repo) => run.path?.split('@')[0] === `.github/workflows/${CI_WORKFLOW}`
-  && run.repository?.full_name === repo.repository && CI_EVENTS.includes(run.event);
+  && run.repository?.full_name === repo.repository && (CI_EVENTS.includes(run.event) || isQueueRun(run));
+const isQueueRun = run => run.event === QUEUE_EVENT && Boolean(run.head_branch?.startsWith(QUEUE_BRANCH));
 // A named run may also be a pull request's, from a branch of the same repository (a fork's run could upload
-// anything): a train candidate checked before it merges. Publish workflows only pass main runs.
-const isNamedCiRun = (run, repo) => isCiRun(run, repo) || (run.path?.split('@')[0] === `.github/workflows/${CI_WORKFLOW}`
+// anything): a train candidate checked before it merges. Publish workflows only pass main runs, or the merge queue run
+// of a commit on main that eng/release/ci-run.mjs found (D077.22).
+export const isNamedCiRun = (run, repo) => isCiRun(run, repo) || (run.path?.split('@')[0] === `.github/workflows/${CI_WORKFLOW}`
   && run.repository?.full_name === repo.repository && run.event === 'pull_request' && run.head_repository?.full_name === repo.repository);
 
 async function runArtifact(repo, run, options) {
@@ -185,10 +192,28 @@ async function resolveLocal(repo, spec, directory) {
 // The main runs of a workflow, newest first. GitHub's `status=success` filter on this listing can omit a run that
 // completed successfully, for an hour or more (2026-11-16: run 43913357796 was missing from it while the unfiltered
 // listing showed it completed/success), so the gate lists every run and filters here.
+// The merge queue's runs are listed apart: their head_branch is the queue's ref, not main.
 export const mainRunsQuery = new URLSearchParams({ branch: 'main', per_page: '50' });
+export const queueRunsQuery = new URLSearchParams({ event: QUEUE_EVENT, per_page: '50' });
 export function successfulMainRuns(runs) {
-  return (runs ?? []).filter(run => run.head_branch === 'main' && run.status === 'completed' && run.conclusion === 'success')
+  return (runs ?? []).filter(run => (run.head_branch === 'main' || isQueueRun(run)) && run.status === 'completed' && run.conclusion === 'success')
     .sort((a, b) => b.id - a.id);
+}
+
+// The ci.yml runs of these listings that are main or merge queue runs of the repository, newest first, without duplicates.
+async function listCiRuns(repo, queries, options) {
+  const listed = new Map();
+  for (const query of queries)
+    for (const run of (await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${query}`, options)).workflow_runs ?? [])
+      if (isCiRun(run, repo)) listed.set(run.id, run);
+  return [...listed.values()].sort((a, b) => b.id - a.id);
+}
+
+// Whether a run's commit is on main: always for a main run; for a merge queue run, when main is its commit or a
+// descendant (a queue entry whose group failed never reaches main).
+async function onMain(repo, run, options, cache) {
+  if (!isQueueRun(run)) return true;
+  return ['identical', 'ahead'].includes(await atOrAfter(repo, run.head_sha, 'main', options, cache));
 }
 
 export const describeRun = run => `${run.id} (${String(run.head_sha ?? '').slice(0, 9)}, ${run.event}, ${run.status}${run.conclusion ? `/${run.conclusion}` : ''})`;
@@ -196,7 +221,8 @@ export const describeRun = run => `${run.id} (${String(run.head_sha ?? '').slice
 // Whether `head` is `commit` or a descendant of it, by GitHub's compare API: `identical` or `ahead`.
 async function atOrAfter(repo, commit, head, options, cache) {
   if (head === commit) return 'identical';
-  if (!cache.has(head)) cache.set(head, (async () => {
+  const key = `${commit}...${head}`;
+  if (!cache.has(key)) cache.set(key, (async () => {
     try {
       return (await json(`${GITHUB}/repos/${repo.repository}/compare/${commit}...${head}?per_page=1`, options)).status;
     } catch (error) {
@@ -204,22 +230,19 @@ async function atOrAfter(repo, commit, head, options, cache) {
       throw error;
     }
   })());
-  return cache.get(head);
+  return cache.get(key);
 }
 
 // The selection rule for a train input (H2; the lessons' C6: "the newest green main run at or after commit X"):
-// among the ci.yml runs on main, newest first, the first that completed successfully, whose head is `commit` or a
-// descendant of it, that has its package artifact and that `accept` takes. `accept(run, artifact)` returns
+// among the ci.yml runs on main and the merge queue runs of commits on main, newest first, the first that completed
+// successfully, whose head is `commit` or a descendant of it, that has its package artifact and that `accept` takes. `accept(run, artifact)` returns
 // `{ value }` or `{ reason }` (a rejection, reported with the others). The listing is unfiltered (see above) plus the
 // runs of `commit` itself, so neither GitHub's status filter nor a busy main pushes the commit's own run out of it.
 // Without such a run the error names the commit and every run it considered.
 export async function selectRunAtOrAfter(repo, commit, options = {}, accept = async run => ({ value: run })) {
   if (!COMMIT.test(commit)) throw new Error(`Expected a full commit SHA, not '${commit}'`);
-  const listed = new Map();
-  for (const query of [mainRunsQuery, new URLSearchParams({ branch: 'main', head_sha: commit, per_page: '20' })])
-    for (const run of (await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${query}`, options)).workflow_runs ?? [])
-      if (isCiRun(run, repo)) listed.set(run.id, run);
-  const runs = [...listed.values()].sort((a, b) => b.id - a.id);
+  const runs = await listCiRuns(repo, [mainRunsQuery, new URLSearchParams({ branch: 'main', head_sha: commit, per_page: '20' }),
+    queueRunsQuery, new URLSearchParams({ event: QUEUE_EVENT, head_sha: commit, per_page: '20' })], options);
   const green = new Set(successfulMainRuns(runs));
   const seen = [], cache = new Map();
   for (const run of runs) {
@@ -227,13 +250,14 @@ export async function selectRunAtOrAfter(repo, commit, options = {}, accept = as
     const relation = await atOrAfter(repo, commit, run.head_sha, options, cache);
     if (relation === 'unknown') throw new Error(`${repo.repository} has no commit ${commit} (GitHub's compare API answered 404)`);
     if (relation !== 'identical' && relation !== 'ahead') { seen.push(`${describeRun(run)}: ${relation} ${commit.slice(0, 9)}, not at or after it`); continue; }
+    if (!await onMain(repo, run, options, cache)) { seen.push(`${describeRun(run)}: a merge queue run of a commit not on main`); continue; }
     const artifact = await runArtifact(repo, run, options);
     if (!artifact) { seen.push(`${describeRun(run)}: no unexpired ${repo.artifact(run.id)} artifact`); continue; }
     const verdict = await accept(run, artifact);
     if ('value' in verdict) return verdict.value;
     seen.push(`${describeRun(run)}: ${verdict.reason}`);
   }
-  throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main at or after ${commit}. ` +
+  throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main (or merge queue run of a commit on main) at or after ${commit}. ` +
     `Runs found: ${seen.length ? seen.slice(0, 12).join('; ') + (seen.length > 12 ? `; and ${seen.length - 12} more` : '') : 'none'}. ` +
     'If the commit is on main, dispatch ci.yml on main once and let it finish (eng/train/README.md, "Choreography").');
 }
@@ -248,9 +272,10 @@ export async function resolveRun(repo, spec, directory, options) {
   } else if (spec.commit) {
     ({ run, artifact } = await selectRunAtOrAfter(repo, spec.commit, options, async (found, file) => ({ value: { run: found, artifact: file } })));
   } else {
-    const { workflow_runs: runs } = await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${mainRunsQuery}`, options);
-    for (const candidate of successfulMainRuns(runs).filter(item => isCiRun(item, repo)))
-      if (await runArtifact(repo, candidate, options)) { run = candidate; break; }
+    // A push run that its merge queue run covered (eng/ci/covered.mjs) uploads no artifact; the queue run of its commit does.
+    const cache = new Map();
+    for (const candidate of successfulMainRuns(await listCiRuns(repo, [mainRunsQuery, queueRunsQuery], options)))
+      if (await onMain(repo, candidate, options, cache) && await runArtifact(repo, candidate, options)) { run = candidate; break; }
     if (!run) throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main with a ${repo.artifact('<run id>')} artifact`);
   }
   artifact ??= await runArtifact(repo, run, options);
