@@ -204,6 +204,6 @@ export const globalPaths = [".config/dotnet-tools.json", ".editorconfig", ".gita
   ".github/workflows/ci.yml", ".github/actions", "eng/Versions.props", "eng/build", "eng/workspace.json", "eng/run.mjs", "eng/test.mjs",
   "eng/toolchain.mjs", "eng/version.mjs", "eng/support.json", "eng/support.mjs", "eng/nupkg.mjs", "eng/node-compatibility.mjs",
   "eng/source-map-comments.mjs", "eng/verify-templates.mjs", "eng/dependencies", "eng/ci/build-artifact.mjs", "eng/ci/source-state.mjs",
-  "eng/ci/retry.sh", "eng/ci/test-timeout-scale.mjs", "eng/ci/train-feed.mjs", "tests/support"];
+  "eng/ci/retry.sh", "eng/ci/retried-tests.mjs", "eng/ci/test-timeout-scale.mjs", "eng/ci/train-feed.mjs", "tests/support"];
 
 export const matchesPath = (file, path) => path.endsWith("*") ? file.startsWith(path.slice(0, -1)) : file === path || file.startsWith(`${path}/`);

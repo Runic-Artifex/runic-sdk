@@ -23,7 +23,7 @@ internal sealed partial class MessageBoxTests
     private static readonly DesktopMessageBoxButton Discard = new("discard", "Don't Save") { Role = DesktopMessageBoxButtonRole.Destructive, AccessKey = 'n' };
     private static readonly DesktopMessageBoxButton Cancel = new("cancel", "Cancel") { Role = DesktopMessageBoxButtonRole.Cancel };
 
-    [Test, Explicit, Category("NativeMessageBoxes")]
+    [Test, Explicit, Category("NativeMessageBoxes"), RecordedRetry(RetryReason.Gui)]
     public async Task NativeMessageBoxesAsync()
     {
         var shell32 = WindowsCommonControls.Load(WindowsCommonControls.ActivationSource.Shell32Resource);

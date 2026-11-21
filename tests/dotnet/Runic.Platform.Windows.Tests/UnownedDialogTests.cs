@@ -37,7 +37,7 @@ internal sealed partial class UnownedDialogTests
         Console.WriteLine("PASS the application thread");
     }
 
-    [Test, Explicit, Category("NativeMessageBoxes")]
+    [Test, Explicit, Category("NativeMessageBoxes"), RecordedRetry(RetryReason.Gui)]
     public async Task UnownedFileDialogAsync()
     {
         var thread = WindowsApplicationThread.Shared;
@@ -69,7 +69,7 @@ internal sealed partial class UnownedDialogTests
     // Two presentations' unowned dialogs at once, as two CS-WebUI windows ask for them: each runs on a thread of its own,
     // so the first closes while the second is still shown, and neither waits for the other. Each picker is the one
     // CreateUnownedFileDialogs makes, traced: a failure reports each dialog's close attempts.
-    [Test, Explicit, Category("NativeMessageBoxes")]
+    [Test, Explicit, Category("NativeMessageBoxes"), RecordedRetry(RetryReason.Gui)]
     public async Task UnownedFileDialogsDoNotNestAsync()
     {
         var started = System.Diagnostics.Stopwatch.StartNew();

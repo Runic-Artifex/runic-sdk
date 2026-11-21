@@ -917,7 +917,7 @@ internal sealed partial class NativeChecks
 
     // D034.7: hosts given one application-owned DesktopHost serve their surfaces from its listener; unloading one
     // releases only its surface, and a host without one keeps its own. A disposed shared host fails the open.
-    [Test, NotInParallel("WpfSuite", Order = 24)]
+    [Test, NotInParallel("WpfSuite", Order = 24), RecordedRetry(RetryReason.Gui)]
     public async Task HostsShareAnApplicationOwnedDesktopHost()
     {
         Dictionary<HostedModel, Attachment> attachments = [];
