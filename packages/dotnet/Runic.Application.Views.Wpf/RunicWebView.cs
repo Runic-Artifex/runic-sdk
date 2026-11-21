@@ -74,8 +74,15 @@ public sealed partial class RunicWebView : HwndHost
 
     // WebView2 asks to give focus back when Tab or Shift+Tab leaves the document's last or first tab stop: WPF
     // continues its own traversal from this control. When WPF has nowhere to go, WebView2 cycles inside the document.
-    private bool TabOut(int reason) => MoveFocus(new TraversalRequest(
-        reason == 2 ? FocusNavigationDirection.Previous : FocusNavigationDirection.Next));
+    private bool TabOut(int reason)
+    {
+        var moved = MoveFocus(new TraversalRequest(reason == 2 ? FocusNavigationDirection.Previous : FocusNavigationDirection.Next));
+        LastTabOut = (reason, moved);
+        return moved;
+    }
+
+    // For the native checks' diagnostics (#1274): the last TabOut's reason and whether WPF moved the focus. On the dispatcher.
+    internal (int Reason, bool Moved)? LastTabOut { get; private set; }
 
     // The scheme set at run time (WpfPlatformServices.ForWindowPresentation or DesktopWindow.SetColorSchemeAsync), which
     // a page that opens or is still starting takes too. On the dispatcher.

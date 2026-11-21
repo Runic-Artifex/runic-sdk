@@ -172,9 +172,16 @@ internal sealed partial class NativeChecks
                 try { await UntilAsync(() => FocusManager.GetFocusedElement(window) == target); }
                 catch (TimeoutException)
                 {
-                    var page = await view.Surface.ExecuteJavaScriptAsync("return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                    var page = await view.Surface.ExecuteJavaScriptAsync(
+                        "return `${document.activeElement?.id || '-'} hasFocus=${document.hasFocus()}`;", TimeSpan.FromSeconds(15));
+                    // #1274: which side dropped the Tab. WebView2 raises MoveFocusRequested when Tab leaves the document;
+                    // RunicWebView's handler moves WPF's focus on.
+                    var request = controller.LastMoveFocusRequest is { } last ? $"last reason {last.Reason}, handled {last.Handled}" : "none";
+                    var tabOut = child.LastTabOut is { } handler ? $"reason {handler.Reason}, moved {handler.Moved}" : "never ran";
                     throw new InvalidOperationException(
-                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}.");
+                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}. "
+                        + $"Window active {window.IsActive}, keyboard focus {Keyboard.FocusedElement?.ToString() ?? "none"}; "
+                        + $"MoveFocusRequested events {controller.MoveFocusRequests} ({request}); TabOut {tabOut}.");
                 }
             }
 
