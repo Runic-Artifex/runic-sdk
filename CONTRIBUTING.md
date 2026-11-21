@@ -164,7 +164,14 @@ repository's `global.json` does not opt in to the MTP mode of `dotnet test`.
 - **Reports.** `bun run test` and the managed CI job pass `--report-trx --coverage` and
   write `<suite>.trx` and `<suite>.cobertura.xml` to `artifacts/test-results/<suite>`
   (`artifacts/test-results/<group>/<suite>` in CI), which CI uploads as
-  `managed-test-results-<group>-<run>` without the TRX attachment copies.
+  `managed-test-results-<group>-<run>` without the TRX attachment copies. On pull requests
+  and in the merge queue the managed job writes the TRX reports only
+  (`eng/ci/test-managed.mjs --no-coverage`); `main` and the scheduled run keep the coverage.
+- **Projects at once in CI.** The managed job runs the planned groups' test projects
+  concurrently, three at a time, the longest first (`bun eng/ci/test-managed.mjs --parallel 3
+  <group>...`); each project's output is printed when it ends. A project's `[NotInParallel]`
+  constraints still apply inside it, but a suite runs beside other suites' processes, so it
+  must not depend on the machine being otherwise idle.
   The native job writes `Runic.Desktop.Tests`'s TRX report and MTP diagnostics to
   `artifacts/native-tests`.
 - **Parallelism.** TUnit runs cases in parallel unless told otherwise. Allow it only when no
