@@ -73,16 +73,16 @@ internal sealed class CsWebUiRemoteDebuggingChecks : IDisposable
     [Test]
     public void AFixedPortIsHeldUntilTheBrowserStartsOrReplacedByAFreeOneWhenTaken()
     {
-        using var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var taken = ((IPEndPoint)probe.LocalEndpoint).Port;
+        // The lease holds the port, as another program would, and keeps any other bind from taking it once released.
+        using var probe = TestPorts.Lease();
+        var taken = probe.Port;
         var warnings = new List<string>();
         using (var replaced = Request(new Session(), taken.ToString(System.Globalization.CultureInfo.InvariantCulture), warnings.Add)
                    ?? throw new InvalidOperationException("A taken port opened no endpoint."))
             Require(replaced.Port == 0 && replaced.Requested == taken && replaced.Parameters.EndsWith(" --remote-debugging-port=0", StringComparison.Ordinal)
                 && warnings.Single().Contains($"port {taken}", StringComparison.Ordinal),
                 $"Taken port {taken}: got {replaced.Port}, warned {string.Join(" | ", warnings)}");
-        probe.Stop();
+        probe.Release();
         using var kept = Request(new Session(), taken.ToString(System.Globalization.CultureInfo.InvariantCulture))
             ?? throw new InvalidOperationException("A free fixed port opened no endpoint.");
         Require(kept.Port == taken, $"A free fixed port {taken} became {kept.Port}.");
@@ -275,12 +275,8 @@ internal sealed class CsWebUiRemoteDebuggingChecks : IDisposable
         }
     }
 
-    private static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
+    // A port that no bind(0) or connection takes before the product binds it, which callers do next (TestPorts).
+    private static int FreePort() => TestPorts.Lease().Release();
 
     private static bool CanListen(int port)
     {

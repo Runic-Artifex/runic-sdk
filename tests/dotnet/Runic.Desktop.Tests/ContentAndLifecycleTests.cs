@@ -414,10 +414,8 @@ public sealed class ContentAndLifecycleTests
 
     private static async Task UsesExplicitPortAndRetainsSettingsAcrossRestartOnceAsync()
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
+        // The window binds it on every interface next; no bind(0) takes a leased port meanwhile.
+        var port = TestPorts.Lease().Release();
 
         await using var window = new WebUiWindow();
         window.SetPort((nuint)port);

@@ -117,13 +117,8 @@ internal static class WebView2EnvironmentSmoke
         return start;
     }
 
-    private static int FreePort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
-        finally { listener.Stop(); }
-    }
+    // A port that no bind(0) or connection takes before WebView2's browser binds it (TestPorts).
+    private static int FreePort() => TestPorts.Lease().Release();
 
     private static void Require(bool condition, string what)
     {
