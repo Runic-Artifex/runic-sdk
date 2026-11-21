@@ -397,10 +397,8 @@ internal sealed class DevelopmentServerForwardingChecks
 
         internal static FakeDevelopmentServer Start()
         {
-            using var probe = new TcpListener(IPAddress.Loopback, 0);
-            probe.Start();
-            int port = ((IPEndPoint)probe.LocalEndpoint).Port;
-            probe.Stop();
+            // HttpListener takes no port 0: a leased port that no bind(0) takes before it starts.
+            var port = TestPorts.Lease().Release();
             var origin = new Uri($"http://127.0.0.1:{port}/");
             var listener = new HttpListener();
             listener.Prefixes.Add(origin.AbsoluteUri);

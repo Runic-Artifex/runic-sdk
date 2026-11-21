@@ -484,13 +484,9 @@ internal static partial class WebContentSmoke
 
         internal ConcurrentBag<string> Requests { get; } = [];
 
-        // A free port nothing listens on.
-        internal static int ClosedPort()
-        {
-            using var socket = new TcpListener(IPAddress.Loopback, 0);
-            socket.Start();
-            return ((IPEndPoint)socket.LocalEndpoint).Port;
-        }
+        // A free port nothing listens on, for the origin's own listener or as an unreachable address: a leased port, which
+        // no bind(0) or connection takes meanwhile (TestPorts).
+        internal static int ClosedPort() => TestPorts.Lease().Release();
 
         private async Task ServeAsync()
         {
