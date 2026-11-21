@@ -192,7 +192,9 @@ export const platformRules = [
 // shipping-project generator and the Linux-only CI helpers. They still plan every Linux job.
 export const neutralPaths = ["nix", "nixos", "flake.nix", "flake.lock", ".envrc", "eng/release", "eng/verify-packages.mjs",
   "RunicSdk.slnx", "RunicSdk.Core.slnx", "eng/generate-shipping-projects.mjs",
-  "eng/ci/apt-install.sh", "eng/ci/permit-webkit-sandbox.sh", "eng/ci/test-managed.mjs"];
+  "eng/ci/apt-install.sh", "eng/ci/permit-webkit-sandbox.sh", "eng/ci/test-managed.mjs",
+  // The coordinator's release-candidate feed for the editors checklist (eng/release/README.md); CI never runs it.
+  "eng/ci/candidate-feed.mjs", "eng/ci/candidate-feed"];
 
 // Unowned on purpose: shared inputs of every job (the SDK and package versions, MSBuild defaults, lock files, the
 // workflow and its actions, the shared CI and build scripts, the test timeouts). A change to one plans every
