@@ -17,6 +17,8 @@ import { npmReleaseAgeArguments } from '../dependencies/release-age.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
+// The native job's NativeAOT publish step (C1, eng/ci/native-aot-publish.mjs).
+const nativeAotPublish = () => workflow.jobs.native.steps.find(step => step.run?.includes('node eng/ci/native-aot-publish.mjs'));
 const fixture = action => {
   const directory = mkdtempSync(resolve(tmpdir(), 'runic-ci-test-'));
   const git = (...args) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' });
@@ -119,8 +121,7 @@ test('all managed executable suites are assigned exactly once to workflow groups
       assert.ok(!suites.some(item => item.path === path), path);
       assert.ok(workflow.jobs[job].steps.some(step => step.run?.includes(`dotnet run --project ${path.slice(0, path.lastIndexOf('/'))} `)), path);
     }
-  assert.ok(workflow.jobs.native.steps.some(step =>
-    step.run?.includes('dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/') && step.run.includes('PublishAot=true')));
+  assert.ok(nativeAotPublish().run.includes('platform-runtime-aot=tests/dotnet/Runic.Platform.Runtime.Tests/'));
 });
 
 test('every executable application fixture runs in CI', () => {
@@ -132,10 +133,12 @@ test('every executable application fixture runs in CI', () => {
     .filter(path => path.endsWith('.csproj') && !/\/(bin|obj|experiments)\//.test(path)
       && !/<OutputType>Library<\/OutputType>/.test(readFileSync(resolve(root, path), 'utf8')));
   // Only command lines count, not paths filters or comments. A fixture that
-  // restores packed packages runs through its own package-smoke.mjs.
+  // restores packed packages runs through its own package-smoke.mjs; one the native job publishes with NativeAOT is a
+  // <name>=<project> argument of eng/ci/native-aot-publish.mjs.
   const commands = readdirSync(resolve(root, '.github/workflows'))
     .flatMap(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8').split('\n'))
-    .filter(line => /\bdotnet (run|publish|test)\b/.test(line) || /\b(bun|node) \S*package-smoke\.mjs\b/.test(line));
+    .filter(line => /\bdotnet (run|publish|test)\b/.test(line) || /\b(bun|node) \S*package-smoke\.mjs\b/.test(line)
+      || /^\s*(apps\+?=\()?[a-z0-9-]+-aot=\S+/.test(line));
   // A package-smoke.mjs in the fixture's root folder also covers its nested projects.
   const runByWorkflow = path => {
     const directory = path.slice(0, path.lastIndexOf('/'));
@@ -250,8 +253,7 @@ test('Views replace the Bridge application gates', () => {
   // W240-006: the packed ReactiveUI navigation adapters pull in no Runic.Application.Views.
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run === 'bun tests/fixtures/navigation/reactiveui-consumer/package-smoke.mjs'));
-  assert.ok(workflow.jobs.native.steps.some(step =>
-    step.run?.includes('dotnet publish examples/first-window/FirstWindow.csproj') && step.run.includes('PublishAot=true')));
+  assert.ok(nativeAotPublish().run.includes('views-aot=examples/first-window/FirstWindow.csproj'));
 });
 
 test('local checks are focused and Linux workflow selection leaves native OS coverage to GitHub', () => {

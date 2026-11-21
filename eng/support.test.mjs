@@ -51,10 +51,16 @@ test("ci-verified support entries match the Native CI jobs", () => {
       assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && runsOn(step, entry)),
         `${entry.rid}: the Native job must run the ${probe}`);
     // CS-WebUI ships no native library for the RID, so no step may publish for it.
+    // The NativeAOT publish step (eng/ci/native-aot-publish.mjs) is checked below: it branches on matrix.cswebui inside.
     if (!entry.cswebui)
-      assert.ok(!workflow.jobs.native.steps.some(step => typeof step.run === "string" && /CsWebUiWindowProbes/.test(step.run) && runsOn(step, entry)),
-        `${entry.rid}: the Native job must not run the CS-WebUI window probes`);
+      assert.ok(!workflow.jobs.native.steps.some(step => typeof step.run === "string" && /CsWebUiWindowProbes/.test(step.run) && runsOn(step, entry)
+        && !step.run.includes("eng/ci/native-aot-publish.mjs")), `${entry.rid}: the Native job must not run the CS-WebUI window probes`);
   }
+  const publish = workflow.jobs.native.steps.find(step => step.run?.includes("eng/ci/native-aot-publish.mjs"));
+  assert.equal(publish.env.CSWEBUI, "${{ matrix.cswebui }}");
+  const guarded = /if \[\[ "\$CSWEBUI" == true \]\]; then\n([^]*?)\n\s*fi\n/.exec(publish.run);
+  assert.ok(guarded && /CsWebUiWindowProbes/.test(guarded[1]), "the NativeAOT publish step adds the CS-WebUI applications only with matrix.cswebui");
+  assert.equal(publish.run.replace(guarded[0], "").includes("CsWebUiWindowProbes"), false);
   const script = readFileSync(resolve(root, "eng/ci/native-musl.sh"), "utf8");
   for (const entry of musl) {
     assert.match(entry.rid, /^linux-musl-/);

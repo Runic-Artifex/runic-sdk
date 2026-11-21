@@ -126,6 +126,17 @@ onto and drags out of WebView2 stay unverified there (#391). The WPF job runs it
 `win-x64` and `win-arm64`, and the architecture-independent generator and packed
 consumer checks on `win-x64`.
 
+The native job's NativeAOT test applications publish in one step, at once
+(`eng/ci/native-aot-publish.mjs`, C1 of D077.25): one `dotnet msbuild` with `-m:<n>` nodes, so a
+library that several applications reference builds once instead of concurrently into the
+same `obj` directory. Each output moves to `artifacts/<name>`, where the later steps run it.
+`aotParallel` in `nativeLegs` sets `<n>` per runner from ILC's memory (about 2.2 GB for the
+platform runtime conformance, 0.6–1.7 GB for the others): 3 on the 4-core, 16 GB Linux and
+Windows runners, 2 on the 3-core, 7 GB macOS arm64 runner. The step's log ends with the peak
+memory in use. Publishes with properties of their own (the Windows administration
+inspection, the Desktop example on the native server, the JIT publishes) stay in their steps,
+since those properties would reach the shared libraries and build them a second time.
+
 `native-musl` checks out and caches on the runner, then runs
 `eng/ci/native-musl.sh` in a digest-pinned Alpine container, because GitHub cannot
 run JavaScript actions in Alpine containers on arm64 runners. As root, the script

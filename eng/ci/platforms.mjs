@@ -13,12 +13,15 @@ export const allPlatformsLabel = "ci:all-platforms";
 // without one run whenever the job runs. The other keys are the job's matrix values.
 export const nativeLegs = [
   // cswebui: whether CS-WebUI ships a native library for the RID, so the job runs its
-  // window probes (eng/support.json).
-  { os: "ubuntu-24.04", rid: "linux-x64", provider: "Linux", extension: "", cswebui: true },
-  { os: "ubuntu-24.04-arm", rid: "linux-arm64", provider: "Linux", extension: "", cswebui: true },
-  { os: "windows-latest", rid: "win-x64", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
-  { os: "windows-11-arm", rid: "win-arm64", provider: "Windows", extension: ".exe", cswebui: false, platform: "win-arm64" },
-  { os: "macos-26", rid: "osx-arm64", provider: "MacOS", extension: "", cswebui: true, platform: "osx-arm64" },
+  // window probes (eng/support.json). aotParallel: how many NativeAOT publishes run at once
+  // (eng/ci/native-aot-publish.mjs). ILC peaks at about 2.2 GB for the largest test application
+  // (the platform runtime conformance) and 0.6-1.7 GB for the others, with MSBuild beside it:
+  // three on the 4-core, 16 GB Linux and Windows runners, two on the 3-core, 7 GB macOS arm64 one.
+  { os: "ubuntu-24.04", rid: "linux-x64", provider: "Linux", extension: "", cswebui: true, aotParallel: 3 },
+  { os: "ubuntu-24.04-arm", rid: "linux-arm64", provider: "Linux", extension: "", cswebui: true, aotParallel: 3 },
+  { os: "windows-latest", rid: "win-x64", provider: "Windows", extension: ".exe", cswebui: true, aotParallel: 3, platform: "win-x64" },
+  { os: "windows-11-arm", rid: "win-arm64", provider: "Windows", extension: ".exe", cswebui: false, aotParallel: 3, platform: "win-arm64" },
+  { os: "macos-26", rid: "osx-arm64", provider: "MacOS", extension: "", cswebui: true, aotParallel: 2, platform: "osx-arm64" },
 ];
 // RUNIC_TEST_TIMEOUT_SCALE per runner, as `${RUNNER_OS}-${RUNNER_ARCH}`: how much longer than on a developer machine the
 // test and smoke condition waits may take (eng/ci/README.md, "Test timeouts"). .github/actions/test-timeout-scale sets

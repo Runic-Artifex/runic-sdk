@@ -1047,6 +1047,35 @@ jobs:
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh
+      # C1 (D077.25): the leg's NativeAOT test applications publish here, at once (eng/ci/native-aot-publish.mjs), to
+      # artifacts/<name>; the steps below run them. aotParallel (nativeLegs in eng/ci/platforms.mjs) is how many ILC
+      # compilations run together on the runner; the log ends with the memory they used. Publishes with properties of
+      # their own (the Windows administration inspection, the Desktop example on the native server, the JIT publishes)
+      # stay in their steps.
+      - name: Publish the NativeAOT test applications
+        timeout-minutes: 25
+        shell: bash
+        env:
+          RID: ${{ matrix.rid }}
+          PROVIDER: ${{ matrix.provider }}
+          CSWEBUI: ${{ matrix.cswebui }}
+          PARALLEL: ${{ matrix.aotParallel }}
+        run: |
+          # The longest first, so that they start first.
+          apps=(platform-runtime-aot=tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj)
+          if [[ "$CSWEBUI" == true ]]; then
+            apps+=(views-aot=examples/first-window/FirstWindow.csproj
+              views-probes-aot=tests/fixtures/application/cswebui-window-probes/CsWebUiWindowProbes.csproj)
+          fi
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            apps+=(gtk4-aot=tests/native/Runic.Desktop.Gtk4.Smoke portal-aot=tests/dotnet/Runic.Platform.Linux.Portal.Tests
+              dbus-aot=tests/dotnet/Runic.Platform.Linux.DBus.Tests polkit-aot=tests/dotnet/Runic.Platform.Linux.Polkit.Tests)
+          elif [[ "$RUNNER_OS" == Windows ]]; then
+            apps+=(webview-aot=tests/native/Runic.Desktop.WebViewSmoke elevation-helper=tests/native/Runic.Elevation.Smoke
+              elevation-aot=tests/dotnet/Runic.Platform.Windows.Elevation.Tests)
+          fi
+          apps+=(clipboard-aot="tests/dotnet/Runic.Platform.$PROVIDER.Tests")
+          node eng/ci/native-aot-publish.mjs --rid "$RID" --parallel "${PARALLEL:-1}" "${apps[@]}"
       - name: Build native window smoke
         run: |
           dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
@@ -1284,7 +1313,6 @@ jobs:
       - name: Verify GTK4 and portal NativeAOT consumers
         if: runner.os == 'Linux'
         run: |
-          dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
           LC_ALL=C GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --monitors gtk4
@@ -1293,11 +1321,9 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --global-menu gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
-          dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           # The run without a filter keeps the portable cases covered under NativeAOT.
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
-          dotnet publish tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/dbus-aot
           dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests
           dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
       # S1 (#1159): the NativeAOT Desktop example on the native server. Its startup path is the Views runtime, the
@@ -1373,9 +1399,7 @@ jobs:
       - name: Verify privileged actions under NativeAOT
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
-        run: |
-          dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
-          artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
+        run: artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         # The Windows file drop drives a real OLE drag with SendInput: a stuck drag must not hold the runner.
@@ -1805,7 +1829,6 @@ jobs:
           $uac = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
           $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
           Write-Host "Administrators enabled: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)); EnableLUA: $($uac.EnableLUA); ConsentPromptBehaviorAdmin: $($uac.ConsentPromptBehaviorAdmin)"
-          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r ${{ matrix.rid }} -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/elevation-helper
           $helper = Join-Path $env:ProgramFiles 'Runic Elevation Smoke'
           New-Item -ItemType Directory -Force $helper | Out-Null
           Copy-Item artifacts/elevation-helper/Runic.Elevation.Smoke.exe $helper
@@ -1829,7 +1852,6 @@ jobs:
           icacls $helper
           icacls (Join-Path $helper 'Runic.Elevation.Smoke.exe')
           dotnet build tests/dotnet/Runic.Platform.Windows.Elevation.Tests -c Release
-          dotnet publish tests/dotnet/Runic.Platform.Windows.Elevation.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/elevation-aot
           foreach ($tests in @('tests/dotnet/Runic.Platform.Windows.Elevation.Tests/bin/Release/net10.0/Runic.Platform.Windows.Elevation.Tests.exe', 'artifacts/elevation-aot/Runic.Platform.Windows.Elevation.Tests.exe')) {
             Write-Host "== $tests"
             & $tests --output detailed
@@ -1857,9 +1879,6 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 3
         run: dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=Native]"
-      - name: Publish native clipboard conformance with NativeAOT
-        timeout-minutes: 10
-        run: dotnet publish tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/clipboard-aot
       - name: Verify Windows system-sleep inhibition with JIT and NativeAOT
         if: runner.os == 'Windows'
         timeout-minutes: 3
@@ -2021,12 +2040,10 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed || status=1
           ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivilegedRoot]" --output detailed || status=1
           exit $status
-      - name: Publish and run platform runtime conformance with NativeAOT
+      - name: Run platform runtime conformance with NativeAOT
         timeout-minutes: 10
         shell: bash
-        run: |
-          dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/platform-runtime-aot
-          ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}
+        run: ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}
       # A real NSStatusItem without a window, its menu and actions, the unbundled login item, window presentation and
       # Carbon global shortcuts. The detailed output keeps the hot key findings the case reports without requiring them.
       - name: Verify macOS status item, login item and window presentation with JIT and NativeAOT
@@ -2157,11 +2174,10 @@ jobs:
           name: platform-sandbox-${{ matrix.rid }}-${{ github.run_id }}
           path: artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz
           if-no-files-found: error
-      - name: Publish and exercise WebView2 with NativeAOT
+      - name: Exercise WebView2 with NativeAOT
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          dotnet publish tests/native/Runic.Desktop.WebViewSmoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/webview-aot
           test ! -e artifacts/webview-aot/WebView2Loader.dll
           mkdir artifacts/webview-exe-only
           cp artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe artifacts/webview-exe-only/
@@ -2187,12 +2203,10 @@ jobs:
       # WebKitGTK window (sdk#1148, sdk#1149, sdk#1190; placement under Openbox, which maximizes) and report themselves
       # skipped on macOS; --probe-serve-only-drain runs everywhere. --probe-debug-endpoint shows a window in the
       # runner's Chrome or Edge and checks that the NativeAOT publish opens no DevTools Protocol endpoint (sdk#1221).
-      - name: Publish Window and View application with NativeAOT
+      - name: Exercise the Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
         run: |
-          dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
-          dotnet publish tests/fixtures/application/cswebui-window-probes/CsWebUiWindowProbes.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-probes-aot
           if [[ "$RUNNER_OS" == Linux ]]; then
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
