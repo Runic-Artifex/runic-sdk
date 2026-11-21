@@ -358,7 +358,7 @@ test('template lanes cover every framework once and run the creator check in one
   // The second framework also runs after the first failed, without the creator and desktop smoke.
   assert.equal(second?.name, 'Verify generated ${{ matrix.second }} template applications');
   assert.deepEqual(second?.env, { RUNIC_TEMPLATE_FRAMEWORKS: '${{ matrix.second }}', RUNIC_TEMPLATE_CREATOR: '0', RUNIC_TEMPLATE_DESKTOP_SMOKE: '0' });
-  assert.equal(steps.find(item => item.uses?.startsWith('actions/download-artifact@'))?.id, 'candidates');
+  assert.equal(steps.find(item => item.uses === './.github/actions/download-artifact')?.id, 'candidates');
   assert.equal(second.if, "${{ !cancelled() && steps.candidates.outcome == 'success' && matrix.second }}");
   const install = steps.findIndex(item => item.uses === './.github/actions/apt-install' && item.with.packages.split(' ').includes('libwebkitgtk-6.0-4'));
   assert.ok(install >= 0 && install < steps.indexOf(step));
@@ -480,7 +480,8 @@ test('an upload that only keeps diagnostics cannot fail a job, one a later job d
     return [...Object.values(document.jobs ?? {}).flatMap(job => job.steps ?? []), ...(document.runs?.steps ?? [])]
       .map(step => ({ path, step }));
   });
-  const downloaded = steps.filter(({ step }) => step.uses?.startsWith('actions/download-artifact@'))
+  // CI's jobs download through .github/actions/download-artifact, which retries once.
+  const downloaded = steps.filter(({ step }) => step.uses?.startsWith('actions/download-artifact@') || step.uses === './.github/actions/download-artifact')
     // The release downloads CI's packages by artifact id; CI's own jobs download them by name.
     .map(({ step }) => step.with?.name ?? step.with?.pattern).filter(Boolean);
   const consumed = name => downloaded.some(wanted =>
@@ -496,6 +497,32 @@ test('an upload that only keeps diagnostics cannot fail a job, one a later job d
   for (const name of ['sdk-build-${{ github.run_id }}', 'runic-sdk-${{ github.run_id }}', 'runic-server-${{ matrix.rid }}',
     'runic-desktop-native-server-package-${{ github.run_id }}', 'release-candidate-${{ github.run_id }}'])
     assert.ok(uploads.some(({ step }) => step.with.name === name && step['continue-on-error'] === undefined), name);
+});
+
+test('CI tries an artifact download and a .NET SDK install twice', () => {
+  // The artifact service and dotnet-install fail a job now and then (B5, eng/ci/README.md "Flakes"). The release
+  // workflow downloads the published run's packages once, by artifact id, and is left as it is.
+  const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0')
+    .filter(path => /\.ya?ml$/.test(path) && !['.github/workflows/publish-preview.yml', '.github/actions/download-artifact/action.yml'].includes(path));
+  for (const path of files) {
+    const document = yaml(path);
+    const steps = [...Object.values(document.jobs ?? {}).flatMap(job => job.steps ?? []), ...(document.runs?.steps ?? [])];
+    assert.deepEqual(steps.filter(step => step.uses?.startsWith('actions/download-artifact@')).map(step => step.with), [], path);
+  }
+  const download = yaml('.github/actions/download-artifact/action.yml').runs.steps;
+  assert.deepEqual(download.map(step => [step.uses?.replace(/@.*/, ''), step.if, step['continue-on-error']]), [
+    ['actions/download-artifact', undefined, true],
+    [undefined, "steps.first.outcome == 'failure'", undefined],
+    ['actions/download-artifact', "steps.first.outcome == 'failure'", undefined],
+  ]);
+  const setup = yaml('.github/actions/setup-sdk/action.yml').runs.steps;
+  const installs = setup.filter(step => step.uses?.startsWith('actions/setup-dotnet@'));
+  assert.equal(installs.length, 4);
+  for (const [first, second] of [installs.slice(0, 2), installs.slice(2)]) {
+    assert.equal(first['continue-on-error'], true, first.id);
+    assert.equal(second.if, `steps.${first.id}.outcome == 'failure'`);
+    assert.deepEqual([second.env, second.with], [first.env, first.with]);
+  }
 });
 
 test('package checks without a lockfile resolve third-party npm packages published at least a day ago', () => {
@@ -532,7 +559,7 @@ test('the WPF lane runs the STA tests and the packed consumer on Windows', () =>
   const tests = runs.indexOf('dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release');
   const consumer = runs.indexOf('bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs');
   assert.ok(tests >= 0 && consumer > tests, runs.join('\n'));
-  assert.ok(job.steps.some(step => step.uses?.startsWith('actions/download-artifact@') && step.with?.path === 'artifacts/packages'));
+  assert.ok(job.steps.some(step => step.uses === './.github/actions/download-artifact' && step.with?.path === 'artifacts/packages'));
 });
 
 // #269 and #270 were reported on Windows: the generator's framework tests and the

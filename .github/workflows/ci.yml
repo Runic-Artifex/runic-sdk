@@ -26,11 +26,15 @@ env:
   NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
 jobs:
   # Pull requests and merge queue entries run the jobs whose inputs changed and the Windows and
-  # macOS legs those changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main run every Linux job
-  # and the legs their before..after diff needs; scheduled and manual runs, and pull requests
-  # labelled ci:all-platforms, run everything. A merge queue entry that a passed pull request run
-  # already tested (same base, same tree) runs nothing, not even build and engineering. Planned
-  # skips still report, and `verify` accepts a skipped job only when this plan skipped it.
+  # macOS legs those changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). A pull request whose diff is version-only
+  # (versions, PublicAPI shipped moves, release notes, package baselines) runs no Windows or macOS leg; a merge queue
+  # entry that is a release or train step (it changes eng/Versions.props, a TrainCommit or assembled release notes)
+  # runs every leg and never reuses its pull request run, because its run stands for the green main run (D077.22). A
+  # merge queue entry that a passed pull request run already tested (same base, same tree) runs nothing, not even
+  # build and engineering. A push to main whose commit a passed merge queue run tested runs only what that run's plan
+  # skipped, usually nothing (A1, eng/ci/covered.mjs); other pushes run every Linux job and the legs their
+  # before..after diff needs. Scheduled and manual runs, and pull requests labelled ci:all-platforms, run everything.
+  # Planned skips still report, and `verify` accepts a skipped job only when this plan skipped it.
   plan:
     name: Plan affected jobs
     runs-on: ubuntu-24.04
@@ -39,7 +43,8 @@ jobs:
       contents: read
       # The labels are read when the plan runs, so rerunning all jobs sees a label added since.
       pull-requests: read
-      # A merge queue entry looks up the passed pull request run it can reuse.
+      # A merge queue entry looks up the passed pull request run it can reuse, and a push the passed merge queue run of
+      # its commit.
       actions: read
     outputs:
       managed: ${{ steps.plan.outputs.managed }}
@@ -73,15 +78,20 @@ jobs:
       # commit main was at before it. A merge queue entry compares its merge group's base
       # (main, or the entry ahead of it in the queue) and, having no labels, plans like an
       # unlabelled pull request. The base checkout's planner, component map and platform
-      # rules decide what is affected, so a change cannot narrow its own plan; this
-      # checkout then enumerates the suites and legs. Without a usable diff, or when the
-      # labels cannot be read, everything runs.
+      # rules decide what is affected and what kind of diff it is (--diff-kind: version-only,
+      # or a release or train step), so a change cannot narrow its own plan; this checkout then
+      # enumerates the suites and legs. Without a usable diff, or when the labels cannot be read,
+      # everything runs. An older base planner gives no diff kind, which plans as neither kind.
       # Reuse: a squash queue entry on base B has the same tree as the pull request's merge
       # commit on B. When a pull request run passed `verify` for that base and tree (its marker
       # artifact ci-passed-<base>-<tree>), the entry tests identical code and runs nothing. The
       # artifact only names candidates: the run it belongs to must be a ci.yml pull_request run
       # from this repository whose `verify` job succeeded. A failed lookup plans as usual, so it
-      # can only run more, never skip more. The push run on main after the merge is unchanged.
+      # can only run more, never skip more. A release or train entry is never reused.
+      # Covered pushes (A1): the queue moves main to exactly the commit it tested. A push whose commit
+      # passed a merge queue run plans what its diff needs (not every Linux job: the nightly run does
+      # that) and keeps what that run's ci-plan record did not run (eng/ci/covered.mjs); the
+      # step summary links the run. Without such a run (a direct push, a failed lookup) it plans as before.
       - name: Plan jobs from the changed files
         id: plan
         # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
@@ -94,10 +104,14 @@ jobs:
           QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           LABEL: ci:all-platforms
+          # This run's plan, which the next step uploads as the ci-plan artifact for a later push run of the commit.
+          CI_PLAN_RECORD: ${{ runner.temp }}/ci-plan/plan.json
         run: |
           base=
           options=()
           reused=
+          affected=
+          release=
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
             if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
               base=HEAD^1
@@ -118,39 +132,68 @@ jobs:
               && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$BEFORE" ]] || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"; }; then
               base=$BEFORE
             fi
+            if covered=$(bun eng/ci/covered.mjs "$(git rev-parse HEAD)") && [[ -n "$covered" ]]; then
+              options=(--covered "$covered")
+            fi
           elif [[ "$GITHUB_EVENT_NAME" == merge_group ]]; then
             if [[ "$QUEUE_BASE" =~ ^[0-9a-f]{40}$ && "$(git rev-parse HEAD)" == "$QUEUE_HEAD" ]] \
               && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$QUEUE_BASE" ]] || git fetch --quiet --no-tags --depth=1 origin "$QUEUE_BASE"; }; then
               base=$QUEUE_BASE
-              if tree=$(git rev-parse --verify 'HEAD^{tree}') \
-                && runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$base-$tree&per_page=100" \
-                  --jq '.artifacts[] | select(.expired | not) | .workflow_run.id'); then
-                for run in $runs; do
-                  if [[ "$run" =~ ^[0-9]+$ ]] \
-                    && info=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
-                      --jq '.event, (.path | sub("@.*$"; "")), (.head_repository.full_name // ""), .html_url') \
-                    && { read -r event; read -r path; read -r repository; read -r url; } <<< "$info" \
-                    && [[ "$event" == pull_request && "$path" == .github/workflows/ci.yml && "$repository" == "$GITHUB_REPOSITORY" ]] \
-                    && verified=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
-                      --jq '.jobs[] | select(.name == "verify") | .conclusion') \
-                    && [[ "$verified" == success ]]; then
-                    reused=$url
-                    break
-                  fi
-                done
+            fi
+          fi
+          if [[ -n "$base" ]] && git worktree add --detach "$RUNNER_TEMP/base" "$base" \
+            && affected=$(git diff --name-only --no-renames -z "$base" HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
+            if [[ "$GITHUB_EVENT_NAME" =~ ^(pull_request|merge_group)$ ]]; then
+              kind=$(git diff --no-renames --no-ext-diff --no-color -U0 "$base" HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --diff-kind | tail -n 1) || kind=
+              release=$(jq -r 'select(type == "object" and (.release | type) == "string") | .release' <<< "$kind" 2> /dev/null) || release=
+              if [[ "$GITHUB_EVENT_NAME" == pull_request && "$(jq -r 'select(type == "object") | .versionOnly' <<< "$kind" 2> /dev/null)" == true ]]; then
+                options+=(--version-only)
+              elif [[ "$GITHUB_EVENT_NAME" == merge_group && -n "$release" ]]; then
+                options=(--all-platforms "a release or train step: $release")
               fi
             fi
+          else
+            affected=
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == merge_group && -n "$affected" && -z "$release" ]] \
+            && tree=$(git rev-parse --verify 'HEAD^{tree}') \
+            && runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$base-$tree&per_page=100" \
+              --jq '.artifacts[] | select(.expired | not) | .workflow_run.id'); then
+            for run in $runs; do
+              if [[ "$run" =~ ^[0-9]+$ ]] \
+                && info=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
+                  --jq '.event, (.path | sub("@.*$"; "")), (.head_repository.full_name // ""), .html_url') \
+                && { read -r event; read -r path; read -r repository; read -r url; } <<< "$info" \
+                && [[ "$event" == pull_request && "$path" == .github/workflows/ci.yml && "$repository" == "$GITHUB_REPOSITORY" ]] \
+                && verified=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
+                  --jq '.jobs[] | select(.name == "verify") | .conclusion') \
+                && [[ "$verified" == success ]]; then
+                reused=$url
+                break
+              fi
+            done
           fi
           if [[ -n "$reused" ]]; then
             bun eng/ci/plan.mjs --reused "$reused" >> "$GITHUB_OUTPUT"
-          elif [[ -n "$base" ]] && git worktree add --detach "$RUNNER_TEMP/base" "$base" \
-            && affected=$(git diff --name-only --no-renames -z "$base" HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
+          elif [[ -n "$affected" ]]; then
             bun eng/ci/plan.mjs --plan "$affected" "${options[@]}" >> "$GITHUB_OUTPUT"
           else
             reason="$GITHUB_EVENT_NAME run"
             if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request|merge_group)$ ]]; then reason+=" without a usable diff"; fi
-            bun eng/ci/plan.mjs --all "$reason" >> "$GITHUB_OUTPUT"
+            cover=()
+            if [[ "${options[0]:-}" == --covered ]]; then cover=("${options[@]}"); fi
+            bun eng/ci/plan.mjs --all "$reason" "${cover[@]}" >> "$GITHUB_OUTPUT"
           fi
+      # The plan record (eng/ci/plan.mjs, planRecord) for a push run of the same commit. Without it that push plans as
+      # one without a merge queue run, so a failed upload does not fail the plan.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        continue-on-error: true
+        with:
+          name: ci-plan
+          path: ${{ runner.temp }}/ci-plan/plan.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       # The train feed (eng/ci/train-feed.mjs, eng/train/README.md "Train feed"): while the Runic Command Line or Runic
       # Translations release that Directory.Packages.props names is not on nuget.org, every job builds against the
       # packages of that repository's newest successful main CI run with exactly that version. Such a run restores
@@ -169,7 +212,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   # build and engineering run in every plan except a merge queue entry's reuse of a passed pull
-  # request run (eng/ci/plan.mjs, reusedSkip).
+  # request run (eng/ci/plan.mjs, reusedSkip) and a push whose merge queue run covered it (coveredSkip, which keeps
+  # native-libraries: only main saves its cache entries).
   # The native Desktop server's libraries for every runtime identifier, which the packages carry
   # (Runic.Desktop.NativeServer, Runic.Desktop.NativeServer.Static.<rid>). Cached by the crate's tree: a Linux job looks
   # the seven entries up, and the Linux, Windows and macOS library jobs run only for missing ones.
@@ -660,7 +704,7 @@ jobs:
         with:
           train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -723,7 +767,7 @@ jobs:
       - name: Close the Microsoft account prompt on the Windows desktop
         shell: pwsh
         run: eng/ci/windows-dismiss-oobe.ps1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -842,7 +886,7 @@ jobs:
           npm install --global "pnpm@$(bun eng/toolchain.mjs pnpm)" --allow-scripts=pnpm
           node --version | grep "^v${{ matrix.node }}$"
           npm --version | grep "^11\."
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         id: candidates
         with:
           name: runic-sdk-${{ github.run_id }}
@@ -2836,7 +2880,7 @@ jobs:
         with:
           train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages

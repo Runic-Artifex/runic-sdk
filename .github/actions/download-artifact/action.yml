@@ -1,0 +1,39 @@
+name: Download an artifact of this run
+description: >-
+  actions/download-artifact with one more attempt after a pause. The artifact service fails a download now and then
+  ("Artifact download failed after 5 retries": six failed jobs in October and November 2026); download-artifact's own
+  retries come within seconds of each other, so the second attempt waits 30 seconds first.
+inputs:
+  name:
+    description: The artifact's name (or use pattern)
+    default: ""
+  pattern:
+    description: A glob of artifact names (or use name)
+    default: ""
+  path:
+    description: The directory to extract into
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      id: first
+      continue-on-error: true
+      with:
+        name: ${{ inputs.name }}
+        pattern: ${{ inputs.pattern }}
+        path: ${{ inputs.path }}
+    - name: Wait before downloading again
+      if: steps.first.outcome == 'failure'
+      shell: bash
+      env:
+        ARTIFACT: ${{ inputs.name || inputs.pattern }}
+      run: |
+        echo "::warning title=Infrastructure retry::Downloading the artifact $ARTIFACT failed; trying once more in 30 s."
+        sleep 30
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      if: steps.first.outcome == 'failure'
+      with:
+        name: ${{ inputs.name }}
+        pattern: ${{ inputs.pattern }}
+        path: ${{ inputs.path }}

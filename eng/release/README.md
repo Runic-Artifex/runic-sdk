@@ -20,10 +20,16 @@ releases and their evidence remain historical records.
    `main` already carries the version, set after the previous release (step 6);
    package versions must agree with `eng/workspace.json`, and published versions
    cannot be overwritten.
-2. Wait for a `ci.yml` run of that commit on `main` to succeed with every Windows and
-   macOS job. A push runs only the Windows and macOS legs its changes need, so if it
-   skipped one, run **SDK CI** on `main` manually (`gh workflow run ci.yml --ref main`)
-   or wait for the nightly run, while that commit is still the head of `main`.
+2. Queue the release pull request and let its merge queue run pass: that run is the
+   commit's green `main` run (D077.22). The queue moves `main` to exactly the commit it
+   tested, and the release pull request assembles the release notes, so its entry runs
+   every Windows and macOS job and is never reused from the pull request run
+   ([eng/ci/README.md](../ci/README.md), "Merge queue"). Queue nothing else until the
+   publish is dispatched, so that the release commit is still the head of `main`; there
+   is no push run to wait for (it runs nothing the queue run did not). Without a passed
+   queue run with every leg (an admin merge, say), run **SDK CI** on `main` manually
+   (`gh workflow run ci.yml --ref main`) or wait for the nightly run, while that commit
+   is still the head of `main`.
 3. Optionally run **Publish preview** (`publish-preview.yml`) on `main` with
    **dry-run** checked. It performs every check below and writes nothing.
 4. Run **Publish preview** on `main`, entering that version.
@@ -81,16 +87,19 @@ releases and their evidence remain historical records.
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. The
 release workflow does not run it again; it fails before publishing if the commit has
-no successful CI run on `main`, if that run is still in progress, if it did not pass
-every Windows and macOS leg, or if its package artifact has expired.
+no successful CI run on `main` or in its merge queue, if that run is still in progress,
+if it did not pass every Windows and macOS leg, or if its package artifact has expired.
 
 The Windows and macOS legs are `Native / win-x64`, `win-arm64` and `osx-arm64`,
 `WPF navigation / win-x64` and `win-arm64`, and `Packaging / windows` and `macos`
 (`releaseJobs` in `eng/ci/platforms.mjs`). This keeps the guarantee releases had when
 every push to `main` ran all of them; it adds no check. Pushes now plan those legs from
-their changes (eng/ci/README.md), so `ci-run.mjs` accepts a push, scheduled or manual
-run of the exact commit and takes the newest successful one that ran them all; its
-error names the legs a run skipped and asks for a manual run on `main`. There is no separate acceptance workflow,
+their changes, and a push whose merge queue run covered it runs none of them
+(eng/ci/README.md), so `ci-run.mjs` accepts a push, scheduled, manual or merge queue run
+of the exact commit and takes the newest successful one that ran them all. A merge queue
+run counts only when the commit is on `main` (GitHub's compare API: `main` is the commit
+or a descendant), and its `runic-sdk-<run id>` artifact is kept 30 days like a push
+run's. The error names the legs a run skipped and asks for a manual run on `main`. There is no separate acceptance workflow,
 receipt upload, candidate approval dossier, mandatory soak, or independent pilot
 prerequisite. Manual checks are appropriate when a change affects native/UI
 behavior that automation cannot cover. Soaks and matched benchmarks remain useful

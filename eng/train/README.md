@@ -37,16 +37,27 @@ train GitHub's `status=success` listing hid the green run for over an hour, so t
 under a busy merge queue no push run finishes for hours (I6). `run@<commit>` (`selectRunAtOrAfter()` in
 `sources.mjs`) follows the rule of the lessons' C6, **the newest green `main` run at or after commit X**:
 
-1. List the repository's `ci.yml` runs on `main`, unfiltered (newest 50), plus the runs of X itself, and filter
-   locally: `completed`/`success`, a push, scheduled or manual run of that repository.
+1. List the repository's `ci.yml` runs on `main`, unfiltered (newest 50), plus the runs of X itself, and its merge
+   queue runs (newest 50, plus those of X), and filter locally: `completed`/`success`, a push, scheduled, manual or
+   merge queue run of that repository.
 2. Newest first, take the first whose head is X or a descendant of X (GitHub's compare API: `identical` or
-   `ahead`) and that has its unexpired package artifact. The train feed also needs the pinned version in it.
+   `ahead`) and that has its unexpired package artifact. A merge queue run counts only when its commit is on `main`
+   (`main` is that commit or a descendant): the queue moves `main` to exactly the commit its run tested, so a passed
+   queue run of a commit on `main` is that commit's `main` run (D077.22), while an entry whose group failed never
+   reaches `main`. A push run that its queue run covered runs nothing and uploads no artifact
+   ([eng/ci/README.md](../ci/README.md), "Merge queue"), so its queue run is the one taken. The train feed also
+   needs the pinned version in it.
 3. Without one, fail with an error that names X and every run considered and why it was passed over (`not a
-   success`, `behind`/`diverged`, no artifact, another version). The usual fix is the lessons' C6: stop enqueueing,
-   dispatch `ci.yml` on `main` once, let it finish, and run the step again.
+   success`, `behind`/`diverged`, no artifact, a queue run of a commit not on `main`, another version). Usually X
+   has not merged yet, or its queue run failed; once it merges its queue run is there. Otherwise dispatch `ci.yml`
+   on `main` once, let it finish, and run the step again.
 
-A descendant is accepted, not only X's own run, because the train needs *a* green run that includes X, and X's own
-push run is often the one the merge queue replaced (I6). Whether a newer upstream commit changed the packages is
+`run` (the N-main row) takes the newest such run with an artifact, a queue run of a commit on `main` included, and
+`run:<id>` also accepts a merge queue run, which is what runic-sdk's publish passes when the release's queue run is
+the run it found (`eng/release/ci-run.mjs`).
+
+A descendant is accepted, not only X's own run, because the train needs *a* green run that includes X, and before
+the queue run counted, X's own push run was often the one the merge queue replaced (I6). Whether a newer upstream commit changed the packages is
 the movement check's question ("Choreography", step 5), not the selection's.
 
 Publish uses the stricter rule of its own commit: `eng/release/ci-run.mjs` (and Translations'
@@ -312,15 +323,19 @@ steps are in order; the coordinator owns them.
    that has the gate the release needs (normally runic-sdk `main`). A separate pin pull request after the release
    moves Translations `main` and with it the candidate (0.20, 0.21 needed two). If runic-sdk's train candidate has
    not merged yet, pin to the commit it will descend from (runic-sdk `main` now): `run@` takes the newest green
-   `main` run at or after it, which will be the train candidate's once it merged and its push run is green.
+   `main` run at or after it, which will be the train candidate's merge queue run once it merged.
 3. **runic-sdk's train candidate** (one pull request): `Directory.Packages.props` names the Translations version
    with `TrainCommit=` the frozen Translations `main` commit from step 1; the adaptations to the break; the lock
    files written with the feed. Its CI uses the train feed and uploads the `train-feed` artifact. Merge it.
-4. **A green runic-sdk `main` run that includes it.** Stop enqueueing runic-sdk pull requests, dispatch `ci.yml` on
-   `main` once (`gh workflow run ci.yml -R Runic-Artifex/runic-sdk --ref main`) unless a push run of the train
-   candidate's merge is already running, and let it finish (C6; CLAUDE.md "CI hygiene").
+4. **A green runic-sdk `main` run that includes it: its merge queue run** (D077.22). The candidate changes a
+   `TrainCommit`, so its queue entry runs every Windows and macOS leg and is never reused from its pull request run
+   ([eng/ci/README.md](../ci/README.md), "Merge queue"). When the queue merges it, that run is the green `main` run;
+   nothing waits for a push run, and the queue need not stop. Only when no queue run of it passed (an admin merge)
+   dispatch `ci.yml` on `main` once (`gh workflow run ci.yml -R Runic-Artifex/runic-sdk --ref main`) and let it
+   finish.
 5. **Translations dry run, then publish** (`publish-preview.yml` on the frozen commit; the dry run first). Its P-tr
-   gate resolves `sdk: run@<gate SHA>` to that green run, and before building anything **checks that Translations
+   gate resolves `sdk: run@<gate SHA>` to that green run (the candidate's queue run, or a later one that includes
+   it), and before building anything **checks that Translations
    `main` did not move**: the runic-sdk run's `train-feed.json` names the Translations run and commit its feed
    served; the gate's Translations input (the CI run of the commit being published) must be that commit, or, when
    `main` moved, every package the feed served must be byte-identical in the candidate (same SHA-256; with H1's
