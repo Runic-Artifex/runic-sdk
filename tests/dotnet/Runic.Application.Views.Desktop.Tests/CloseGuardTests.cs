@@ -22,12 +22,17 @@ internal sealed class CloseGuardTests
     public async Task ARejectingLeaveGuardKeepsTheWindowOpen()
     {
         await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>();
-        fixture.Script.Decide = static _ => ValueTask.FromResult(false);
+        // The guard answers only after the second request, so that request finds the native close's decision still
+        // open (an answer at once could end the decision first, and the request would start a second one, #1293).
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Script.Decide = _ => new(answer.Task);
 
         fixture.Native.UserClose();
         await fixture.Script.Asked.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         // A second request joins the decision the native close started.
-        Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
+        var request = fixture.Presentation.RequestCloseAsync().AsTask();
+        answer.SetResult(false);
+        Require(!await request.WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "A close request completed as allowed although the leave guard rejected it.");
         Require(fixture.Presentation.IsOpen && fixture.Native.IsOpen, "A rejected leave guard did not keep the window open.");
         Require(fixture.Script.AskCount == 1, $"The leave guard was asked {fixture.Script.AskCount} times for one decision.");
