@@ -91,7 +91,9 @@ jobs:
       # Covered pushes (A1): the queue moves main to exactly the commit it tested. A push whose commit
       # passed a merge queue run plans what its diff needs (not every Linux job: the nightly run does
       # that) and keeps what that run's ci-plan record did not run (eng/ci/covered.mjs); the
-      # step summary links the run. Without such a run (a direct push, a failed lookup) it plans as before.
+      # step summary links the run. A push that coalesced several entries (main's concurrency group superseded the
+      # earlier pushes) keeps what none of their runs ran, when every commit of before..after has one. Without such a
+      # run (a direct push, a failed lookup) it plans as before.
       - name: Plan jobs from the changed files
         id: plan
         # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
@@ -132,7 +134,7 @@ jobs:
               && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$BEFORE" ]] || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"; }; then
               base=$BEFORE
             fi
-            if covered=$(bun eng/ci/covered.mjs "$(git rev-parse HEAD)") && [[ -n "$covered" ]]; then
+            if covered=$(bun eng/ci/covered.mjs "$(git rev-parse HEAD)" "$BEFORE") && [[ -n "$covered" ]]; then
               options=(--covered "$covered")
             fi
           elif [[ "$GITHUB_EVENT_NAME" == merge_group ]]; then
