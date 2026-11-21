@@ -92,7 +92,7 @@ const pushPlan = planFor(affected(['packages/dotnet/Runic.Application/Runic.Appl
 test('a coalesced push is covered by the union of the plans of every commit\'s queue run', async () => {
   const plans = { 1: planRecord(managedOnly), 2: planRecord(svelteOnly) };
   const found = await coveringPush(coalesced({ plans }));
-  assert.equal(found.url, `${url(1)} (111111111) and ${url(2)} (222222222)`);
+  assert.equal(found.url, `${url(1)} (111111111) and run ${url(2)} (222222222)`);
   assert.ok(validPlan(found.plan));
   // Before: the newest commit's run alone left the first commit's jobs to run again.
   assert.notDeepEqual(coveredPlan(pushPlan, svelteOnly, url(2)).skip.toSorted(), skippableJobs.toSorted().filter(job => job !== 'native-libraries'));

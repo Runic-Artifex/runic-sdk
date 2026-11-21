@@ -85,7 +85,7 @@ export async function coveringPush({ repository, sha, before, api, planOf }) {
   }
   found.push({ ...own, sha });
   return {
-    url: found.map(run => `${run.url} (${run.sha.slice(0, 9)})`).join(" and "),
+    url: found.map(run => `${run.url} (${run.sha.slice(0, 9)})`).join(" and run "),
     plan: unionPlan(found.map(run => run.plan)),
   };
 }
@@ -131,7 +131,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!repository || !token) throw new Error("GH_TOKEN and GITHUB_REPOSITORY are required");
     const found = await coveringPush({ repository, sha, before, ...github(repository, token) });
     if (found) {
-      console.error(`Merge queue run ${found.url} passed ${sha}.`);
+      console.error(`Merge queue run ${found.url} passed ${before && found.url.includes(" and run ") ? `${before.slice(0, 9)}..${sha}` : sha}.`);
       console.log(JSON.stringify(found));
     } else console.error(`No passed merge queue run with a plan record tested ${sha}; planning as a push without one.`);
   } catch (error) {
