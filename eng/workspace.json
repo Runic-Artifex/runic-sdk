@@ -540,6 +540,7 @@
         "eng/ci/macos-open-probe.sh",
         "eng/ci/windows-nvda.ps1",
         "eng/ci/windows-native-run.mjs",
+        "eng/ci/native-aot-publish.mjs",
         "eng/ci/windows-crash-report.ps1",
         "eng/ci/real-portal.sh"
       ]
