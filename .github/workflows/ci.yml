@@ -943,11 +943,16 @@ jobs:
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   native:
-    name: Native / ${{ matrix.rid }}
+    # A sharded leg (matrix.shard, nativeLegs in eng/ci/platforms.mjs) adds its shard: "Native / win-x64 (window)".
+    name: Native / ${{ matrix.rid }}${{ matrix.shard && format(' ({0})', matrix.shard) || '' }}
     needs: plan
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native') }}
     # The planned legs of nativeLegs in eng/ci/platforms.mjs: both Linux legs, and the Windows
-    # and macOS legs the change needs.
+    # and macOS legs the change needs. win-x64 runs as two shards (C2 of D077.25): `window` runs the desktop
+    # contracts, the window layer, the hosted applications and the WebView2 menus and screen readers; `platform` runs
+    # administration, elevation, the platform providers, the runtime conformance and the NativeAOT WebView2 and Views
+    # applications. A step of one shard says `matrix.shard != '<the other>'`, which holds on every unsharded leg; setup,
+    # the WebView smoke build and the retry record run in both.
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.native) }}
@@ -964,7 +969,7 @@ jobs:
       - uses: ./.github/actions/flaky-tests
         with:
           mode: start
-          leg: ${{ matrix.rid }}
+          leg: ${{ matrix.rid }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}
       # Only the Windows x64 View IDE check runs npm; the other legs only run node.
       - uses: ./.github/actions/setup-sdk
         with:
@@ -989,10 +994,12 @@ jobs:
           (cd packages/web/views && bun run --bun build)
           (cd packages/web/vite-plugin-runic && bun run --bun build)
       - name: Build managed desktop contracts
+        if: matrix.shard != 'platform'
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       # --timeout bounds the whole session, including test-host startup and exit. MTP resolves a
       # relative results directory against the test binary, so the paths are absolute.
       - name: Test managed desktop contracts
+        if: matrix.shard != 'platform'
         timeout-minutes: 5
         run: >-
           dotnet run --project tests/dotnet/Runic.Desktop.Tests -c Release --no-build --
@@ -1002,7 +1009,7 @@ jobs:
       # The managed job runs these cases on Linux. FileSystemWatcher uses ReadDirectoryChangesW on Windows
       # and FSEvents on macOS, whose symlink, rename and timing behavior differs from inotify.
       - name: Test file watching on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release --
@@ -1012,14 +1019,14 @@ jobs:
       # FSEvents and ReadDirectoryChangesW there. The trusted archive writer rejects reparse points on Windows and
       # must write the same bytes on every OS; the packer's RAS1005 warning must reach MSBuild there too.
       - name: Test development asset sources and archive writers on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Assets.Tests -c Release --
           --treenode-filter "/*/*/(DevelopmentDirectoryTests)|(ArchiveDirectoryTests)/*" --timeout 3m --output detailed
       # The managed job runs these cases on Linux; renames, attributes and path rules differ on Windows and macOS.
       - name: Test file transfers on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release --
@@ -1028,7 +1035,7 @@ jobs:
       # BSD sockets on macOS, whose rules for another socket on a port that a listener holds differ from Linux's; on macOS
       # the class runs again with DOTNET_SYSTEM_NET_DISABLEIPV6=1 in a child process, as on Linux.
       - name: Test the CS-WebUI blob endpoint on Windows and macOS
-        if: runner.os != 'Linux' && matrix.cswebui
+        if: matrix.shard != 'platform' && runner.os != 'Linux' && matrix.cswebui
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release --
@@ -1036,7 +1043,7 @@ jobs:
       # The managed job runs these cases on Linux. A fixed DevTools Protocol port is reported only when the browser process
       # holds its listener, which Windows reads through GetExtendedTcpTable and macOS through lsof (CsWebUiListenerOwner).
       - name: Test the CS-WebUI DevTools endpoint's listener check on Windows and macOS
-        if: runner.os != 'Linux' && matrix.cswebui
+        if: matrix.shard != 'platform' && runner.os != 'Linux' && matrix.cswebui
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release --
@@ -1046,12 +1053,12 @@ jobs:
       # reservation names (CsWebUiBlobEndpointChecks.HttpSys.cs). The script creates the users and reservations on this
       # ephemeral runner and removes them afterwards.
       - name: Check http.sys URL isolation of the CS-WebUI blob endpoint on Windows
-        if: runner.os == 'Windows' && runner.environment == 'github-hosted' && matrix.cswebui
+        if: matrix.shard != 'platform' && runner.os == 'Windows' && runner.environment == 'github-hosted' && matrix.cswebui
         timeout-minutes: 12
         shell: pwsh
         run: eng/ci/windows-httpsys-isolation.ps1 -TestAssembly tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll
       - name: Retain desktop contract diagnostics
-        if: always()
+        if: always() && matrix.shard != 'platform'
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1406,18 +1413,18 @@ jobs:
           dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
           artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
       - name: Exercise native window close interception on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         # The Windows file drop drives a real OLE drag with SendInput: a stuck drag must not hold the runner.
         timeout-minutes: 6
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
       # D067.15: outside Development the WebView2 host clears WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS before its environment
       # exists, so --remote-debugging-port opens no endpoint. The runner is elevated, where WebView2 ignores the variable,
       # so the Development case checks that the variable is kept, not the port.
       - name: Open WebView2's debugging endpoint from the environment in Development only
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'platform' && runner.os == 'Windows'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --webview2-environment
       # Region mode (#866): a host page frames a guest's page from the other loopback family; the frame gets none of the
@@ -1426,6 +1433,7 @@ jobs:
       # into the frame look to the host page. The Windows runner runs elevated: --elevated also checks that elevated-peer
       # admission lets WebView2's own processes through.
       - name: Exercise region frames in the embedded window
+        if: matrix.shard != 'platform'
         timeout-minutes: 6
         shell: bash
         run: |
@@ -1441,7 +1449,7 @@ jobs:
       # unmirrored (#389) with the window's Language. macOS: the standard menus take StandardMenuTitles. One monitor per
       # runner; two monitors are I-099's VM check.
       - name: Exercise monitors, full screen and right-to-left windows on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 6
         env:
           RUNIC_TEST_DISPLAY_SCALING: "1"
@@ -1450,14 +1458,14 @@ jobs:
       # window (NSWindow.effectiveAppearance on macOS, the DWM dark title bar on Windows); B2: also when an open window
       # switches with DesktopWindow and DesktopHost.SetColorSchemeAsync.
       - name: Apply the window color scheme on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
       # sdk#896: a window the application opens itself gets its DI scope's per-window services
       # (DesktopPlatformServices.AttachWindowServices); a ViewModel's IRunicWindowPresentation sets its title bar's scheme,
       # and its session receives the desktop's appearance.
       - name: Attach per-window services to a directly opened window on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
       # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one
@@ -1465,7 +1473,7 @@ jobs:
       # Windows) places a second window flush; a run-time minimum holds against a SetWindowPos from outside Runic
       # (WM_GETMINMAXINFO) and sets contentMinSize on macOS; a maximized window refuses SetBoundsAsync.
       - name: Set exact bounds and a run-time minimum size on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds
       # sdk#897 W1a: MaximizeAsync and RestoreAsync are idempotent, and SetPlacementAsync round-trips through
@@ -1473,7 +1481,7 @@ jobs:
       # then zoom:). Measures the design's two open claims: AppKit keeps the frame it set on a miniaturized or hidden
       # window, and Windows restores an inactive maximized window without activating it (SW_SHOWNOACTIVATE).
       - name: Maximize, restore and place a window on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-placement
       # #864 P2: the WebView2 side panel (DesktopWindow.OpenSidePanelAsync): both edges, the exact bounds back on close, the
@@ -1483,13 +1491,14 @@ jobs:
       # a frame capture, Tab posted to the application's queue, the accessibility order of the views, and closing the
       # panel of a zoomed window. Linux (P4) runs it in the GTK 3 and GTK 4 steps above, under Openbox.
       - name: Open, move, resize and close a side panel on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --side-panel
       # #864 P6: the side panel cases --side-panel leaves out: window.close() in the panel's page, closing the panel of a
       # maximized window (its restored size shrinks), and a full-screen window with the panel open and closed. Linux runs
       # GTK 3 under Openbox.
       - name: Close a side panel from its page, while maximized and in full screen
+        if: matrix.shard != 'platform'
         timeout-minutes: 5
         shell: bash
         run: |
@@ -1505,7 +1514,7 @@ jobs:
       # (--toggle-desktop); on macOS prefers-contrast, prefers-reduced-motion and IDesktopSettings agree with Increase
       # contrast and Reduce motion, read again with Increase contrast written before the process starts.
       - name: Follow the desktop's contrast and motion on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         shell: bash
         run: |
@@ -1520,7 +1529,7 @@ jobs:
           fi
       # A step killed by its timeout runs no finally or trap: restore what it switched before the next native step.
       - name: Restore the desktop's contrast and motion on Windows and macOS
-        if: always() && runner.os != 'Linux'
+        if: always() && matrix.shard != 'platform' && runner.os != 'Linux'
         continue-on-error: true
         timeout-minutes: 2
         shell: bash
@@ -1533,14 +1542,14 @@ jobs:
       # B6: an owned window has its owner's HWND as its owner on Windows and is its child window or sheet on macOS; a
       # window-modal one disables the owner (EnableWindow) or is its sheet until it closed.
       - name: Open owned and window-modal windows on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
       # sdk#900 W4b: after WM_CLOSE (Windows) or performClose: (macOS) the window stays open while its close drain runs and
       # a second close is ignored; SIGTERM (macOS) or Ctrl+C in a console of its own (Windows) drains it visibly before
       # ShutdownRequested.
       - name: Drain a window after its close and a termination signal on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --close-drain
       # S11 window mode (runic-host/1): the smoke hosts itself as guests, started in a job object (Windows) or a process
@@ -1561,7 +1570,7 @@ jobs:
           exit 1
       - name: Create a standard user for the hosted application checks on Windows
         id: hosted-user
-        if: runner.os == 'Windows' && runner.environment == 'github-hosted'
+        if: matrix.shard != 'platform' && runner.os == 'Windows' && runner.environment == 'github-hosted'
         timeout-minutes: 5
         shell: pwsh
         run: |
@@ -1588,7 +1597,7 @@ jobs:
       # WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated process, so the Window runs as the standard
       # user above, as a developer's IDE starts it.
       - name: Check the template's WebView2 script debugging
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'platform' && runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         timeout-minutes: 20
         env:
@@ -1601,7 +1610,7 @@ jobs:
       # through cmd.exe; the batch file must receive its arguments unchanged, and stopping it must stop what it started.
       # Then dotnet runic dev runs the dev-live-assets frontend as an npm project: npm ci, npm run dev and the served page.
       - name: Test dotnet runic's program starts on Windows
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'platform' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Tool.Tests -c Release --
@@ -1610,17 +1619,17 @@ jobs:
       # that user alone with nothing inherited; the WindowsPrivateFiles category checks it (the leg that PrivateFiles.cs
       # and SpellingUserWords.cs plan).
       - name: Test Runic.Spelling's private word list on Windows
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'platform' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Spelling.Tests -c Release --
           --treenode-filter "/*/*/*/*[Category=WindowsPrivateFiles]" --timeout 5m --output detailed
       - name: Exercise dotnet runic dev with npm on Windows
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'platform' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 15
         run: node tests/fixtures/application/dev-live-assets/dev-npm-smoke.mjs
       - name: Show hosted application windows on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 5
         env:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
@@ -1629,7 +1638,7 @@ jobs:
       # Region appearance (#917) in WebView2 and WKWebView, unelevated on Windows as above; ENGINE-RECORD lines record
       # whether the frame's prefers-color-scheme follows the frame's color-scheme (not asserted).
       - name: Probe the region appearance override on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 5
         env:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
@@ -1645,7 +1654,7 @@ jobs:
       # ShellExecuteEx failing with 1155 (ERROR_NO_ASSOCIATION), which LaunchUriAsync reports as
       # Unavailable(BackendUnavailable), as it should. The x64 image has Edge as a new user's default.
       - name: Launch the default browser on Windows and macOS
-        if: runner.os == 'macOS' || (runner.os == 'Windows' && runner.arch == 'X64')
+        if: matrix.shard != 'platform' && (runner.os == 'macOS' || (runner.os == 'Windows' && runner.arch == 'X64'))
         timeout-minutes: 6
         env:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
@@ -1656,7 +1665,7 @@ jobs:
       # token users), pending starts, windows that open after the guest ended, and the Windows guest's inherited handles.
       # Unelevated on Windows, as above; an elevated run fails each case under CI.
       - name: Run the hosted application host cases on Windows and macOS
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 8
         shell: bash
         env:
@@ -1679,7 +1688,7 @@ jobs:
       # refusals without either opt-in (ElevatedHostedApplicationTests, RUNIC_TEST_ELEVATED_PAIR=1); then the hosted
       # smoke in WebView2 as the pair.
       - name: Run the elevated hosted application pair on Windows
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'platform' && runner.os == 'Windows'
         timeout-minutes: 8
         shell: bash
         env:
@@ -1696,7 +1705,7 @@ jobs:
       # RUNIC_DESKTOP_REGION_TRACE writes every region frame event of the hosts' WebView2 to standard error.
       - name: Exercise the hosted region and hosted components examples as the elevated pair on Windows
         id: region-examples
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'platform' && runner.os == 'Windows'
         timeout-minutes: 12
         shell: bash
         env:
@@ -1715,7 +1724,7 @@ jobs:
           exit "$status"
       # A host that ends without a word, such as after a native crash, leaves its reason in the Application event log.
       - name: Show the Application event log after the region examples failed on Windows
-        if: failure() && runner.os == 'Windows' && steps.region-examples.outcome == 'failure'
+        if: failure() && matrix.shard != 'platform' && runner.os == 'Windows' && steps.region-examples.outcome == 'failure'
         continue-on-error: true
         timeout-minutes: 2
         shell: pwsh
@@ -1725,7 +1734,7 @@ jobs:
             Format-List TimeCreated, ProviderName, Id, Message
       # Also after a failure or cancellation: the user's processes, its profile, its access to the workspace and the account.
       - name: Remove the hosted application checks' standard user on Windows
-        if: always() && steps.hosted-user.outcome != 'skipped' && runner.os == 'Windows' && runner.environment == 'github-hosted'
+        if: always() && matrix.shard != 'platform' && steps.hosted-user.outcome != 'skipped' && runner.os == 'Windows' && runner.environment == 'github-hosted'
         continue-on-error: true
         timeout-minutes: 3
         shell: pwsh
@@ -1744,7 +1753,7 @@ jobs:
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page
       # point), right-to-left menus, and Page and frameless windows. The arm64 runner delivers no SendInput.
       - name: Exercise the WebView2 menu bar, shortcuts and context menus
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'platform' && runner.os == 'Windows'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --menus
       # W315-018: Runic.Desktop.AccessibilityProbe reads and changes a page through AT-SPI (GTK 3 and GTK 4), UI
@@ -1753,6 +1762,7 @@ jobs:
       # also runs and the probe checks what it says; the screen-readers job does so with NVDA and Orca. Expectations.cs
       # lists each host's known gaps.
       - name: Check what screen readers read in the embedded window
+        if: matrix.shard != 'platform'
         timeout-minutes: 12
         shell: bash
         run: |
@@ -1790,7 +1800,7 @@ jobs:
               -c Release --no-build -- --accessibility "$toolkit" --region --probe "${probe[@]}" --receipt "artifacts/accessibility/$toolkit-region.json"
           done
       - name: Retain accessibility receipts
-        if: always()
+        if: always() && matrix.shard != 'platform'
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1799,21 +1809,21 @@ jobs:
           if-no-files-found: ignore
       # Runic.Platform.Administration.Windows supports Windows x64 only (eng/release/README.md).
       - name: Verify Windows administration native inspection
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'window' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 5
         run: dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicApplicationBuildMode=Verification
       - name: Publish Windows administration inspection with NativeAOT
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'window' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 10
         run: dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:RunicApplicationBuildMode=Verification -p:IlcTreatWarningsAsErrors=true -o artifacts/administration-aot
       - name: Verify NativeAOT Windows administration inspection
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'window' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 5
         run: ./artifacts/administration-aot/Runic.Platform.Administration.Windows.Tests.exe
       # The read-only console example (examples/dotnet/Runic.Administration.Console) builds against the package source
       # and its local commands run on the runner.
       - name: Run the Windows administration console example
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'window' && runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 5
         shell: bash
         run: |
@@ -1825,7 +1835,7 @@ jobs:
       # start the NativeAOT smoke helper, installed under Program Files, with ShellExecuteExW and runas; the runner's
       # elevated session elevates without a prompt. The tests run through their apphost, which the stand-in restarts.
       - name: Verify privileged actions on Windows with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 20
         shell: pwsh
         run: |
@@ -1866,6 +1876,7 @@ jobs:
             & $tests --treenode-filter '/*/*/*/*[Category=RealElevation]' --test-parameter "helper-directory=$helper" --test-parameter "jit-helper-directory=$jit" --test-parameter "singlefile-helper-directory=$singleFile" --output detailed
           }
       - name: Build native clipboard conformance
+        if: matrix.shard != 'window'
         run: dotnet build tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -p:TreatWarningsAsErrors=true
       - name: Verify native GTK clipboard
         if: runner.os == 'Linux'
@@ -1883,28 +1894,29 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=DirectoryNative]"
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=DirectoryLoopStopped]"
       - name: Verify native clipboard
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 3
         run: dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=Native]"
       - name: Publish native clipboard conformance with NativeAOT
+        if: matrix.shard != 'window'
         timeout-minutes: 10
         run: dotnet publish tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/clipboard-aot
       - name: Verify Windows system-sleep inhibition with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeInhibition]" --test-parameter system-only=true
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeInhibition]" --test-parameter system-only=true
       - name: Verify Windows login startup with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeLoginStartup]"
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeLoginStartup]"
       - name: Verify Windows settings read with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -1913,7 +1925,7 @@ jobs:
       # A real notification-area icon on the runner's desktop session, driven through its window's messages, and a
       # minimized window brought forward or flashed.
       - name: Verify the Windows status icon with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -1921,14 +1933,14 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
       # RegisterHotKey on the runner's desktop session: bind, SendInput reaching the hot key, conflicts and release.
       - name: Verify Windows global shortcuts with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeGlobalShortcuts]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeGlobalShortcuts]" --output detailed
       - name: Verify Windows window presentation with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -1940,14 +1952,14 @@ jobs:
       # Reporting recorded and the faulting stack, with a full dump for the native-crash-dumps artifact; the timeout
       # leaves the debugger its minutes.
       - name: Verify Windows message boxes with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 8
         shell: bash
         run: |
           node eng/ci/windows-native-run.mjs dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
           node eng/ci/windows-native-run.mjs ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
       - name: Retain Windows crash dumps
-        if: failure() && runner.os == 'Windows'
+        if: failure() && matrix.shard != 'window' && runner.os == 'Windows'
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1958,7 +1970,7 @@ jobs:
       # Badges and progress on the taskbar button of a shown window through ITaskbarList3; what the taskbar draws stays a
       # manual check.
       - name: Verify the Windows taskbar badge and progress with JIT and NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -1967,7 +1979,7 @@ jobs:
       # The runner's connectivity hint and network path, and its power and session state, read and watched without
       # asserting the runner's network or power.
       - name: Verify network status and power events with JIT and NativeAOT
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -1984,13 +1996,13 @@ jobs:
           GDK_BACKEND=x11 xvfb-run -a artifacts/clipboard-aot/Runic.Platform.Linux.Tests --treenode-filter "/*/*/*/*[Category=Native]"
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a artifacts/clipboard-aot/Runic.Platform.Linux.Tests --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]"
       - name: Verify NativeAOT clipboard
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=Native]"
       # The runner's Recycle Bin and Trash, with items unique to each run that the cases remove afterwards.
       - name: Verify the trash with JIT and NativeAOT
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -1998,7 +2010,7 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeTrash]" --output detailed
       # The shell's thumbnail providers and Quick Look, on an image each case writes to a temporary directory.
       - name: Verify thumbnails with JIT and NativeAOT
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -2008,7 +2020,7 @@ jobs:
       # diskpart on Windows (hosted runners run as an administrator, as diskpart needs) and DMGs through hdiutil on
       # macOS. The runner's own disks are only listed.
       - name: Verify volumes on disk images with JIT and NativeAOT
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 10
         shell: bash
         env:
@@ -2018,7 +2030,7 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeVolumes]" --output detailed
       # Credential Manager and the runner's login keychain, under a service unique to each run.
       - name: Verify secret storage with JIT and NativeAOT
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -2028,7 +2040,7 @@ jobs:
       # case owns (a per-user registration of the test executable on Windows; two app bundles registered with Launch
       # Services on macOS), launched and removed afterwards.
       - name: Verify desktop applications with JIT and NativeAOT
-        if: runner.os != 'Linux'
+        if: matrix.shard != 'window' && runner.os != 'Linux'
         timeout-minutes: 5
         shell: bash
         run: |
@@ -2051,6 +2063,7 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivilegedRoot]" --output detailed || status=1
           exit $status
       - name: Publish and run platform runtime conformance with NativeAOT
+        if: matrix.shard != 'window'
         timeout-minutes: 10
         shell: bash
         run: |
@@ -2096,7 +2109,7 @@ jobs:
       # to the run: a desktop entry opened with gio in an isolated session without a display (Linux), and a per-user
       # URL protocol opened by the shell (Windows). CI runners only.
       - name: Verify open requests through desktop registration with JIT and NativeAOT
-        if: runner.os != 'macOS'
+        if: matrix.shard != 'window' && runner.os != 'macOS'
         timeout-minutes: 8
         shell: bash
         env:
@@ -2187,7 +2200,7 @@ jobs:
           path: artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz
           if-no-files-found: error
       - name: Publish and exercise WebView2 with NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         shell: bash
         run: |
           dotnet publish tests/native/Runic.Desktop.WebViewSmoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/webview-aot
@@ -2199,7 +2212,7 @@ jobs:
       # WM_DPICHANGED, as when it moves to a monitor with another scale. The runner has one virtual monitor.
       # The monitors smoke (B12) runs again under NativeAOT here, for its display-configuration and window interop.
       - name: Exercise per-monitor DPI changes in the WebView2 window with JIT and NativeAOT, and monitors under NativeAOT
-        if: runner.os == 'Windows'
+        if: matrix.shard != 'window' && runner.os == 'Windows'
         timeout-minutes: 5
         shell: bash
         env:
@@ -2217,7 +2230,7 @@ jobs:
       # skipped on macOS; --probe-serve-only-drain runs everywhere. --probe-debug-endpoint shows a window in the
       # runner's Chrome or Edge and checks that the NativeAOT publish opens no DevTools Protocol endpoint (sdk#1221).
       - name: Publish Window and View application with NativeAOT
-        if: matrix.cswebui
+        if: matrix.shard != 'window' && matrix.cswebui
         shell: bash
         run: |
           dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
@@ -2265,7 +2278,7 @@ jobs:
       # its profile end with it, also after a normal exit, while a browser the probe started with a profile of its own
       # keeps running. The linux-x64 runner has Google Chrome and Windows Edge; the others no Chromium-based browser.
       - name: End a killed application's Development browser with it
-        if: matrix.cswebui && (matrix.rid == 'linux-x64' || runner.os == 'Windows')
+        if: matrix.shard != 'window' && matrix.cswebui && (matrix.rid == 'linux-x64' || runner.os == 'Windows')
         timeout-minutes: 8
         shell: bash
         run: |
@@ -2278,12 +2291,12 @@ jobs:
       # (D064.5); this one only reports, in the job summary and the artifact.
       - name: Measure the NativeAOT size per ViewModel
         id: aot-size
-        if: ${{ matrix.cswebui && runner.os != 'Linux' && contains(needs.plan.outputs.why, 'label ci:all-platforms') }}
+        if: ${{ matrix.shard != 'window' && matrix.cswebui && runner.os != 'Linux' && contains(needs.plan.outputs.why, 'label ci:all-platforms') }}
         timeout-minutes: 12
         shell: bash
         run: bun tests/scaling/aot-size/measure.mjs --rid ${{ matrix.rid }} --keep
       - name: Retain the NativeAOT size measurement
-        if: ${{ always() && steps.aot-size.outcome != 'skipped' }}
+        if: ${{ always() && matrix.shard != 'window' && steps.aot-size.outcome != 'skipped' }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -2295,7 +2308,7 @@ jobs:
           retention-days: 30
       # Development tooling, independent of the architecture: Windows x64 runs it.
       - name: Verify Windows View IDE launch and framework reload
-        if: runner.os == 'Windows' && runner.arch == 'X64'
+        if: matrix.shard != 'window' && runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         timeout-minutes: 10
         run: |
@@ -2313,7 +2326,7 @@ jobs:
         uses: ./.github/actions/flaky-tests
         with:
           mode: report
-          leg: ${{ matrix.rid }}
+          leg: ${{ matrix.rid }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}
 
   # The native checks for the musl RIDs, in Alpine. GitHub cannot run JavaScript actions in an
   # Alpine container on arm64 runners, so the runner checks out and caches, and

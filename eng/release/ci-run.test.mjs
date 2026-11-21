@@ -11,7 +11,8 @@ const without = (name, conclusion) => complete().flatMap(job => job.name !== nam
 const jobs = byRun => async run => byRun[run.id] ?? complete();
 
 test('the release jobs are every Windows and macOS leg of the native, WPF and packaging jobs', () => {
-  expect(releaseJobs).toEqual(['Native / win-x64', 'Native / win-arm64', 'Native / osx-arm64', 'WPF navigation / win-x64',
+  // win-x64 runs as two shards (C2 of D077.25); both must pass.
+  expect(releaseJobs).toEqual(['Native / win-x64 (window)', 'Native / win-x64 (platform)', 'Native / win-arm64', 'Native / osx-arm64', 'WPF navigation / win-x64',
     'WPF navigation / win-arm64', 'Packaging / windows', 'Packaging / macos']);
 });
 test('selects the newest successful push, scheduled, manual or merge queue run of ci.yml for the exact commit', async () => {

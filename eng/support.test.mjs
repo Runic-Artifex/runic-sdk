@@ -18,9 +18,11 @@ test("ci-verified support entries match the Native CI jobs", () => {
   assert.equal(workflow.jobs.native.strategy.matrix, "${{ fromJSON(needs.plan.outputs.native) }}");
   const matrix = nativeLegs;
   const musl = workflow.jobs["native-musl"].strategy.matrix.include;
+  // A sharded RID (win-x64, C2 of D077.25) is one RID: its shards together run what one leg would.
+  const rids = entries => [...new Set(entries.map(entry => entry.rid))].sort();
   const expected = {
-    desktop: [...matrix, ...musl].map(entry => entry.rid).sort(),
-    cswebui: matrix.filter(entry => entry.cswebui === true).map(entry => entry.rid).sort(),
+    desktop: rids([...matrix, ...musl]),
+    cswebui: rids(matrix.filter(entry => entry.cswebui === true)),
   };
   assert.deepEqual(support.hosts.map(host => host.id).sort(), Object.keys(expected).sort());
   for (const host of support.hosts) {
@@ -38,6 +40,8 @@ test("ci-verified support entries match the Native CI jobs", () => {
   // Linux/else branches; the patterns below match commands that both branches run.
   const holds = (condition, entry, { os, arch }) => {
     if (condition === "matrix.cswebui") return entry.cswebui;
+    const shard = /^matrix\.shard != '(\w+)'$/.exec(condition);
+    if (shard) return entry.shard !== shard[1];
     const match = /^runner\.(os|arch) (==|!=) '(\w+)'$/.exec(condition);
     assert.ok(match, `unexpected Native step condition: ${condition}`);
     return ((match[1] === "os" ? os : arch) === match[3]) === (match[2] === "==");
@@ -47,8 +51,9 @@ test("ci-verified support entries match the Native CI jobs", () => {
   for (const entry of matrix) {
     const probes = [["Runic Desktop WebView smoke", /dotnet\s+\S*Runic\.Desktop\.WebViewSmoke\.dll|Runic\.Desktop\.WebViewSmoke\.exe/]];
     if (entry.cswebui) probes.push(["CS-WebUI window probes", /CsWebUiWindowProbes\$\{\{ matrix\.extension \}\} --probe-window-close/]);
+    const legs = matrix.filter(leg => leg.rid === entry.rid);
     for (const [probe, pattern] of probes)
-      assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && runsOn(step, entry)),
+      assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && legs.some(leg => runsOn(step, leg))),
         `${entry.rid}: the Native job must run the ${probe}`);
     // CS-WebUI ships no native library for the RID, so no step may publish for it.
     if (!entry.cswebui)
