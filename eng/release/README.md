@@ -30,6 +30,9 @@ releases and their evidence remain historical records.
    queue run with every leg (an admin merge, say), run **SDK CI** on `main` manually
    (`gh workflow run ci.yml --ref main`) or wait for the nightly run, while that commit
    is still the head of `main`.
+   As soon as that run has passed, serve its packages to the editors' Windows checklist
+   ([The editors checklist on the candidate](#the-editors-checklist-on-the-candidate)); it
+   runs in parallel with the next steps.
 3. Optionally run **Publish preview** (`publish-preview.yml`) on `main` with
    **dry-run** checked. It performs every check below and writes nothing.
 4. Run **Publish preview** on `main`, entering that version.
@@ -108,6 +111,56 @@ for relevant changes and regression investigations; they are not routine gates.
 Keep release notes focused on changes, installation, migration and meaningful
 known issues. Put logs and internal package metadata in Actions artifacts. Record
 nonblocking limitations as issues rather than introducing custom waiver formats.
+
+### The editors checklist on the candidate
+
+runic-editors releases last in a train, and its Windows checklist (Visual Studio and VS Code,
+runic-editors `eng/release/README.md`, "Checklist on the runic-sdk candidate") needs this
+release's template, `dotnet-runic` and npm packages. It runs against the release candidate,
+not after the publish (D077.24): the package artifact of the release commit's passed CI run,
+which is exactly what step 5 publishes. `eng/ci/candidate-feed.mjs` serves it to the Windows
+machine over SSH; the coordinator runs it, CI never does.
+
+```sh
+GH_TOKEN=$(gh auth token) bun eng/ci/candidate-feed.mjs prepare --commit <release commit> \
+  [--editors-run <editors release PR's CI run id>]
+bun eng/ci/candidate-feed.mjs push --host <user>@<machine> --identity <key> --known-hosts <file>
+bun eng/ci/candidate-feed.mjs serve      # keep running for the checklist; Ctrl+C ends it
+bun eng/ci/candidate-feed.mjs clean      # after the checklist
+```
+
+- **prepare** `--commit` takes the run and artifact `ci-run.mjs` selects for Publish preview
+  (every Windows and macOS leg, a merge queue run only for a commit on `main`), so it fails
+  exactly when the publish would. `--run <id>` takes a given successful run instead and says
+  whether the publish would take it (for trying the procedure on an ordinary `main` run).
+  `--editors-run`/`--editors-commit` add the `vscode-vsix` and `visualstudio-vsix` files of a
+  runic-editors CI run. Everything lands in `artifacts/candidate-feed` with `candidate.json`
+  (runs, artifact ids, SHA-256 and npm integrity of each file).
+- **push** copies the NuGet packages, VSIX files and the scripts of `eng/ci/candidate-feed/`
+  to `runic-candidate` in the SSH user's home (`--remote`), replacing an earlier push and
+  refusing any other existing folder. It writes `NuGet.config` there (the candidate folder
+  and nuget.org for runic-sdk's ids, nuget.org for everything else, and its own
+  `globalPackagesFolder`), `candidate.npmrc` (the `@runic-artifex` scope from
+  `http://127.0.0.1:<port>/`, default 48731, npm's cache in the folder) and `bunfig.toml`
+  (Bun's cache in the folder). Nothing global on the machine changes: a candidate never lands
+  in the user's NuGet, npm or Bun cache, where it would stand in for the published package of
+  the same version.
+- **serve** runs the candidate npm registry of the template tests
+  (`tests/templates/template-npm-registry.mjs`; Translations' packages pass through to npm)
+  on the host and forwards the machine's `127.0.0.1:<port>` to it with `ssh -R`, reconnecting
+  after a dropped connection. NuGet needs no server: it reads the copied folder.
+- **On the machine**, `runic-candidate\Use-Candidate.ps1 -New <name> -TemplateArguments
+  '--frontend','react','--package-manager','bun'` creates `apps\<name>` from the candidate's
+  template (in a template hive of the folder) and points it at the candidate;
+  `-Path <project>` does that for an existing project (NuGet.config, the `.npmrc` lines,
+  `bunfig.toml`, and for npm a `package-lock.json` whose Runic entries resolve from the
+  registry: npm refuses a scope registry other than the lock's, EALLOWREMOTE).
+- **clean** removes the folder and the machine's .NET tool resolver cache entries that point
+  into it (a removed folder's entries break `dotnet tool run`).
+
+SSH runs with `BatchMode`, strict host key checking against the given known-hosts file, the
+given key only and no user configuration. For the maintainers' Windows VM, its notes give the
+host, key, fingerprint and lock (local-planning `operations/windows-vm.md`).
 
 ## Rechecks before each release
 
