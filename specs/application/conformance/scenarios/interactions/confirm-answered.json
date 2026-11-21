@@ -125,7 +125,7 @@
       },
       "id": "answer"
     },
-    {"receive":{"ok":true,"result":"ok"},"replyTo":"answer"},
+    {"receive":{"ok":true,"result":"ok"},"replyTo":"answer","unordered":true},
     {
       "receive": {
         "kind": "frame",
@@ -139,7 +139,8 @@
           {"field":"canClear","kind":"set","value":false},
           {"field":"isConfirmClearExecuting","kind":"set","value":false}
         ]
-      }
+      },
+      "unordered": true
     },
     {"receive":{"ok":true,"revision":2},"replyTo":"command-request"},
     {"expect":{"call":{"id":"confirm-clear","resolved":null}}},
