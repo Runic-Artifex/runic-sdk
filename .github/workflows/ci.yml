@@ -704,7 +704,7 @@ jobs:
         with:
           train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -767,7 +767,7 @@ jobs:
       - name: Close the Microsoft account prompt on the Windows desktop
         shell: pwsh
         run: eng/ci/windows-dismiss-oobe.ps1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -886,7 +886,7 @@ jobs:
           npm install --global "pnpm@$(bun eng/toolchain.mjs pnpm)" --allow-scripts=pnpm
           node --version | grep "^v${{ matrix.node }}$"
           npm --version | grep "^11\."
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         id: candidates
         with:
           name: runic-sdk-${{ github.run_id }}
@@ -2880,7 +2880,7 @@ jobs:
         with:
           train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/download-artifact
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages

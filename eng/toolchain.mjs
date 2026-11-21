@@ -15,7 +15,8 @@ function uniquePin(text, pattern, label) {
 // Templates leg that installs them with setup-sdk's additional-dotnet input (the dotnet-version of that step).
 export function parseToolchain({ global, node, workspace, setup }) {
   const version = new RegExp(`^${semver}$`);
-  const additionalDotnetSdks = [...setup.matchAll(new RegExp(String.raw`^\s*dotnet-version:\s*["']?(${semver})["']?\s*$`, "gm"))].map(match => match[1]);
+  // setup-sdk tries an install a second time after a failure (eng/ci/README.md, "Flakes"): the same SDK, listed twice.
+  const additionalDotnetSdks = [...new Set([...setup.matchAll(new RegExp(String.raw`^\s*dotnet-version:\s*["']?(${semver})["']?\s*$`, "gm"))].map(match => match[1]))];
   const pins = {
     dotnetSdk: global.sdk?.version,
     node: node.trim(),

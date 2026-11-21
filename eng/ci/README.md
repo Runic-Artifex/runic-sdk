@@ -657,11 +657,21 @@ re-queued without investigation; a failure seen twice gets an issue the same day
 and within the cycle a fix, or a skip that links the issue. `eng/ci/flakes.mjs`
 applies it to recent runs. It reads the failed jobs of `ci.yml` (pull requests, the
 merge queue, `main`, schedules; every attempt, so a failure that passed on rerun
-counts) through `gh api` and gives each failure a signature: its failing test (TUnit,
-bun and node:test failure lines, a probe's `FAIL name:`, or the test active when a
-session hit its `--timeout`) and first error line, or, when the log names no test,
-its failed step and first `##[error]` line. Paths, numbers and JSON are left out, so
-one signature on several runs, jobs or legs is one entry:
+counts) through `gh api`, keeps the part of each job log that its failed step wrote
+(by the step's start and end times, so a test that failed in an earlier
+`continue-on-error` step is not the job's failure), and gives each failure a
+signature: its failing test (TUnit, bun and node:test failure lines, a probe's
+`FAIL name:`, or the test active when a session hit its `--timeout`) and first error
+line. When the log names no test, the signature is the failed step and the line that
+names its cause: a `##[error]` annotation that says more than the exit code, else the
+first compiler, MSBuild, ILC or NuGet error (`error IL2037:`, not the `MSB3077` that
+follows it), else a probe's own failure line (a deadline, `HOSTED_WINDOWS_FAILED:`,
+`hdiutil: attach failed`, a download out of attempts, an unhandled exception,
+PowerShell's thrown message), else the last error line, not counting a test host's
+echo of captured output (`StandardError: child-error`) or a wrapper such as
+`bash exited with 1`. Paths, numbers and JSON are left out, except exit codes and
+numbers inside a word (`exit code 127`, `CS0436`), so one signature on several runs,
+jobs or legs is one entry:
 
 ```sh
 bun eng/ci/flakes.mjs              # the last two days
@@ -669,14 +679,35 @@ bun eng/ci/flakes.mjs --since 7d   # or 36h, or a date; --min 3, --json, --repo 
 ```
 
 It lists the entries seen twice or more that no issue mentions (file one), those that
-failed again after their issue closed, repeated failures in steps whose log names no
-test (read one: a real break or a flake), known flakes (an open issue names the test
-or quotes the error), fixed ones and first sightings, and says for each failed merge
-queue entry whether to re-queue it. An entry whose job passed on a rerun of the same
-commit is marked a flake. Cancelled runs are counted, not classified. A server error
-on a page retries it with a smaller page size. It only reads: the coordinator runs
-it, not a CI job, and it files, comments on and reruns nothing. `flakes.test.mjs`
-runs it on recorded API responses (`fixtures/flakes`).
+failed again after their issue closed (reopen it), repeated failures in steps whose
+log names no test (read one: a real break or a flake), known flakes (an open issue
+covers them), infrastructure failures, fixed ones and first sightings. An issue
+covers an entry when it cites one of its runs (an `…/actions/runs/<id>` link), quotes
+the words of its error, or names its test together with one of its platforms
+(`linux-x64`, `Windows`, `nvda`). An issue that names only the test may be about
+another failure of it (#35, a Windows timeout, against #1273 on linux-x64): it is
+listed as a weak match and does not make the entry known, fixed or regressed. An entry whose job passed on a rerun of the same commit is marked a flake.
+An infrastructure failure is a step's error from a runner or service, not the code: an
+Ubuntu mirror out of attempts, `setup-dotnet`'s download, the artifact service, a
+runner shutdown, a network reset or a registry's server error. CI retries the
+downloads that fail this way: `.github/actions/download-artifact` tries an artifact
+download a second time after 30 s, and `setup-sdk` installs a .NET SDK a second time
+from an empty directory; each retry leaves an `Infrastructure retry` warning.
+
+For each failed merge queue entry it gives a verdict:
+
+- **re-queue**: every failure is a known flake, an infrastructure failure, or matches
+  an issue that was open when it failed or closed less than seven days before (a fix
+  that did not hold; reopen the issue too);
+- **file-issue**: the other failures are flakes by evidence (passed on a rerun, or
+  failed for two or more pull requests or branches) that no open issue names: file or
+  reopen the issue the same day, then re-queue;
+- **investigate**: a failure is neither, so it may be the change.
+
+Cancelled runs are counted, not classified. A server error on a page retries it with
+a smaller page size. It only reads: the coordinator runs it, not a CI job, and it
+files, comments on and reruns nothing. `flakes.test.mjs` runs it on recorded API
+responses (`fixtures/flakes`) and on failure texts from real job logs.
 
 ## GitHub reruns
 
