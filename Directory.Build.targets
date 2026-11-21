@@ -4,6 +4,7 @@
   <Import Project="eng/build/public-api.targets" />
   <Import Project="eng/build/release-links.targets" />
   <Import Project="eng/build/test-timeouts.targets" />
+  <Import Project="eng/build/flaky-tests.targets" />
   <!-- Package consumers receive these targets through buildTransitive; a
        ProjectReference does not. Projects that reference Runic.Desktop set
        RunicImportDesktopTargets (checked by eng/desktop-targets.test.mjs). -->

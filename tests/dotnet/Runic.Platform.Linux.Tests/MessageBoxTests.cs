@@ -28,7 +28,7 @@ internal sealed partial class MessageBoxTests
             "without a cancel button, or with GTK's own OK, there is no button");
     }
 
-    [Test, Explicit, Category("NativeMessageBoxes")]
+    [Test, Explicit, Category("NativeMessageBoxes"), RecordedRetry(RetryReason.Gui)]
     public async Task NativeMessageBoxesAsync()
     {
         await using var owner = new GtkOwner();
