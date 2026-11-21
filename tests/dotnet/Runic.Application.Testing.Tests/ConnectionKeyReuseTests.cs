@@ -127,7 +127,7 @@ internal sealed class ConnectionKeyReuseTests
         // Bob's hello replaces Alice's connection, whose mailbox goes with it; Bob's receive has nothing of hers.
         await window.HelloAsync("s-bob");
         Require(alice.Mailbox.Count == 0 && !alice.IsOpen, "Alice's mailbox outlived her replaced connection.");
-        var received = JsonNode.Parse(await window.RequestAsync(new JsonObject { ["kind"] = "receive", ["session"] = "s-bob" }))!;
+        var received = JsonNode.Parse(await window.ReceiveAsync("s-bob"))!;
         Require(received["messages"]!.AsArray().Count == 0, $"Bob's receive returned Alice's pushes: {received}");
     }
 
@@ -144,7 +144,7 @@ internal sealed class ConnectionKeyReuseTests
         var second = JsonNode.Parse(await window.RequestAsync(Hello("s-other"), "7"))!;
         Require(second["error"]?["reason"]?.GetValue<string>() == "invalid-request", $"A second hello was answered {second}.");
         Require(ReferenceEquals(window.Open("7"), page) && page.IsOpen, "A second hello replaced the connection.");
-        Require(Ok(await window.RequestAsync(new JsonObject { ["kind"] = "receive", ["session"] = "s-page" }, "7")),
+        Require(Ok(await window.ReceiveAsync("s-page", "7")),
             "The page's own request no longer ran.");
         ((IBridgeRequestHandler)window.Dispatcher).ConnectionClosed("7");
         Require(!page.IsOpen && window.Dispatcher.FindConnection("7") is null, "The transport's one close did not close the connection.");
@@ -230,7 +230,7 @@ internal sealed class ConnectionKeyReuseTests
         public ReuseWindow(IBridgeTransport transport, Send send)
         {
             _send = send;
-            Session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false });
+            Session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false, TimeProvider = Time });
             Dispatcher = BridgeDispatcher.For(transport);
             _definition = Session.Interactions.Register<string, bool>(Route, "confirm", Contract,
                 static input => JsonSerializer.Serialize(input), static output => output.GetBoolean());
@@ -239,6 +239,9 @@ internal sealed class ConnectionKeyReuseTests
 
         public WindowContentSession Session { get; }
         public BridgeDispatcher Dispatcher { get; }
+
+        // The window's clock: only ReceiveAsync moves it.
+        public Microsoft.Extensions.Time.Testing.FakeTimeProvider Time { get; } = new();
 
         // The open connection on the slot.
         public BridgeConnection? Open(string transportKey = Slot) =>
@@ -275,6 +278,15 @@ internal sealed class ConnectionKeyReuseTests
 
         public async Task<string> RequestAsync(JsonObject message, string transportKey = Slot) =>
             await _send(message.ToJsonString(), transportKey, "0", CancellationToken.None);
+
+        // A receive with nothing queued waits BridgeDispatcher.ReceiveTimeout for a push, 25 seconds of real time on the
+        // system clock: the window's clock ends that wait once the receive is waiting.
+        public async Task<string> ReceiveAsync(string session, string transportKey = Slot)
+        {
+            var receive = RequestAsync(new JsonObject { ["kind"] = "receive", ["session"] = session }, transportKey);
+            while (await Task.WhenAny(receive, Task.Delay(10)) != receive) Time.Advance(BridgeDispatcher.ReceiveTimeout);
+            return await receive;
+        }
 
         public void Dispose()
         {
