@@ -86,21 +86,28 @@ test('archive paths include managed and web outputs and reject escaping paths', 
 }));
 
 test('all managed executable suites are assigned exactly once to workflow groups', () => {
-  // One job runs each planned group in its own step, also after another group failed, and uploads its reports.
+  // One step runs every planned group's projects at once (C4, eng/ci/test-managed.mjs), every project also after another
+  // failed, and each group's reports upload on their own. Coverage only outside pull requests and the merge queue.
   const { steps } = workflow.jobs.managed;
   assert.equal(workflow.jobs.managed.strategy, undefined);
   const restore = steps.find(step => step.uses === './.github/actions/restore-build');
   assert.equal(restore?.id, 'restore');
-  const groups = steps.filter(step => step.run?.startsWith('bun eng/ci/test-managed.mjs '));
-  assert.deepEqual(groups.map(step => step.id), managedGroups);
-  for (const step of groups) {
-    assert.equal(step.run, `bun eng/ci/test-managed.mjs ${step.id}`);
-    assert.equal(step.if, `\${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), '${step.id}') }}`);
-    const upload = steps[steps.indexOf(step) + 1];
-    assert.ok(upload.uses?.startsWith('actions/upload-artifact@'), step.id);
-    assert.equal(upload.if, `\${{ always() && steps.${step.id}.outcome != 'skipped' }}`);
-    assert.equal(upload.with.name, `managed-test-results-${step.id}-\${{ github.run_id }}`);
-    assert.equal(upload.with.path, `artifacts/test-results/${step.id}\n!artifacts/test-results/${step.id}/*/_*\n`);
+  const runs = steps.filter(step => step.run?.includes('eng/ci/test-managed.mjs'));
+  assert.equal(runs.length, 1);
+  const [step] = runs;
+  assert.equal(step.id, 'suites');
+  assert.equal(step.if, "${{ !cancelled() && steps.restore.outcome == 'success' && needs.plan.outputs.managed != '[]' }}");
+  assert.equal(step.env.MANAGED_GROUPS, "${{ join(fromJSON(needs.plan.outputs.managed), ' ') }}");
+  assert.equal(step.env.COVERAGE, "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && '--no-coverage' || '' }}");
+  assert.match(step.run, /bun eng\/ci\/test-managed\.mjs --parallel 3 "\$\{coverage\[@\]\}" "\$\{groups\[@\]\}"/);
+  const uploads = steps.slice(steps.indexOf(step) + 1, steps.indexOf(step) + 1 + managedGroups.length);
+  assert.deepEqual(uploads.map(step => step.name), managedGroups.map(group => `Retain ${group} test results`));
+  for (const [index, group] of managedGroups.entries()) {
+    const upload = uploads[index];
+    assert.ok(upload.uses?.startsWith('actions/upload-artifact@'), group);
+    assert.equal(upload.if, `\${{ always() && steps.suites.outcome != 'skipped' && contains(fromJSON(needs.plan.outputs.managed), '${group}') }}`);
+    assert.equal(upload.with.name, `managed-test-results-${group}-\${{ github.run_id }}`);
+    assert.equal(upload.with.path, `artifacts/test-results/${group}\n!artifacts/test-results/${group}/*/_*\n`);
   }
   assert.ok(readFileSync(resolve(root, 'eng/ci/test-managed.mjs'), 'utf8').includes('`artifacts/test-results/${group}`'));
   assert.deepEqual(plan(null).managed, managedGroups);

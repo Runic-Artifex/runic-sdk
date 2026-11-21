@@ -307,15 +307,25 @@ jobs:
           train-feed: ${{ needs.plan.outputs.train-feed }}
       - uses: ./.github/actions/restore-build
         id: restore
-      # TRX reports and Cobertura coverage of the TUnit suites (CONTRIBUTING.md), per group. The TRX
-      # extension also copies the HTML and Cobertura reports into a _<machine>_<time> attachments folder.
-      - name: Run the platform managed suites
-        id: platform
-        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'platform') }}
-        timeout-minutes: 25
-        run: bun eng/ci/test-managed.mjs platform
+      # C4 (D077.25): the planned groups' test projects run at once, 3 at a time on the 4-core runner, the longest first
+      # (eng/ci/test-managed.mjs); a project's own [NotInParallel] constraints apply inside it. TRX reports of the TUnit
+      # suites (CONTRIBUTING.md), per group; the TRX extension also copies the HTML report into a _<machine>_<time>
+      # attachments folder. Cobertura coverage only on main and in scheduled and manual runs: on pull requests and in the
+      # merge queue it made the step about 80 s longer (244 against 160 s), and nothing there reads it.
+      - name: Run the managed suites
+        id: suites
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && needs.plan.outputs.managed != '[]' }}
+        timeout-minutes: 30
+        shell: bash
+        env:
+          MANAGED_GROUPS: ${{ join(fromJSON(needs.plan.outputs.managed), ' ') }}
+          COVERAGE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && '--no-coverage' || '' }}
+        run: |
+          read -r -a groups <<< "$MANAGED_GROUPS"
+          read -r -a coverage <<< "$COVERAGE"
+          bun eng/ci/test-managed.mjs --parallel 3 "${coverage[@]}" "${groups[@]}"
       - name: Retain platform test results
-        if: ${{ always() && steps.platform.outcome != 'skipped' }}
+        if: ${{ always() && steps.suites.outcome != 'skipped' && contains(fromJSON(needs.plan.outputs.managed), 'platform') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -325,13 +335,8 @@ jobs:
             !artifacts/test-results/platform/*/_*
           if-no-files-found: ignore
           overwrite: true
-      - name: Run the assets managed suites
-        id: assets
-        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'assets') }}
-        timeout-minutes: 25
-        run: bun eng/ci/test-managed.mjs assets
       - name: Retain assets test results
-        if: ${{ always() && steps.assets.outcome != 'skipped' }}
+        if: ${{ always() && steps.suites.outcome != 'skipped' && contains(fromJSON(needs.plan.outputs.managed), 'assets') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -341,13 +346,8 @@ jobs:
             !artifacts/test-results/assets/*/_*
           if-no-files-found: ignore
           overwrite: true
-      - name: Run the navigation managed suites
-        id: navigation
-        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'navigation') }}
-        timeout-minutes: 25
-        run: bun eng/ci/test-managed.mjs navigation
       - name: Retain navigation test results
-        if: ${{ always() && steps.navigation.outcome != 'skipped' }}
+        if: ${{ always() && steps.suites.outcome != 'skipped' && contains(fromJSON(needs.plan.outputs.managed), 'navigation') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -357,13 +357,8 @@ jobs:
             !artifacts/test-results/navigation/*/_*
           if-no-files-found: ignore
           overwrite: true
-      - name: Run the application managed suites
-        id: application
-        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'application') }}
-        timeout-minutes: 25
-        run: bun eng/ci/test-managed.mjs application
       - name: Retain application test results
-        if: ${{ always() && steps.application.outcome != 'skipped' }}
+        if: ${{ always() && steps.suites.outcome != 'skipped' && contains(fromJSON(needs.plan.outputs.managed), 'application') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -377,7 +372,7 @@ jobs:
       # summary lists every metric, the known costs, the improvements and each budget that changed against the base.
       - name: Report the scaling budgets
         id: scaling
-        if: ${{ always() && steps.application.outcome != 'skipped' }}
+        if: ${{ always() && steps.suites.outcome != 'skipped' && contains(fromJSON(needs.plan.outputs.managed), 'application') }}
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: bun tests/scaling/report.mjs --require-all ${BASE:+--base "$BASE"}
