@@ -254,6 +254,61 @@ the nightly run runs them all. The `ci:all-platforms` label still
 plans every leg. Check a branch with
 `git diff --no-renames -U0 origin/main... | bun eng/ci/plan.mjs --diff-kind`.
 
+### Workflow edits
+
+A pull request or merge queue entry that edits `ci.yml`, a composite action under
+`.github/actions/`, an unowned CI script under `eng/ci/`, or a release or pack script
+runs only the jobs that change needs (R2 of D077.26; `scopedJobs` in `plan.mjs`).
+Before, any of these files planned every job and leg.
+
+The base checkout's planner (`--affected`) compares the base's `ci.yml` (its own
+checkout) with the head's (the plan step's working directory) job by job. Comment lines
+and blank lines outside `run: |` scripts don't count. A job's definition is its block:
+its steps, matrix, `needs`, conditions and runner. It also includes:
+
+- the composite actions the block names, directly or through another action;
+- the CI scripts it names, directly or through those actions and scripts.
+
+A job whose definition changed runs whole: every managed group or web package it runs,
+and every one of its legs. A planned job also plans the skippable jobs it `needs`. A
+planned `node-26` job also plans its Node packages for the `web` job, which shares that
+output. An action or script plans only the legs its platform rules allow, so a neutral
+script plans Linux legs only. The release and pack scripts (`eng/release/**`,
+`eng/verify-packages.mjs`, `eng/version.mjs`) plan the jobs that download the packed
+packages: package consumers, WPF, templates and webkit-cdp. Release tooling is neutral,
+so WPF (Windows only) does not run for it; `eng/version.mjs` also plans the WPF
+legs. The pull request's other changed files plan as usual. The run's log and step
+summary name the jobs that were planned this way.
+
+Everything is planned, as before, when:
+
+- anything outside the job blocks changes: `name`, `on`, `permissions`,
+  `concurrency`, `env`, `defaults`;
+- a job is added, removed or renamed;
+- `plan` or `verify` changes, or a job that another job needs (`native-libraries`,
+  `build`) changes;
+- an action or script is used by one of those shared jobs (`setup-sdk` and the
+  actions it uses, the build archive, `source-state.mjs`), by no job, or is named
+  outside `ci.yml`, the actions and `eng/ci` (MSBuild files such as `flakes.json`'s
+  `eng/build/flaky-tests.targets`, `tests/support`, `eng/run.mjs`);
+- the two files can't be compared: a missing or malformed file, a lookup that failed,
+  or the same text although the diff lists `ci.yml`;
+- the diff also changes `eng/Versions.props`, `Directory.Packages.props` or an
+  assembled release notes file, because such a merge queue run stands for the green
+  `main` run (D077.22). The plan step's release or train reason does the same on the
+  head side.
+
+Pushes to `main` don't use the scoping: the base planner also gives the unscoped
+result, and `--all-linux` and `--covered` plan from it. A push therefore plans exactly
+as before. When its merge queue run was scoped, a covered push runs what that run
+skipped. The nightly and manual runs have no diff and plan everything. The
+`ci:all-platforms` label keeps the scoping and adds every leg of the planned jobs.
+
+Preview a branch with `node eng/ci/plan.mjs --files <paths>`. It compares `ci.yml` at
+the merge base with `origin/main` (`--base <revision>`) against the working tree
+(`--head <revision>` for another commit). `eng/ci/fixtures/workflow-edits` holds 14
+November pull requests that `plan.test.mjs` replays with their expected plans.
+
 ### Windows and macOS legs
 
 The Linux legs of `native`, `native-musl` and `packaging` run whenever their job runs.
@@ -366,6 +421,9 @@ an `eng/` script nobody owned ran a whole plan):
 - **Global** (`globalPaths`): shared inputs of every job, such as `global.json`,
   the MSBuild defaults, lock files, `ci.yml` and its actions, `eng/build`,
   `eng/run.mjs` and the shared CI scripts. Every job and leg.
+
+For `ci.yml`, its actions, the CI scripts and the release tooling, a pull request
+narrows this to the jobs that use the changed file (see [Workflow edits](#workflow-edits)).
 
 Give a new file an owner where one fits; list it as neutral or global only when it
 really is a shared input.

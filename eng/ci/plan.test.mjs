@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages, diffKind, parseDiffKind, versionOnly, coveredPlan, validPlan,
-  parseCovered, reusedPlan, planRecord, versionFiles, coveredSkip } from './plan.mjs';
+  parseCovered, reusedPlan, planRecord, versionFiles, coveredSkip, workflowParts, workflowPath, packScripts, packageArtifact, unscoped,
+  checkoutContext } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
   globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths,
   windowsSpellingPrivateFilePaths, matchesPath } from './platforms.mjs';
@@ -1151,4 +1152,283 @@ test('the plan step: version-only pull requests, release and train entries in th
   assert.equal(planStep('push', shas => ({ BEFORE: 'f'.repeat(40) }), ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --all push run without a usable diff');
   // Schedules and dispatches never look a queue run up.
   assert.equal(planStep('schedule', () => ({ STUB_COVERED: covered }), ['a.txt']), 'bun eng/ci/plan.mjs --all schedule run');
+});
+
+// R2 (D077.26): job-scoped planning for ci.yml, its actions and CI scripts, and the release and pack scripts.
+const ciText = readFileSync(resolve(root, workflowPath), 'utf8');
+const gitGrep = key => {
+  try { return execFileSync('git', ['grep', '-l', '-F', '-e', key], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean); }
+  catch (error) { return error.status === 1 ? [] : null; }
+};
+const context = (head, base = ciText) => ({ base, head, referrers: gitGrep });
+// Replaces `pattern` in job `job`'s block (or, without a job, in the text outside the jobs).
+const editJob = (job, pattern, replacement, text = ciText) => {
+  const lines = text.split('\n');
+  const start = lines.findIndex(line => line === `  ${job}:`);
+  assert.ok(start > 0, job);
+  let end = lines.findIndex((line, index) => index > start && /^ {0,2}[A-Za-z_]/.test(line));
+  if (end < 0) end = lines.length;
+  const block = lines.slice(start, end).join('\n');
+  assert.match(block, pattern, `${job} ${pattern}`);
+  return [...lines.slice(0, start), block.replace(pattern, replacement), ...lines.slice(end)].join('\n');
+};
+const ran = result => skippableJobs.filter(job => runs(result, job));
+const macosJobs = result => [...result.native.include, ...result.packaging.include].filter(leg => leg.platform === 'osx-arm64').length;
+const plansEverything = (result, label) => {
+  assert.equal(result.full, true, label);
+  assert.deepEqual(result.skip, [], label);
+  assert.deepEqual(result.platforms, platforms, label);
+};
+
+test('the planner reads the same ci.yml jobs and needs as a YAML parser, without comments', () => {
+  const parts = workflowParts(ciText);
+  assert.deepEqual([...parts.jobs.keys()], Object.keys(workflow.jobs));
+  for (const [name, job] of Object.entries(workflow.jobs))
+    assert.deepEqual(parts.needs.get(name), job.needs === undefined ? [] : [job.needs].flat(), name);
+  // Comment lines and blank lines outside block scalars are not part of a job; a `#` line in a run script is.
+  assert.deepEqual(workflowParts(editJob('native', /\n {4}runs-on:/, '\n    # a new comment\n\n    runs-on:')), parts);
+  const script = workflowParts(editJob('managed', /\n(\s+)(bun eng\/ci\/test-managed\.mjs)/, '\n$1# a shell comment\n$1$2'));
+  assert.notEqual(script.jobs.get('managed'), parts.jobs.get('managed'));
+  // The other shapes of needs.
+  const listed = workflowParts('on: push\njobs:\n  a:\n    runs-on: x\n  b:\n    needs:\n      - a\n    runs-on: x\n  c:\n    needs: a\n');
+  assert.deepEqual([...listed.needs], [['a', []], ['b', ['a']], ['c', ['a']]]);
+  for (const text of ['', 'jobs:\n\ta:\n', 'on: push\n', '  indented: true\njobs:\n  a:\n', 'jobs:\n  a:\n  a:\n', null])
+    assert.equal(workflowParts(text), null, JSON.stringify(text));
+});
+
+test('a ci.yml edit plans only the jobs whose definition changed, each with all its legs', () => {
+  const edit = (job, pattern = /timeout-minutes: (\d+)/, replacement = 'timeout-minutes: 999') => editJob(job, pattern, replacement);
+  for (const [job, legs, macos] of [['templates', [], 0], ['managed', [], 0], ['native', platforms, 1], ['packaging', ['win-x64', 'osx-arm64'], 1],
+    ['wpf', ['win-x64', 'win-arm64'], 0], ['screen-readers', ['win-x64'], 0], ['native-musl', [], 0], ['webkit-cdp', [], 0]]) {
+    const decided = affected([workflowPath], context(edit(job)));
+    assert.deepEqual(Object.keys(decided.jobs), [job], job);
+    assert.equal(decided.full, false, job);
+    const result = planFor(decided);
+    assert.deepEqual(ran(result), [job], job);
+    assert.deepEqual(result.platforms, legs, job);
+    assert.equal(macosJobs(result), macos, job);
+    if (job === 'native') assert.deepEqual(result.native.include, nativeLegs);
+    if (job === 'packaging') assert.deepEqual(result.packaging.include, packagingLegs);
+    if (job === 'managed') assert.deepEqual(result.managed, managedGroups);
+    if (legs.length) assert.match(result.why, new RegExp(`^${legs[0]}: \\.github/workflows/ci\\.yml \\(job ${job}\\)`));
+  }
+  // A changed matrix is part of the job.
+  assert.deepEqual(Object.keys(affected([workflowPath], context(edit('templates', /first: react/, 'first: vue'))).jobs), ['templates']);
+  // The web job runs every web package and the frameworks; node-26 runs the Node packages, which the web job then runs too.
+  const web = planFor(affected([workflowPath], context(edit('web'))));
+  assert.deepEqual([web.web, web.frameworks, ran(web)], [webTests().map(item => item.package), true, ['web', 'node-26']]);
+  const node = planFor(affected([workflowPath], context(edit('node-26'))));
+  assert.deepEqual([node.web, ran(node)], [nodePackages(), ['web', 'node-26']]);
+  // Comments, and an always-run job (engineering), plan no skippable job.
+  for (const head of [editJob('native', /\n {4}runs-on:/, '\n    # only a comment\n    runs-on:'), edit('engineering')]) {
+    const result = planFor(affected([workflowPath], context(head)));
+    assert.deepEqual([result.full, result.skip, result.platforms], [false, skippableJobs, []]);
+  }
+  // The other changed files plan as usual, on top of the changed jobs.
+  const mixed = planFor(affected([workflowPath, 'packages/web/svelte/src/index.ts', 'docs/README.md'], context(edit('wpf'))));
+  assert.deepEqual(ran(mixed), [...new Set([...ran(plan(['packages/web/svelte/src/index.ts'])), 'wpf'])].filter(job => skippableJobs.includes(job))
+    .sort((a, b) => skippableJobs.indexOf(a) - skippableJobs.indexOf(b)));
+  assert.deepEqual(mixed.platforms, ['win-x64', 'win-arm64']);
+  // A job that now needs another skippable job plans that one too.
+  const needs = affected([workflowPath], context(editJob('views', /needs: \[plan, build\]/, 'needs: [plan, build, templates]')));
+  assert.deepEqual(Object.keys(needs.jobs), ['views', 'templates']);
+  // Without a context (the plan step without a separate base checkout, an older caller), ci.yml plans everything.
+  plansEverything(plan([workflowPath]), 'no context');
+});
+
+test('shared parts of ci.yml, and edits the planner cannot compare, plan everything', () => {
+  const top = (pattern, replacement) => { assert.match(ciText, pattern); return ciText.replace(pattern, replacement); };
+  for (const [label, head] of [
+    ['on', top(/\n {4}branches: \[main\]/, '\n    branches: [main, next]')],
+    ['env', top(/\n {2}CONFIGURATION: Release/, '\n  CONFIGURATION: Debug')],
+    ['defaults', top(/\njobs:\n/, '\ndefaults:\n  run:\n    shell: bash\njobs:\n')],
+    ['concurrency', top(/cancel-in-progress: \$\{\{ github.event_name == 'pull_request' \}\}/, 'cancel-in-progress: false')],
+    ['permissions', top(/^permissions:\n {2}contents: read/m, 'permissions:\n  contents: write')],
+    ['name', top(/^name: SDK CI$/m, 'name: SDK CI 2')],
+    ['plan job', editJob('plan', /timeout-minutes: \d+/, 'timeout-minutes: 9')],
+    ['verify job', editJob('verify', /run: bun eng\/ci\/gate\.mjs/, 'run: bun eng/ci/gate.mjs --strict')],
+    ['build job, which other jobs need', editJob('build', /timeout-minutes: \d+/, 'timeout-minutes: 99')],
+    ['native-libraries job, which build needs', editJob('native-libraries', /uses: \.\/\.github\/workflows\/native-libraries\.yml/, 'uses: ./.github/workflows/native-libraries.yml # v2\n    with:\n      all: true')],
+    ['an added job', top(/\n {2}verify:\n/, '\n  extra:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: true\n  verify:\n')],
+    ['a removed job', editJob('webkit-cdp', /[^]*/, '  webkit-cdp-renamed:\n    runs-on: ubuntu-24.04')],
+    ['an unparseable head', `${ciText}\n\tbroken`],
+    ['the same text although the diff lists ci.yml', ciText],
+  ]) plansEverything(planFor(affected([workflowPath], context(head))), label);
+  for (const value of [{ base: null, head: ciText }, { base: ciText, head: null }])
+    plansEverything(planFor(affected([workflowPath], { ...value, referrers: gitGrep })), JSON.stringify(Object.keys(value)));
+  // A release or train input in the same diff: the queue run stands for the green main run (D077.22).
+  const native = editJob('native', /timeout-minutes: \d+/, 'timeout-minutes: 999');
+  for (const file of ['eng/Versions.props', 'Directory.Packages.props', 'eng/release/notes/0.23.0.md']) {
+    const decided = affected([workflowPath, file], context(native));
+    assert.equal(decided.jobs, undefined, file);
+    assert.equal(decided.full, file !== 'eng/release/notes/0.23.0.md' || decided.full, file);
+    plansEverything(planFor(affected([workflowPath, file], context(native))), file);
+  }
+});
+
+test('actions and CI scripts plan the jobs that name them; those of shared jobs, or named elsewhere, plan everything', () => {
+  const scoped = file => {
+    const decided = affected([file], context(ciText));
+    return decided.full ? null : Object.keys(decided.jobs).sort();
+  };
+  const named = key => Object.entries(workflow.jobs).filter(([, job]) => JSON.stringify(job).includes(key)).map(([name]) => name);
+  // An action that only test jobs use: those jobs, directly or through another action.
+  const browser = scoped('.github/actions/install-browser/action.yml');
+  assert.ok(browser.includes('native') && browser.includes('templates') && !browser.includes('managed'), browser.join());
+  assert.deepEqual(scoped('.github/actions/restore-build/action.yml'), named('./.github/actions/restore-build').filter(job => skippableJobs.includes(job)).sort());
+  // A neutral CI script plans its jobs' Linux legs only.
+  assert.deepEqual(scoped('eng/ci/test-managed.mjs'), ['managed']);
+  const sandbox = planFor(affected(['eng/ci/permit-webkit-sandbox.sh'], context(ciText)));
+  assert.deepEqual(sandbox.platforms, []);
+  assert.ok(runs(sandbox, 'webkit-cdp') && !runs(sandbox, 'managed'));
+  // Used by plan or build (setup-sdk, its dependency cache, the build archive), named by MSBuild or test support files
+  // (flakes.json, quarantine.mjs), by a script outside eng/ci, or by nothing at all: everything, as before.
+  for (const file of ['.github/actions/setup-sdk/action.yml', '.github/actions/dependency-cache/action.yml', '.github/actions/download-artifact/action.yml',
+    'eng/ci/source-state.mjs', 'eng/ci/build-artifact.mjs', 'eng/ci/train-feed.mjs', 'eng/ci/flakes.json', 'eng/ci/quarantine.mjs', 'eng/ci/retry.sh']) {
+    assert.equal(scoped(file), null, file);
+    plansEverything(plan([file]), file);
+  }
+  assert.equal(scoped('eng/ci/candidate-feed.mjs'), null, 'no job runs it');
+  // A failed lookup leaves the file unattributed.
+  assert.equal(affected(['eng/ci/test-managed.mjs'], { base: ciText, head: ciText, referrers: () => null }).full, true);
+});
+
+test('release and pack scripts plan the jobs that test the packed packages', () => {
+  // The jobs that download the packages the build job packs.
+  const packageJobs = Object.entries(workflow.jobs).filter(([name, job]) => name !== 'build'
+    && (job.steps ?? []).some(step => step.with?.name === packageArtifact)).map(([name]) => name);
+  assert.deepEqual(packageJobs, ['package-consumers', 'wpf', 'templates', 'webkit-cdp']);
+  for (const file of ['eng/release/notes.mjs', 'eng/release/stage.mjs', 'eng/release/nuget-policy.json', 'eng/verify-packages.mjs']) {
+    const decided = affected([file], context(ciText));
+    assert.deepEqual(Object.keys(decided.jobs), packageJobs, file);
+    const result = planFor(decided);
+    // Release tooling is neutral (no Windows or macOS job reads it), so WPF, which has no Linux leg, does not run.
+    assert.deepEqual(ran(result), ['package-consumers', 'templates', 'webkit-cdp'], file);
+    assert.deepEqual(result.platforms, [], file);
+  }
+  // eng/version.mjs is a shared input with every leg: the package jobs with their Windows legs.
+  const version = planFor(affected(['eng/version.mjs'], context(ciText)));
+  assert.deepEqual([ran(version), version.platforms], [packageJobs, ['win-x64', 'win-arm64']]);
+  assert.deepEqual(version.wpf.include, wpfLegs);
+  // Without a job that downloads the packages, they plan everything.
+  const unpacked = ciText.replaceAll(packageArtifact, 'renamed-${{ github.run_id }}');
+  assert.equal(affected(['eng/release/notes.mjs'], { base: unpacked, head: unpacked, referrers: gitGrep }).full, true);
+  // Engineering-only files (tests, notes fragments) still plan nothing.
+  assert.deepEqual(plan(['eng/release/notes.test.mjs', 'eng/release/notes/0.23.0/fixes/1.md']).skip, skippableJobs);
+  for (const path of packScripts) assert.ok(tracked(path).length > 0, path);
+});
+
+// Real squash commits of November 2026 that edit ci.yml or the release scripts: the base and head ci.yml, the changed
+// files and the referrer lookups the planner made at that commit. Expected: the jobs scoped (null: every job, as before),
+// the skippable jobs that run, the Windows and macOS platforms, and the macOS jobs (before: each planned every job,
+// and all but #1264 every leg, with 2 macOS jobs).
+const workflowEdits = JSON.parse(brotliDecompressSync(readFileSync(resolve(root, 'eng/ci/fixtures/workflow-edits/ci-yml-prs.json.br'))).toString('utf8')).fixtures;
+const everyJob = skippableJobs;
+test('this month\'s ci.yml and release script pull requests plan their changed jobs', () => {
+  const expected = {
+    // C4: the managed job's step and its script.
+    1292: [['managed'], ['managed'], [], 0],
+    // C2: the native job's shard split (platforms.mjs is the CI component's).
+    1288: [['native'], ['native'], platforms, 1],
+    // The windows-11-arm account prompt step in the WPF and native jobs, with Desktop and WPF test changes.
+    1066: [['wpf', 'native'], everyJob.filter(job => job !== 'webkit-cdp'), platforms, 2],
+    // hdiutil retries: the packaging job's macOS steps, with dotnet runic packaging code.
+    1019: [['packaging'], everyJob.filter(job => job !== 'screen-readers'), platforms, 2],
+    // dotnet runic dev --browser: the webkit-cdp job, with tool changes.
+    1053: [['webkit-cdp'], everyJob.filter(job => job !== 'screen-readers'), ['win-x64'], 0],
+    // doctor: the templates job, with tool changes.
+    1095: [['templates'], everyJob.filter(job => !['wpf', 'screen-readers'].includes(job)), [], 0],
+    // Views single-file publish: the views job, with a Views targets change.
+    1124: [['views'], everyJob.filter(job => !['screen-readers', 'webkit-cdp'].includes(job)), ['win-x64', 'osx-arm64'], 2],
+    // WebKit CDP adapter: only comments changed in ci.yml.
+    1072: [[], everyJob.filter(job => !['wpf', 'screen-readers'].includes(job)), [], 0],
+    // Release notes anchors: a release script and its test.
+    1264: [['package-consumers', 'wpf', 'templates', 'webkit-cdp'], ['package-consumers', 'templates', 'webkit-cdp'], [], 0],
+    // Shared parts: the plan job (A1), the verify job (#1033), the build job and eng/run.mjs (#1105), setup-sdk's
+    // dependency cache (#1130), and assembled release notes in the same diff (#928).
+    1280: [null, everyJob, platforms, 2],
+    1033: [null, everyJob, platforms, 2],
+    1105: [null, everyJob, platforms, 2],
+    1130: [null, everyJob, platforms, 2],
+    928: [null, everyJob, platforms, 2],
+  };
+  assert.deepEqual(workflowEdits.map(item => item.pr).sort(), Object.keys(expected).map(Number).sort());
+  for (const item of workflowEdits) {
+    const [jobs, jobsRun, legs, macos] = expected[item.pr];
+    // Before: every job; release tooling is neutral, so #1264 planned no Windows or macOS leg (and no WPF).
+    const before = plan(item.files);
+    if (item.pr === 1264) assert.deepEqual([before.full, before.skip, before.platforms], [true, ['wpf'], []]);
+    else plansEverything(before, `${item.pr} before`);
+    const decided = affected(item.files, { base: item.base, head: item.head, referrers: key => item.referrers[key] ?? null });
+    assert.deepEqual(decided.jobs ? Object.keys(decided.jobs) : null, jobs, `${item.pr} ${item.title}`);
+    const result = planFor(decided);
+    assert.deepEqual(ran(result), jobsRun, `${item.pr}`);
+    assert.deepEqual(result.platforms, legs, `${item.pr}`);
+    assert.equal(macosJobs(result), macos, `${item.pr}`);
+  }
+});
+
+test('pushes to main, the nightly run and release and train queue runs plan as before', () => {
+  const native = editJob('native', /timeout-minutes: \d+/, 'timeout-minutes: 999');
+  const decided = affected([workflowPath, 'packages/web/svelte/src/index.ts'], context(native));
+  assert.deepEqual(Object.keys(decided.jobs), ['native']);
+  assert.deepEqual(decided.unscoped, affected([workflowPath, 'packages/web/svelte/src/index.ts']));
+  assert.deepEqual(unscoped(decided), decided.unscoped);
+  const scoped = JSON.stringify(decided);
+  const before = JSON.stringify(decided.unscoped);
+  // Pushes: --all-linux, and --covered with or without a usable queue run, plan exactly as the unscoped result does.
+  const covered = JSON.stringify({ url: 'https://github.com/r/actions/runs/21', plan: planFor(decided) });
+  for (const options of [['--all-linux'], ['--covered', covered], ['--covered', 'not json']]) {
+    const now = cli(['--plan', scoped, ...options]);
+    assert.equal(now, cli(['--plan', before, ...options]), options[0]);
+    if (options[1] !== covered) plansEverything(outputsOf(now), options.join(' '));
+  }
+  // The covered push runs what the scoped queue run skipped.
+  assert.notDeepEqual(outputsOf(cli(['--plan', scoped, '--covered', covered])).skip, coveredSkip);
+  // A release or train merge queue entry (the plan step's --all-platforms reason) runs every job and leg.
+  const release = outputsOf(cli(['--plan', scoped, '--all-platforms', 'a release or train step: it changes eng/Versions.props']));
+  plansEverything(release, 'release');
+  assert.deepEqual(release.native, { include: nativeLegs });
+  // A labelled pull request keeps the scoping and adds the legs.
+  const labelled = outputsOf(cli(['--plan', scoped, '--all-platforms', `label ${allPlatformsLabel}`]));
+  assert.equal(labelled.full, false);
+  assert.deepEqual(labelled.platforms, platforms);
+  // The nightly and manual runs have no diff, so they plan everything.
+  plansEverything(outputsOf(cli(['--all', 'schedule run'])), 'schedule');
+  // The plan step passes exactly these options.
+  const step = workflow.jobs.plan.steps.find(item => item.id === 'plan').run;
+  assert.match(step, /options=\(--all-platforms "a release or train step: \$release"\)/);
+  assert.match(step, /options=\(--all-linux\)/);
+  assert.match(step, /options=\(--covered "\$covered"\)/);
+  assert.match(step, /git diff --name-only --no-renames -z "\$base" HEAD \| bun "\$RUNNER_TEMP\/base\/eng\/ci\/plan\.mjs" --affected/);
+});
+
+test('the base planner scopes against the head checkout in its working directory only', () => {
+  const head = mkdtempSync(resolve(tmpdir(), 'runic-ci-r2-head-'));
+  try {
+    mkdirSync(resolve(head, '.github/workflows'), { recursive: true });
+    writeFileSync(resolve(head, workflowPath), editJob('packaging', /timeout-minutes: \d+/, 'timeout-minutes: 999'));
+    const run = cwd => {
+      const result = spawnSync(process.execPath, [resolve(root, 'eng/ci/plan.mjs'), '--affected'], { cwd, input: `${workflowPath}\0`, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return JSON.parse(result.stdout);
+    };
+    const decided = run(head);
+    assert.deepEqual(Object.keys(decided.jobs), ['packaging']);
+    assert.deepEqual(parseAffected(JSON.stringify(decided)), decided);
+    const planned = outputsOf(cli(['--plan', JSON.stringify(decided)]));
+    assert.deepEqual(planned.skip, skippableJobs.filter(job => job !== 'packaging'));
+    // In its own checkout (no separate head) it does not scope.
+    assert.equal(run(root).full, true);
+    assert.equal(checkoutContext(root, root), null);
+  } finally { rmSync(head, { recursive: true, force: true }); }
+});
+
+test('a malformed scoped result plans everything', () => {
+  const decided = affected([workflowPath], context(editJob('views', /timeout-minutes: \d+/, 'timeout-minutes: 999')));
+  for (const value of [{ ...decided, jobs: { unknown: { platforms: [], why: {} } } }, { ...decided, jobs: [] },
+    { ...decided, jobs: { views: { platforms: ['win-x64'], why: {} } } }, { ...decided, unscoped: undefined },
+    { ...decided, unscoped: { ...decided.unscoped, components: ['renamed'] } }, { ...decided, unscoped: decided }])
+    assert.equal(parseAffected(JSON.stringify(value)), null, JSON.stringify(value).slice(0, 120));
+  assert.match(cli(['--plan', JSON.stringify({ ...decided, jobs: [] })]), /^full=true$/m);
 });
