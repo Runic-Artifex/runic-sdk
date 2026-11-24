@@ -9,7 +9,7 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages, diffKind, parseDiffKind, versionOnly, coveredPlan, validPlan,
   parseCovered, reusedPlan, planRecord, versionFiles, coveredSkip, workflowParts, workflowPath, packScripts, packageArtifact, unscoped,
-  checkoutContext } from './plan.mjs';
+  checkoutContext, revisionContext, importsOf, scriptFile } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
   globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths,
   windowsSpellingPrivateFilePaths, matchesPath } from './platforms.mjs';
@@ -1160,7 +1160,10 @@ const gitGrep = key => {
   try { return execFileSync('git', ['grep', '-l', '-F', '-e', key], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean); }
   catch (error) { return error.status === 1 ? [] : null; }
 };
-const context = (head, base = ciText) => ({ base, head, referrers: gitGrep });
+// The tracked JavaScript files that import `file`, as checkoutContext and revisionContext find them.
+const gitImporters = file => gitGrep(file.split('/').pop())?.filter(path => scriptFile(path)
+  && importsOf(path, readFileSync(resolve(root, path), 'utf8')).includes(file)) ?? null;
+const context = (head, base = ciText) => ({ base, head, referrers: gitGrep, importers: gitImporters });
 // Replaces `pattern` in job `job`'s block (or, without a job, in the text outside the jobs).
 const editJob = (job, pattern, replacement, text = ciText) => {
   const lines = text.split('\n');
@@ -1298,7 +1301,7 @@ test('release and pack scripts plan the jobs that test the packed packages', () 
   const packageJobs = Object.entries(workflow.jobs).filter(([name, job]) => name !== 'build'
     && (job.steps ?? []).some(step => step.with?.name === packageArtifact)).map(([name]) => name);
   assert.deepEqual(packageJobs, ['package-consumers', 'wpf', 'templates', 'webkit-cdp']);
-  for (const file of ['eng/release/notes.mjs', 'eng/release/stage.mjs', 'eng/release/nuget-policy.json', 'eng/verify-packages.mjs']) {
+  for (const file of ['eng/release/notes.mjs', 'eng/release/stage.mjs', 'eng/release/nuget-policy.json', 'eng/release/template-locks.mjs']) {
     const decided = affected([file], context(ciText));
     assert.deepEqual(Object.keys(decided.jobs), packageJobs, file);
     const result = planFor(decided);
@@ -1306,6 +1309,17 @@ test('release and pack scripts plan the jobs that test the packed packages', () 
     assert.deepEqual(ran(result), ['package-consumers', 'templates', 'webkit-cdp'], file);
     assert.deepEqual(result.platforms, [], file);
   }
+  // #1302: the WPF job's packed consumer smoke imports eng/verify-packages.mjs and runs on win-x64 only, so a change to it
+  // runs that leg as well.
+  const verifier = affected(['eng/verify-packages.mjs'], context(ciText));
+  assert.deepEqual(Object.keys(verifier.jobs), packageJobs);
+  assert.deepEqual(verifier.jobs.wpf, { platforms: ['win-x64'], file: 'eng/verify-packages.mjs',
+    why: { 'win-x64': 'eng/verify-packages.mjs (imported by tests/fixtures/navigation/wpf-consumer/package-smoke.mjs)' } });
+  assert.deepEqual(parseAffected(JSON.stringify(verifier)), verifier);
+  const verified = planFor(verifier);
+  assert.deepEqual([ran(verified), verified.platforms], [packageJobs, ['win-x64']]);
+  assert.deepEqual(verified.wpf.include, wpfLegs.filter(leg => leg.rid === 'win-x64'));
+  assert.equal(macosJobs(verified), 0);
   // eng/version.mjs is a shared input with every leg: the package jobs with their Windows legs.
   const version = planFor(affected(['eng/version.mjs'], context(ciText)));
   assert.deepEqual([ran(version), version.platforms], [packageJobs, ['win-x64', 'win-arm64']]);
@@ -1316,6 +1330,65 @@ test('release and pack scripts plan the jobs that test the packed packages', () 
   // Engineering-only files (tests, notes fragments) still plan nothing.
   assert.deepEqual(plan(['eng/release/notes.test.mjs', 'eng/release/notes/0.23.0/fixes/1.md']).skip, skippableJobs);
   for (const path of packScripts) assert.ok(tracked(path).length > 0, path);
+});
+
+test('a release or pack script plans the jobs that run a module importing it, with that module\'s legs', () => {
+  const script = 'eng/release/notes.mjs', smoke = 'tests/fixtures/navigation/wpf-consumer/package-smoke.mjs';
+  const helper = 'tests/fixtures/navigation/package-helper.mjs';
+  const decide = importers => affected([script], { ...context(ciText), importers });
+  // A new importer that a job names is planned without editing the planner, through modules no job names too.
+  for (const importers of [file => file === script ? [smoke] : [], file => ({ [script]: [helper], [helper]: [smoke] })[file] ?? []]) {
+    const decided = decide(importers);
+    assert.deepEqual(decided.jobs.wpf.platforms, ['win-x64']);
+    assert.match(decided.jobs.wpf.why['win-x64'], /^eng\/release\/notes\.mjs \(imported by tests\/fixtures\/navigation\/wpf-consumer\/package-smoke\.mjs\)$/);
+    assert.deepEqual(planFor(decided).wpf.include, wpfLegs.filter(leg => leg.rid === 'win-x64'));
+  }
+  // The lookup stops at shared inputs (eng/run.mjs, which every job imports) and skips engineering-only and CI files.
+  const stopped = decide(file => ({ [script]: ['eng/run.mjs', 'eng/ci/plan.mjs', 'eng/release/notes.test.mjs'],
+    'eng/run.mjs': [smoke], 'eng/ci/plan.mjs': [smoke], 'eng/release/notes.test.mjs': [smoke] })[file] ?? []);
+  assert.deepEqual(stopped.jobs.wpf.platforms, []);
+  // A failed or missing lookup leaves the script unattributed.
+  for (const importers of [() => null, file => file === script ? [helper] : null, undefined])
+    assert.equal(decide(importers).full, true, String(importers));
+  // Both contexts find the importers by their import statements, not by any mention.
+  const found = revisionContext('HEAD').importers('eng/verify-packages.mjs');
+  for (const file of [smoke, 'tests/fixtures/navigation/reactiveui-consumer/package-smoke.mjs', 'eng/run.mjs']) assert.ok(found.includes(file), file);
+  for (const file of ['package.json', 'eng/release/workflow.test.mjs', 'specs/desktop/conformance/cs-webui-example-parity.json'])
+    assert.ok(!found.includes(file), file);
+  assert.deepEqual(importsOf('a/b/c.mjs', [`import { x } from "../d.mjs";`, `const y = await import('./e.mjs');`, `export * from "../../f.js";`,
+    `import "./g.mjs";`, `import fs from "node:fs";`, `// see "./h.mjs"`].join('\n')), ['a/d.mjs', 'a/b/e.mjs', 'f.js', 'a/b/g.mjs']);
+});
+
+// #1302: every tracked module that imports a release or pack script either runs in a job that the lookup above finds
+// (a job names it or a module importing it), or is listed here with where it runs. A new importer that runs on a
+// Windows or macOS leg some other way (a shell script, a package.json script) fails until the planner covers it.
+const packScriptImportersOutsideJobs = {
+  // The shared runner: the build job packs with it, and package-consumers runs its verify-packages command.
+  'eng/run.mjs': 'build, package-consumers',
+  // bun run verify:templates in the Linux templates and webkit-cdp jobs.
+  'eng/verify-templates.mjs': 'templates, webkit-cdp',
+  // Maintainer and release commands that CI does not run.
+  'eng/dependencies/update-template-locks.mjs': 'maintainers',
+  // The release tooling's own modules: release.yml and the build job (Linux).
+  'eng/release/*': 'release, build',
+  // Template checks run by Test-Templates.sh and Test-NixTemplate.sh in the Linux templates job and nix.yml.
+  'tests/templates/template-npm-registry.mjs': 'templates (Linux)', 'tests/templates/bind-template-candidate-integrities.mjs': 'templates (Linux)',
+};
+test('every module importing a release or pack script runs where the planner finds it', () => {
+  const blocks = Object.values(workflow.jobs).map(job => JSON.stringify(job));
+  const named = file => blocks.some(block => block.includes(file));
+  const reaches = (file, seen = new Set()) => {
+    if (named(file)) return true;
+    if (seen.has(file) || globalPaths.some(path => matchesPath(file, path))) return false;
+    seen.add(file);
+    return gitImporters(file).some(importer => !engineeringOnly(importer) && reaches(importer, seen));
+  };
+  const scripts = tracked(...packScripts).filter(scriptFile);
+  const unplanned = [...new Set(scripts.flatMap(gitImporters))]
+    .filter(file => !engineeringOnly(file) && !file.startsWith('eng/ci/') && !scripts.includes(file) && !reaches(file))
+    .filter(file => !Object.keys(packScriptImportersOutsideJobs).some(path => matchesPath(file, path)));
+  assert.deepEqual(unplanned, []);
+  for (const path of Object.keys(packScriptImportersOutsideJobs)) assert.ok(tracked(path.replace(/\*$/, '')).length > 0, path);
 });
 
 // Real squash commits of November 2026 that edit ci.yml or the release scripts: the base and head ci.yml, the changed
@@ -1359,7 +1432,8 @@ test('this month\'s ci.yml and release script pull requests plan their changed j
     const before = plan(item.files);
     if (item.pr === 1264) assert.deepEqual([before.full, before.skip, before.platforms], [true, ['wpf'], []]);
     else plansEverything(before, `${item.pr} before`);
-    const decided = affected(item.files, { base: item.base, head: item.head, referrers: key => item.referrers[key] ?? null });
+    const decided = affected(item.files, { base: item.base, head: item.head, referrers: key => item.referrers[key] ?? null,
+      importers: gitImporters });
     assert.deepEqual(decided.jobs ? Object.keys(decided.jobs) : null, jobs, `${item.pr} ${item.title}`);
     const result = planFor(decided);
     assert.deepEqual(ran(result), jobsRun, `${item.pr}`);
