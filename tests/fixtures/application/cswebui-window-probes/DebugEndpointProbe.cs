@@ -19,6 +19,12 @@ internal static class DebugEndpointProbe
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(45);
 
+    // WebUI's own wait for a started browser's page to connect, its default when showing. On CI this is the job's first
+    // start of the installed Chrome, with a new WebUI profile: about 2 s on linux-x64 and 7 s on win-x64 in passing runs,
+    // past 15 s on a slow runner (sdk#1311). A wait for a condition, so it scales with RUNIC_TEST_TIMEOUT_SCALE
+    // (eng/ci/README.md, "Test timeouts"); WebUI caps it at 60 s.
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(15);
+
     internal static int Run(bool fixedPort)
     {
         new Thread(static () =>
@@ -57,7 +63,10 @@ internal static class DebugEndpointProbe
         {
             var result = RunicCsWebUiHost.Run(provider, async host =>
             {
+                var connect = TestTimeouts.Start(ConnectionTimeout);
+                WebUiApplication.SetConnectionTimeout((nuint)Math.Ceiling(connect.Limit.TotalSeconds));
                 var window = await host.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = root, Width = 640, Height = 480 });
+                connect.Succeeded();
                 var native = CsWebUiPlatformServices.GetWebUiWindow(window) ?? throw new InvalidOperationException("The Window has no WebUI window.");
                 if (native.BrowserProcessId == 0 && !OperatingSystem.IsMacOS())
                     Console.Error.WriteLine("WebUI reports no browser process for the window.");

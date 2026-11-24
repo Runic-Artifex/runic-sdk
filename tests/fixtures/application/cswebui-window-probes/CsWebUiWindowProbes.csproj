@@ -30,6 +30,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- DebugEndpointProbe.cs (- -probe-debug-endpoint): a real browser window's DevTools Protocol endpoint (sdk#1221). -->
     <DefineConstants>$(DefineConstants);RUNIC_DEBUG_ENDPOINT_PROBE</DefineConstants>
+    <!-- tests/support/TestTimeouts.cs (eng/build/test-timeouts.targets): the debug endpoint probe scales WebUI's wait for
+         the browser to connect by RUNIC_TEST_TIMEOUT_SCALE (sdk#1311). -->
+    <RunicTestTimeouts>true</RunicTestTimeouts>
   </PropertyGroup>
   <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../../../packages/dotnet/Runic.Application.Views.CsWebUi/build/Runic.Application.Views.CsWebUi.targets" />
