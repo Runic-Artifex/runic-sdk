@@ -11,9 +11,9 @@ const without = (name, conclusion) => complete().flatMap(job => job.name !== nam
 const jobs = byRun => async run => byRun[run.id] ?? complete();
 
 test('the release jobs are every Windows and macOS leg of the native, WPF and packaging jobs', () => {
-  // win-x64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of D077.26); every shard must pass.
-  expect(releaseJobs).toEqual(['Native / win-x64 (window)', 'Native / win-x64 (platform)', 'Native / win-arm64', 'Native / osx-arm64 (window)',
-    'Native / osx-arm64 (platform)', 'WPF navigation / win-x64',
+  // win-x64, win-arm64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of D077.26); every shard must pass.
+  expect(releaseJobs).toEqual(['Native / win-x64 (window)', 'Native / win-x64 (platform)', 'Native / win-arm64 (window)',
+    'Native / win-arm64 (platform)', 'Native / osx-arm64 (window)', 'Native / osx-arm64 (platform)', 'WPF navigation / win-x64',
     'WPF navigation / win-arm64', 'Packaging / windows', 'Packaging / macos']);
 });
 test('selects the newest successful push, scheduled, manual or merge queue run of ci.yml for the exact commit', async () => {
@@ -49,7 +49,7 @@ test('fails clearly when CI for the commit is missing, running or failed', () =>
 });
 test('a run that skipped or lacks a Windows or macOS leg is rejected, and an older complete run is taken', async () => {
   expect(missingReleaseJobs(complete())).toEqual([]);
-  expect(missingReleaseJobs(without('Native / win-arm64', 'skipped'))).toEqual(['Native / win-arm64=skipped']);
+  expect(missingReleaseJobs(without('Native / win-arm64 (platform)', 'skipped'))).toEqual(['Native / win-arm64 (platform)=skipped']);
   expect(missingReleaseJobs(without('Packaging / macos'))).toEqual(['Packaging / macos=missing']);
   // A push run that planned only some legs, and a later manual run of the same commit with all of them.
   const partial = jobs({7: without('WPF navigation / win-arm64', 'skipped')});

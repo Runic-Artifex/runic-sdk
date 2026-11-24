@@ -943,7 +943,8 @@ jobs:
     needs: plan
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native') }}
     # The planned legs of nativeLegs in eng/ci/platforms.mjs: both Linux legs, and the Windows
-    # and macOS legs the change needs. win-x64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of D077.26):
+    # and macOS legs the change needs. win-x64, win-arm64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of
+    # D077.26):
     # `window` runs the desktop contracts, the window layer, the hosted applications and the WebView2 menus and screen
     # readers; `platform` runs administration, elevation, the platform providers, the runtime conformance and the
     # NativeAOT WebView2 and Views applications. A step of one shard says `matrix.shard != '<the other>'`, which holds
