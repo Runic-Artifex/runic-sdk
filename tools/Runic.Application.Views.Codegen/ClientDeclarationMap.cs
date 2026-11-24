@@ -99,6 +99,29 @@ internal static partial class ClientDeclarationMap
         }
     }
 
+    /// <summary>
+    /// The number of mapped names in a declaration map this generator wrote: the segments of its <c>mappings</c> with a
+    /// source, which have four fields where a generated-only segment has one. Zero for a map it cannot read.
+    /// </summary>
+    internal static int MappedNames(string map)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(map);
+            if (!document.RootElement.TryGetProperty("mappings", out var mappings) || mappings.GetString() is not { } text) return 0;
+            var count = 0;
+            foreach (var line in text.Split(';'))
+                foreach (var segment in line.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    // A field ends with a digit without the continuation bit (32).
+                    if (segment.Count(digit => Base64.IndexOf(digit) is >= 0 and < 32) >= 4) count++;
+            return count;
+        }
+        catch (JsonException)
+        {
+            return 0;
+        }
+    }
+
     // The column of the declared name: after the indentation and "export interface " or "readonly ".
     private static int? Column(string line, string name)
     {

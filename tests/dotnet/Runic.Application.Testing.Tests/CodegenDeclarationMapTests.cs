@@ -134,9 +134,14 @@ internal sealed partial class CodegenDiagnosticsTests
                 $"link.ts does not re-export its contract:\n{client}");
 
             // Without the PDB a new generation removes the map and its comment: tsserver reads <file>.map even without one.
+            // RUNICBRIDGE076 says so, since a committed client changes (#1298).
             File.Delete(Path.Combine(directory, "FixtureSourceMap.pdb"));
             var (exitCode, output) = await RunSourceMapGeneratorAsync(directory, cache: false).ConfigureAwait(false);
-            Require(exitCode == 0 && !output.Contains("warning", StringComparison.OrdinalIgnoreCase), $"The generator failed without a PDB.\n{output}");
+            Require(exitCode == 0 && ClientWithoutPdbWarnings(output) is [var lost]
+                    && lost.StartsWith(contractPath + ": warning RUNICBRIDGE076: the generated link.contract.d.ts loses its declaration map "
+                        + "that the existing file has, because FixtureSourceMap has no PDB", StringComparison.Ordinal)
+                    && output.Split('\n').Count(line => line.Contains("warning", StringComparison.OrdinalIgnoreCase)) == 1,
+                $"The generator failed without a PDB, or did not report the lost map once with RUNICBRIDGE076.\n{output}");
             Require(!File.Exists(contractPath + ".map") && File.ReadAllText(contractPath) == WithoutMapComment(contract),
                 "Without a PDB the contract keeps a declaration map or differs by more than its comment.");
         }

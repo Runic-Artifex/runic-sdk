@@ -103,6 +103,7 @@ and severities are open.
 | [`RUNICBRIDGE073`](#runicbridge073) | Error | Generator | A ReactiveUI interaction's `[RunicInteractionTimeout]` is not a timeout |
 | [`RUNICBRIDGE074`](#runicbridge074) | Error | Generator | A `[RunicInteractionTimeout]` is on a view question |
 | [`RUNICBRIDGE075`](#runicbridge075) | Warning | Build targets | `RunicDevelopmentOnlyViews` or `RunicBridgeBlobs` is neither auto nor true |
+| [`RUNICBRIDGE076`](#runicbridge076) | Warning | Generator | A generated client loses its declaration map or comments because an assembly has no PDB |
 
 ### Errors and warnings while you type
 
@@ -177,8 +178,8 @@ Visual Studio starts for running or testing), for a `RunicApplicationFrontendMod
 or a ViewModel of another assembly, and next to an error, which stops the build
 before the compiler. Before 0.20 the generator reported them in every build,
 and `TreatWarningsAsErrors`, `.editorconfig` and `#pragma` did not apply to
-them. The generator's other warning (`RUNICBRIDGE020`) needs the compiled
-assembly and appears only after a build. It, and the build targets' warnings, are
+them. The generator's other warnings (`RUNICBRIDGE020`, `072` and `076`) need the compiled
+assembly and appear only after a build. They, and the build targets' warnings, are
 MSBuild warnings: since 0.20 a project with `TreatWarningsAsErrors` makes them
 errors too, unless `WarningsNotAsErrors` or `NoWarn` names them, and
 `WarningsAsErrors` makes a named one an error as before. `.editorconfig` and
@@ -1011,6 +1012,30 @@ no `false`: neither can be left out of a build or an untrimmed publish.
 
 **Fix:** remove the property for `auto`, or set `true` to keep them in every
 publish. See [MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE076
+
+A warning from the Bridge generator (since 0.24). A generated client replaces a
+file that has more: the new `<view>.contract.d.ts` has no declaration map, or
+fewer members in it, or a generated module has fewer documentation lines, and an
+assembly that declares the client's ViewModel or one of its base classes has no
+PDB, for example a library with `<DebugType>none</DebugType>` in Release. The
+generator finds member locations, and the `<summary>` of a partial property such
+as `[Reactive] public partial string Name { get; set; }`, through the assembly's
+PDB. Without one, the client is written without them, so clients committed to
+source control change between a Debug and a Release build of the same source.
+The warning names the file and the assemblies without a PDB, and repeats on
+builds that reuse the cached generation. A first generation, with no file to
+compare, does not warn.
+
+**Fix:** give every assembly whose ViewModels the application presents a
+portable or embedded PDB in every configuration, such as
+`<DebugType>portable</DebugType>` in its project or a `Directory.Build.props`,
+and build again; the clients then have their maps and comments again. A
+project that does not commit its generated clients can suppress the warning with
+`NoWarn`. See
+[Commit generated clients](../packages/dotnet/Runic.Application.Views/README.md#commit-generated-clients).
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

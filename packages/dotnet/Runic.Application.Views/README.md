@@ -1899,7 +1899,8 @@ export type DocumentPane = "Editor" | "Preview";
   declaring part in source, found through the assembly's PDB (source paths
   that a CI or deterministic build maps, such as `/_/`, resolve through the
   project's source roots), because the XML
-  documentation file keeps the generated part's `<inheritdoc/>`. The bootstrap
+  documentation file keeps the generated part's `<inheritdoc/>`. Without a PDB
+  the client has no such summary; see [Commit generated clients](#commit-generated-clients). The bootstrap
   pass writes the XML documentation file for this; a project that already writes one keeps
   its own. Set `RunicApplicationFrontendDocumentationEnabled=false` to skip it. A separate model
   assembly (`RunicApplicationFrontendModelAssembly`) needs its XML documentation file beside
@@ -2170,8 +2171,8 @@ own code, while you type and in the build, so `#pragma warning disable` and
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072` and `075` are warnings; the ones the generator
-reports itself (`020`, `072`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075` and `076` are warnings; the ones the generator
+reports itself (`020`, `072`, `076`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -2230,7 +2231,8 @@ The map's locations are those of the [development source map](#development-sourc
 its `sources` are relative to the map, so a client committed to source control
 is the same on every machine. A member without a location (no PDB, or a source
 on another drive than the generated directory) stays in the `.d.ts`, and a
-client without any gets no map. Everything else, such as `connectEditor` or the
+client without any gets no map, so a committed client needs a PDB in every
+configuration ([Commit generated clients](#commit-generated-clients)). Everything else, such as `connectEditor` or the
 page reference's `connect`, stays in the generated TypeScript.
 
 Imports don't change: `import { connectEditor, type EditorState } from "./generated/editor.js"`
@@ -2240,6 +2242,31 @@ the built JavaScript is unchanged. Commit the `.contract.d.ts` and its map with
 the client. A library that compiles the generated directory with `tsc
 --declaration` into another directory copies the `.contract.d.ts` files there
 too, since `tsc` does not copy `.d.ts` inputs.
+
+### Commit generated clients
+
+You can commit the generated clients (`<view>.ts`, `<view>.mock.ts`, the named
+types module, `<view>.contract.d.ts` and `<view>.contract.d.ts.map`), so that a
+review shows when a ViewModel's contract changes. They are the same on every
+machine and for every configuration of the same source, with one condition:
+every assembly whose ViewModels the application presents, its own and each
+referenced ViewModel library, needs a portable or embedded PDB in every
+configuration. The generator finds member locations for the declaration map,
+and the `<summary>` of partial properties such as `[Reactive]` and
+`[ObservableProperty]` ones, through that PDB. A configuration without one, such
+as Release with `<DebugType>none</DebugType>`, writes clients without the map,
+its `sourceMappingURL` comment and those summaries. The contract and its hash
+are the same, so the application still works, but the committed files change.
+
+When a build writes a client with fewer mapped members or documentation lines
+than the file it replaces, and an assembly of the client's ViewModel has no PDB,
+the generator warns with
+[`RUNICBRIDGE076`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge076),
+which names the file and the assembly. Set `<DebugType>portable</DebugType>` (or
+`embedded`) in that project for every configuration, for example in a
+`Directory.Build.props`, and build again. The warning repeats on builds that
+reuse the cached generation; a project that does not commit its clients can
+suppress it with `NoWarn`.
 
 ## Ship the frontend inside the executable
 
