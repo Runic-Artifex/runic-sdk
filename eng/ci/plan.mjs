@@ -1,4 +1,5 @@
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
@@ -127,58 +128,271 @@ export function affectedPlatforms(files) {
 // (see engineeringOnly in eng/run.mjs) affects every component. `screenReaders` is whether a file
 // the screen reader legs read changed (screenReaderPaths), `webKitCdp` whether one the webkit-cdp job reads did
 // (webKitCdpPaths).
-export function affected(files) {
+//
+// `context` (workflowContext) lets ci.yml edits, the composite actions and CI scripts the jobs call, and the release and
+// pack scripts plan only the jobs they change (R2, scopedJobs). Without it they plan everything, as before.
+export function affected(files, context = null) {
+  const scoped = context && files?.length ? scopedJobs(files, context) : null;
+  if (scoped) {
+    const rest = files.filter(file => !scoped.files.includes(file));
+    const unscoped = unscopedAffected(files);
+    const result = rest.length ? unscopedAffected(rest)
+      : { full: false, components: [], screenReaders: false, webKitCdp: false, platforms: [], why: {} };
+    if (!result.full) return { ...result, jobs: scoped.jobs, unscoped };
+  }
+  return unscopedAffected(files);
+}
+function unscopedAffected(files) {
   const full = files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
   return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files),
     screenReaders: full || files.some(file => screenReaderPaths.some(path => matchesPath(file, path))),
     webKitCdp: full || files.some(file => webKitCdpPaths.some(path => matchesPath(file, path))), ...affectedPlatforms(files) };
 }
 
+// R2 (D077.26): job-scoped planning. A pull request or merge queue entry that edits ci.yml runs the jobs whose
+// definition changed instead of every job. The base checkout's planner compares the base's ci.yml (its own) with the
+// head's (the working directory's) job by job, ignoring comment lines and blank lines; a job's definition is its block
+// (body, matrix, `needs`, conditions) and the composite actions and CI scripts it names. Everything is planned (the
+// file stays a full cause) when:
+// - anything outside the job blocks changed (`name`, `on`, `permissions`, `concurrency`, `env`, `defaults`, ...);
+// - a job was added, removed or renamed (verify's `needs` changes too);
+// - a shared job changed: `plan`, `verify`, or a job another job needs (`native-libraries`, `build`); a changed job
+//   also plans the skippable jobs it needs;
+// - the two files cannot be compared (no head or base file, a file that does not parse, or identical text although
+//   the diff lists ci.yml);
+// - the diff also changes a release or train input (eng/Versions.props, Directory.Packages.props, assembled release
+//   notes): such a merge queue run stands for the green main run (D077.22) and runs everything as before.
+// A changed file under .github/actions/<name>/ plans the jobs that name that action, directly or through another
+// action; an unowned CI script under eng/ci/ the jobs that name it, directly or through the actions and CI scripts
+// that name it. Such a file stays a full cause when a shared job uses it, when no job uses it, or when any other file
+// names it (an MSBuild file, a test support file, eng/run.mjs, ...), since the planner cannot attribute those uses.
+// The release and pack scripts (packScripts) plan the jobs that download the packed packages (packageArtifact).
+// A planned job runs whole: every managed group or web package it runs, and every leg the changed file's platform
+// rules allow (affectedPlatforms of that file: a ci.yml job edit every leg, a neutral script the Linux legs only).
+// The other changed files plan as usual. Pushes to main ignore the scoping (`unscoped`), and the nightly and
+// manual runs have no diff to scope.
+export const workflowPath = ".github/workflows/ci.yml";
+export const packScripts = ["eng/release", "eng/verify-packages.mjs", "eng/version.mjs"];
+// The artifact of packed packages that the build job uploads; the jobs that download it test the packages.
+export const packageArtifact = "runic-sdk-${{ github.run_id }}";
+export const releaseInputs = file => file === "eng/Versions.props" || file === "Directory.Packages.props" || releaseNotes.test(file);
+
+// The normalized parts of a workflow: the text outside `jobs:` and each job's block, without comment lines, blank
+// lines and trailing spaces outside block scalars (`run: |`), and each job's `needs`. Null when it does not have the
+// expected shape (top-level keys at column 0, job keys indented by two spaces).
+export function workflowParts(text) {
+  if (typeof text !== "string" || text.includes("\t")) return null;
+  const outside = [], jobs = new Map(), needs = new Map();
+  let section = null, job = null, scalar = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+$/, "");
+    const indent = line.length - line.trimStart().length;
+    if (scalar !== null) {
+      if (line === "") continue;
+      if (indent > scalar) { (job ? jobs.get(job) : outside).push(line); continue; }
+      scalar = null;
+    }
+    if (line === "" || line.trimStart().startsWith("#")) continue;
+    if (indent === 0) {
+      section = /^([A-Za-z_][\w-]*):/.exec(line)?.[1] ?? null;
+      if (section === null) return null;
+      job = null;
+      outside.push(line);
+    } else if (section === "jobs" && indent === 2) {
+      const name = /^ {2}([A-Za-z_][\w-]*):\s*(#.*)?$/.exec(line)?.[1];
+      if (!name || jobs.has(name)) return null;
+      jobs.set(job = name, [line]);
+    } else if (section === "jobs") {
+      if (!job) return null;
+      jobs.get(job).push(line);
+    } else if (section !== null) outside.push(line);
+    else return null;
+    // A block scalar's lines are indented more than its key: `key: |`, `- key: >-`, `- |`.
+    if (/(?:^|:\s|-\s)\s*[|>][+-]?\d?[+-]?(?:\s+#.*)?$/.test(line.trimStart()))
+      scalar = indent + (/^(?:-\s+)+/.exec(line.trimStart())?.[0].length ?? 0);
+  }
+  if (!jobs.size) return null;
+  for (const [name, lines] of jobs) {
+    const index = lines.findIndex(line => /^ {4}needs:/.test(line));
+    if (index < 0) { needs.set(name, []); continue; }
+    const value = lines[index].replace(/^ {4}needs:\s*/, "");
+    const following = [];
+    for (const line of lines.slice(index + 1)) { if (!/^ {6}- /.test(line)) break; following.push(line.replace(/^ {6}- /, "")); }
+    const list = value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1).split(",").map(item => item.trim()).filter(Boolean)
+      : value ? [value] : following;
+    if (!list.length || !list.every(item => /^[A-Za-z_][\w-]*$/.test(item.replace(/^["']|["']$/g, "")))) return null;
+    needs.set(name, list.map(item => item.replace(/^["']|["']$/g, "")));
+  }
+  return { outside: outside.join("\n"), jobs: new Map([...jobs].map(([name, lines]) => [name, lines.join("\n")])), needs };
+}
+
+// The jobs of base and head that a change cannot scope: plan, verify, and the jobs another job (but verify) needs.
+const sharedJobs = parts => new Set(["plan", "verify", ...[...parts.needs].filter(([name]) => name !== "verify").flatMap(([, list]) => list)]);
+
+// The jobs and files of a diff that plan job by job (see above), or null when none do. `context`: { base, head } (the
+// two ci.yml texts) and referrers(key), the tracked files of base and head whose text contains `key`.
+export function scopedJobs(files, context) {
+  if (files.some(releaseInputs)) return null;
+  const base = workflowParts(context.base), head = workflowParts(context.head);
+  if (!base || !head) return null;
+  const shared = new Set([...sharedJobs(base), ...sharedJobs(head)]);
+  const jobs = {};
+  const add = (names, file) => {
+    const { platforms: planned, why } = affectedPlatforms([file]);
+    for (const name of names.filter(name => skippableJobs.includes(name))) {
+      const entry = jobs[name] ??= { platforms: [], why: {} };
+      for (const platform of planned) if (!entry.platforms.includes(platform)) { entry.platforms.push(platform); entry.why[platform] = why[platform]; }
+      entry.platforms = platforms.filter(platform => entry.platforms.includes(platform));
+      entry.file ??= file;
+    }
+  };
+  const scoped = [];
+  // ci.yml: the jobs whose block differs.
+  if (files.includes(workflowPath)) {
+    const names = [...new Set([...base.jobs.keys(), ...head.jobs.keys()])];
+    const changed = names.filter(name => base.jobs.get(name) !== head.jobs.get(name));
+    const sameJobs = names.every(name => base.jobs.has(name) && head.jobs.has(name));
+    // A changed job also plans the jobs it needs, so that it does not wait on a skipped one.
+    const planned = [...new Set([...changed, ...changed.flatMap(name => head.needs.get(name) ?? [])])];
+    if (context.base !== context.head && base.outside === head.outside && sameJobs && !changed.some(name => shared.has(name))) {
+      for (const name of planned.filter(name => skippableJobs.includes(name))) {
+        jobs[name] ??= { platforms: [], why: {} };
+        jobs[name].platforms = [...platforms];
+        for (const platform of platforms) jobs[name].why[platform] ??= `${workflowPath} (job ${name})`;
+        jobs[name].file ??= workflowPath;
+      }
+      scoped.push(workflowPath);
+    }
+  }
+  // Composite actions and CI scripts: the jobs that name them, through the actions and scripts that name them.
+  const mentioning = (key, parts) => [...parts.jobs].filter(([, block]) => block.includes(key)).map(([name]) => name);
+  const keyOf = file => /^\.github\/actions\/[^/]+/.exec(file)?.[0] ?? (file.startsWith("eng/ci/") ? basename(file) : null);
+  const users = (file, seen = new Set()) => {
+    const key = keyOf(file);
+    if (!key || seen.has(key)) return seen.has(key) ? [] : null;
+    seen.add(key);
+    if (base.outside.includes(key) || head.outside.includes(key)) return null;
+    const names = new Set([...mentioning(key, base), ...mentioning(key, head)]);
+    const referrers = context.referrers(key);
+    if (!Array.isArray(referrers)) return null;
+    for (const referrer of referrers) {
+      if (referrer === workflowPath || keyOf(referrer) === key || engineeringOnly(referrer) || owner(referrer) === ciComponent) continue;
+      if (!/^(\.github\/actions\/|eng\/ci\/)/.test(referrer)) return null;
+      const more = users(referrer, seen);
+      if (more === null) return null;
+      for (const name of more) names.add(name);
+    }
+    return [...names];
+  };
+  for (const file of files.filter(file => file !== workflowPath && !engineeringOnly(file) && !owner(file))) {
+    if (packScripts.some(path => matchesPath(file, path))) {
+      const names = [...new Set([...mentioning(packageArtifact, base), ...mentioning(packageArtifact, head)])].filter(name => name !== "build");
+      if (!names.length || names.some(name => shared.has(name))) continue;
+      add(names, file);
+      scoped.push(file);
+    } else if (/^(\.github\/actions\/|eng\/ci\/)/.test(file)) {
+      const names = users(file);
+      if (!names?.length || names.some(name => shared.has(name))) continue;
+      add(names, file);
+      scoped.push(file);
+    }
+  }
+  return scoped.length ? { files: scoped, jobs: Object.fromEntries(Object.entries(jobs).map(([name, { platforms: list, why, file }]) =>
+    [name, { platforms: list, why: Object.fromEntries(list.map(platform => [platform, why[platform]])), file }])) } : null;
+}
+
+// The context of the plan step: the base planner's own checkout (`base`) against the head checkout (`head`, the working
+// directory). Null when they are the same directory, so a run without a separate base checkout never scopes.
+export function checkoutContext(base = root, head = process.cwd()) {
+  const real = path => { try { return realpathSync(path); } catch { return null; } };
+  if (!real(base) || !real(head) || real(base) === real(head)) return null;
+  const read = directory => { try { return readFileSync(resolve(directory, workflowPath), "utf8"); } catch { return null; } };
+  return { base: read(base), head: read(head), referrers: key => {
+    const found = [base, head].map(directory => grep(directory, key));
+    return found.includes(null) ? null : [...new Set(found.flat())];
+  } };
+}
+// For a local --files preview: the `base` revision (the merge base with origin/main by default) against the `head`
+// revision, or the working tree without one.
+export function revisionContext(base, head = null, directory = root) {
+  try {
+    const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const commits = [base, head].map(revision => revision && git("rev-parse", "--verify", `${revision}^{commit}`).trim());
+    const text = commit => commit ? git("show", `${commit}:${workflowPath}`) : readFileSync(resolve(directory, workflowPath), "utf8");
+    const found = (key, commit) => grep(directory, key, commit)?.map(line => commit ? line.slice(commit.length + 1) : line) ?? null;
+    return { base: text(commits[0]), head: text(commits[1]), referrers: key => {
+      const lists = commits.map(commit => found(key, commit));
+      return lists.includes(null) ? null : [...new Set(lists.flat())];
+    } };
+  } catch { return null; }
+}
+function grep(directory, key, revision = null) {
+  try {
+    return execFileSync("git", ["grep", "-l", "-F", "-e", key, ...(revision ? [revision] : [])], { cwd: directory, encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"] }).split("\n").filter(Boolean);
+  } catch (error) {
+    // git grep exits 1 when nothing matches; anything else leaves the file unattributed.
+    return error.status === 1 ? [] : null;
+  }
+}
+
 // The legs of a platform-dependent job: those without a platform, and those whose platform is planned.
-const legs = (list, planned) => list.filter(leg => !leg.platform || planned.includes(leg.platform));
+const platformLegs = (list, planned) => list.filter(leg => !leg.platform || planned.includes(leg.platform));
 
 // The jobs, suites and legs to run for the affected components and platforms, as defined by
 // this checkout. Without platforms (an older base planner) every leg runs, without screenReaders every
 // screen reader leg of the planned platforms, and without webKitCdp the webkit-cdp job. `noLegs` says why no
-// Windows or macOS leg runs when none is planned.
+// Windows or macOS leg runs when none is planned. `jobs` (scopedJobs) are jobs a ci.yml, action or script change planned:
+// each runs whole, with its legs of the Windows and macOS platforms listed for it.
 export function planFor({ full, components, screenReaders: readers = true, webKitCdp = true, platforms: planned = platforms,
-  why = everyPlatform("the base planner plans no platforms").why, noLegs = "the changed files need none" }) {
+  why = everyPlatform("the base planner plans no platforms").why, noLegs = "the changed files need none", jobs = {} }) {
   const has = (...names) => names.some(name => components.includes(name));
-  const managed = managedGroups.filter(group =>
-    managedTests(root, "linux").some(test => test.group === group && (full || has(owner(test.path)))));
-  const web = webTests().filter(test => full || has(owner(`packages/web/${test.package}`))).map(test => test.package);
+  const forced = name => Object.hasOwn(jobs, name);
+  const managed = managedGroups.filter(group => forced("managed")
+    || managedTests(root, "linux").some(test => test.group === group && (full || has(owner(test.path)))));
+  // node-26 runs the planned web packages that run in Node, so a planned node-26 job plans them for web too.
+  const web = webTests().filter(test => full || forced("web") || (forced("node-26") && nodePackages().includes(test.package))
+    || has(owner(`packages/web/${test.package}`))).map(test => test.package);
   // The Svelte and SvelteKit type checks and the isolated npm framework consumers.
-  const frameworks = full || has("svelte");
+  const frameworks = full || forced("web") || has("svelte");
+  // A planned job's legs: those of its own platforms, and those the components plan.
+  const legs = (list, job, componentLegs) => forced(job)
+    ? list.filter(leg => !leg.platform || jobs[job].platforms.includes(leg.platform) || componentLegs.includes(leg)) : componentLegs;
   // Package consumers and templates cover every shipped component (every component but the CI component).
   const packages = full || components.some(name => name !== ciComponent);
   // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration; and Runic.Spelling's
   // private word list when its Windows x64 rule planned that leg (DEV-SEC-88), whose step checks the Windows access list.
-  const native = full || has("desktop", "platform", "application", "examples", "administration-windows")
-    || (has("spelling") && planned.includes("win-x64")) ? legs(nativeLegs, planned) : [];
+  const nativeChecks = full || has("desktop", "platform", "application", "examples", "administration-windows")
+    || (has("spelling") && planned.includes("win-x64"));
+  const native = legs(nativeLegs, "native", nativeChecks ? platformLegs(nativeLegs, planned) : []);
   // The WPF hosts and their packed consumer run on Windows only.
-  const wpf = full || has("navigation", "application-wpf") ? legs(wpfLegs, planned) : [];
+  const wpf = legs(wpfLegs, "wpf", full || has("navigation", "application-wpf") ? platformLegs(wpfLegs, planned) : []);
   // The template's packaging recipes build, install and open real packages on each OS; the platform packages they
   // exercise select them through the packaging component's dependencies.
-  const packaging = full || has("packaging") ? legs(packagingLegs, planned) : [];
+  const packaging = legs(packagingLegs, "packaging", full || has("packaging") ? platformLegs(packagingLegs, planned) : []);
   // NVDA and Orca read the accessibility fixture in the embedded window.
-  const screenReaders = full || readers ? legs(screenReaderLegs, planned) : [];
+  const screenReaders = legs(screenReaderLegs, "screen-readers", full || readers ? platformLegs(screenReaderLegs, planned) : []);
   const run = {
     managed: managed.length > 0,
     // One job runs each planned web package's tests and the framework consumers in named steps.
     web: web.length > 0 || frameworks,
     "node-26": web.some(name => nodePackages().includes(name)),
-    views: full || has("examples"),
-    "package-consumers": packages,
+    views: full || has("examples") || forced("views"),
+    "package-consumers": packages || forced("package-consumers"),
     wpf: wpf.length > 0,
-    templates: packages,
+    templates: packages || forced("templates"),
     native: native.length > 0,
     // The musl RIDs run the same native checks in Alpine.
-    "native-musl": native.length > 0,
+    "native-musl": nativeChecks || forced("native-musl"),
     packaging: packaging.length > 0,
     "screen-readers": screenReaders.length > 0,
     // js-debug attaches through dotnet runic dev's CDP adapter to the template's Window on GTK 3 and GTK 4 (Linux).
-    "webkit-cdp": full || webKitCdp,
+    "webkit-cdp": full || webKitCdp || forced("webkit-cdp"),
   };
+  // The Windows and macOS legs that run: those the files plan, and those of the planned jobs.
+  const ran = [...native, ...wpf, ...packaging, ...screenReaders].map(leg => leg.platform).filter(Boolean);
+  const reasons = { ...Object.fromEntries(Object.entries(jobs).flatMap(([, entry]) => Object.entries(entry.why)).reverse()), ...why };
+  const legPlatforms = platforms.filter(platform => planned.includes(platform) || ran.includes(platform));
   return {
     full,
     components: full ? Object.keys(workspace.components) : components,
@@ -189,8 +403,8 @@ export function planFor({ full, components, screenReaders: readers = true, webKi
     wpf: { include: wpf },
     packaging: { include: packaging },
     "screen-readers": { include: screenReaders },
-    platforms: platforms.filter(platform => planned.includes(platform)),
-    why: platforms.filter(platform => planned.includes(platform)).map(platform => `${platform}: ${why[platform]}`).join("; ")
+    platforms: legPlatforms,
+    why: legPlatforms.map(platform => `${platform}: ${planned.includes(platform) ? why[platform] : reasons[platform]}`).join("; ")
       || `no Windows or macOS leg: ${noLegs}`,
     skip: skippableJobs.filter(job => !run[job]),
   };
@@ -411,28 +625,54 @@ export function coveredPlan(planned, tested, url) {
   };
 }
 
+function mergeBase() {
+  try {
+    return execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch { return null; }
+}
+
 // Accept another checkout's affected() result. Anything else (such as an older base
 // planner that does not support --affected) plans every job. A result without
 // platforms, from a base planner older than platform planning, plans every platform.
 export function parseAffected(text) {
   try {
-    const value = JSON.parse(text);
-    const known = Object.keys(workspace.components);
-    if (typeof value?.full !== "boolean" || !Array.isArray(value.components) || !value.components.every(name => known.includes(name)))
-      return null;
-    const { full, components } = value;
-    // A base planner older than the screen reader legs gives no screenReaders: they then run; likewise webKitCdp.
-    const readers = {
-      ...typeof value.screenReaders === "boolean" ? { screenReaders: value.screenReaders } : {},
-      ...typeof value.webKitCdp === "boolean" ? { webKitCdp: value.webKitCdp } : {},
-    };
-    if (Array.isArray(value.platforms) && value.platforms.every(platform => platforms.includes(platform))
-      && value.platforms.every(platform => typeof value.why?.[platform] === "string"))
-      return { full, components, ...readers, platforms: value.platforms, why: value.why };
-    return { full, components, ...readers };
+    return affectedValue(JSON.parse(text));
   } catch {}
   return null;
 }
+// A scoped result (R2) carries the jobs it planned and the unscoped result for pushes. A malformed `jobs` or `unscoped`
+// makes the whole result unusable, which plans everything.
+function affectedValue(value, nested = false) {
+  const scoped = value?.jobs !== undefined || value?.unscoped !== undefined;
+  if (scoped) {
+    if (nested || !value.jobs || typeof value.jobs !== "object" || Array.isArray(value.jobs)) return null;
+    const jobs = Object.entries(value.jobs);
+    if (!jobs.every(([name, entry]) => skippableJobs.includes(name) && Array.isArray(entry?.platforms)
+      && entry.platforms.every(platform => platforms.includes(platform) && typeof entry.why?.[platform] === "string"))) return null;
+    const unscoped = affectedValue(value.unscoped, true);
+    const rest = affectedValue({ ...value, jobs: undefined, unscoped: undefined }, true);
+    if (!unscoped || !rest) return null;
+    return { ...rest, jobs: Object.fromEntries(jobs.map(([name, entry]) => [name, { platforms: entry.platforms,
+      why: Object.fromEntries(entry.platforms.map(platform => [platform, entry.why[platform]])), file: typeof entry.file === "string" ? entry.file : name }])), unscoped };
+  }
+  const known = Object.keys(workspace.components);
+  if (typeof value?.full !== "boolean" || !Array.isArray(value.components) || !value.components.every(name => known.includes(name)))
+    return null;
+  const { full, components } = value;
+  // A base planner older than the screen reader legs gives no screenReaders: they then run; likewise webKitCdp.
+  const readers = {
+    ...typeof value.screenReaders === "boolean" ? { screenReaders: value.screenReaders } : {},
+    ...typeof value.webKitCdp === "boolean" ? { webKitCdp: value.webKitCdp } : {},
+  };
+  if (Array.isArray(value.platforms) && value.platforms.every(platform => platforms.includes(platform))
+    && value.platforms.every(platform => typeof value.why?.[platform] === "string"))
+    return { full, components, ...readers, platforms: value.platforms, why: value.why };
+  return { full, components, ...readers };
+}
+
+// Pushes to main, and release and train merge queue entries, plan without R2's job scoping: as before, every job and
+// leg that the edited ci.yml, action or script needs (the nightly run has no diff to scope).
+export const unscoped = input => input?.unscoped ?? input;
 
 // Pushes to main run every Linux job, and the Windows and macOS legs their before..after diff needs.
 export const everyLinuxJob = input => ({ ...input, full: true, components: Object.keys(workspace.components) });
@@ -487,7 +727,7 @@ export function parseCovered(text) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mode, ...rest] = process.argv.slice(2);
   if (mode === "--affected") {
-    console.log(JSON.stringify(affected(readFileSync(0, "utf8").split("\0").filter(Boolean))));
+    console.log(JSON.stringify(affected(readFileSync(0, "utf8").split("\0").filter(Boolean), checkoutContext())));
   } else if (mode === "--diff-kind") {
     console.log(JSON.stringify(diffKind(readFileSync(0, "utf8"))));
   } else if (mode === "--reused" && rest[0]) {
@@ -498,7 +738,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else {
     const option = name => rest.includes(name) ? rest[rest.indexOf(name) + 1] ?? "" : undefined;
     const covered = option("--covered") === undefined ? null : parseCovered(option("--covered"));
-    let input = mode === "--plan" ? parseAffected(rest[0] ?? "") : mode === "--files" ? affected(rest) : null;
+    // --files [--base <revision>] [--head <revision>] <paths>: base defaults to the merge base with origin/main, head to
+    // the working tree.
+    const files = mode === "--files" ? rest.filter((arg, index) => !["--base", "--head"].includes(arg) && !["--base", "--head"].includes(rest[index - 1])) : null;
+    const revision = mode === "--files" ? option("--base") ?? mergeBase() : null;
+    let input = mode === "--plan" ? parseAffected(rest[0] ?? "")
+      : mode === "--files" ? affected(files, revision ? revisionContext(revision, option("--head") ?? null) : null) : null;
+    const push = rest.includes("--all-linux") || option("--covered") !== undefined;
+    const release = option("--all-platforms")?.startsWith("a release or train step");
+    if (input && (push || release)) input = unscoped(input);
     if (input && (rest.includes("--all-linux") || (option("--covered") !== undefined && !covered))) input = everyLinuxJob(input);
     if (input && rest.includes("--version-only")) input = versionOnly(input);
     if (input && option("--all-platforms") !== undefined) input = allPlatforms(input, option("--all-platforms") || "requested");
@@ -512,6 +760,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
     } else console.error(result.full ? `Planning every job${mode === "--plan" && !input ? " (the base planner gave no usable result)" : ""}.`
       : `Components ${result.components.join(", ") || "none"}; skipping ${result.skip.join(", ") || "nothing"}.`);
+    if (input?.jobs && !covered) {
+      const scoped = Object.entries(input.jobs).filter(([name]) => !result.skip.includes(name)).map(([name, entry]) => `${name} (${entry.file})`);
+      const summary = `Job-scoped (eng/ci/README.md, "Workflow edits"): this change plans ${scoped.length ? scoped.join(", ") : "no job"} for its workflow, action and script edits, not every job.`;
+      console.error(summary);
+      if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+    }
     console.error(`Windows and macOS legs: ${result.why}`);
     record(result, null);
     console.log(outputs(result));
