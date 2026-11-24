@@ -309,7 +309,35 @@ Pushes to `main` don't use the scoping: the base planner also gives the unscoped
 result, and `--all-linux` and `--covered` plan from it. A push therefore plans exactly
 as before. When its merge queue run was scoped, a covered push runs what that run
 skipped. The nightly and manual runs have no diff and plan everything. The
-`ci:all-platforms` label keeps the scoping and adds every leg of the planned jobs.
+`ci:all-platforms` label keeps the scoping and adds every leg of every planned job,
+including the jobs a workflow, action, script or leg definition edit planned.
+
+### Leg definitions
+
+`eng/ci/platforms.mjs` belongs to the CI component, but some of its definitions are
+read by jobs (#1312; `definitionJobs` in `plan.mjs`). The base planner splits the
+base and head file into its top-level declarations, ignoring comment lines, and takes
+the ones whose text changed, with those that name a changed one (`releaseJobs` names
+`nativeLegs`):
+
+- A leg list (`nativeLegs`, `wpfLegs`, `packagingLegs`, `screenReaderLegs`; `legLists`
+  in `plan.mjs`) plans the job whose matrix reads its plan output
+  (`fromJSON(needs.plan.outputs.<job>)`), with all its legs. A change to the native
+  legs' runner or matrix values runs the native job on every leg, with or without the
+  label. Pushes to `main` add every Windows and macOS leg for it.
+- Another definition plans the jobs that run a script reading it: a file that imports
+  `platforms.mjs` and names the definition, other than the CI component's and the
+  engineering tests. `testTimeoutScales` is read by `test-timeout-scale.mjs` in the
+  setup action, which the shared build job uses, so a change to it plans everything.
+- The path rules (`platformRules` and its path lists, `neutralPaths`, `globalPaths`,
+  `screenReaderPaths`, `webKitCdpPaths`), `platforms`, the label name, `nativeJob` and
+  `releaseJobs` are read only by the planner, the tests and the release gate. A change
+  to them plans no job, as before; the engineering job tests it.
+
+Everything is planned when the planner cannot attribute a change: no separate base
+checkout, a missing file, a file with another shape (an import, a function or block
+comment at column 0), or a leg list that no single skippable job reads.
+`plan.test.mjs` fails on a leg list missing from `legLists`.
 
 Preview a branch with `node eng/ci/plan.mjs --files <paths>`. It compares `ci.yml` at
 the merge base with `origin/main` (`--base <revision>`) against the working tree
@@ -414,8 +442,9 @@ an `eng/` script nobody owned ran a whole plan):
   `eng/json-schema.mjs`, `CODEOWNERS` and `.gitignore`: files that only the
   always-run jobs (plan, build, engineering, verify), other workflows or the
   coordinator read. Its checks are the engineering job's, so a change to it alone
-  runs no skippable job and no Windows or macOS leg. A change to a leg's runner or
-  matrix values in `platforms.mjs` takes the `ci:all-platforms` label. A CI script
+  runs no skippable job and no Windows or macOS leg, except a change to a definition
+  in `platforms.mjs` that a job reads, such as a leg's runner or matrix values (see
+  [Leg definitions](#leg-definitions)). A CI script
   that a platform step runs belongs to that step's component, with a platform
   rule: the macOS scripts and `hdiutil.sh` plan osx-arm64, the Windows ones their
   Windows legs, `windows-nvda.ps1` the NVDA leg, `real-portal.sh`,
@@ -430,7 +459,9 @@ an `eng/` script nobody owned ran a whole plan):
   `eng/run.mjs` and the shared CI scripts. Every job and leg.
 
 For `ci.yml`, its actions, the CI scripts and the release tooling, a pull request
-narrows this to the jobs that use the changed file (see [Workflow edits](#workflow-edits)).
+narrows this to the jobs that use the changed file (see [Workflow edits](#workflow-edits)),
+and a leg definition in `platforms.mjs` plans the jobs that use it (see
+[Leg definitions](#leg-definitions)).
 
 Give a new file an owner where one fits; list it as neutral or global only when it
 really is a shared input.
