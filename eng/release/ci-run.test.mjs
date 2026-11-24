@@ -11,8 +11,9 @@ const without = (name, conclusion) => complete().flatMap(job => job.name !== nam
 const jobs = byRun => async run => byRun[run.id] ?? complete();
 
 test('the release jobs are every Windows and macOS leg of the native, WPF and packaging jobs', () => {
-  // win-x64 runs as two shards (C2 of D077.25); both must pass.
-  expect(releaseJobs).toEqual(['Native / win-x64 (window)', 'Native / win-x64 (platform)', 'Native / win-arm64', 'Native / osx-arm64', 'WPF navigation / win-x64',
+  // win-x64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of D077.26); every shard must pass.
+  expect(releaseJobs).toEqual(['Native / win-x64 (window)', 'Native / win-x64 (platform)', 'Native / win-arm64', 'Native / osx-arm64 (window)',
+    'Native / osx-arm64 (platform)', 'WPF navigation / win-x64',
     'WPF navigation / win-arm64', 'Packaging / windows', 'Packaging / macos']);
 });
 test('selects the newest successful push, scheduled, manual or merge queue run of ci.yml for the exact commit', async () => {
@@ -36,8 +37,8 @@ test('a passed merge queue run of the commit counts as its main run once the com
   const covered = jobs({8: complete().map(job => ({...job, conclusion: 'skipped'}))});
   expect((await selectCiRun([run(8), queued(5)], {repository, sha}, covered, onMain(true))).id).toBe(5);
   // A queue run that planned only some legs (not a release entry) is not enough either.
-  await expect(selectCiRun([queued(5)], {repository, sha}, jobs({5: without('Native / osx-arm64', 'skipped')}), onMain(true)))
-    .rejects.toThrow('Native / osx-arm64=skipped');
+  await expect(selectCiRun([queued(5)], {repository, sha}, jobs({5: without('Native / osx-arm64 (platform)', 'skipped')}), onMain(true)))
+    .rejects.toThrow('Native / osx-arm64 (platform)=skipped');
   // A failed queue run of the commit is reported like a failed main run.
   expect(() => successfulCiRuns([queued(5, {conclusion: 'failure'})], {repository, sha})).toThrow('concluded failure');
 });
