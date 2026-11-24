@@ -943,11 +943,11 @@ jobs:
     needs: plan
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native') }}
     # The planned legs of nativeLegs in eng/ci/platforms.mjs: both Linux legs, and the Windows
-    # and macOS legs the change needs. win-x64 runs as two shards (C2 of D077.25): `window` runs the desktop
-    # contracts, the window layer, the hosted applications and the WebView2 menus and screen readers; `platform` runs
-    # administration, elevation, the platform providers, the runtime conformance and the NativeAOT WebView2 and Views
-    # applications. A step of one shard says `matrix.shard != '<the other>'`, which holds on every unsharded leg; setup,
-    # the WebView smoke build and the retry record run in both.
+    # and macOS legs the change needs. win-x64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of D077.26):
+    # `window` runs the desktop contracts, the window layer, the hosted applications and the WebView2 menus and screen
+    # readers; `platform` runs administration, elevation, the platform providers, the runtime conformance and the
+    # NativeAOT WebView2 and Views applications. A step of one shard says `matrix.shard != '<the other>'`, which holds
+    # on every unsharded leg; setup, the WebView smoke build and the retry record run in both.
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.native) }}
@@ -2046,7 +2046,7 @@ jobs:
       # with real rights and a temporary administrator (the runner's passwordless sudo). SMAppService registration
       # needs a signed bundle and the user's approval, which CI cannot give.
       - name: Verify macOS privileged actions with JIT and NativeAOT
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         timeout-minutes: 10
         shell: bash
         # The daemon requires its clients to run with the hardened runtime; the linker's ad hoc signature has none.
@@ -2067,7 +2067,7 @@ jobs:
       # A real NSStatusItem without a window, its menu and actions, the unbundled login item, window presentation and
       # Carbon global shortcuts. The detailed output keeps the hot key findings the case reports without requiring them.
       - name: Verify macOS status item, login item and window presentation with JIT and NativeAOT
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         timeout-minutes: 8
         shell: bash
         run: |
@@ -2076,7 +2076,7 @@ jobs:
       # W315-011: accent colour, Increase contrast and Reduce motion written before each process starts, and dark mode
       # switched through System Events while one runs. The script restores the preferences.
       - name: Verify macOS appearance preferences with JIT and NativeAOT
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         timeout-minutes: 8
         run: |
           eng/ci/macos-appearance.sh "dotnet tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll"
@@ -2085,7 +2085,7 @@ jobs:
       # application delegate and NSURL bookmarks, then a bundle around the NativeAOT executable that registers itself
       # with LSRegisterURL and that LaunchServices launches with a document and with a URL (eng/ci/macos-open-probe.sh).
       - name: Verify macOS open events with JIT and NativeAOT
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         timeout-minutes: 8
         shell: bash
         run: |
@@ -2127,43 +2127,43 @@ jobs:
       # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms;
       # Command and A, C, V copy and paste through the Edit menu, and Command and Q asks the close guard.
       - name: Exercise page zoom, Edit and Quit keys in the macOS window
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'platform' && runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
       # M1: Runic's application delegate (launched once), the Dock menu, reopen, and the quit Apple event refused by
       # ConfirmQuitAsync, refused by a close guard and accepted with no window open, after which Run returns.
       - name: Exercise the macOS application lifecycle and quit path
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'platform' && runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --lifecycle
       # M5: the represented file and edited state of the window, the recent documents, and Open Recent, whose chosen
       # document arrives as an open request.
       - name: Exercise macOS document conventions
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'platform' && runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --documents
 
       # M4: a Hidden title bar keeps its traffic lights, a mouse-down in a drag region drags the window and elsewhere
       # reaches the page, and a frameless window that cannot be resized becomes key and takes typed keys.
       - name: Exercise the macOS window chrome and drag regions
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'platform' && runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-chrome
 
       # D046.2: DesktopEventLoop.InvokeOnMainThreadAsync without a window: the main thread, a result, an exception,
       # cancellation, a call before the loop, and work while a context menu tracks.
       - name: Run windowless work on the macOS main thread
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'platform' && runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --main-thread
       # SEC-04: the WKWebView's navigation and UI delegate apply DesktopWebContentPolicy (external links, window.open,
       # downloads, isInspectable).
       - name: Apply the web content policy in the macOS window
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'platform' && runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --web-content
       - name: Prepare signed macOS sandbox fixture for manual permission evidence
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS
@@ -2175,7 +2175,7 @@ jobs:
       # Security-scoped bookmarks in the App Sandbox: a file in the container round trips, moves and is deleted; a file
       # outside the container, which the user never chose, gets no bookmark (MacBookmarksNativeTests.RunSandboxProbe).
       - name: Verify security-scoped bookmarks in the macOS sandbox fixture
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         timeout-minutes: 3
         shell: bash
         run: |
@@ -2187,7 +2187,7 @@ jobs:
           rm -f "$outside"
           exit $status
       - name: Retain macOS sandbox permission fixture
-        if: runner.os == 'macOS'
+        if: matrix.shard != 'window' && runner.os == 'macOS'
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

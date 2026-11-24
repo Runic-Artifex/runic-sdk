@@ -18,7 +18,7 @@ test("ci-verified support entries match the Native CI jobs", () => {
   assert.equal(workflow.jobs.native.strategy.matrix, "${{ fromJSON(needs.plan.outputs.native) }}");
   const matrix = nativeLegs;
   const musl = workflow.jobs["native-musl"].strategy.matrix.include;
-  // A sharded RID (win-x64, C2 of D077.25) is one RID: its shards together run what one leg would.
+  // A sharded RID (win-x64 and osx-arm64; C2 of D077.25, R1 of D077.26) is one RID: its shards together run what one leg would.
   const rids = entries => [...new Set(entries.map(entry => entry.rid))].sort();
   const expected = {
     desktop: rids([...matrix, ...musl]),

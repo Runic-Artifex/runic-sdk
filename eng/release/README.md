@@ -94,7 +94,7 @@ no successful CI run on `main` or in its merge queue, if that run is still in pr
 if it did not pass every Windows and macOS leg, or if its package artifact has expired.
 
 The Windows and macOS legs are `Native / win-x64 (window)` and `win-x64 (platform)` (the
-two shards of the win-x64 leg), `win-arm64` and `osx-arm64`,
+two shards of the win-x64 leg), `win-arm64`, `osx-arm64 (window)` and `osx-arm64 (platform)`,
 `WPF navigation / win-x64` and `win-arm64`, and `Packaging / windows` and `macos`
 (`releaseJobs` in `eng/ci/platforms.mjs`). This keeps the guarantee releases had when
 every push to `main` ran all of them; it adds no check. Pushes now plan those legs from

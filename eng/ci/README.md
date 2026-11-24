@@ -126,16 +126,18 @@ onto and drags out of WebView2 stay unverified there (#391). The WPF job runs it
 `win-x64` and `win-arm64`, and the architecture-independent generator and packed
 consumer checks on `win-x64`.
 
-`win-x64`, the longest leg, runs as two shards of about equal time (C2 of D077.25):
-`Native / win-x64 (window)` runs the desktop contracts, the window layer, the hosted
-application checks and the WebView2 menus and screen readers; `Native / win-x64 (platform)`
-runs Windows administration and elevation, the platform providers, the runtime conformance and
-the NativeAOT WebView2 and Views applications. A step of one shard has
-`matrix.shard != '<the other>'` in its condition, which holds on every unsharded leg; the
-setup, the WebView smoke build and the retry record (its leg name carries the shard) run in
-both. `eng/ci/native-shards.test.mjs` fails when a new step runs in both shards, so give a new
-step one shard's condition, the one that keeps them balanced. Both shards are release jobs
-(`releaseJobs`).
+`win-x64` and `osx-arm64`, the longest legs, run as two shards each of about equal time (C2 of
+D077.25, R1 of D077.26). `Native / <rid> (window)` runs the desktop contracts, the window layer,
+the hosted application checks, the WebView2 menus and the screen readers (VoiceOver on macOS);
+`Native / <rid> (platform)` runs Windows administration and elevation, the platform providers
+(with macOS privileged actions, the status item, appearance, open events and the sandbox
+fixture), the runtime conformance and the NativeAOT applications. File watching runs in the
+window shard on Windows and in the platform shard on macOS, which keeps each pair balanced. A
+step of one shard has `matrix.shard != '<the other>'` in its condition, which holds on every
+unsharded leg; the setup, the WebView smoke build and the retry record (its leg name carries the
+shard) run in both. `eng/ci/native-shards.test.mjs` fails when a step of a sharded leg runs in
+both shards or in neither, so give a new step one shard's condition, the one that keeps them
+balanced. Every shard is a release job (`releaseJobs`).
 
 `native-musl` checks out and caches on the runner, then runs
 `eng/ci/native-musl.sh` in a digest-pinned Alpine container, because GitHub cannot
