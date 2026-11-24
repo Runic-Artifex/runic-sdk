@@ -277,7 +277,15 @@ script plans Linux legs only. The release and pack scripts (`eng/release/**`,
 `eng/verify-packages.mjs`, `eng/version.mjs`) plan the jobs that download the packed
 packages: package consumers, WPF, templates and webkit-cdp. Release tooling is neutral,
 so WPF (Windows only) does not run for it; `eng/version.mjs` also plans the WPF
-legs. The pull request's other changed files plan as usual. The run's log and step
+legs. A release or pack script also plans the jobs that run a module importing it
+(#1302): a job that names the script or an importer of it, directly or through
+importers that no job names, runs with the legs the named module's platform rules
+allow. So a change to `eng/verify-packages.mjs` runs the WPF job's win-x64 leg, whose
+packed consumer smoke imports it. The lookup reads the import statements of the base
+and head files, stops at shared inputs such as `eng/run.mjs`, and skips
+engineering-only and CI files; when it fails, the script plans everything.
+`plan.test.mjs` fails on a new importer that no job reaches this way until it is
+listed with where it runs. The pull request's other changed files plan as usual. The run's log and step
 summary name the jobs that were planned this way.
 
 Everything is planned, as before, when:
