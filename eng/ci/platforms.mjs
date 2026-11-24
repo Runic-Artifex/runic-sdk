@@ -14,10 +14,12 @@ export const allPlatformsLabel = "ci:all-platforms";
 export const nativeLegs = [
   // cswebui: whether CS-WebUI ships a native library for the RID, so the job runs its
   // window probes (eng/support.json).
-  { os: "ubuntu-24.04", rid: "linux-x64", provider: "Linux", extension: "", cswebui: true },
-  { os: "ubuntu-24.04-arm", rid: "linux-arm64", provider: "Linux", extension: "", cswebui: true },
-  // win-x64, win-arm64 and osx-arm64, the longest legs, run as two shards of about equal time (C2 of
-  // D077.25, R1 of D077.26; the shard conditions are in ci.yml's native job). All six are release jobs.
+  // Every glibc and Windows/macOS leg runs as two shards of about equal time (C2 of D077.25, R1 of
+  // D077.26; the shard conditions are in ci.yml's native job). The Windows and macOS shards are release jobs.
+  { os: "ubuntu-24.04", rid: "linux-x64", shard: "window", provider: "Linux", extension: "", cswebui: true },
+  { os: "ubuntu-24.04", rid: "linux-x64", shard: "platform", provider: "Linux", extension: "", cswebui: true },
+  { os: "ubuntu-24.04-arm", rid: "linux-arm64", shard: "window", provider: "Linux", extension: "", cswebui: true },
+  { os: "ubuntu-24.04-arm", rid: "linux-arm64", shard: "platform", provider: "Linux", extension: "", cswebui: true },
   { os: "windows-latest", rid: "win-x64", shard: "window", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
   { os: "windows-latest", rid: "win-x64", shard: "platform", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
   { os: "windows-11-arm", rid: "win-arm64", shard: "window", provider: "Windows", extension: ".exe", cswebui: false, platform: "win-arm64" },

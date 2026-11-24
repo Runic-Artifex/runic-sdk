@@ -574,7 +574,7 @@ test('owned files without a rule, engineering-only and neutral files plan no Win
     const result = plan([file]);
     assert.equal(result.full, true, file);
     assert.deepEqual(result.platforms, [], file);
-    assert.deepEqual(result.native.include.map(leg => leg.rid), ['linux-x64', 'linux-arm64'], file);
+    assert.deepEqual(result.native.include.map(leg => leg.rid), ['linux-x64', 'linux-x64', 'linux-arm64', 'linux-arm64'], file);
     assert.deepEqual(result.packaging.include.map(leg => leg.target), ['flatpak', 'appimage', 'deb', 'rpm', 'flathub'], file);
     assert.deepEqual(result.skip, ['wpf'], file);
   }
@@ -591,7 +591,7 @@ test('pushes keep their platforms, and the label, schedules and manual runs plan
   assert.equal(push.full, true);
   assert.deepEqual(push.managed, managedGroups);
   assert.deepEqual(push.platforms, ['osx-arm64']);
-  assert.deepEqual(push.native.include.map(leg => leg.rid), ['linux-x64', 'linux-arm64', 'osx-arm64', 'osx-arm64']);
+  assert.deepEqual(push.native.include.map(leg => leg.rid), ['linux-x64', 'linux-x64', 'linux-arm64', 'linux-arm64', 'osx-arm64', 'osx-arm64']);
   assert.deepEqual(push.skip, ['wpf']);
   const labelled = planFor(allPlatforms(decided, `label ${allPlatformsLabel}`));
   assert.deepEqual(labelled.platforms, platforms);
