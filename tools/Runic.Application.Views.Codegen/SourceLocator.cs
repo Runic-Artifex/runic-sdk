@@ -22,6 +22,8 @@ using System.Text.RegularExpressions;
 internal static class SourceLocator
 {
     private static readonly Dictionary<Assembly, MetadataReaderProvider?> Providers = [];
+    // The assemblies on disk whose portable PDB the generator looked for and did not find (#1298).
+    private static readonly HashSet<Assembly> WithoutPdb = [];
     private static (string Local, string Mapped)[] pathMap = [];
 
     /// <summary>
@@ -217,12 +219,32 @@ internal static class SourceLocator
         return null;
     }
 
+    /// <summary>
+    /// The names of the assemblies that declare <paramref name="type"/> or one of its base types, or of every assembly
+    /// when <paramref name="type"/> is null, whose PDB the generator looked for, for a location or a partial property's
+    /// comment, and did not find (#1298). Without it the generated client has no declaration map entries and no
+    /// source-read comments for their members.
+    /// </summary>
+    internal static IReadOnlyList<string> AssembliesWithoutPdb(Type? type)
+    {
+        IEnumerable<Assembly> assemblies = WithoutPdb;
+        if (type is not null)
+        {
+            var hierarchy = new HashSet<Assembly>();
+            for (var current = type; current is not null; current = current.BaseType) hierarchy.Add(current.Assembly);
+            assemblies = assemblies.Where(hierarchy.Contains);
+        }
+        return assemblies.Select(assembly => assembly.GetName().Name ?? Path.GetFileNameWithoutExtension(assembly.Location))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+    }
+
     private static MetadataReader? Reader(Assembly assembly)
     {
         if (!Providers.TryGetValue(assembly, out var provider))
         {
             provider = Open(assembly);
             Providers.Add(assembly, provider);
+            if (provider is null && !assembly.IsDynamic && assembly.Location.Length > 0) WithoutPdb.Add(assembly);
         }
         return provider?.GetMetadataReader();
     }

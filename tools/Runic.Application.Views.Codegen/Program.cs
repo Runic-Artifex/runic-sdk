@@ -2827,6 +2827,8 @@ static class BridgeDiagnosticCodes
     internal const string ViewQuestionTimeout = "RUNICBRIDGE074";
     /// <summary>Warning from the build targets: RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true.</summary>
     internal const string AutoPropertyValue = "RUNICBRIDGE075";
+    /// <summary>Warning: a generated client loses declaration map entries or comments because an assembly has no PDB (#1298).</summary>
+    internal const string ClientWithoutPdb = "RUNICBRIDGE076";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2884,6 +2886,7 @@ static class BridgeDiagnosticCodes
         (InteractionTimeout, "error", "A ReactiveUI interaction's [RunicInteractionTimeout] is not a timeout"),
         (ViewQuestionTimeout, "error", "A [RunicInteractionTimeout] is on a view question"),
         (AutoPropertyValue, "warning", "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"),
+        (ClientWithoutPdb, "warning", "A generated client loses its declaration map or comments because an assembly has no PDB"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -2972,6 +2975,14 @@ static class Diagnostics
             AnalyzerOwnedWarnings.Add(line);
             return;
         }
+        ReportedWarnings.Add(line);
+        Console.Error.WriteLine(line);
+    }
+
+    /// <summary>Writes an MSBuild canonical warning about a file, such as a generated client; generation continues.</summary>
+    internal static void WarnAt(string code, string file, string message)
+    {
+        var line = $"{file}: warning {code}: {WithHelpLink(code, message)}";
         ReportedWarnings.Add(line);
         Console.Error.WriteLine(line);
     }
@@ -3074,12 +3085,12 @@ static class TypeScriptModules
         || name.StartsWith("bridgeNullable", StringComparison.Ordinal) || name.StartsWith("bridgeUnion", StringComparison.Ordinal)
         || name.StartsWith("bridgeDecodedUnion", StringComparison.Ordinal);
 
-    private static readonly List<(string Path, string Text)> Pending = [];
+    private static readonly List<(string Path, string Text, MemberInfo? Owner)> Pending = [];
 
     // Assigns the module's own bindings (TypeScriptModuleBindings) before the
     // named types, which avoid every name the resolved modules declare.
     internal static void Add(string path, string text, MemberInfo? owner = null) =>
-        Pending.Add((path, TypeScriptModuleBindings.Resolve(text, path, owner)));
+        Pending.Add((path, TypeScriptModuleBindings.Resolve(text, path, owner), owner));
 
     internal static void WriteAll(string directory)
     {
@@ -3089,7 +3100,7 @@ static class TypeScriptModules
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                 $"{Path.GetFullPath(typesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or generate into a dedicated directory.");
         var texts = Pending.ToDictionary(module => Path.GetFullPath(module.Path), module => module.Text, StringComparer.Ordinal);
-        foreach (var (path, text) in Pending)
+        foreach (var (path, text, owner) in Pending)
         {
             var contract = path.EndsWith(ClientDeclarationMap.Suffix, StringComparison.Ordinal);
             var used = TypeScriptNamedTypes.Used(text);
@@ -3106,20 +3117,87 @@ static class TypeScriptModules
                 .Replace(NamedTypeImports + Environment.NewLine, lines.Count == 0 ? "" : string.Join(Environment.NewLine, lines) + Environment.NewLine, StringComparison.Ordinal);
             if (!contract)
             {
+                WarnOnLostSourceInformation(path, resolved, null, owner);
                 WriteFile(path, resolved);
                 continue;
             }
             var (declarations, map) = ClientDeclarationMap.Complete(path, resolved);
+            WarnOnLostSourceInformation(path, declarations, map, owner);
             WriteFile(path, declarations);
             if (map is not null) WriteFile(path + ".map", map);
             // tsserver reads <file>.map even without a sourceMappingURL comment.
             else if (File.Exists(path + ".map") && ClientDeclarationMap.IsGeneratedMap(path + ".map")) File.Delete(path + ".map");
         }
         if (TypeScriptNamedTypes.Any)
-            WriteFile(typesPath, $"{GeneratedOutput.Header}{Environment.NewLine}{TypeScriptNamedTypes.Module()}");
+        {
+            var types = $"{GeneratedOutput.Header}{Environment.NewLine}{TypeScriptNamedTypes.Module()}";
+            WarnOnLostSourceInformation(typesPath, types, null, null);
+            WriteFile(typesPath, types);
+        }
         else if (File.Exists(typesPath) && GeneratedOutput.IsGenerated(typesPath))
             File.Delete(typesPath);
         Pending.Clear();
+    }
+
+    /// <summary>
+    /// RUNICBRIDGE076 (#1298): the module replaces a generated file that has more members in its declaration map, or
+    /// more documentation lines, and an assembly of <paramref name="owner"/> (any assembly for the named types) has no
+    /// PDB. The generator reads member locations and partial properties' comments through the PDB, so a committed client
+    /// would otherwise change between a build with PDBs and one without, such as Release with DebugType none.
+    /// </summary>
+    private static void WarnOnLostSourceInformation(string path, string content, string? map, MemberInfo? owner)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath)) return;
+        var lost = new List<string>();
+        try
+        {
+            if (path.EndsWith(ClientDeclarationMap.Suffix, StringComparison.Ordinal))
+            {
+                var mapPath = fullPath + ".map";
+                var before = File.Exists(mapPath) && ClientDeclarationMap.IsGeneratedMap(mapPath)
+                    ? ClientDeclarationMap.MappedNames(File.ReadAllText(mapPath)) : 0;
+                var after = map is null ? 0 : ClientDeclarationMap.MappedNames(map);
+                if (after < before)
+                    lost.Add(after == 0 ? "its declaration map" : $"{before - after} of the {before} names in its declaration map");
+            }
+            var removed = DocumentationLines(File.ReadAllText(fullPath)) - DocumentationLines(content);
+            if (removed > 0) lost.Add(removed == 1 ? "a documentation line" : $"{removed} documentation lines");
+        }
+        // The check only explains a change; an unreadable existing file is overwritten as before.
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        if (lost.Count == 0) return;
+        var type = owner as Type ?? owner?.DeclaringType;
+        var assemblies = SourceLocator.AssembliesWithoutPdb(type);
+        if (assemblies.Count == 0) return;
+        var named = string.Join(", ", assemblies);
+        Diagnostics.WarnAt(BridgeDiagnosticCodes.ClientWithoutPdb, fullPath,
+            $"the generated {Path.GetFileName(path)} loses {string.Join(" and ", lost)} that the existing file has, because "
+            + $"{named} {(assemblies.Count == 1 ? "has" : "have")} no PDB, through which the generator finds member locations "
+            + "and the comments of partial properties. "
+            + $"A committed client then changes between configurations. Give {named} a PDB in every configuration, such as "
+            + "<DebugType>portable</DebugType> (or embedded), or suppress RUNICBRIDGE076 with NoWarn if the generated clients are not committed.");
+    }
+
+    // The lines of /** … */ comments that carry text.
+    private static int DocumentationLines(string text)
+    {
+        var count = 0;
+        var inside = false;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            var opens = line.StartsWith("/**", StringComparison.Ordinal);
+            if (!inside && !opens) continue;
+            inside = !line.EndsWith("*/", StringComparison.Ordinal);
+            if (opens) line = line[3..];
+            if (line.EndsWith("*/", StringComparison.Ordinal)) line = line[..^2];
+            if (line.TrimStart('*').Trim().Length > 0) count++;
+        }
+        return count;
     }
 
     private static void WriteFile(string path, string content)

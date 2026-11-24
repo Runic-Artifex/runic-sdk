@@ -255,6 +255,11 @@
       "id": "RUNICBRIDGE075",
       "severity": "warning",
       "title": "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"
+    },
+    {
+      "id": "RUNICBRIDGE076",
+      "severity": "warning",
+      "title": "A generated client loses its declaration map or comments because an assembly has no PDB"
     }
   ]
 }
