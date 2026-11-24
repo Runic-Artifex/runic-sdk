@@ -126,17 +126,22 @@ onto and drags out of WebView2 stay unverified there (#391). The WPF job runs it
 `win-x64` and `win-arm64`, and the architecture-independent generator and packed
 consumer checks on `win-x64`.
 
-`win-x64`, `win-arm64` and `osx-arm64`, the longest legs, run as two shards each of about equal
-time (C2 of D077.25, R1 of D077.26). `Native / <rid> (window)` runs the desktop contracts, the window layer,
-the hosted application checks, the WebView2 menus and the screen readers (VoiceOver on macOS);
-`Native / <rid> (platform)` runs Windows administration and elevation, the platform providers
-(with macOS privileged actions, the status item, appearance, open events and the sandbox
-fixture), the runtime conformance and the NativeAOT applications. File watching runs in the
-window shard. A step of one shard has `matrix.shard != '<the other>'` in its condition, which holds on every
-unsharded leg; the setup, the WebView smoke build and the retry record (its leg name carries the
+Every leg of the `native` job runs as two shards of about equal time (C2 of D077.25, R1 of
+D077.26). `Native / <rid> (window)` runs the desktop contracts, the window layer, the hosted
+application checks, the WebView2 menus and the screen readers (VoiceOver on macOS); on Linux it
+runs the GTK 3 window checks, the global menu, the GTK 4 window and platform services and the
+GTK 4 smoke under NativeAOT, which reuses that build. `Native / <rid> (platform)` runs Windows
+administration and elevation, the platform providers (with macOS privileged actions, the status
+item, appearance, open events and the sandbox fixture; on Linux the portals, D-Bus, GNOME
+Keyring, the Fedora real-portal container, Polkit and the native server's Desktop example), the
+runtime conformance and the other NativeAOT applications. File watching runs in the window
+shard. On Linux both shards install the WebView prerequisites and Openbox (the platform shard's
+CS-WebUI placement probe runs under it); GNOME Keyring, gio and the Fedora package cache are
+installed in the platform shard only. A step of one shard has `matrix.shard != '<the other>'`
+in its condition, which holds on every unsharded leg; the setup, the WebView smoke build and the retry record (its leg name carries the
 shard) run in both. `eng/ci/native-shards.test.mjs` fails when a step of a sharded leg runs in
 both shards or in neither, so give a new step one shard's condition, the one that keeps them
-balanced. Every shard is a release job (`releaseJobs`).
+balanced. The Windows and macOS shards are release jobs (`releaseJobs`).
 
 `native-musl` checks out and caches on the runner, then runs
 `eng/ci/native-musl.sh` in a digest-pinned Alpine container, because GitHub cannot

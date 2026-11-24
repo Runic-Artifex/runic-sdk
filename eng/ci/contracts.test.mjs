@@ -270,9 +270,10 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
   assert.equal(args[args.indexOf('--directory') + 1], '/snapshot');
   assert.equal(args[args.indexOf('--matrix') + 1], 'os:ubuntu-24.04');
   assert.deepEqual(args.slice(-2), ['--job', 'templates']);
-  // The Arm entries run on runners act does not map, so local runs keep linux-x64.
+  // The Arm entries run on runners act does not map, so local runs keep both linux-x64 shards.
   assert.deepEqual(nativeLegs.map(item => [item.rid, item.os, item.shard]),
-    [['linux-x64', 'ubuntu-24.04', undefined], ['linux-arm64', 'ubuntu-24.04-arm', undefined], ['win-x64', 'windows-latest', 'window'],
+    [['linux-x64', 'ubuntu-24.04', 'window'], ['linux-x64', 'ubuntu-24.04', 'platform'], ['linux-arm64', 'ubuntu-24.04-arm', 'window'],
+      ['linux-arm64', 'ubuntu-24.04-arm', 'platform'], ['win-x64', 'windows-latest', 'window'],
       ['win-x64', 'windows-latest', 'platform'], ['win-arm64', 'windows-11-arm', 'window'],
       ['win-arm64', 'windows-11-arm', 'platform'], ['osx-arm64', 'macos-26', 'window'],
       ['osx-arm64', 'macos-26', 'platform']]);

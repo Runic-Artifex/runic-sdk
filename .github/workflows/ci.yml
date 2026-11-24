@@ -943,11 +943,10 @@ jobs:
     needs: plan
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native') }}
     # The planned legs of nativeLegs in eng/ci/platforms.mjs: both Linux legs, and the Windows
-    # and macOS legs the change needs. win-x64, win-arm64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of
-    # D077.26):
-    # `window` runs the desktop contracts, the window layer, the hosted applications and the WebView2 menus and screen
-    # readers; `platform` runs administration, elevation, the platform providers, the runtime conformance and the
-    # NativeAOT WebView2 and Views applications. A step of one shard says `matrix.shard != '<the other>'`, which holds
+    # and macOS legs the change needs. Each leg runs as two shards (C2 of D077.25, R1 of D077.26): `window` runs the
+    # desktop contracts, the window layer (GTK 3 and GTK 4 on Linux), the hosted applications and the WebView2 menus and
+    # screen readers; `platform` runs administration, elevation, the platform providers (portals, D-Bus, Secret Service
+    # and Polkit on Linux), the runtime conformance and the NativeAOT WebView2 and Views applications. A step of one shard says `matrix.shard != '<the other>'`, which holds
     # on every unsharded leg; setup, the WebView smoke build and the retry record run in both.
     strategy:
       fail-fast: false
@@ -1084,38 +1083,38 @@ jobs:
           dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
           dotnet build tests/native/Runic.Application.HostedWindows.Smoke -c Release
       - name: Exercise native window close interception on Linux
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         # Real pointer drags through XTEST: a stuck drag must not hold the runner.
         timeout-minutes: 6
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       - name: Exercise the Desktop event-loop entry point on Linux
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
       # Real key presses and wheel clicks through XTEST; see keyboard-driver.sh.
       - name: Exercise keyboard focus and zoom in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 8
         run: GDK_BACKEND=x11 xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk3 dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       # SEC-04: DesktopWebContentPolicy with real clicks through XTEST; see WebContentSmoke.cs.
       - name: Exercise the web content policy in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --web-content
       # B2: DesktopHost.SetColorSchemeAsync sets GTK's prefer-dark setting, and the page's prefers-color-scheme follows.
       - name: Exercise the run-time color scheme in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
       # sdk#896: a directly opened GTK 3 window's ViewModel sets the scheme through its scope's IRunicWindowPresentation.
       - name: Attach per-window services to a directly opened GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
       # #1174: the desktop's default mailto handler, which the smoke registers for the run and which records the URI it
       # is given, launched by the window's and the application's LaunchUriAsync (the OpenURI portal) and by a clicked
       # link (gtk_show_uri_on_window with GTK 3, GtkUriLauncher with GTK 4). It runs on a session bus of its own.
       - name: Launch the default mailto handler with GTK 3 and GTK 4
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 6
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser
@@ -1123,19 +1122,19 @@ jobs:
       # S10: WebKitGTK's prefers-reduced-motion and prefers-contrast follow GTK's gtk-enable-animations and theme name
       # while the window is open.
       - name: Follow the desktop's contrast and motion in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --appearance
       # B6: DesktopWindowOptions.Owner and Modality: the GTK 3 window is transient for its owner, and a window-modal one
       # makes the owner insensitive until it closed.
       - name: Open owned and window-modal GTK 3 windows
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
       # sdk#900 W4b: after gtk_window_close the GTK 3 window stays open while its close drain runs and a second close is
       # ignored; SIGTERM cancels ShutdownStarting, drains the window visibly, then ShutdownRequested.
       - name: Drain a GTK 3 window after its close and SIGTERM
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 4
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --close-drain
       # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one configure
@@ -1143,7 +1142,7 @@ jobs:
       # minimum size reaches WM_NORMAL_HINTS and holds against another client's resize; a maximized window refuses.
       # Under Openbox, which decorates, maximizes and applies the size hints.
       - name: Set exact bounds and a run-time minimum size in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
@@ -1153,7 +1152,7 @@ jobs:
       # placement; RestoreAsync of a window minimized while maximized ends normal. Under Openbox, which maximizes and
       # iconifies.
       - name: Maximize, restore and place the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
@@ -1161,7 +1160,7 @@ jobs:
       # #1028: WebKitGTK's remote inspector (WEBKIT_INSPECTOR_SERVER, WEBKIT_INSPECTOR_HTTP_SERVER), which developer extras
       # do not gate, opens in Development only: a Production window opens no port and its process has neither variable.
       - name: Open WebKit's remote inspector in Development only in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: >-
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session --
@@ -1170,7 +1169,7 @@ jobs:
       # never resized, Tab and Shift+Tab between the views (XTEST), ATK's order of the views, window.close() in the
       # panel, a maximized window keeping the panel, the refusals, the minimum width and WindowClosed.
       - name: Open, move, resize and close a side panel in the GTK 3 window
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
@@ -1179,7 +1178,7 @@ jobs:
       # loads in a GTK 3 window of the host in an ephemeral web context, without the host's or another guest's cookies;
       # close, crash and stop.
       - name: Show hosted application windows in GTK 3
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
       # Region appearance (#917): a guest's window in a region with an appearance override. The guest page's first
@@ -1187,14 +1186,14 @@ jobs:
       # printed before any assertion, record whether the frame's prefers-color-scheme follows the frame's color-scheme
       # and whether the push came before the page's first animation frame (not asserted).
       - name: Probe the region appearance override in GTK 3
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --region-appearance
       # The hosted windows example (runic-host/1): its shell starts the counter, whose window opens as a GTK 3 WebKitGTK
       # window of the shell with the counter's menu bar, which follows the shell's language. The views job runs the
       # counter's unit tests.
       - name: Exercise the hosted windows example in GTK 3
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 10
         run: |
           dotnet build examples/hosted-windows/Shell/HostedShell.csproj -c Release
@@ -1205,7 +1204,7 @@ jobs:
       # (trusted component mode) and reports whether WebKitGTK has scoped custom element registries (REGION FINDING).
       # The views job runs the check's unit tests.
       - name: Exercise the hosted region and hosted components examples in GTK 3
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 10
         run: |
           dotnet build examples/hosted-region/Installer/HostedInstaller.csproj -c Release
@@ -1216,30 +1215,30 @@ jobs:
           GDK_BACKEND=x11 xvfb-run -a dotnet examples/hosted-components/Dashboard/bin/Release/net10.0/HostedDashboard.dll --probe || status=$?
           exit "$status"
       - name: Check the WebKitGTK keyboard script in Chromium
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: bun test --timeout 60000 tests/native/Runic.Desktop.WebViewSmoke/keyboard-script.test.mjs
       # The drag regions of the macOS window chrome script (MacOsWindowChrome.js); WKWebView runs it in --window-chrome.
       - name: Check the macOS window chrome script in Chromium
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: bun test --timeout 60000 tests/native/Runic.Desktop.WebViewSmoke/window-chrome-script.test.mjs
       - name: Exercise direct portal protocol
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         # The explicit DBus cases need a session bus; the managed job runs the portable cases.
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
       - name: Exercise the D-Bus client and service API on a private bus
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
       # B10: the Linux global menu's dbusmenu export and registrar watch, with a fake registrar on a private bus.
       - name: Exercise the Linux global menu on a private bus
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 5
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Desktop.Tests -c Release --no-build -- --treenode-filter "/*/*/*/*[Category=DBus]" --timeout 3m --output detailed
       # The private session bus starts inside xvfb-run: services it activates, such as xdg-desktop-portal-gtk, inherit
       # the bus's environment rather than the client's, and exited with "cannot open display" without DISPLAY.
       - name: Exercise GTK4 native window and platform services
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         timeout-minutes: 15
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
@@ -1313,8 +1312,9 @@ jobs:
           XDG_RUNTIME_DIR="$journey_runtime" XDG_DATA_HOME="$journey_runtime/data" GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --directory
           # Without a display the entry point must fall back instead of letting gtk_init exit the process.
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --no-display
-      - name: Verify GTK4 and portal NativeAOT consumers
-        if: runner.os == 'Linux'
+      # The GTK4 smoke under NativeAOT, in the window shard after the step above built it.
+      - name: Verify the GTK4 NativeAOT consumer
+        if: matrix.shard != 'platform' && runner.os == 'Linux'
         run: |
           dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
@@ -1325,6 +1325,9 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --global-menu gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
+      - name: Verify the portal and D-Bus NativeAOT consumers
+        if: matrix.shard != 'window' && runner.os == 'Linux'
+        run: |
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           # The run without a filter keeps the portable cases covered under NativeAOT.
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
@@ -1337,7 +1340,7 @@ jobs:
       # it rather than native-server.yml, which runs only for the server's paths. The static library comes from
       # native-libraries.yml's cache, only restored here, or is built when the native server changed.
       - name: Restore the native server's linux-x64 library
-        if: matrix.rid == 'linux-x64'
+        if: matrix.shard != 'window' && matrix.rid == 'linux-x64'
         uses: ./.github/actions/dependency-cache
         with:
           path: artifacts/native/runic-server/linux-x64
@@ -1346,7 +1349,7 @@ jobs:
           enable-cross-os-archive: "true"
       # NativeAOT links the library statically: the published executable is the whole application.
       - name: Publish the Desktop example with NativeAOT on the native server and check its startup
-        if: matrix.rid == 'linux-x64'
+        if: matrix.shard != 'window' && matrix.rid == 'linux-x64'
         timeout-minutes: 10
         run: |
           test -e artifacts/native/runic-server/linux-x64/librunic_server.a || eng/native/build-runic-server.sh linux-x64
@@ -1359,14 +1362,14 @@ jobs:
           node -e 'const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (r.icu || r.openssl) { console.error("ICU " + r.icu + ", OpenSSL " + r.openssl + " loaded by the first served page"); process.exit(1); }' "$RUNNER_TEMP/startup.json"
       # Outside the next check's own limit, which a slow mirror would otherwise use up.
       - name: Install GNOME Keyring
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         uses: ./.github/actions/apt-install
         with:
           packages: gnome-keyring libsecret-tools
       # A real Secret Service: GNOME Keyring with an unlocked login keyring on a private session bus, from the JIT build
       # and the NativeAOT executable. The case requires the encrypted session and has secret-tool read what it stored.
       - name: Verify secret storage against GNOME Keyring with JIT and NativeAOT
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         timeout-minutes: 8
         run: |
           for tests in "dotnet tests/dotnet/Runic.Platform.Linux.Portal.Tests/bin/Release/net10.0/Runic.Platform.Linux.Portal.Tests.dll" artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests; do
@@ -1379,7 +1382,7 @@ jobs:
       # The Fedora packages are downloaded with a time limit per attempt and cached (eng/ci/README.md, "Fedora packages").
       - name: Prepare the Fedora package cache
         id: dnf
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         run: |
           sudo install -d -o "$(id -u)" -g "$(id -g)" /var/cache/runic-dnf
           prefix="dnf-$(printf '%s' "$FEDORA_IMAGE" | sha256sum | cut -c1-16)-$RUNNER_ARCH-$(sha256sum eng/ci/real-portal.sh | cut -c1-16)-"
@@ -1387,13 +1390,13 @@ jobs:
           # A monthly key lets main replace the cache with current updates.
           echo "key=$prefix$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/dependency-cache
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         with:
           path: /var/cache/runic-dnf
           key: ${{ steps.dnf.outputs.key }}
           restore-keys: ${{ steps.dnf.outputs.prefix }}
       - name: Verify appearance settings, the Trash portal and the Secret portal against the real GNOME portal with JIT and NativeAOT
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         timeout-minutes: 10
         env:
           RID: ${{ matrix.rid }}
@@ -1403,7 +1406,7 @@ jobs:
           docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v /var/cache/runic-dnf:/var/cache/libdnf5 -w "$GITHUB_WORKSPACE" \
             -e GITHUB_ACTIONS -e RUNIC_TEST_TIMEOUT_SCALE "$FEDORA_IMAGE" bash eng/ci/real-portal.sh artifacts/portal-jit/Runic.Platform.Linux.Portal.Tests artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
       - name: Verify privileged actions under NativeAOT
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
         run: |
           dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
@@ -1875,16 +1878,16 @@ jobs:
         if: matrix.shard != 'window'
         run: dotnet build tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -p:TreatWarningsAsErrors=true
       - name: Verify native GTK clipboard
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         timeout-minutes: 3
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=Native]"
       # B17: GtkMessageDialogs for a GTK 3 window, answered with the default response, gtk_window_close and clicks.
       - name: Verify native GTK message boxes
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         timeout-minutes: 3
         run: GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]"
       - name: Verify native GTK directory chooser lifecycle
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         timeout-minutes: 3
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=DirectoryNative]"
@@ -1984,7 +1987,7 @@ jobs:
           dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePower]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativePower]" --output detailed
       - name: Verify NativeAOT GTK clipboard
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         timeout-minutes: 3
         # The run without a filter keeps the portable checks covered under NativeAOT.
         run: |
@@ -2097,7 +2100,7 @@ jobs:
           deadline 120 ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
           deadline 240 eng/ci/macos-open-probe.sh artifacts/platform-runtime-aot
       - name: Install gio for desktop registration
-        if: runner.os == 'Linux'
+        if: matrix.shard != 'window' && runner.os == 'Linux'
         uses: ./.github/actions/apt-install
         with:
           packages: libglib2.0-bin

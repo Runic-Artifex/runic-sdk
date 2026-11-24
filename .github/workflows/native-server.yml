@@ -112,7 +112,7 @@ jobs:
           dotnet build examples/first-window-desktop -c Release -p:RunicDesktopServer=Native
           node examples/first-window-desktop/browser-smoke.mjs
       # The NativeAOT publish and its S1 startup check (no ICU or OpenSSL before the first page) are in ci.yml's
-      # Native / linux-x64 leg, which every change to the server, the Views runtime, the generated Bridges or the
+      # Native / linux-x64 (platform) shard, which every change to the server, the Views runtime, the generated Bridges or the
       # Desktop host plans (#1159).
       - name: Retain diagnostics
         if: always()
