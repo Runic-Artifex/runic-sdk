@@ -31,6 +31,13 @@ internal static partial class DefaultBrowserSmoke
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(30);
     // A browser's first start on a fresh runner can take tens of seconds (BrowserWarmUp, I-180).
     private static readonly TimeSpan BrowserTimeout = TimeSpan.FromSeconds(90);
+    // #1301: how often the smoke logs what it still waits for. A thread-pool timer, so it also logs while the owner's
+    // thread is held in ShellExecuteEx, and before the process's 4-minute deadline, which ends the smoke without the
+    // smoke's own timeouts' messages (they are scaled past it on CI).
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(20);
+    private static readonly Stopwatch Clock = Stopwatch.StartNew();
+    private static string? s_pending;
+    private static long s_pendingSince;
 
     // --record-launch <file> <uri>: the test handler. Appends the URI as one line.
     internal static int Record(string[] args)
@@ -90,12 +97,19 @@ internal static partial class DefaultBrowserSmoke
 
         if (OperatingSystem.IsWindows()) Console.WriteLine($"Default browser: {Association("http")}.");
         using var browser = new BrowserRequests();
+        using var heartbeat = new Timer(static state => Heartbeat((BrowserRequests)state!), browser, HeartbeatInterval, HeartbeatInterval);
         var native = OperatingSystem.IsWindows() ? "ShellExecuteEx" : "NSWorkspace openURL:";
         foreach (var (launcher, source, what) in new[] { (forWindow, "window", "the window's file launcher"), (forApplication, "application", "the application's file launcher") })
         {
             var uri = new Uri($"http://127.0.0.1:{browser.Port}/runic-launch-smoke?source={source}");
+            var before = OperatingSystem.IsWindows() ? BrowserProcessIds() : [];
+            if (OperatingSystem.IsWindows()) Phase($"before {what}: {BrowserState(before)}.");
+            Pending($"{what}'s LaunchUriAsync ({native}) of {uri} to return");
             await LaunchAsync(launcher, uri, what);
+            if (OperatingSystem.IsWindows()) Phase($"after {what}: {BrowserState(before)}.");
+            Pending($"the default browser's request for {uri.PathAndQuery} from {what}");
             var agent = await browser.ExpectAsync(uri.PathAndQuery, what);
+            Pending(null);
             Console.WriteLine($"PASS default browser: {what} ({native}) opened {uri} in the default browser ({agent}).");
         }
         if (OperatingSystem.IsWindows()) await DangerousTypeAsync();
@@ -106,9 +120,29 @@ internal static partial class DefaultBrowserSmoke
 
     private static Uri Mailto(string source) => new($"mailto:runic-launch-smoke@example.invalid?subject={source}");
 
+    // #1301: a phase of the smoke, with the time since it started.
+    private static void Phase(string message) => Console.WriteLine($"[{Clock.Elapsed.TotalSeconds:0.0} s] Default browser: {message}");
+
+    // What the smoke waits for now, which the heartbeat reports.
+    private static void Pending(string? what)
+    {
+        Volatile.Write(ref s_pendingSince, Stopwatch.GetTimestamp());
+        Volatile.Write(ref s_pending, what);
+        if (what is not null) Phase($"waiting for {what}.");
+    }
+
+    private static void Heartbeat(BrowserRequests browser)
+    {
+        if (Volatile.Read(ref s_pending) is not { } pending) return;
+        var state = OperatingSystem.IsWindows() ? "; " + BrowserState([]) : "";
+        Phase($"still waiting after {Stopwatch.GetElapsedTime(Volatile.Read(ref s_pendingSince)).TotalSeconds:0} s for {pending}; the listener had {browser.Summary()}{state}.");
+    }
+
     private static async Task LaunchAsync(IDesktopFileLauncher launcher, Uri uri, string what)
     {
+        var launched = Stopwatch.StartNew();
         var result = await launcher.LaunchUriAsync(uri).AsTask().WaitAsync(TestTimeouts.Scale(StepTimeout));
+        Phase($"{what}'s LaunchUriAsync returned {result} after {launched.ElapsedMilliseconds} ms.");
         if (result is PlatformResult<PlatformUnit>.Success) return;
         if (OperatingSystem.IsWindows()) Console.WriteLine($"Default browser: {ShellExecuteDiagnostic(uri)}.");
         throw new InvalidOperationException($"LaunchUriAsync of {uri} through {what} returned {result}.");
@@ -149,6 +183,9 @@ internal static partial class DefaultBrowserSmoke
         }
 
         internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+        // The requests so far, for the heartbeat.
+        internal string Summary() => _requests.IsEmpty ? "no request" : $"[{string.Join(", ", _requests.Select(static request => request.Path))}]";
 
         internal async Task<string> ExpectAsync(string path, string what)
         {
@@ -196,9 +233,16 @@ internal static partial class DefaultBrowserSmoke
                     }
                     var lines = Encoding.ASCII.GetString(buffer, 0, length).Split("\r\n");
                     var parts = lines[0].Split(' ');
-                    if (parts.Length < 2) return;
+                    if (parts.Length < 2)
+                    {
+                        // A browser's preconnect, or a connection closed before its request: it shows the browser reached
+                        // the listener.
+                        Phase($"the listener got a connection without a request ({length} bytes).");
+                        return;
+                    }
                     var agent = lines.FirstOrDefault(static line => line.StartsWith("User-Agent:", StringComparison.OrdinalIgnoreCase))?[11..].Trim() ?? "";
                     _requests.Enqueue((parts[1], agent));
+                    Phase($"the listener got {parts[0]} {parts[1]} ({agent}).");
                     var body = Encoding.UTF8.GetBytes("<!doctype html><title>Runic launch smoke</title><p>Opened by the Runic default browser smoke.");
                     var head = Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
                     await stream.WriteAsync(head, timeout.Token);
