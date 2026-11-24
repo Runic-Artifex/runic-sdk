@@ -1198,7 +1198,7 @@ test('the planner reads the same ci.yml jobs and needs as a YAML parser, without
 
 test('a ci.yml edit plans only the jobs whose definition changed, each with all its legs', () => {
   const edit = (job, pattern = /timeout-minutes: (\d+)/, replacement = 'timeout-minutes: 999') => editJob(job, pattern, replacement);
-  for (const [job, legs, macos] of [['templates', [], 0], ['managed', [], 0], ['native', platforms, 1], ['packaging', ['win-x64', 'osx-arm64'], 1],
+  for (const [job, legs, macos] of [['templates', [], 0], ['managed', [], 0], ['native', platforms, 2], ['packaging', ['win-x64', 'osx-arm64'], 1],
     ['wpf', ['win-x64', 'win-arm64'], 0], ['screen-readers', ['win-x64'], 0], ['native-musl', [], 0], ['webkit-cdp', [], 0]]) {
     const decided = affected([workflowPath], context(edit(job)));
     assert.deepEqual(Object.keys(decided.jobs), [job], job);
@@ -1321,7 +1321,7 @@ test('release and pack scripts plan the jobs that test the packed packages', () 
 // Real squash commits of November 2026 that edit ci.yml or the release scripts: the base and head ci.yml, the changed
 // files and the referrer lookups the planner made at that commit. Expected: the jobs scoped (null: every job, as before),
 // the skippable jobs that run, the Windows and macOS platforms, and the macOS jobs (before: each planned every job,
-// and all but #1264 every leg, with 2 macOS jobs).
+// and all but #1264 every leg). The macOS jobs count the two osx-arm64 shards (R1) and Packaging / macos.
 const workflowEdits = JSON.parse(brotliDecompressSync(readFileSync(resolve(root, 'eng/ci/fixtures/workflow-edits/ci-yml-prs.json.br'))).toString('utf8')).fixtures;
 const everyJob = skippableJobs;
 test('this month\'s ci.yml and release script pull requests plan their changed jobs', () => {
@@ -1329,28 +1329,28 @@ test('this month\'s ci.yml and release script pull requests plan their changed j
     // C4: the managed job's step and its script.
     1292: [['managed'], ['managed'], [], 0],
     // C2: the native job's shard split (platforms.mjs is the CI component's).
-    1288: [['native'], ['native'], platforms, 1],
+    1288: [['native'], ['native'], platforms, 2],
     // The windows-11-arm account prompt step in the WPF and native jobs, with Desktop and WPF test changes.
-    1066: [['wpf', 'native'], everyJob.filter(job => job !== 'webkit-cdp'), platforms, 2],
+    1066: [['wpf', 'native'], everyJob.filter(job => job !== 'webkit-cdp'), platforms, 3],
     // hdiutil retries: the packaging job's macOS steps, with dotnet runic packaging code.
-    1019: [['packaging'], everyJob.filter(job => job !== 'screen-readers'), platforms, 2],
+    1019: [['packaging'], everyJob.filter(job => job !== 'screen-readers'), platforms, 3],
     // dotnet runic dev --browser: the webkit-cdp job, with tool changes.
     1053: [['webkit-cdp'], everyJob.filter(job => job !== 'screen-readers'), ['win-x64'], 0],
     // doctor: the templates job, with tool changes.
     1095: [['templates'], everyJob.filter(job => !['wpf', 'screen-readers'].includes(job)), [], 0],
     // Views single-file publish: the views job, with a Views targets change.
-    1124: [['views'], everyJob.filter(job => !['screen-readers', 'webkit-cdp'].includes(job)), ['win-x64', 'osx-arm64'], 2],
+    1124: [['views'], everyJob.filter(job => !['screen-readers', 'webkit-cdp'].includes(job)), ['win-x64', 'osx-arm64'], 3],
     // WebKit CDP adapter: only comments changed in ci.yml.
     1072: [[], everyJob.filter(job => !['wpf', 'screen-readers'].includes(job)), [], 0],
     // Release notes anchors: a release script and its test.
     1264: [['package-consumers', 'wpf', 'templates', 'webkit-cdp'], ['package-consumers', 'templates', 'webkit-cdp'], [], 0],
     // Shared parts: the plan job (A1), the verify job (#1033), the build job and eng/run.mjs (#1105), setup-sdk's
     // dependency cache (#1130), and assembled release notes in the same diff (#928).
-    1280: [null, everyJob, platforms, 2],
-    1033: [null, everyJob, platforms, 2],
-    1105: [null, everyJob, platforms, 2],
-    1130: [null, everyJob, platforms, 2],
-    928: [null, everyJob, platforms, 2],
+    1280: [null, everyJob, platforms, 3],
+    1033: [null, everyJob, platforms, 3],
+    1105: [null, everyJob, platforms, 3],
+    1130: [null, everyJob, platforms, 3],
+    928: [null, everyJob, platforms, 3],
   };
   assert.deepEqual(workflowEdits.map(item => item.pr).sort(), Object.keys(expected).map(Number).sort());
   for (const item of workflowEdits) {

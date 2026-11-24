@@ -946,9 +946,8 @@ jobs:
     # and macOS legs the change needs. win-x64 and osx-arm64 run as two shards each (C2 of D077.25, R1 of D077.26):
     # `window` runs the desktop contracts, the window layer, the hosted applications and the WebView2 menus and screen
     # readers; `platform` runs administration, elevation, the platform providers, the runtime conformance and the
-    # NativeAOT WebView2 and Views applications. On osx-arm64, file watching runs in `platform`, which keeps the two
-    # shards balanced. A step of one shard says `matrix.shard != '<the other>'`, which holds on every unsharded leg;
-    # setup, the WebView smoke build and the retry record run in both.
+    # NativeAOT WebView2 and Views applications. A step of one shard says `matrix.shard != '<the other>'`, which holds
+    # on every unsharded leg; setup, the WebView smoke build and the retry record run in both.
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.native) }}
@@ -1004,15 +1003,8 @@ jobs:
           --results-directory ${{ github.workspace }}/artifacts/native-tests --report-trx --report-trx-filename desktop.trx
       # The managed job runs these cases on Linux. FileSystemWatcher uses ReadDirectoryChangesW on Windows
       # and FSEvents on macOS, whose symlink, rename and timing behavior differs from inotify.
-      - name: Test file watching on Windows
-        if: matrix.shard != 'platform' && runner.os == 'Windows'
-        timeout-minutes: 10
-        run: >-
-          dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release --
-          --treenode-filter "/*/*/PathWatcherTests/*" --timeout 3m --output detailed
-      # The same cases on macOS, in the platform shard: on osx-arm64 that keeps the two shards balanced.
-      - name: Test file watching on macOS
-        if: matrix.shard != 'window' && runner.os == 'macOS'
+      - name: Test file watching on Windows and macOS
+        if: matrix.shard != 'platform' && runner.os != 'Linux'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release --
