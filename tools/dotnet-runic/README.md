@@ -93,6 +93,11 @@ its own server process is still running. The plugin and the tool must come from
 the same release; an older plugin does not answer, and readiness times out with
 `RAPPDEV1007`.
 
+Readiness also requires the entry module to come back as JavaScript. Vite answers
+a path that is not below its root with its `index.html` fallback; `dev` then
+stops with `RAPPDEV1007`, naming the entry and Vite's root, instead of giving the
+window an HTML page as its entry module.
+
 A Vite or Angular development server also gets `RUNIC_APPLICATION_DEV_SOURCE_MAP`
 (0.20): the path of the development source map that the Bridge generator writes
 to the project's intermediate directory (`obj/<Configuration>/<TargetFramework>/runic-bridge/sources.json`),
@@ -464,8 +469,10 @@ file is missing.
 
 #### `vite-entry`
 
-With a Vite development server, fails when the configured entry module is
-missing or not a root-relative path.
+With a Vite development server, fails when the configured entry module does not
+start with `/` or does not exist below Vite's root, which doctor takes from
+`RunicApplicationFrontendViteRoot` (default: the frontend directory; see
+[project properties](#project-properties)).
 
 #### `browser`
 
@@ -1426,10 +1433,17 @@ serves (see its
 | `RunicApplicationFrontendOutputDirectory` | `dist`, relative to the frontend directory |
 | `RunicApplicationFrontendWebRoot` | `www`, relative to the build output |
 | `RunicApplicationFrontendDevServerKind` | `angular` with `angular.json`, `vite` with a `vite.config.*`, otherwise none |
-| `RunicApplicationFrontendViteDevServerEntry` | the first of `/src/main.ts`, `/src/main.tsx`, `/src/main.js`, `/src/main.jsx`; for SvelteKit, which has no main module, its root route: `/src/routes/+page.svelte`, `+layout.svelte`, `+layout.ts` or `+layout.js` |
+| `RunicApplicationFrontendViteDevServerEntry` | the first of `/src/main.ts`, `/src/main.tsx`, `/src/main.js`, `/src/main.jsx` below Vite's root; for SvelteKit, which has no main module, its root route: `/src/routes/+page.svelte`, `+layout.svelte`, `+layout.ts` or `+layout.js`. The path is the module's URL path, below Vite's root as Vite serves it |
 | `RunicApplicationFrontendViteConfiguration` | the frontend's `vite.config.*` |
+| `RunicApplicationFrontendViteRoot` | the frontend directory; set it, relative to the frontend directory, when `vite.config.*` sets `root`, for example `projects/app/src` in an Angular workspace |
 | `RunicApplicationFrontendDevServerDocument` | every HTML build input with Vite, `index.html` with Angular and with SvelteKit, whose development server renders it from its routes; set it to override the list and separate several documents with `;` |
 | `RunicApplicationFrontendDevWatchTarget` | none; an MSBuild target to run as the frontend watcher without a development server |
+
+Vite resolves the entry module against its `root`, and so does `dev`: with
+`root: 'projects/app/src'` and the module `projects/app/src/main.ts`, the entry is
+`/main.ts`. `dev` reads the root from the resolved Vite configuration and warns
+when it differs from `RunicApplicationFrontendViteRoot`; `doctor`, which does not
+run the Vite configuration, checks the entry below `RunicApplicationFrontendViteRoot`.
 
 The package manager comes from `packageManager` in the frontend `package.json`,
 then from its lock file.

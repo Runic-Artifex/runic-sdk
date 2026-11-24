@@ -54,12 +54,36 @@ internal static class ViteBuildInputs
             configuration.HasExplicitDevelopmentServerDocuments ? configuration.DevelopmentServerDocuments : null,
             routed);
         Console.WriteLine($"[dev] Pages: {string.Join(", ", documents)}");
+        if (DescribeRootMismatch(configuration.EffectiveViteRoot, root) is { } mismatch)
+        {
+            Console.WriteLine(mismatch);
+        }
         phase.Complete();
         return configuration with
         {
             DevelopmentServerDocument = string.Join(';', documents),
             UsesRunicVitePlugin = ParseRunicPlugin(result.StandardOutput),
+            ViteRoot = Path.GetFullPath(root),
         };
+    }
+
+    /// <summary>
+    /// A warning when the resolved Vite root is not the one the project names (<c>RunicApplicationFrontendViteRoot</c>,
+    /// by default the frontend package directory); null when they match. dev uses Vite's root, but doctor, which does
+    /// not run the Vite configuration, checks the entry module below the project's.
+    /// </summary>
+    internal static string? DescribeRootMismatch(string configuredRoot, string resolvedRoot)
+    {
+        static string Normalize(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        StringComparison comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        string configured = Normalize(configuredRoot);
+        string resolved = Normalize(resolvedRoot);
+        return string.Equals(configured, resolved, comparison)
+            ? null
+            : $"[dev] warning: Vite's root is '{resolved}', but RunicApplicationFrontendViteRoot is '{configured}'. " +
+              "Set RunicApplicationFrontendViteRoot to Vite's root so that 'dotnet runic doctor' checks the entry module where Vite serves it.";
     }
 
     /// <summary>

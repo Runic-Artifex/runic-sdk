@@ -1141,6 +1141,13 @@ loads. The message names the page and the server's response.
 check that the configured dev script starts with the frontend's own command,
 such as `npm run dev`.
 
+For Vite, the application entry must come back as a JavaScript module. Vite
+answers a path that is not below its `root` with its `index.html` fallback, so
+`dev` stops at once when the entry's content type is not JavaScript (since
+0.24). Set `RunicApplicationFrontendViteDevServerEntry` to the module's path
+below Vite's root, and `RunicApplicationFrontendViteRoot` when the Vite
+configuration sets `root`; `dotnet runic doctor` then checks the same path.
+
 With `runic()` from `@runic-artifex/vite-plugin-runic` in the Vite
 configuration, or for Angular with the plugin in `package.json`,
 the server is ready only when `/__runic/state` confirms the session that `dev`

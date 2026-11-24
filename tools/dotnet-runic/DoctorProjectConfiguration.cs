@@ -48,6 +48,12 @@ internal sealed record DoctorProjectConfiguration(
         init => _hosts = value;
     }
 
+    /// <summary>
+    /// Vite's root, against which the entry module resolves: <c>RunicApplicationFrontendViteRoot</c>, by default the
+    /// frontend package directory (empty here means that default).
+    /// </summary>
+    internal string ViteRoot { get; init; } = string.Empty;
+
     /// <summary>The semicolon-separated RuntimeIdentifiers property.</summary>
     internal string RuntimeIdentifiers { get; init; } = string.Empty;
 
@@ -135,6 +141,7 @@ internal sealed record DoctorProjectConfiguration(
             DetectHost(references))
         {
             Hosts = DetectHosts(references),
+            ViteRoot = development.EffectiveViteRoot,
             ReferencesHostAdapter = IsTrue(Value("_RunicApplicationHostAdapter")),
             RuntimeIdentifiers = Value("RuntimeIdentifiers"),
             PublishAot = IsTrue(Value("PublishAot")),
