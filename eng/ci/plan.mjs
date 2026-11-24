@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFil
 import { basename, dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
+import * as definitions from "./platforms.mjs";
 import { platforms, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
   globalPaths, matchesPath } from "./platforms.mjs";
 
@@ -96,8 +97,16 @@ export const reusedSkip = [...skippableJobs, "native-libraries", "build", "engin
 // The CI component (eng/workspace.json) owns the planner, the gates, the local CI runner and other files that only the
 // always-run jobs (plan, build, engineering, verify), other workflows or the coordinator read. Its checks are the
 // engineering job's (eng/ci/*.test.mjs and the contracts), so a change to it alone plans no skippable job and no
-// Windows or macOS leg. A change to a leg's runner or matrix values in platforms.mjs takes the ci:all-platforms label.
+// Windows or macOS leg. The exception is a change to a definition in platforms.mjs that a job reads (definitionJobs): a
+// leg list (legLists), such as a leg's runner or matrix values, plans the jobs whose matrix it is, with all their legs.
 export const ciComponent = "ci";
+
+// The leg lists of platforms.mjs by the plan output that carries them; the job whose matrix reads that output
+// (`fromJSON(needs.plan.outputs.<name>)` in ci.yml) runs those legs.
+export const legLists = { native: nativeLegs, wpf: wpfLegs, packaging: packagingLegs, "screen-readers": screenReaderLegs };
+export const platformsPath = "eng/ci/platforms.mjs";
+// The name platforms.mjs exports a leg list under.
+export const definitionName = list => Object.entries(definitions).find(([, value]) => value === list)?.[0];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -131,22 +140,33 @@ export function affectedPlatforms(files) {
 //
 // `context` (workflowContext) lets ci.yml edits, the composite actions and CI scripts the jobs call, and the release and
 // pack scripts plan only the jobs they change (R2, scopedJobs). Without it they plan everything, as before.
+//
+// A change to platforms.mjs plans the jobs that read its changed definitions (definitionJobs), with or without the
+// scoping; with no context it plans everything, since it cannot tell a leg definition from a path rule.
 export function affected(files, context = null) {
-  const scoped = context && files?.length ? scopedJobs(files, context) : null;
+  const defined = definitionJobs(files, context);
+  if (defined?.full) return unscopedAffected(files, defined);
+  const scoped = context && files?.length ? scopedJobs(files, context, defined?.jobs) : null;
   if (scoped) {
     const rest = files.filter(file => !scoped.files.includes(file));
-    const unscoped = unscopedAffected(files);
+    const unscoped = unscopedAffected(files, defined);
     const result = rest.length ? unscopedAffected(rest)
       : { full: false, components: [], screenReaders: false, webKitCdp: false, platforms: [], why: {} };
     if (!result.full) return { ...result, jobs: scoped.jobs, unscoped };
   }
-  return unscopedAffected(files);
+  return unscopedAffected(files, defined);
 }
-function unscopedAffected(files) {
-  const full = files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
+// `defined` (definitionJobs): a full cause, or the jobs whose definitions changed, which add every Windows and macOS
+// platform here, where there is no job to scope them to (pushes, release and train entries).
+function unscopedAffected(files, defined = null) {
+  const full = Boolean(defined?.full) || files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
+  const legs = defined?.full ? everyPlatform(defined.full) : affectedPlatforms(files);
+  for (const [name, reason] of Object.entries(defined?.jobs ?? {}))
+    for (const platform of platforms) legs.why[platform] ??= `${reason} (job ${name})`;
+  if (Object.keys(defined?.jobs ?? {}).length) legs.platforms = [...platforms];
   return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files),
     screenReaders: full || files.some(file => screenReaderPaths.some(path => matchesPath(file, path))),
-    webKitCdp: full || files.some(file => webKitCdpPaths.some(path => matchesPath(file, path))), ...affectedPlatforms(files) };
+    webKitCdp: full || files.some(file => webKitCdpPaths.some(path => matchesPath(file, path))), ...legs };
 }
 
 // R2 (D077.26): job-scoped planning. A pull request or merge queue entry that edits ci.yml runs the jobs whose
@@ -239,46 +259,12 @@ export function workflowParts(text) {
 // The jobs of base and head that a change cannot scope: plan, verify, and the jobs another job (but verify) needs.
 const sharedJobs = parts => new Set(["plan", "verify", ...[...parts.needs].filter(([name]) => name !== "verify").flatMap(([, list]) => list)]);
 
-// The jobs and files of a diff that plan job by job (see above), or null when none do. `context`: { base, head } (the
-// two ci.yml texts), referrers(key), the tracked files of base and head whose text contains `key`, and importers(file),
-// the tracked JavaScript files of base and head that import `file` (null when the lookup fails).
-export function scopedJobs(files, context) {
-  if (files.some(releaseInputs)) return null;
+// The lookups of the jobs that use a file, against both ci.yml texts of `context` (see scopedJobs); null when either
+// does not parse.
+function jobLookups(context) {
   const base = workflowParts(context.base), head = workflowParts(context.head);
   if (!base || !head) return null;
   const shared = new Set([...sharedJobs(base), ...sharedJobs(head)]);
-  const jobs = {};
-  // `from`: the file whose platform rules give the legs, a module of `file` that the jobs run.
-  const add = (names, file, from = file) => {
-    const { platforms: planned, why } = affectedPlatforms([from]);
-    for (const name of names.filter(name => skippableJobs.includes(name))) {
-      const entry = jobs[name] ??= { platforms: [], why: {} };
-      for (const platform of planned) if (!entry.platforms.includes(platform)) {
-        entry.platforms.push(platform);
-        entry.why[platform] = from === file ? why[platform] : `${file} (imported by ${from})`;
-      }
-      entry.platforms = platforms.filter(platform => entry.platforms.includes(platform));
-      entry.file ??= file;
-    }
-  };
-  const scoped = [];
-  // ci.yml: the jobs whose block differs.
-  if (files.includes(workflowPath)) {
-    const names = [...new Set([...base.jobs.keys(), ...head.jobs.keys()])];
-    const changed = names.filter(name => base.jobs.get(name) !== head.jobs.get(name));
-    const sameJobs = names.every(name => base.jobs.has(name) && head.jobs.has(name));
-    // A changed job also plans the jobs it needs, so that it does not wait on a skipped one.
-    const planned = [...new Set([...changed, ...changed.flatMap(name => head.needs.get(name) ?? [])])];
-    if (context.base !== context.head && base.outside === head.outside && sameJobs && !changed.some(name => shared.has(name))) {
-      for (const name of planned.filter(name => skippableJobs.includes(name))) {
-        jobs[name] ??= { platforms: [], why: {} };
-        jobs[name].platforms = [...platforms];
-        for (const platform of platforms) jobs[name].why[platform] ??= `${workflowPath} (job ${name})`;
-        jobs[name].file ??= workflowPath;
-      }
-      scoped.push(workflowPath);
-    }
-  }
   // Composite actions and CI scripts: the jobs that name them, through the actions and scripts that name them.
   const mentioning = (key, parts) => [...parts.jobs].filter(([, block]) => block.includes(key)).map(([name]) => name);
   const keyOf = file => /^\.github\/actions\/[^/]+/.exec(file)?.[0] ?? (file.startsWith("eng/ci/") ? basename(file) : null);
@@ -318,6 +304,59 @@ export function scopedJobs(files, context) {
     }
     return found;
   };
+  return { base, head, shared, mentioning, users, runners };
+}
+
+// The jobs and files of a diff that plan job by job (see above), or null when none do. `context`: { base, head } (the
+// two ci.yml texts), referrers(key), the tracked files of base and head whose text contains `key`, importers(file),
+// the tracked JavaScript files of base and head that import `file` (null when the lookup fails), and texts(path), the
+// base and head texts of a file (null for a missing one). `defined`: the jobs that changed platforms.mjs definitions
+// plan (definitionJobs), with every leg.
+export function scopedJobs(files, context, defined = {}) {
+  if (files.some(releaseInputs)) return null;
+  const lookups = jobLookups(context);
+  if (!lookups) return null;
+  const { base, head, shared, mentioning, users, runners } = lookups;
+  const jobs = {};
+  // `from`: the file whose platform rules give the legs, a module of `file` that the jobs run.
+  const add = (names, file, from = file) => {
+    const { platforms: planned, why } = affectedPlatforms([from]);
+    for (const name of names.filter(name => skippableJobs.includes(name))) {
+      const entry = jobs[name] ??= { platforms: [], why: {} };
+      for (const platform of planned) if (!entry.platforms.includes(platform)) {
+        entry.platforms.push(platform);
+        entry.why[platform] = from === file ? why[platform] : `${file} (imported by ${from})`;
+      }
+      entry.platforms = platforms.filter(platform => entry.platforms.includes(platform));
+      entry.file ??= file;
+    }
+  };
+  const scoped = [];
+  // ci.yml: the jobs whose block differs.
+  if (files.includes(workflowPath)) {
+    const names = [...new Set([...base.jobs.keys(), ...head.jobs.keys()])];
+    const changed = names.filter(name => base.jobs.get(name) !== head.jobs.get(name));
+    const sameJobs = names.every(name => base.jobs.has(name) && head.jobs.has(name));
+    // A changed job also plans the jobs it needs, so that it does not wait on a skipped one.
+    const planned = [...new Set([...changed, ...changed.flatMap(name => head.needs.get(name) ?? [])])];
+    if (context.base !== context.head && base.outside === head.outside && sameJobs && !changed.some(name => shared.has(name))) {
+      for (const name of planned.filter(name => skippableJobs.includes(name))) {
+        jobs[name] ??= { platforms: [], why: {} };
+        jobs[name].platforms = [...platforms];
+        for (const platform of platforms) jobs[name].why[platform] ??= `${workflowPath} (job ${name})`;
+        jobs[name].file ??= workflowPath;
+      }
+      scoped.push(workflowPath);
+    }
+  }
+  // platforms.mjs: the jobs whose definitions changed, with every leg.
+  for (const [name, reason] of Object.entries(defined ?? {})) if (skippableJobs.includes(name)) {
+    jobs[name] ??= { platforms: [], why: {} };
+    jobs[name].platforms = [...platforms];
+    for (const platform of platforms) jobs[name].why[platform] ??= `${reason} (job ${name})`;
+    jobs[name].file ??= platformsPath;
+  }
+  if (Object.keys(defined ?? {}).some(name => skippableJobs.includes(name))) scoped.push(platformsPath);
   for (const file of files.filter(file => file !== workflowPath && !engineeringOnly(file) && !owner(file))) {
     if (packScripts.some(path => matchesPath(file, path))) {
       const names = [...new Set([...mentioning(packageArtifact, base), ...mentioning(packageArtifact, head)])].filter(name => name !== "build");
@@ -338,6 +377,85 @@ export function scopedJobs(files, context) {
     [name, { platforms: list, why: Object.fromEntries(list.map(platform => [platform, why[platform]])), file }])) } : null;
 }
 
+// The top-level declarations of a platforms.mjs text by name, without comment lines, blank lines and trailing spaces; a
+// declaration runs from its `const` or `export const` line at column 0 to the next one (its closing `];` included). Null when the text has another
+// shape (an import, a function declaration, a block comment or a multi-line string at column 0).
+export function declarations(text) {
+  if (typeof text !== "string") return null;
+  const found = new Map();
+  let name = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+$/, "");
+    if (line === "" || line.trimStart().startsWith("//")) continue;
+    if (!/^[\s\])}]/.test(line)) {
+      name = /^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=/.exec(line)?.[1] ?? null;
+      if (name === null || found.has(name)) return null;
+      found.set(name, [line]);
+    } else if (name === null) return null;
+    else found.get(name).push(line);
+  }
+  return found.size ? new Map([...found].map(([key, lines]) => [key, lines.join("\n")])) : null;
+}
+// The declarations whose text differs between the two platforms.mjs texts (added and removed ones too), and those that
+// name a changed one (releaseJobs names nativeLegs, the path rules `all`). Null when either text has another shape.
+export function changedDefinitions(baseText, headText) {
+  const base = declarations(baseText), head = declarations(headText);
+  if (!base || !head) return null;
+  const names = [...new Set([...base.keys(), ...head.keys()])];
+  const changed = new Set(names.filter(name => base.get(name) !== head.get(name)));
+  const named = name => new RegExp(`(?<![\\w$])${name.replaceAll("$", "\\$")}(?![\\w$])`);
+  for (let grown = true; grown;) {
+    grown = false;
+    for (const name of names.filter(name => !changed.has(name))) {
+      const text = `${base.get(name) ?? ""}\n${head.get(name) ?? ""}`;
+      if ([...changed].some(other => named(other).test(text))) { changed.add(name); grown = true; }
+    }
+  }
+  return [...changed];
+}
+
+// The jobs that a change to platforms.mjs plans, by the definitions whose text changed (changedDefinitions), as
+// { jobs: { <job>: <reason> } }, or { full: <reason> } when they cannot be attributed; null when the diff does not
+// change platforms.mjs. Comment lines are not definitions.
+// - A leg list (legLists) plans the jobs whose matrix reads its plan output, with all their legs.
+// - Another definition plans the jobs that run a script reading it: the files that import platforms.mjs and name it,
+//   but for the CI component's and engineering-only ones (eng/ci/test-timeout-scale.mjs reads testTimeoutScales in the
+//   setup action, which the shared build job uses too, so a scale change plans everything). A definition only the
+//   planner, the tests or the release gate read (the path rules, the label, nativeJob, releaseJobs) plans no job: the
+//   engineering job tests it, and it applies from the next base planner on.
+// Without a context, with a missing or reshaped file, or with a list no job reads, everything is planned.
+export function definitionJobs(files, context) {
+  if (!files?.includes(platformsPath)) return null;
+  const unknown = why => ({ full: `${platformsPath} (${why})` });
+  const lookups = context && jobLookups(context);
+  const texts = context?.texts?.(platformsPath);
+  if (!lookups || !Array.isArray(texts)) return unknown("the planner cannot compare its definitions");
+  const changed = changedDefinitions(...texts);
+  if (!changed) return unknown("a file the planner cannot split into definitions");
+  const { base, head, shared, users, runners } = lookups;
+  const jobs = {};
+  const add = (names, reason) => { for (const name of names) jobs[name] ??= reason; };
+  for (const name of changed) {
+    const output = Object.keys(legLists).find(key => definitionName(legLists[key]) === name);
+    if (output) {
+      const reads = new RegExp(`needs\\.plan\\.outputs\\.${output}(?![\\w-])`);
+      const names = [...new Set([base, head].flatMap(parts => [...parts.jobs].filter(([, block]) => reads.test(block)).map(([job]) => job)))];
+      if (!names.length || names.some(job => shared.has(job) || !skippableJobs.includes(job))) return unknown(`${name}, which no skippable job alone reads`);
+      add(names, `${platformsPath} (${name})`);
+      continue;
+    }
+    const importers = context.importers?.(platformsPath), referrers = context.referrers?.(name);
+    if (!Array.isArray(importers) || !Array.isArray(referrers)) return unknown(`the readers of ${name} are unknown`);
+    for (const module of importers.filter(file => referrers.includes(file) && !engineeringOnly(file) && owner(file) !== ciComponent)) {
+      const names = /^(\.github\/actions\/|eng\/ci\/)/.test(module) ? users(module) : runners(module)?.flatMap(([, list]) => list);
+      if (!names) return unknown(`the jobs that run ${module}, which reads ${name}, are unknown`);
+      if (names.some(job => shared.has(job))) return unknown(`${name}, which ${module} reads in a shared job`);
+      add(names.filter(job => skippableJobs.includes(job)), `${platformsPath} (${name}, read by ${module})`);
+    }
+  }
+  return { jobs };
+}
+
 // The context of the plan step: the base planner's own checkout (`base`) against the head checkout (`head`, the working
 // directory). Null when they are the same directory, so a run without a separate base checkout never scopes.
 export function checkoutContext(base = root, head = process.cwd()) {
@@ -351,7 +469,7 @@ export function checkoutContext(base = root, head = process.cwd()) {
   return { base: read(base), head: read(head), referrers, importers: file => {
     const found = [base, head].map(directory => importing(file, grep(directory, basename(file)), path => read(directory, path)));
     return found.includes(null) ? null : [...new Set(found.flat())];
-  } };
+  }, texts: path => [read(base, path), read(head, path)] };
 }
 // For a local --files preview: the `base` revision (the merge base with origin/main by default) against the `head`
 // revision, or the working tree without one.
@@ -370,7 +488,7 @@ export function revisionContext(base, head = null, directory = root) {
     }, importers: file => {
       const lists = commits.map(commit => importing(file, found(basename(file), commit), path => show(commit, path)));
       return lists.includes(null) ? null : [...new Set(lists.flat())];
-    } };
+    }, texts: path => commits.map(commit => show(commit, path)) };
   } catch { return null; }
 }
 // The JavaScript files among `candidates` (the files that name `file`) that import it; null when a lookup or read fails.
@@ -422,14 +540,14 @@ export function planFor({ full, components, screenReaders: readers = true, webKi
   // private word list when its Windows x64 rule planned that leg (DEV-SEC-88), whose step checks the Windows access list.
   const nativeChecks = full || has("desktop", "platform", "application", "examples", "administration-windows")
     || (has("spelling") && planned.includes("win-x64"));
-  const native = legs(nativeLegs, "native", nativeChecks ? platformLegs(nativeLegs, planned) : []);
+  const native = legs(legLists.native, "native", nativeChecks ? platformLegs(legLists.native, planned) : []);
   // The WPF hosts and their packed consumer run on Windows only.
-  const wpf = legs(wpfLegs, "wpf", full || has("navigation", "application-wpf") ? platformLegs(wpfLegs, planned) : []);
+  const wpf = legs(legLists.wpf, "wpf", full || has("navigation", "application-wpf") ? platformLegs(legLists.wpf, planned) : []);
   // The template's packaging recipes build, install and open real packages on each OS; the platform packages they
   // exercise select them through the packaging component's dependencies.
-  const packaging = legs(packagingLegs, "packaging", full || has("packaging") ? platformLegs(packagingLegs, planned) : []);
+  const packaging = legs(legLists.packaging, "packaging", full || has("packaging") ? platformLegs(legLists.packaging, planned) : []);
   // NVDA and Orca read the accessibility fixture in the embedded window.
-  const screenReaders = legs(screenReaderLegs, "screen-readers", full || readers ? platformLegs(screenReaderLegs, planned) : []);
+  const screenReaders = legs(legLists["screen-readers"], "screen-readers", full || readers ? platformLegs(legLists["screen-readers"], planned) : []);
   const run = {
     managed: managed.length > 0,
     // One job runs each planned web package's tests and the framework consumers in named steps.
@@ -734,8 +852,10 @@ export const unscoped = input => input?.unscoped ?? input;
 
 // Pushes to main run every Linux job, and the Windows and macOS legs their before..after diff needs.
 export const everyLinuxJob = input => ({ ...input, full: true, components: Object.keys(workspace.components) });
-// Scheduled and manual runs, and pull requests labelled ci:all-platforms, run every leg.
-export const allPlatforms = (input, reason) => ({ ...input, ...everyPlatform(reason) });
+// Scheduled and manual runs, and pull requests labelled ci:all-platforms, run every leg: of every job the changed files
+// plan, and of every job a workflow, action, script or definition edit plans (`jobs`).
+export const allPlatforms = (input, reason) => ({ ...input, ...everyPlatform(reason),
+  ...input.jobs ? { jobs: Object.fromEntries(Object.entries(input.jobs).map(([name, entry]) => [name, { ...entry, ...everyPlatform(reason) }])) } : {} });
 
 export function outputs(result) {
   return [
@@ -820,7 +940,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       : `Components ${result.components.join(", ") || "none"}; skipping ${result.skip.join(", ") || "nothing"}.`);
     if (input?.jobs && !covered) {
       const scoped = Object.entries(input.jobs).filter(([name]) => !result.skip.includes(name)).map(([name, entry]) => `${name} (${entry.file})`);
-      const summary = `Job-scoped (eng/ci/README.md, "Workflow edits"): this change plans ${scoped.length ? scoped.join(", ") : "no job"} for its workflow, action and script edits, not every job.`;
+      const summary = `Job-scoped (eng/ci/README.md, "Workflow edits"): this change plans ${scoped.length ? scoped.join(", ") : "no job"} for its workflow, action, script and leg definition edits, not every job.`;
       console.error(summary);
       if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
     }

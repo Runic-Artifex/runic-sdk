@@ -9,10 +9,12 @@ import { root, workspace, engineeringOnly, engineeringTestDirectories } from '..
 import { plan, planFor, ciComponent, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
   testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages, diffKind, parseDiffKind, versionOnly, coveredPlan, validPlan,
   parseCovered, reusedPlan, planRecord, versionFiles, coveredSkip, workflowParts, workflowPath, packScripts, packageArtifact, unscoped,
-  checkoutContext, revisionContext, importsOf, scriptFile } from './plan.mjs';
+  checkoutContext, revisionContext, importsOf, scriptFile, legLists, definitionName, platformsPath, declarations, changedDefinitions,
+  definitionJobs } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
   globalPaths, windowsProgramStartPaths, windowsFileReplacePaths, windowsPrivateFilePaths, windowsLoopbackPaths,
   windowsSpellingPrivateFilePaths, matchesPath } from './platforms.mjs';
+import * as platformDefinitions from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -906,7 +908,8 @@ test('the CI component plans only the always-run jobs, without Windows or macOS 
     assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
     assert.ok(!platformRules.some(rule => rule.paths.some(item => matchesPath(path, item))), `${path} has a platform rule`);
   }
-  for (const files of [['eng/ci/plan.mjs'], ['eng/ci/platforms.mjs', 'eng/ci/plan.test.mjs'], ['eng/ci/gate.mjs', 'eng/ci/contracts.test.mjs'],
+  // platforms.mjs plans by its changed definitions, which need a context (see the leg definition tests).
+  for (const files of [['eng/ci/plan.mjs'], ['eng/ci/plan.test.mjs'], ['eng/ci/gate.mjs', 'eng/ci/contracts.test.mjs'],
     ['eng/ci/flakes.mjs', 'eng/ci/flakes.test.mjs', 'eng/ci/README.md'], ['eng/ci/local.mjs', 'eng/ci/runner.Containerfile'],
     ['eng/ci/fixtures/artifact-roundtrip.yml'], ['eng/reliability/run.mjs'], ['eng/json-schema.mjs'], ['.github/CODEOWNERS']]) {
     const result = plan(files);
@@ -1397,6 +1400,9 @@ test('every module importing a release or pack script runs where the planner fin
 // and all but #1264 every leg). The macOS jobs count the two osx-arm64 shards (R1) and Packaging / macos.
 const workflowEdits = JSON.parse(brotliDecompressSync(readFileSync(resolve(root, 'eng/ci/fixtures/workflow-edits/ci-yml-prs.json.br'))).toString('utf8')).fixtures;
 const everyJob = skippableJobs;
+// The base and head platforms.mjs of the pull requests that changed it (#1288 and #1033 above, #1308), and #1308's files and
+// ci.yml texts.
+const platformsEdits = JSON.parse(brotliDecompressSync(readFileSync(resolve(root, 'eng/ci/fixtures/workflow-edits/platforms-mjs.json.br'))).toString('utf8')).fixtures;
 test('this month\'s ci.yml and release script pull requests plan their changed jobs', () => {
   const expected = {
     // C4: the managed job's step and its script.
@@ -1432,8 +1438,11 @@ test('this month\'s ci.yml and release script pull requests plan their changed j
     const before = plan(item.files);
     if (item.pr === 1264) assert.deepEqual([before.full, before.skip, before.platforms], [true, ['wpf'], []]);
     else plansEverything(before, `${item.pr} before`);
-    const decided = affected(item.files, { base: item.base, head: item.head, referrers: key => item.referrers[key] ?? null,
-      importers: gitImporters });
+    const definitions = platformsEdits.find(edit => edit.pr === item.pr);
+    assert.equal(Boolean(definitions), item.files.includes(platformsPath), `${item.pr}`);
+    // The fixture records the referrers of its scripts; the readers of a platforms.mjs definition come from this checkout.
+    const decided = affected(item.files, { base: item.base, head: item.head, referrers: key => item.referrers[key] ?? (definitions ? gitGrep(key) : null),
+      importers: gitImporters, texts: path => path === platformsPath ? definitions.platforms : null });
     assert.deepEqual(decided.jobs ? Object.keys(decided.jobs) : null, jobs, `${item.pr} ${item.title}`);
     const result = planFor(decided);
     assert.deepEqual(ran(result), jobsRun, `${item.pr}`);
@@ -1505,4 +1514,132 @@ test('a malformed scoped result plans everything', () => {
     { ...decided, unscoped: { ...decided.unscoped, components: ['renamed'] } }, { ...decided, unscoped: decided }])
     assert.equal(parseAffected(JSON.stringify(value)), null, JSON.stringify(value).slice(0, 120));
   assert.match(cli(['--plan', JSON.stringify({ ...decided, jobs: [] })]), /^full=true$/m);
+});
+
+// #1312: a change to a leg definition in platforms.mjs plans the jobs whose matrix it is, with all their legs.
+const platformsText = readFileSync(resolve(root, platformsPath), 'utf8');
+const definitionContext = (head, base = platformsText, workflowHead = editJob('native', /(# The planned legs) of nativeLegs/, '$1 (edited) of nativeLegs')) =>
+  ({ ...context(workflowHead), texts: path => path === platformsPath ? [base, head] : null });
+// Replaces `pattern` in platforms.mjs's text.
+const editPlatforms = (pattern, replacement, text = platformsText) => {
+  assert.match(text, pattern);
+  return text.replace(pattern, replacement);
+};
+
+test('every leg list of platforms.mjs is the matrix of one job, which a change to the list plans', () => {
+  const lists = Object.entries(platformDefinitions).filter(([, value]) => Array.isArray(value) && value.length
+    && value.every(item => item && typeof item === 'object' && typeof item.os === 'string'));
+  // A new leg list needs an entry in legLists (eng/ci/plan.mjs), which plans its job and carries its plan output.
+  assert.deepEqual(lists.map(([name]) => name).sort(), Object.values(legLists).map(definitionName).sort());
+  for (const [output, list] of Object.entries(legLists)) {
+    assert.ok(skippableJobs.includes(output), output);
+    assert.deepEqual(Object.entries(workflow.jobs).filter(([, job]) => job.strategy?.matrix === `\${{ fromJSON(needs.plan.outputs.${output}) }}`)
+      .map(([name]) => name), [output], output);
+    const name = definitionName(list);
+    const decided = affected([platformsPath], definitionContext(editPlatforms(new RegExp(`(export const ${name} = \\[[^{]*\\{ )`), '$1extra: 1, ')));
+    assert.deepEqual(Object.keys(decided.jobs), [output], name);
+    const result = planFor(decided);
+    assert.deepEqual(ran(result), [output], name);
+    assert.deepEqual(result[output].include, list, name);
+  }
+});
+
+test('#1308\'s leg definition change plans the native job on all its legs', () => {
+  const item = platformsEdits.find(edit => edit.pr === 1308);
+  assert.ok(item.files.includes(platformsPath) && item.files.includes(workflowPath));
+  assert.deepEqual(changedDefinitions(...item.platforms), ['nativeLegs', 'releaseJobs']);
+  const decided = affected(item.files, { base: item.workflow[0], head: item.workflow[1], referrers: gitGrep, importers: gitImporters,
+    texts: path => path === platformsPath ? item.platforms : null });
+  assert.deepEqual(Object.keys(decided.jobs), ['native']);
+  assert.deepEqual(decided.jobs.native.platforms, platforms);
+  const result = planFor(decided);
+  assert.deepEqual(ran(result), ['native']);
+  assert.deepEqual(result.native.include, nativeLegs);
+  assert.deepEqual(result.platforms, platforms);
+  // Before #1312 (the CI component alone, and a ci.yml comment edit): no job.
+  assert.deepEqual(ran(planFor(affected(item.files.filter(file => file !== platformsPath), { ...context(item.workflow[1], item.workflow[0]) }))), []);
+  // Alone, without the ci.yml comment edit, it plans the same.
+  const alone = planFor(affected([platformsPath], { ...context(ciText, ciText), texts: () => item.platforms }));
+  assert.deepEqual([ran(alone), alone.native.include], [['native'], nativeLegs]);
+  // The base planner's result, through the CLI as the plan step runs it: pull request, labelled, and push.
+  const scoped = JSON.stringify(decided);
+  const pull = outputsOf(cli(['--plan', scoped]));
+  assert.deepEqual([pull.skip, pull.native.include], [skippableJobs.filter(job => job !== 'native'), nativeLegs]);
+  const labelled = outputsOf(cli(['--plan', scoped, '--all-platforms', `label ${allPlatformsLabel}`]));
+  assert.deepEqual([labelled.skip, labelled.native.include], [pull.skip, nativeLegs]);
+  // A push without a covering queue run runs every job and, for the leg definition, every leg.
+  const push = outputsOf(cli(['--plan', scoped, '--all-linux']));
+  plansEverything(push, 'push');
+  assert.deepEqual(push.native.include, nativeLegs);
+  // The same through the checkout context the plan step uses: the base checkout's planner against the head.
+  const head = mkdtempSync(resolve(tmpdir(), 'runic-ci-1312-head-'));
+  try {
+    mkdirSync(resolve(head, '.github/workflows'), { recursive: true });
+    mkdirSync(resolve(head, 'eng/ci'), { recursive: true });
+    writeFileSync(resolve(head, workflowPath), editJob('native', /(# The planned legs) of nativeLegs/, '$1 (edited) of nativeLegs'));
+    writeFileSync(resolve(head, platformsPath), editPlatforms(/(export const nativeLegs = \[\n)/, '$1  { os: "windows-11-arm", rid: "win-arm64", shard: "extra", provider: "Windows", extension: ".exe", cswebui: false, platform: "win-arm64" },\n'));
+    const found = checkoutContext(root, head).texts(platformsPath);
+    assert.deepEqual(changedDefinitions(...found), ['nativeLegs', 'releaseJobs']);
+  } finally { rmSync(head, { recursive: true, force: true }); }
+});
+
+test('a path rule, label or comment change in platforms.mjs plans no job, as before', () => {
+  const unchanged = { full: false, skip: skippableJobs, platforms: [] };
+  const plans = head => {
+    const result = planFor(affected([platformsPath], definitionContext(head, platformsText, ciText)));
+    return { full: result.full, skip: result.skip, platforms: result.platforms };
+  };
+  for (const [label, head] of [
+    ['path rule', editPlatforms(/"eng\/ci\/macos-\*", /, '"eng/ci/macos-*", "eng/ci/macos-new.sh", ')],
+    ['neutral path', editPlatforms(/"eng\/ci\/candidate-feed"\]/, '"eng/ci/candidate-feed", "eng/ci/other"]')],
+    ['webkit-cdp path', editPlatforms(/"tests\/webkit-cdp", /, '"tests/webkit-cdp", "tests/webkit-cdp-more", ')],
+    ['every platform list', editPlatforms(/const all = platforms;/, 'const all = [...platforms];')],
+    ['label', editPlatforms(/"ci:all-platforms"/, '"ci:every-platform"')],
+    ['comment', editPlatforms(/(\/\/ The native job's name for a leg)/, '$1 (edited)')],
+    ['added path list', `${platformsText}\nexport const morePaths = ["a"];\n`],
+  ]) assert.deepEqual(plans(head), unchanged, label);
+  // #1033 added webKitCdpPaths: a path rule.
+  const item = platformsEdits.find(edit => edit.pr === 1033);
+  assert.deepEqual(definitionJobs([platformsPath], { ...context(ciText), texts: () => item.platforms }), { jobs: {} });
+  // A path rule change with other files plans those as usual.
+  const mixed = planFor(affected([platformsPath, 'packages/web/svelte/src/index.ts'],
+    definitionContext(editPlatforms(/"eng\/ci\/macos-\*", /, '"eng/ci/macos-*", "eng/ci/macos-new.sh", '), platformsText, ciText)));
+  const svelte = plan(['packages/web/svelte/src/index.ts']);
+  assert.deepEqual([ran(mixed), mixed.platforms, mixed.native], [ran(svelte), svelte.platforms, svelte.native]);
+});
+
+test('a platforms.mjs change the planner cannot attribute plans everything', () => {
+  // The test timeout scales are read in the setup action of every job, the shared build job included.
+  plansEverything(planFor(affected([platformsPath], definitionContext(editPlatforms(/"Windows-ARM64": "6"/, '"Windows-ARM64": "7"'), platformsText, ciText))),
+    'testTimeoutScales');
+  for (const [label, value] of [
+    ['no context', null],
+    ['no texts', context(ciText)],
+    ['deleted', { ...context(ciText), texts: () => [platformsText, null] }],
+    ['another shape', { ...context(ciText), texts: () => [platformsText, `${platformsText}\nfunction helper() {}\n`] }],
+    ['unparsable ci.yml', { ...context('jobs:\n\ta:\n'), texts: () => [platformsText, editPlatforms(/"Windows-ARM64": "6"/, '"Windows-ARM64": "7"')] }],
+  ]) plansEverything(planFor(affected([platformsPath], value)), label);
+  // A leg list that no job reads as its matrix any more.
+  const unread = editJob('native', /fromJSON\(needs\.plan\.outputs\.native\)/, 'fromJSON(needs.plan.outputs.native-legs)');
+  plansEverything(planFor(affected([platformsPath], { ...context(unread, unread), texts: () => [platformsText,
+    editPlatforms(/(export const nativeLegs = \[\n)/, '$1  { os: "x", rid: "y" },\n')] })), 'unread leg list');
+  // The declarations split at column 0 only.
+  assert.deepEqual([...declarations('// c\nexport const a = [\n  1, // x\n];\nconst b = a;\n').entries()], [['a', 'export const a = [\n  1, // x\n];'], ['b', 'const b = a;']]);
+  for (const text of [null, '', 'import x from "y";\n', '/* a */\nconst a = 1;\n', 'const a = 1;\nconst a = 2;\n'])
+    assert.equal(declarations(text), null, JSON.stringify(text));
+});
+
+test('ci:all-platforms plans every leg of every job a change plans', () => {
+  // The webkit sandbox script is neutral: its jobs run on their Linux legs only, unless the pull request is labelled.
+  const decided = affected(['eng/ci/permit-webkit-sandbox.sh'], context(ciText));
+  const jobs = Object.keys(decided.jobs);
+  assert.ok(jobs.includes('native') && jobs.every(name => decided.jobs[name].platforms.length === 0), jobs.join());
+  const plain = planFor(decided);
+  assert.deepEqual(plain.native.include, nativeLegs.filter(leg => !leg.platform));
+  const labelled = outputsOf(cli(['--plan', JSON.stringify(decided), '--all-platforms', `label ${allPlatformsLabel}`]));
+  assert.deepEqual(labelled.skip, plain.skip);
+  assert.deepEqual(labelled.platforms, platforms);
+  for (const job of ['native', 'wpf', 'packaging', 'screen-readers'].filter(name => jobs.includes(name)))
+    assert.deepEqual(labelled[job].include, legLists[job], job);
+  assert.match(labelled.why, /label ci:all-platforms/);
 });
