@@ -34,18 +34,21 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     internal const string StatePath = "__runic/state";
     internal const string RunicVitePluginPackage = "@runic-artifex/vite-plugin-runic";
     private readonly RunningProcess _process;
+    private readonly string _viteRoot;
 
     private ViteDevelopmentServer(
         RunningProcess process,
         Uri origin,
         string entry,
         string packageDirectory,
+        string viteRoot,
         string diagnosticsPath,
         string hotReloadPath,
         string projectPath)
     {
         _process = process;
         Origin = origin;
+        _viteRoot = viteRoot;
         HostEnvironment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             [ServerEnvironmentVariable] = origin.AbsoluteUri,
@@ -108,6 +111,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             origin,
             configuration.ViteDevServerEntry,
             configuration.FrontendPackageDirectory,
+            configuration.EffectiveViteRoot,
             configuration.FrontendCompilerDiagnosticsPath,
             configuration.FrontendCompilerHotReloadPath + ".ready",
             configuration.ProjectPath);
@@ -251,16 +255,17 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         };
         Console.WriteLine($"[vite] Probing {Origin} for the Vite client and application entry.");
         await WaitUntilReadyAsync(Origin, HostEnvironment[EntryEnvironmentVariable]![1..],
-            Completion, client, TimeSpan.FromSeconds(30), cancellationToken, session).ConfigureAwait(false);
+            Completion, client, TimeSpan.FromSeconds(30), cancellationToken, session, _viteRoot).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Waits until the server serves the Vite client and the application entry, and, with a <paramref name="session"/>,
-    /// answers <c>/__runic/state</c> with it.
+    /// Waits until the server serves the Vite client and the application entry as a JavaScript module, and, with a
+    /// <paramref name="session"/>, answers <c>/__runic/state</c> with it. An entry Vite answers with another content
+    /// type, such as the <c>index.html</c> fallback for a path that is not below its root, fails at once.
     /// </summary>
     internal static async Task WaitUntilReadyAsync(
         Uri origin, string entry, Task<int> completion, HttpClient client,
-        TimeSpan deadline, CancellationToken cancellationToken, string? session = null)
+        TimeSpan deadline, CancellationToken cancellationToken, string? session = null, string? viteRoot = null)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(deadline);
@@ -302,6 +307,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                         lastResponse = $"HTTP {(int)entryResponse.StatusCode}";
                         if (entryResponse.IsSuccessStatusCode)
                         {
+                            RequireModule(entryResponse, entry, viteRoot);
                             if (session is null)
                             {
                                 return;
@@ -354,6 +360,31 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                       "and Vite entry module.");
         }
     }
+
+    /// <summary>
+    /// Throws when the entry answer is not a JavaScript module. Vite answers a path it cannot resolve below its root
+    /// with its <c>index.html</c> fallback (HTTP 200, <c>text/html</c>), which the window must not load as its entry.
+    /// </summary>
+    internal static void RequireModule(HttpResponseMessage response, string entry, string? viteRoot)
+    {
+        string? mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (IsJavaScript(mediaType))
+        {
+            return;
+        }
+        string root = string.IsNullOrEmpty(viteRoot) ? "the frontend package directory" : $"'{viteRoot}'";
+        throw new DevDevelopmentException(
+            "RAPPDEV1007",
+            $"The Vite development server answered the application entry '/{entry.TrimStart('/')}' with " +
+            $"{(mediaType is null ? "no content type" : $"'{mediaType}'")}, not a JavaScript module. " +
+            $"Vite resolves the entry against its root, {root}: set RunicApplicationFrontendViteDevServerEntry to the " +
+            "module's path below that root, starting with '/', and run 'dotnet runic doctor'.");
+    }
+
+    /// <summary>Whether a media type is one Vite and other servers send for JavaScript modules.</summary>
+    internal static bool IsJavaScript(string? mediaType) =>
+        mediaType?.Trim().ToLowerInvariant() is "text/javascript" or "application/javascript" or "application/x-javascript"
+            or "text/x-javascript" or "text/ecmascript" or "application/ecmascript";
 
     private static int Stage(string probe) => probe switch
     {

@@ -83,8 +83,9 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | Property | Default | Purpose |
 | --- | --- | --- |
 | `RunicApplicationFrontendDevServerKind` | `angular` or `vite` from the frontend's files | The development server to start. |
-| `RunicApplicationFrontendViteDevServerEntry` | the first `src/main.*`, or the SvelteKit root route | The module that confirms the Vite server. |
+| `RunicApplicationFrontendViteDevServerEntry` | the first `src/main.*`, or the SvelteKit root route, below Vite's root | The module that confirms the Vite server, as its path below Vite's root (`/main.ts` for `<root>/main.ts`). |
 | `RunicApplicationFrontendViteConfiguration` | the frontend's `vite.config.*` | The Vite configuration. |
+| `RunicApplicationFrontendViteRoot` | the frontend directory | Vite's `root`, relative to the frontend directory, against which `doctor` checks the entry module; set it when `vite.config.*` sets `root`. |
 | `RunicApplicationFrontendDevServerDocument` | per development server | The HTML documents the server renders, separated by `;`. |
 | `RunicApplicationFrontendDevWatchTarget` | none | An MSBuild target that watches the frontend without a development server. |
 

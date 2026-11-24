@@ -879,14 +879,24 @@ internal static class DoctorChecks
             checks.Add(Fail("vite-config", "The configured Vite configuration file is missing.", "Create vite.config.ts or correct its project property."));
             return;
         }
+        // Vite and dev resolve the entry against Vite's root, which doctor takes from RunicApplicationFrontendViteRoot
+        // (by default the package directory) rather than by running the Vite configuration.
         string entry = project.ViteDevServerEntry;
-        string entryPath = Path.GetFullPath(Path.Combine(project.FrontendPackageDirectory, entry.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
-        if (entry.Length == 0 || entry[0] != '/' || entry.StartsWith("//", StringComparison.Ordinal) || !File.Exists(entryPath))
+        string root = project.ViteRoot.Length == 0 ? project.FrontendPackageDirectory : project.ViteRoot;
+        const string entryFix = "Set RunicApplicationFrontendViteDevServerEntry to the module's path below Vite's root, starting with '/' " +
+            "(for <root>/src/main.ts: /src/main.ts). When vite.config sets 'root', set RunicApplicationFrontendViteRoot to that directory.";
+        if (entry.Length == 0 || entry[0] != '/' || entry.StartsWith("//", StringComparison.Ordinal))
         {
-            checks.Add(Fail("vite-entry", "The configured Vite entry module is missing or invalid.", "Set the entry to an existing root-relative module path."));
+            checks.Add(Fail("vite-entry", $"The configured Vite entry module '{entry}' is not a path below Vite's root starting with '/'.", entryFix));
             return;
         }
-        checks.Add(Pass("vite-config", $"Found Vite configuration and entry module '{entry}'."));
+        string entryPath = Path.GetFullPath(Path.Combine(root, entry.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
+        if (!File.Exists(entryPath))
+        {
+            checks.Add(Fail("vite-entry", $"The configured Vite entry module '{entry}' does not exist below Vite's root '{root}'.", entryFix));
+            return;
+        }
+        checks.Add(Pass("vite-config", $"Found Vite configuration and entry module '{entry}' below Vite's root '{root}'."));
     }
 
     private static void CheckBrowser(List<DoctorCheck> checks, DoctorProjectConfiguration project,

@@ -307,7 +307,83 @@ internal sealed partial class ToolTests
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(steps[Math.Min(Requests++, steps.Length - 1)]()));
+            Task.FromResult(Module(steps[Math.Min(Requests++, steps.Length - 1)]()));
+    }
+
+    // What Vite answers for a module: the entry probe requires a JavaScript content type.
+    private static HttpResponseMessage Module(HttpStatusCode status = HttpStatusCode.OK) => new(status)
+    {
+        Content = new StringContent("export {};", System.Text.Encoding.UTF8, "text/javascript"),
+    };
+
+    [Test, DisplayName("Vite readiness refuses an HTML fallback for the entry and accepts a module")]
+    public void ViteReadinessRequiresAModule() => VerifyViteReadinessRequiresAModuleAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyViteReadinessRequiresAModuleAsync()
+    {
+        var origin = new Uri("http://127.0.0.1:12345/");
+        var running = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string root = Path.Combine(Path.GetTempPath(), "Frontend", "projects", "app", "src");
+        // Vite answers a path that is not below its root with index.html (HTTP 200, text/html).
+        var fallback = new EntryHandler("text/html");
+        using (var client = new HttpClient(fallback))
+        {
+            try
+            {
+                await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "projects/app/src/main.ts", running.Task, client,
+                    TimeSpan.FromSeconds(5), CancellationToken.None, viteRoot: root);
+                throw new InvalidOperationException("Vite's HTML fallback was accepted as the entry module.");
+            }
+            catch (DevDevelopmentException error)
+            {
+                Equal("RAPPDEV1007", error.Code);
+                Contains(error.Message, "'/projects/app/src/main.ts'");
+                Contains(error.Message, "'text/html'");
+                Contains(error.Message, root);
+                Contains(error.Message, "RunicApplicationFrontendViteDevServerEntry");
+            }
+        }
+        // The answer is final: the probe does not wait for the deadline.
+        Equal(2, fallback.Requests);
+
+        using (var client = new HttpClient(new EntryHandler(null)))
+        {
+            try
+            {
+                await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "main.ts", running.Task, client,
+                    TimeSpan.FromSeconds(5), CancellationToken.None);
+                throw new InvalidOperationException("An entry without a content type was accepted as a module.");
+            }
+            catch (DevDevelopmentException error)
+            {
+                Contains(error.Message, "no content type");
+                Contains(error.Message, "the frontend package directory");
+            }
+        }
+
+        foreach (string module in new[] { "text/javascript", "application/javascript", "Text/JavaScript" })
+        {
+            using var client = new HttpClient(new EntryHandler(module));
+            await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "main.ts", running.Task, client,
+                TimeSpan.FromSeconds(5), CancellationToken.None, viteRoot: root);
+        }
+    }
+
+    // Answers the Vite client as a module and the entry with the given content type.
+    private sealed class EntryHandler(string? entryMediaType) : HttpMessageHandler
+    {
+        internal int Requests { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            if (request.RequestUri!.AbsolutePath == "/@vite/client")
+                return Task.FromResult(Module());
+            var content = new ByteArrayContent("<!doctype html>"u8.ToArray());
+            if (entryMediaType is not null)
+                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(entryMediaType);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
     }
 
     [Test, DisplayName("dev server bind failures are recognized from the server output")]
@@ -565,7 +641,7 @@ internal sealed partial class ToolTests
             }
             if (wait)
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            HttpResponseMessage response = Module();
             if (request.RequestUri!.AbsolutePath == "/__runic/state" && answer is not null)
                 response.Headers.Add(ViteDevelopmentServer.SessionHeader, answer);
             return response;
@@ -579,7 +655,7 @@ internal sealed partial class ToolTests
         {
             if (!ready)
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK);
+            return Module();
         }
     }
 
@@ -1200,6 +1276,67 @@ internal sealed partial class ToolTests
                 "Runic.Application.Views.CsWebUi" => RunicViewsHost.CsWebUi,
                 _ => RunicViewsHost.Unknown,
             });
+    }
+
+    [Test, DisplayName("doctor resolves the Vite entry module against Vite's root")]
+    public void DoctorResolvesViteEntryAgainstViteRoot()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
+        DoctorCheck Check(DoctorProjectConfiguration candidate) => DoctorChecks.InspectAsync(
+                candidate, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
+            .GetAwaiter().GetResult().Checks.Single(check => check.Name is "vite-config" or "vite-entry");
+
+        // The default root is the package directory: /src/main.ts is <package>/src/main.ts.
+        DoctorCheck defaultRoot = Check(project);
+        Equal(DoctorStatus.Pass, defaultRoot.Status);
+        Equal("vite-config", defaultRoot.Name);
+        Contains(defaultRoot.Message, project.FrontendPackageDirectory);
+
+        // An Angular workspace's Vite root below the package: the entry is the module's path below that root.
+        string root = Path.Combine(project.FrontendPackageDirectory, "projects", "app", "src");
+        Write(Path.Combine(root, "main.ts"), "export {};");
+        DoctorCheck below = Check(project with { ViteDevServerEntry = "/main.ts", ViteRoot = root });
+        Equal(DoctorStatus.Pass, below.Status);
+        Contains(below.Message, root);
+        // The package-relative path is what Vite answers with its index.html fallback, so it fails below that root.
+        DoctorCheck packagePath = Check(project with { ViteDevServerEntry = "/projects/app/src/main.ts", ViteRoot = root });
+        Equal(DoctorStatus.Failure, packagePath.Status);
+        Equal("vite-entry", packagePath.Name);
+        // Without RunicApplicationFrontendViteRoot, /main.ts is looked up in the package directory.
+        DoctorCheck unset = Check(project with { ViteDevServerEntry = "/main.ts" });
+        Equal(DoctorStatus.Failure, unset.Status);
+        Contains(unset.Remediation!, "RunicApplicationFrontendViteRoot");
+
+        // A missing module names the entry and the root; a path that does not start with '/' is invalid.
+        DoctorCheck missing = Check(project with { ViteDevServerEntry = "/src/missing.ts" });
+        Equal(DoctorStatus.Failure, missing.Status);
+        Equal("vite-entry", missing.Name);
+        Contains(missing.Message, "'/src/missing.ts'");
+        Contains(missing.Message, project.FrontendPackageDirectory);
+        Contains(missing.Remediation!, "RunicApplicationFrontendViteDevServerEntry");
+        Equal(DoctorStatus.Failure, Check(project with { ViteDevServerEntry = "src/main.ts" }).Status);
+    }
+
+    [Test, DisplayName("dev finds the default Vite entry below Vite's root and warns when the root differs")]
+    public void DevUsesTheViteRoot()
+    {
+        using var workspace = new TestWorkspace();
+        string frontend = Path.GetDirectoryName(workspace.Write("App/vite.config.ts", "export default {};"))!;
+        workspace.Write("App/web/src/main.ts", "export {};");
+        string root = Path.Combine(frontend, "web");
+        Equal("/src/main.ts", DevProjectConfiguration.InferDevelopmentServer(frontend, "", false, "", "", root).ViteEntry);
+        Equal(string.Empty, DevProjectConfiguration.InferDevelopmentServer(frontend, "", false, "", "").ViteEntry);
+
+        Equal(null, ViteBuildInputs.DescribeRootMismatch(frontend, frontend + Path.DirectorySeparatorChar));
+        string? mismatch = ViteBuildInputs.DescribeRootMismatch(frontend, root);
+        True(mismatch is not null, "A Vite root below the package directory was not reported.");
+        Contains(mismatch!, "RunicApplicationFrontendViteRoot");
+        Contains(mismatch!, root);
+
+        var configuration = CreateConfiguration(workspace, "vite", frontend);
+        Equal(frontend, configuration.EffectiveViteRoot);
+        Equal(root, (configuration with { ViteRoot = root }).EffectiveViteRoot);
     }
 
     [Test, DisplayName("doctor scopes the browser check to the Views host")]

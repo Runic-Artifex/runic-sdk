@@ -39,6 +39,7 @@ internal sealed record DevProjectConfiguration(
         "RunicApplicationFrontendDevWatchTarget",
         "RunicApplicationFrontendViteDevServerEntry",
         "RunicApplicationFrontendViteConfiguration",
+        "RunicApplicationFrontendViteRoot",
         "RunicApplicationFrontendDevServerKind",
         "RunicApplicationFrontendDevServerDocument",
         "_RunicApplicationFrontendCompilerDiagnosticsPath",
@@ -83,6 +84,16 @@ internal sealed record DevProjectConfiguration(
     /// <see cref="ViteBuildInputs"/> reads it; null when dev did not resolve the configuration.
     /// </summary>
     internal bool? UsesRunicVitePlugin { get; init; }
+
+    /// <summary>
+    /// Vite's root, against which Vite and dev resolve <see cref="ViteDevServerEntry"/>:
+    /// <c>RunicApplicationFrontendViteRoot</c> (default: the frontend package directory), replaced by the resolved
+    /// configuration's <c>root</c> once <see cref="ViteBuildInputs"/> read it. Empty means the package directory.
+    /// </summary>
+    internal string ViteRoot { get; init; } = string.Empty;
+
+    /// <summary><see cref="ViteRoot"/>, or the frontend package directory when it is empty.</summary>
+    internal string EffectiveViteRoot => ViteRoot.Length == 0 ? FrontendPackageDirectory : ViteRoot;
 
     internal string ProjectAssetsFile { get; init; } = string.Empty;
 
@@ -196,12 +207,20 @@ internal sealed record DevProjectConfiguration(
             throw new DevDevelopmentException("RAPPDEV1005", "MSBuild did not evaluate TargetDir for the selected project.");
         }
 
+        // Vite resolves the entry against its root; RunicApplicationFrontendViteRoot names it for the checks that do
+        // not resolve the Vite configuration (doctor), relative to the frontend directory.
+        string viteRoot = NormalizeOptional(Value("RunicApplicationFrontendViteRoot"), frontend);
+        if (viteRoot.Length == 0)
+        {
+            viteRoot = frontend;
+        }
         (string serverKind, bool viteEnabled, string viteEntry, string viteConfiguration) = InferDevelopmentServer(
             frontend,
             Value("RunicApplicationFrontendDevServerKind"),
             false,
             Value("RunicApplicationFrontendViteDevServerEntry"),
-            NormalizeOptional(Value("RunicApplicationFrontendViteConfiguration"), frontend));
+            NormalizeOptional(Value("RunicApplicationFrontendViteConfiguration"), frontend),
+            viteRoot);
 
         var evaluated = new DevProjectConfiguration(
             evaluatedProject,
@@ -241,6 +260,7 @@ internal sealed record DevProjectConfiguration(
             BridgeSourceMapPath = NormalizeOptional(Value("IntermediateOutputPath"), evaluatedDirectory) is { Length: > 0 } intermediate
                 ? Path.Combine(intermediate, "runic-bridge", "sources.json")
                 : string.Empty,
+            ViteRoot = viteRoot,
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
@@ -305,12 +325,13 @@ internal sealed record DevProjectConfiguration(
     /// Infers the development server from the frontend directory when the
     /// project does not set it: angular.json selects the Angular CLI, and a
     /// Vite configuration selects Vite with the conventional src/main entry,
-    /// or SvelteKit's root route.
+    /// or SvelteKit's root route, below Vite's root (default: the frontend directory).
     /// Explicit project properties always win.
     /// </summary>
     internal static (string Kind, bool ViteEnabled, string ViteEntry, string ViteConfiguration) InferDevelopmentServer(
-        string frontend, string kind, bool viteEnabled, string viteEntry, string viteConfiguration)
+        string frontend, string kind, bool viteEnabled, string viteEntry, string viteConfiguration, string? viteRoot = null)
     {
+        viteRoot ??= frontend;
         kind = kind.Trim().ToLowerInvariant();
         if (kind.Length == 0)
         {
@@ -327,9 +348,9 @@ internal sealed record DevProjectConfiguration(
         {
             viteConfiguration = FindFirst(frontend, ViteConfigurationFiles) ?? string.Empty;
         }
-        if (viteEntry.Length == 0 && FindFirst(frontend, ViteEntryFiles) is { } entry)
+        if (viteEntry.Length == 0 && FindFirst(viteRoot, ViteEntryFiles) is { } entry)
         {
-            viteEntry = "/" + Path.GetRelativePath(frontend, entry).Replace(Path.DirectorySeparatorChar, '/');
+            viteEntry = "/" + Path.GetRelativePath(viteRoot, entry).Replace(Path.DirectorySeparatorChar, '/');
         }
         return (kind, true, viteEntry, viteConfiguration);
     }
