@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
-import { platforms, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths, matchesPath }
-  from "./platforms.mjs";
+import { platforms, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths,
+  globalPaths, matchesPath } from "./platforms.mjs";
 
 export const managedGroups = ["platform", "assets", "navigation", "application"];
 // Suites that another job runs instead of the managed job. Runic.Desktop.Tests drives browsers and
@@ -166,7 +166,12 @@ function unscopedAffected(files) {
 // action; an unowned CI script under eng/ci/ the jobs that name it, directly or through the actions and CI scripts
 // that name it. Such a file stays a full cause when a shared job uses it, when no job uses it, or when any other file
 // names it (an MSBuild file, a test support file, eng/run.mjs, ...), since the planner cannot attribute those uses.
-// The release and pack scripts (packScripts) plan the jobs that download the packed packages (packageArtifact).
+// The release and pack scripts (packScripts) plan the jobs that download the packed packages (packageArtifact), and the
+// jobs that run a script importing them (#1302): a job that names the script or a module importing it, directly or
+// through modules that no job names, runs with the legs that the named module's platform rules allow, so a change to
+// eng/verify-packages.mjs runs the WPF package smoke on win-x64. The lookup follows importers no further than a shared
+// input (globalPaths: eng/run.mjs, whose commands the build and package jobs run) and skips engineering-only and CI
+// files; a failed lookup leaves the script a full cause.
 // A planned job runs whole: every managed group or web package it runs, and every leg the changed file's platform
 // rules allow (affectedPlatforms of that file: a ci.yml job edit every leg, a neutral script the Linux legs only).
 // The other changed files plan as usual. Pushes to main ignore the scoping (`unscoped`), and the nightly and
@@ -175,6 +180,11 @@ export const workflowPath = ".github/workflows/ci.yml";
 export const packScripts = ["eng/release", "eng/verify-packages.mjs", "eng/version.mjs"];
 // The artifact of packed packages that the build job uploads; the jobs that download it test the packages.
 export const packageArtifact = "runic-sdk-${{ github.run_id }}";
+// The relative modules a JavaScript file imports (static and dynamic imports and re-exports), as repository paths.
+const importSpecifier = /(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s*)(["'])(\.{1,2}\/[^"'\n]+)\1/gm;
+export const scriptFile = file => /\.[cm]?[jt]s$/.test(file);
+export const importsOf = (file, text) => [...new Set([...text.matchAll(importSpecifier)]
+  .map(match => posix.normalize(posix.join(posix.dirname(file), match[2]))))];
 export const releaseInputs = file => file === "eng/Versions.props" || file === "Directory.Packages.props" || releaseNotes.test(file);
 
 // The normalized parts of a workflow: the text outside `jobs:` and each job's block, without comment lines, blank
@@ -230,18 +240,23 @@ export function workflowParts(text) {
 const sharedJobs = parts => new Set(["plan", "verify", ...[...parts.needs].filter(([name]) => name !== "verify").flatMap(([, list]) => list)]);
 
 // The jobs and files of a diff that plan job by job (see above), or null when none do. `context`: { base, head } (the
-// two ci.yml texts) and referrers(key), the tracked files of base and head whose text contains `key`.
+// two ci.yml texts), referrers(key), the tracked files of base and head whose text contains `key`, and importers(file),
+// the tracked JavaScript files of base and head that import `file` (null when the lookup fails).
 export function scopedJobs(files, context) {
   if (files.some(releaseInputs)) return null;
   const base = workflowParts(context.base), head = workflowParts(context.head);
   if (!base || !head) return null;
   const shared = new Set([...sharedJobs(base), ...sharedJobs(head)]);
   const jobs = {};
-  const add = (names, file) => {
-    const { platforms: planned, why } = affectedPlatforms([file]);
+  // `from`: the file whose platform rules give the legs, a module of `file` that the jobs run.
+  const add = (names, file, from = file) => {
+    const { platforms: planned, why } = affectedPlatforms([from]);
     for (const name of names.filter(name => skippableJobs.includes(name))) {
       const entry = jobs[name] ??= { platforms: [], why: {} };
-      for (const platform of planned) if (!entry.platforms.includes(platform)) { entry.platforms.push(platform); entry.why[platform] = why[platform]; }
+      for (const platform of planned) if (!entry.platforms.includes(platform)) {
+        entry.platforms.push(platform);
+        entry.why[platform] = from === file ? why[platform] : `${file} (imported by ${from})`;
+      }
       entry.platforms = platforms.filter(platform => entry.platforms.includes(platform));
       entry.file ??= file;
     }
@@ -284,11 +299,33 @@ export function scopedJobs(files, context) {
     }
     return [...names];
   };
+  // A release or pack script's modules that jobs name, with those jobs: the script itself and the files that import it,
+  // through importers that no job names. Null when an importer lookup fails.
+  const runners = file => {
+    const found = [], seen = new Set([file]), queue = [file];
+    while (queue.length) {
+      const module = queue.shift();
+      const names = [...new Set([...mentioning(module, base), ...mentioning(module, head)])].filter(name => !shared.has(name));
+      if (names.length) { found.push([module, names]); continue; }
+      if (module !== file && globalPaths.some(path => matchesPath(module, path))) continue;
+      const importers = context.importers?.(module);
+      if (!Array.isArray(importers)) return null;
+      for (const importer of importers) {
+        if (seen.has(importer) || engineeringOnly(importer) || owner(importer) === ciComponent) continue;
+        seen.add(importer);
+        queue.push(importer);
+      }
+    }
+    return found;
+  };
   for (const file of files.filter(file => file !== workflowPath && !engineeringOnly(file) && !owner(file))) {
     if (packScripts.some(path => matchesPath(file, path))) {
       const names = [...new Set([...mentioning(packageArtifact, base), ...mentioning(packageArtifact, head)])].filter(name => name !== "build");
       if (!names.length || names.some(name => shared.has(name))) continue;
+      const modules = runners(file);
+      if (modules === null) continue;
       add(names, file);
+      for (const [module, users] of modules) add(users, file, module);
       scoped.push(file);
     } else if (/^(\.github\/actions\/|eng\/ci\/)/.test(file)) {
       const names = users(file);
@@ -306,9 +343,13 @@ export function scopedJobs(files, context) {
 export function checkoutContext(base = root, head = process.cwd()) {
   const real = path => { try { return realpathSync(path); } catch { return null; } };
   if (!real(base) || !real(head) || real(base) === real(head)) return null;
-  const read = directory => { try { return readFileSync(resolve(directory, workflowPath), "utf8"); } catch { return null; } };
-  return { base: read(base), head: read(head), referrers: key => {
+  const read = (directory, path = workflowPath) => { try { return readFileSync(resolve(directory, path), "utf8"); } catch { return null; } };
+  const referrers = key => {
     const found = [base, head].map(directory => grep(directory, key));
+    return found.includes(null) ? null : [...new Set(found.flat())];
+  };
+  return { base: read(base), head: read(head), referrers, importers: file => {
+    const found = [base, head].map(directory => importing(file, grep(directory, basename(file)), path => read(directory, path)));
     return found.includes(null) ? null : [...new Set(found.flat())];
   } };
 }
@@ -320,11 +361,28 @@ export function revisionContext(base, head = null, directory = root) {
     const commits = [base, head].map(revision => revision && git("rev-parse", "--verify", `${revision}^{commit}`).trim());
     const text = commit => commit ? git("show", `${commit}:${workflowPath}`) : readFileSync(resolve(directory, workflowPath), "utf8");
     const found = (key, commit) => grep(directory, key, commit)?.map(line => commit ? line.slice(commit.length + 1) : line) ?? null;
+    const show = (commit, path) => {
+      try { return commit ? git("show", `${commit}:${path}`) : readFileSync(resolve(directory, path), "utf8"); } catch { return null; }
+    };
     return { base: text(commits[0]), head: text(commits[1]), referrers: key => {
       const lists = commits.map(commit => found(key, commit));
       return lists.includes(null) ? null : [...new Set(lists.flat())];
+    }, importers: file => {
+      const lists = commits.map(commit => importing(file, found(basename(file), commit), path => show(commit, path)));
+      return lists.includes(null) ? null : [...new Set(lists.flat())];
     } };
   } catch { return null; }
+}
+// The JavaScript files among `candidates` (the files that name `file`) that import it; null when a lookup or read fails.
+function importing(file, candidates, read) {
+  if (candidates === null) return null;
+  const result = [];
+  for (const candidate of candidates.filter(scriptFile)) {
+    const text = read(candidate);
+    if (text === null) return null;
+    if (importsOf(candidate, text).includes(file)) result.push(candidate);
+  }
+  return result;
 }
 function grep(directory, key, revision = null) {
   try {
