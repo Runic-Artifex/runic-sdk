@@ -158,6 +158,7 @@ internal static class DoctorChecks
         _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         await CheckPackageManagerAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         CheckCompatibilitySet(checks, project);
+        await CheckExtensionsAsync(checks, project, dotnetHost, runtime, cancellationToken).ConfigureAwait(false);
         CheckViewsPackageVersions(checks, project);
         CheckApplicationId(checks, project);
         CheckFrontendDevelopment(checks, project);
@@ -627,6 +628,102 @@ internal static class DoctorChecks
         checks.Add(selected > 0
             ? Pass("compatibility-set", $"{selected} Runic package(s) match {Authority.Id} ({Authority.ReleaseTrainVersion}).")
             : Warn("compatibility-set", $"No Runic package was selected by {Authority.Id}.", "Restore the generated Views Window project."));
+    }
+
+    private static bool IsNewerLine(string actual, string train) =>
+        Version.TryParse(NormalizeVersion(actual), out Version? actualVersion) &&
+        Version.TryParse(NormalizeVersion(train), out Version? trainVersion) &&
+        LineOf(actual) != LineOf(train) && actualVersion > trainVersion;
+
+    /// <summary>
+    /// Checks the installed tool extensions that <c>dotnet runic &lt;name&gt;</c> runs, found as dispatch finds them
+    /// from the project directory. Each reports its name, version and protocol with <c>--extension-info</c>, or only its
+    /// version with <c>--version</c> when it predates that option. Another protocol or an older release line than the
+    /// compatibility set's fails; an older release of the train's line, or a later line, warns. Without an installed
+    /// extension the check passes: extensions are optional.
+    /// </summary>
+    internal static async Task CheckExtensionsAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
+        string dotnetHost, IDoctorRuntime runtime, CancellationToken cancellationToken)
+    {
+        var environment = new ExtensionEnvironment(runtime.GetEnvironmentVariable, runtime.FindExecutable, dotnetHost);
+        var failures = new List<string>();
+        var warnings = new List<string>();
+        var passed = new List<string>();
+        var remediation = new List<string>();
+        foreach (KnownExtension extension in ToolExtensions.Known)
+        {
+            if (ToolExtensions.Resolve(extension, project.ProjectDirectory, environment) is not { } resolved) continue;
+            TrainRepository? train = Authority.Train.FirstOrDefault(repository => repository.Name == extension.TrainRepository);
+            ExtensionInfo? info = await ReadExtensionInfoAsync(resolved, project.ProjectDirectory, runtime, cancellationToken).ConfigureAwait(false);
+            string label = $"{extension.Command} ({resolved.RouteDescription})";
+            string update = train is null ? string.Empty : ToolExtensions.InstallCommand(extension, train.Version, project.ProjectDirectory, update: true);
+            if (info is null)
+            {
+                warnings.Add($"{label} reported no version");
+                remediation.Add($"Check that '{extension.Command} --version' runs.");
+            }
+            else if (!StringComparer.Ordinal.Equals(info.Name, extension.Name))
+            {
+                failures.Add($"{label} reports the extension name '{info.Name}', not '{extension.Name}'");
+                remediation.Add($"Point {ToolExtensions.EnvironmentVariable(extension)} or the tool manifest at the {extension.Package} tool.");
+            }
+            else if (info.Protocol is { } protocol && protocol != ToolExtensions.Protocol)
+            {
+                failures.Add($"{label} {info.Version} speaks extension protocol {protocol}, and this dotnet runic speaks {ToolExtensions.Protocol}");
+                if (update.Length != 0) remediation.Add($"Run '{update}'.");
+            }
+            else if (train is null)
+            {
+                passed.Add($"{label} {info.Version}");
+            }
+            else if (IsOnTrainLine(info.Version, train.Version))
+            {
+                passed.Add($"{label} {info.Version}");
+            }
+            else if (LineOf(info.Version) == LineOf(train.Version))
+            {
+                warnings.Add($"{label} {info.Version} is older than {train.Name} {train.Version}, which {Authority.Id} was tested with");
+                remediation.Add($"Run '{update}'.");
+            }
+            else if (IsNewerLine(info.Version, train.Version))
+            {
+                // Translations releases on its own between trains, as the compatibility-set check allows.
+                warnings.Add($"{label} {info.Version} is of a later line than {train.Name} {train.Version}, which {Authority.Id} was tested with");
+                remediation.Add($"Use the tested release with '{update}' if a command misbehaves.");
+            }
+            else
+            {
+                failures.Add($"{label} {info.Version} is older than the {LineOf(train.Version)} line of {train.Name} {train.Version}, which {Authority.Id} was tested with");
+                remediation.Add($"Run '{update}'.");
+            }
+        }
+        if (failures.Count != 0)
+            checks.Add(Fail("extensions", $"Tool extension mismatch: {string.Join("; ", failures)}.", string.Join(" ", remediation)));
+        else if (warnings.Count != 0)
+            checks.Add(Warn("extensions", $"Tool extension drift: {string.Join("; ", warnings)}.", string.Join(" ", remediation)));
+        else
+            checks.Add(Pass("extensions", passed.Count == 0
+                ? "No dotnet runic tool extension is installed."
+                : $"{string.Join("; ", passed)} match{(passed.Count == 1 ? "es" : string.Empty)} {Authority.Id}."));
+    }
+
+    private static async Task<ExtensionInfo?> ReadExtensionInfoAsync(ResolvedExtension extension, string directory,
+        IDoctorRuntime runtime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            CommandResult info = await runtime.RunAsync(extension.Executable, directory,
+                extension.CommandLine([ToolExtensions.InfoOption]), cancellationToken).ConfigureAwait(false);
+            if (info.ExitCode == 0 && ToolExtensions.ParseInfo(info.StandardOutput) is { } parsed) return parsed;
+            // A release before --extension-info reports it as an unknown option; its --version still names the release.
+            CommandResult version = await runtime.RunAsync(extension.Executable, directory,
+                extension.CommandLine(["--version"]), cancellationToken).ConfigureAwait(false);
+            return version.ExitCode == 0 ? ToolExtensions.ParseVersion(extension.Extension, version.StandardOutput) : null;
+        }
+        catch (Exception exception) when (exception is DevDevelopmentException or System.ComponentModel.Win32Exception or IOException)
+        {
+            return null;
+        }
     }
 
     internal const string ViewsNuGetPackage = "Runic.Application.Views";

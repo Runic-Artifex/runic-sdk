@@ -446,6 +446,19 @@ line (minor version before 1.0) only warns. Every other package is not
 checked, whatever its name, such as `RunicArtifex.DynamicData` and
 `RunicArtifex.ReactiveUI.Validation` (0.22). Warns before the first restore.
 
+#### `extensions`
+
+Checks the tool extensions that `dotnet runic <name>` runs (see
+[Tool extensions](#tool-extensions)), found from the project directory as
+dispatch finds them. Each one reports its name, version and protocol with `--extension-info`,
+or only its version with `--version` when it predates that option. Fails for
+another extension protocol or a release line older than the compatibility
+set's Translations release (minor version before 1.0). Warns for an older
+release of that line, for a later line (Translations releases between trains),
+or for a tool that reports no version. The remediation is the
+`dotnet tool update` command. Passes when no extension is installed.
+Added in 0.24.
+
 #### `views-package-versions`
 
 Warns when the installed `@runic-artifex/views` and the restored
@@ -1785,6 +1798,38 @@ missing packaging tool (`RAPPPKG1002`), a failed publish (`RAPPPKG1003`), a
 failing packaging tool (`RAPPPKG1005`), a failed validation (`RAPPPKG1006`) or
 Flathub sources that cannot be generated (`RAPPPKG1007`) exits 1.
 
+## Tool extensions
+
+`dotnet runic translations …` runs the Runic Translations tool,
+`runic-translations …`, with the arguments unchanged, and exits with its exit
+code: `dotnet runic translations compile` is `runic-translations compile`, and
+`dotnet runic translations --help` is the Translations tool's help. A leading
+`--format` (or its alias `--output`) is passed on as `--format`. Added in 0.24.
+
+`dotnet runic` finds the tool in this order:
+
+1. `RAX_TRANSLATIONS_TOOL`, the path of a `runic-translations` program, for
+   example a local build. It is not checked first: a wrong path fails with
+   `RAPPCLI1014` instead of running another installation.
+2. The nearest .NET tool manifest (`.config/dotnet-tools.json` or
+   `dotnet-tools.json`, up to the one marked `isRoot`) that lists
+   `dotnet-runic-translations` or the command `runic-translations`: it runs
+   `dotnet tool run runic-translations -- …`.
+3. `node_modules/.bin/runic-translations` in the current directory or above.
+4. `runic-translations` on `PATH`: a global tool or a tool path.
+
+Without one, the command fails with `RAPPCLI1013` and prints the command that
+installs the Translations release of this compatibility set, with `--local`
+when a tool manifest exists, for example:
+
+```text
+dotnet tool install dotnet-runic-translations --version 0.15.1 --local
+```
+
+It never installs anything itself. `doctor` checks the version of the installed
+tool ([`extensions`](#extensions)). Only first-party extensions dispatch: any
+other word after `dotnet runic` is still an application argument of `dev`.
+
 ## Support envelopes
 
 The local support envelope of the Translations editor moved to the
@@ -1796,8 +1841,8 @@ runic-translations support preview --editor-diagnostics /path/to/editor-diagnost
 
 `dotnet runic support --mode preview|collect|remove`, its former spelling, is a
 hidden alias until 2.0. It forwards its arguments to `runic-translations
-support <mode>`, run from `PATH` or from a local tool manifest that lists
-`dotnet-runic-translations`, which then writes the output and decides the exit
-code. Without that tool it fails with `RAPPCLI1012`.
+support <mode>`, found as `dotnet runic translations` finds it
+([Tool extensions](#tool-extensions)), which then writes the output and
+decides the exit code. Without that tool it fails with `RAPPCLI1012`.
 
 Preview tool; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).
