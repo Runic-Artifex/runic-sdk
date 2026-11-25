@@ -82,12 +82,31 @@ internal static class AnalyzerHarness
     internal const string PrimitivesAdapter = "Runic.Application.Views.ReactiveUI";
     internal const string ReactiveAdapter = "Runic.Application.Views.ReactiveUI.Reactive";
 
-    internal static Document Document(string source, string? generated = null, string? adapter = PrimitivesAdapter)
-    {
-        IEnumerable<MetadataReference> references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+    private static IEnumerable<MetadataReference> RuntimeReferences() =>
+        ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Select(path => MetadataReference.CreateFromFile(path))
             .Append(MetadataReference.CreateFromFile(typeof(RunicView<>).Assembly.Location))
-            .Append(MetadataReference.CreateFromFile(typeof(Runic.Navigation.NavigationSelection).Assembly.Location));
+            .Append(MetadataReference.CreateFromFile(typeof(Runic.Navigation.NavigationSelection).Assembly.Location))
+            .DistinctBy(reference => reference.Display);
+
+    /// <summary>
+    /// A referenced assembly built from <paramref name="source"/>, as a metadata image, so that its types have no
+    /// source location in the application's compilation, as a referenced project's or package's do.
+    /// </summary>
+    internal static MetadataReference Library(string name, string source)
+    {
+        var compilation = CSharpCompilation.Create(name, [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview))],
+            RuntimeReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+        using var image = new MemoryStream();
+        var result = compilation.Emit(image);
+        Require(result.Success, string.Join(Environment.NewLine, result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+        return MetadataReference.CreateFromImage(image.ToArray(), filePath: name + ".dll");
+    }
+
+    internal static Document Document(string source, string? generated = null, string? adapter = PrimitivesAdapter,
+        IEnumerable<MetadataReference>? libraries = null)
+    {
+        var references = RuntimeReferences().Concat(libraries ?? []);
         if (adapter is not null)
             references = references.Append(CSharpCompilation.Create(adapter, options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
                 .ToMetadataReference());

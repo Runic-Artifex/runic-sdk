@@ -1654,6 +1654,33 @@ ${items}
   assert.deepEqual(generate(""), [], "Without the item, the generator gets no --client-module.");
 });
 
+// #1318: the analyzers add a mapped client library's Views to the application's, as the generator does, so a slot that
+// presents a library ViewModel is content (BridgeSymbols.FindViews). The targets give them the items' names.
+test("the analyzers see the assemblies that RunicApplicationFrontendClientModule maps", () => {
+  const project = join(directory, "client-module-analyzers");
+  mkdirSync(project, { recursive: true });
+  const evaluate = items => {
+    writeFileSync(join(project, "App.proj"), `<Project>
+  <ItemGroup>
+${items}
+  </ItemGroup>
+  <Target Name="GenerateMSBuildEditorConfigFileCore" />
+  <Import Project="${targets}" />
+</Project>
+`);
+    const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:GenerateMSBuildEditorConfigFileCore",
+      "-getProperty:_RunicApplicationFrontendClientModules", "-getItem:CompilerVisibleProperty", "-nologo", "-noAutoResponse",
+      "-nodeReuse:false"], { cwd: project, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const json = JSON.parse(result.stdout.slice(result.stdout.indexOf("{")));
+    assert.ok(json.Items.CompilerVisibleProperty.some(item => item.Identity === "_RunicApplicationFrontendClientModules"), result.stdout);
+    return json.Properties._RunicApplicationFrontendClientModules;
+  };
+  assert.equal(evaluate(`    <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/shared-ui/generated" />
+    <RunicApplicationFrontendClientModule Include="Acme.Forms" Specifier="@acme/forms/generated" />`), "SharedUi;Acme.Forms");
+  assert.equal(evaluate(""), "", "Without the item, the analyzers map nothing.");
+});
+
 test("RUNICBRIDGE082: a RunicApplicationFrontendClientModule without a Specifier, with a relative one, or twice", () => {
   const project = join(directory, "client-module-items");
   mkdirSync(project, { recursive: true });

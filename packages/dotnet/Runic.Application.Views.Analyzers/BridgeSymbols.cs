@@ -89,14 +89,17 @@ internal sealed class BridgeSymbols
     /// The ViewModels that the generator would bridge: those of the concrete Windows and Views this compilation
     /// declares, as the generator finds them in the model assembly. A ViewModel may come from a referenced assembly.
     /// </summary>
-    internal HashSet<INamedTypeSymbol> FindViewModels(CancellationToken cancellationToken) =>
-        new(FindViews(cancellationToken).Keys, SymbolEqualityComparer.Default);
+    internal HashSet<INamedTypeSymbol> FindViewModels(CancellationToken cancellationToken, IReadOnlyList<string>? clientModules = null) =>
+        new(FindViews(cancellationToken, clientModules).Keys, SymbolEqualityComparer.Default);
 
     /// <summary>
     /// The concrete Windows and Views this compilation declares, by ViewModel, in declaration order (the order of the
-    /// syntax trees, then of the declarations), as the generator finds them in the model assembly's type order.
+    /// syntax trees, then of the declarations), as the generator finds them in the model assembly's type order. Then,
+    /// as ClientModules.Discover adds them, the Views of each client library that <paramref name="clientModules"/> maps
+    /// (RunicApplicationFrontendClientModule, #1318), in the items' order.
     /// </summary>
-    internal Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> FindViews(CancellationToken cancellationToken)
+    internal Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> FindViews(CancellationToken cancellationToken,
+        IReadOnlyList<string>? clientModules = null)
     {
         var views = new List<INamedTypeSymbol>();
         var pending = new Stack<INamespaceOrTypeSymbol>();
@@ -127,8 +130,58 @@ internal sealed class BridgeSymbols
             if (!byModel.TryGetValue(model, out var variants)) byModel.Add(model, variants = []);
             variants.Add(view);
         }
+        if (clientModules is { Count: > 0 }) AddClientModuleViews(byModel, clientModules, cancellationToken);
         return byModel;
     }
+
+    internal const string ClientLibraryMetadataKey = "Runic.Application.Views.ClientLibrary";
+
+    // ClientModules.Discover: each mapped assembly that this compilation references and that carries the library-mode
+    // marker adds its public, top-level, concrete Views in the order of their full names. A ViewModel that the
+    // application or an earlier mapping already declares Views for keeps them (the generator's RUNICBRIDGE080). An
+    // unreferenced or unmarked assembly adds nothing; the generator reports it (RUNICBRIDGE079).
+    private void AddClientModuleViews(Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> byModel, IReadOnlyList<string> clientModules,
+        CancellationToken cancellationToken)
+    {
+        var libraries = Compilation.References.Select(Compilation.GetAssemblyOrModuleSymbol).OfType<IAssemblySymbol>()
+            .Where(assembly => !SymbolEqualityComparer.Default.Equals(assembly, Compilation.Assembly)).ToArray();
+        var declared = new HashSet<INamedTypeSymbol>(byModel.Keys, SymbolEqualityComparer.Default);
+        foreach (var name in clientModules)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.Equals(name, Compilation.AssemblyName, StringComparison.OrdinalIgnoreCase)) continue;
+            var library = libraries.FirstOrDefault(assembly => string.Equals(assembly.Identity.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (library is null || !IsClientLibrary(library)) continue;
+            var views = new List<(INamedTypeSymbol Model, INamedTypeSymbol View)>();
+            var pending = new Stack<INamespaceSymbol>();
+            pending.Push(library.GlobalNamespace);
+            while (pending.Count > 0)
+            {
+                foreach (var member in pending.Pop().GetMembers())
+                {
+                    if (member is INamespaceSymbol ns) pending.Push(ns);
+                    else if (member is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false, DeclaredAccessibility: Accessibility.Public } type
+                        && ViewModelOf(type) is { } model)
+                        views.Add((model, type));
+                }
+            }
+            var owned = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            foreach (var (model, view) in views.OrderBy(entry => MetadataName(entry.View), StringComparer.Ordinal))
+            {
+                if (declared.Contains(model) && !owned.Contains(model)) continue;
+                owned.Add(model);
+                declared.Add(model);
+                if (!byModel.TryGetValue(model, out var variants)) byModel.Add(model, variants = []);
+                variants.Add(view);
+            }
+        }
+    }
+
+    private static bool IsClientLibrary(IAssemblySymbol assembly) => assembly.GetAttributes().Any(attribute =>
+        attribute.AttributeClass is { } type && MetadataName(type) == "System.Reflection.AssemblyMetadataAttribute"
+        && attribute.ConstructorArguments.Length == 2
+        && attribute.ConstructorArguments[0].Value as string == ClientLibraryMetadataKey
+        && attribute.ConstructorArguments[1].Value as string == "1");
 
     /// <summary>A Runic Window: a RunicWindow&lt;T&gt; in the base classes (Program.cs IsWindow).</summary>
     internal bool IsWindow(INamedTypeSymbol view)

@@ -515,7 +515,17 @@
   <ItemGroup>
     <CompilerVisibleProperty Include="RunicApplicationFrontendGenerationEnabled" />
     <CompilerVisibleProperty Include="RunicApplicationFrontendModelAssembly" />
+    <CompilerVisibleProperty Include="_RunicApplicationFrontendClientModules" />
   </ItemGroup>
+  <!-- #1318: the assemblies that RunicApplicationFrontendClientModule maps, whose Views the generator adds to this
+       application's (ClientModules.Discover), so that the analyzers treat their ViewModels as content as it does. Set in
+       a target, because the items are evaluated after the properties. -->
+  <Target Name="_RunicViewsAnalyzerClientModules" BeforeTargets="GenerateMSBuildEditorConfigFileCore"
+          Condition="'@(RunicApplicationFrontendClientModule)' != ''">
+    <PropertyGroup>
+      <_RunicApplicationFrontendClientModules>@(RunicApplicationFrontendClientModule->'%(Identity)', ';')</_RunicApplicationFrontendClientModules>
+    </PropertyGroup>
+  </Target>
   <ItemGroup Condition="Exists('$(_RunicViewsAnalyzersProject)') and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ProjectReference Include="$(_RunicViewsAnalyzersProject);$(_RunicViewsAnalyzerCodeFixesProject)" ReferenceOutputAssembly="false" OutputItemType="Analyzer"
                       GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishReadyToRun;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;RuntimeIdentifier;SelfContained" />
