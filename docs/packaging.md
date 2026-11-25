@@ -733,7 +733,8 @@ extension, which Flathub updates, restores the same packages. Generate the
 manifest again whenever a lock file changes. `--build` installs the runtime and
 extensions from Flathub, downloads every source, builds without network access
 as Flathub's builders do, and writes `<ApplicationId>.flatpak` to install and
-try.
+try. When the install fails on a download from Flathub, it runs once more after
+30 seconds; any other failure, and a second download failure, ends the build.
 
 To submit, follow Flathub's
 [submission guide](https://docs.flathub.org/docs/for-app-authors/submission):
