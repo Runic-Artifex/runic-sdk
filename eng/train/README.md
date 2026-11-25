@@ -132,6 +132,34 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
 3. Merge that; its CI has no `train-feed` artifact. Row **P-sdk** then runs on it as part of Publish preview
    (dry run or not; "Publish workflows" below).
 
+**`eng/ci/train-feed.mjs exit`** computes steps 1 and 2. Every `PackageVersion` with a `TrainCommit` leaves the
+feed, all at once:
+
+- It reads `train-feed.json` of the newest successful runic-sdk `main` run at or after the commit that last changed
+  `Directory.Packages.props` whose feed serves each of those versions ("Run selection by commit").
+- It waits up to `--wait` minutes (default 70) until nuget.org's flat container lists every NuGet package that feed
+  served and npm has every npm package (the rule of runic-sdk's own `indexed` job). A release that is still missing
+  fails it with the missing packages: the exit never leaves part of the feed.
+- It fails when npm serves other bytes (SHA-256) than the feed's candidate: the template locks then need rebinding,
+  which is agent work.
+- It drops the `TrainCommit` attributes and moves the Nix fixture to the train's Command Line when it names another
+  version. It writes `exit.json` (the versions, TrainCommits, the feed run and the upstream runs it served, each
+  release tag's commit, the npm check, the edits) and `pr-body.md` to `--out` (default `artifacts/feed-exit`).
+- Without a `TrainCommit` it prints `nothing to exit`. `--dry-run` leaves the checkout alone and prints the edits.
+  `--tree <checkout>` computes the exit in another checkout, such as a past `main` commit for a rehearsal.
+
+Then `bun run lock:nuget` (without `RUNIC_TRAIN_FEED`, from a cache filled only from nuget.org), `dotnet restore` of
+the Nix fixture when it moved, and **`exit-report`**. It fails unless `Directory.Packages.props` only lost
+`TrainCommit="<commit>"` attributes and the fixture only its Command Line version. It adds the changed lock files and
+`contentHash` lines to both files, and names lock files where other lines changed.
+
+```sh
+GH_TOKEN=$(gh auth token) bun eng/ci/train-feed.mjs exit --wait 1 --dry-run   # read-only: what the exit would change
+GH_TOKEN=$(gh auth token) bun eng/ci/train-feed.mjs exit && bun run lock:nuget && bun eng/ci/train-feed.mjs exit-report
+```
+
+Prose that names the candidate (docs, upgrading notes) stays agent work.
+
 ## Scenarios
 
 All consumers build with `TreatWarningsAsErrors` and NuGet audit on, outside the repository (no runic-sdk
@@ -345,7 +373,8 @@ steps are in order; the coordinator owns them.
    skips the check.
 6. **Feed exit** right after the publish, as soon as nuget.org and npm serve the packages ("Train feed", "Once
    Command Line and Translations are published"): drop `TrainCommit`, delete the cached candidates, rewrite the lock
-   files against nuget.org. Until it merges every runic-sdk pull request still builds on the feed.
+   files against nuget.org (`eng/ci/train-feed.mjs exit`, then `bun run lock:nuget` and `exit-report`). Until it
+   merges every runic-sdk pull request still builds on the feed.
 7. **Unfreeze Translations `main`** after its publish. Its gate pin stays valid; move it to runic-sdk `main` with
    the next Translations change that needs a newer gate.
 8. runic-sdk publishes from the feed exit's commit or later (row P-sdk, `published:` Translations).
