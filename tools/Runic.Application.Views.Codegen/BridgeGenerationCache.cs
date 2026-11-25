@@ -181,6 +181,7 @@ internal static class BridgeGenerationCache
         return fileName.EndsWith(".Bridge.g.cs", StringComparison.Ordinal)
             || fileName.EndsWith(".View.g.cs", StringComparison.Ordinal)
             || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal)
+            || string.Equals(fileName, ClientModules.LibraryMarkerFile, StringComparison.Ordinal)
             || string.Equals(fileName, BridgeSourceMap.FileName, StringComparison.Ordinal);
     }
 

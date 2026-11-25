@@ -110,6 +110,17 @@ internal sealed class CodegenCacheTests
                 && Directory.EnumerateFiles(csharp, "*.Bridge.g.cs").Any(path => path.EndsWith("Tests.CollisionWindowViewModel.Bridge.g.cs", StringComparison.Ordinal))
                 && Directory.EnumerateFiles(csharp, "*.ItemView.View.g.cs").Count() == 2,
                 "A View partial and a ViewModel bridge, or same-name Views, did not get distinct generated files.");
+
+            // Library mode (#1318) is a cache argument: turning it on or off writes or removes the barrels and the marker.
+            var barrel = Path.Combine(typescript, "runic-clients.ts");
+            var marker = Path.Combine(csharp, "RunicClientLibrary.g.cs");
+            await GenerateAsync(root, generator, csharp, typescript, "--aot", "--client-library").ConfigureAwait(false);
+            Require(File.Exists(barrel) && File.Exists(marker), "Turning library mode on was a cache hit.");
+            File.Delete(marker);
+            await GenerateAsync(root, generator, csharp, typescript, "--aot", "--client-library").ConfigureAwait(false);
+            Require(File.Exists(marker), "A missing library-mode marker did not invalidate and repair the cache entry.");
+            await GenerateAsync(root, generator, csharp, typescript, "--aot").ConfigureAwait(false);
+            Require(!File.Exists(barrel) && !File.Exists(marker), "Turning library mode off was a cache hit.");
         }
         finally
         {

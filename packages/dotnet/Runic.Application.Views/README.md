@@ -2396,8 +2396,8 @@ an extension point.
 | `RunicApplicationFrontendAllowUnlockedInstall` | `false` | The default install is locked: when `package.json` declares dependencies and the package manager's lock file (`package-lock.json` or `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `bun.lock` or `bun.lockb`) is missing, the build fails with [`RUNICBRIDGE026`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge026) before installing. Set `true` to run `npm install`, `pnpm install` or `bun install` (with `--ignore-scripts`) without one instead. |
 | `RunicApplicationFrontendInstallEnabled` | `true` | Set `false` when a workspace install owns the frontend packages. |
 | `RunicApplicationFrontendNodeModulesDirectory` | none | A `node_modules` installed by something else, such as the [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md) from the lock file. The install does not run, and the frontend's `node_modules` becomes a symbolic link (a junction on Windows) to it; an existing `node_modules` that is not a link is `RUNICBRIDGE021`. |
-| `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
-| `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
+| `RunicApplicationFrontendBuildEnabled` | `true`, `false` in a client library | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
+| `RunicApplicationFrontendCopyEnabled` | `true`, `false` in a client library | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it, except in a client library that leaves this `false`. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
 | `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as an Angular CLI page (the `runic-app` template's `--frontend angular --translations`) or a Bun page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
 | `RunicApplicationFrontendTranslationsDirectory` | `<frontend>/.runic/translations` | Where `RunicApplicationFrontendTranslations` mirrors the ESM; the page imports `messages.js`, `runtime.js` and `transport.js` from it. Keep it out of version control. |
@@ -2406,6 +2406,7 @@ an extension point.
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
 | `RunicApplicationFrontendCompositionType` | `<RootNamespace>.RunicViewsComposition` (host adapters), with the namespace made a valid C# name | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
+| `RunicApplicationFrontendClientLibrary` | `false` | `true` makes the project a client library (since 0.24): it generates its Views' TypeScript as a module that other frontends import. Besides the usual output, the generated directory, normally a frontend package's folder such as `../shared-ui/src/generated`, gets `runic-clients.ts`, which exports every client, shared client and named type and `runicClientContracts` (each client's ViewModel and contract fingerprint), and `runic-mocks.ts`, which exports the mocks. The assembly gets the metadata `Runic.Application.Views.ClientLibrary`. Generation is required, so a client library without a View is `RUNICBRIDGE006`. `RunicApplicationFrontendBuildEnabled` and `RunicApplicationFrontendCopyEnabled` default to `false`, and an application that references the library does not copy its frontend to its web root. |
 | `RunicApplicationFrontendGenerationEnabled` | see below | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
@@ -2492,7 +2493,8 @@ Generation is required, and `RUNICBRIDGE006` stays an error for an assembly
 without a Window, when the project sets `RunicApplicationFrontendGenerationEnabled` to `true`, or
 when it shows that it expects output: a `package.json` in
 `RunicApplicationFrontendDirectory`, `RunicApplicationFrontendInput` items,
-`RunicApplicationFrontendCompositionType` or `RunicApplicationFrontendModelAssembly`. Projects that
+`RunicApplicationFrontendCompositionType` or `RunicApplicationFrontendModelAssembly`, and
+in a client library (`RunicApplicationFrontendClientLibrary`). Projects that
 reference `Runic.Application.Views.CsWebUi` or `Runic.Application.Views.Desktop`, other than
 those test projects, always require generation, because the adapter sets
 `RunicApplicationFrontendCompositionType`. WPF projects (`UseWPF`) stay optional, because a
@@ -2504,7 +2506,9 @@ build, which optional mode still pays for.
 When the Views live in a referenced project, the application copies that
 project's built `<frontend>/dist` to its own `www/` on build and publish, so the
 application itself can set `RunicApplicationFrontendGenerationEnabled` to `false`. The
-application's own frontend wins over a referenced one with the same file. WPF's
+application's own frontend wins over a referenced one with the same file. A
+client library's frontend (`RunicApplicationFrontendClientLibrary`) is a package that
+other frontends import, not a page, so it is not copied. WPF's
 temporary markup-compile project (`*_wpftmp`) never runs the generator; it
 compiles the code that the real project generated.
 

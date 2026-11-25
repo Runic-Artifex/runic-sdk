@@ -27,6 +27,7 @@ try
         var aot = false;
         var optional = false;
         var analyzerWarnings = false;
+        var clientLibrary = false;
         string? compositionType = null;
         var pathMap = "";
         var frameworks = new List<string>();
@@ -40,6 +41,9 @@ try
                 // The compile that follows runs Runic.Application.Views.Analyzers, which reports the warnings of
                 // BridgeDiagnosticCodes.AnalyzerWarnings for this assembly's own declarations (Diagnostics.Warn).
                 case "--analyzer-warnings": analyzerWarnings = true; break;
+                // Library mode (#1318, ClientModules): the TypeScript is also an importable module, and the Views are
+                // required.
+                case "--client-library": clientLibrary = true; break;
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
@@ -63,11 +67,14 @@ try
         }
         var positional = values.ToArray();
         if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--client-library] [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
+        // A client library generates its Views' clients for other applications, so it must declare them.
+        if (clientLibrary) optional = false;
 
         string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}", $"path-map={pathMap}", $"analyzer-warnings={analyzerWarnings}",
             $"frameworks={string.Join(";", frameworks.Order(StringComparer.OrdinalIgnoreCase))}",
-            .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments)];
+            .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments),
+            .. (clientLibrary ? (string[])["client-library=true"] : [])];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
         {
             foreach (var warning in cachedWarnings) Console.Error.WriteLine(warning);
@@ -183,12 +190,14 @@ try
             .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
             .Append((Path: BridgeSharedCodecs.FileName, Owner: "the shared Bridge codecs"))
             .Concat(BridgeSupportFiles.All.Select(file => (Path: file, Owner: "the shared Bridge command helpers")))
+            .Concat(clientLibrary ? [(Path: ClientModules.LibraryMarkerFile, Owner: "the client library marker")] : [])
             .ToArray();
         var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}{ClientDeclarationMap.Suffix}", Owner: entry.Model.FullName!)))
             .Concat(sharedClients.Select(shared => (Path: $"{shared.Module}.ts", Owner: shared.Interface.FullName!)))
-            .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types")).ToArray();
+            .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types"))
+            .Concat(clientLibrary ? ClientModules.LibraryTypeScriptOutputs() : []).ToArray();
         foreach (var group in csharpOutputs.Concat(typescriptOutputs)
             .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
@@ -236,7 +245,10 @@ try
         if (Diagnostics.HasErrors) return;
         SharedClients.Generate(positional[3], sharedClients, viewTypes, PageKind, ContractFor);
         if (Diagnostics.HasErrors) return;
-        TypeScriptModules.WriteAll(positional[3]);
+        var namedTypes = TypeScriptModules.WriteAll(positional[3]);
+        if (clientLibrary)
+            ClientModules.WriteLibrary(positional[2], positional[3], [.. models.Select(entry => (entry.Model, LowerFirst(entry.Name)))],
+                sharedClients.Select(shared => shared.Module), namedTypes);
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
         if (compositionType is null)
         {
@@ -746,6 +758,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     PublicationChecks.Check(model, knownModels);
     var declared = BridgedProperties(model);
     var contractFingerprint = BridgeContractShape.Compute(model);
+    ClientModules.RecordContract(model, $"{model.FullName}:{contractFingerprint}");
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var requests = InteractionCodeEmitter.DiscoverRequests(declared, model.Name, contractFingerprint, honorJsonIgnore);
@@ -3099,7 +3112,8 @@ static class TypeScriptModules
     internal static void Add(string path, string text, MemberInfo? owner = null) =>
         Pending.Add((path, TypeScriptModuleBindings.Resolve(text, path, owner), owner));
 
-    internal static void WriteAll(string directory)
+    /// <summary>Writes the pending modules and <c>types.ts</c>; true when there are named types, so <c>types.ts</c> exists.</summary>
+    internal static bool WriteAll(string directory)
     {
         TypeScriptNamedTypes.Complete(Pending.Select(module => module.Text));
         var typesPath = Path.Combine(directory, $"{TypeScriptNamedTypes.ModuleName}.ts");
@@ -3144,6 +3158,7 @@ static class TypeScriptModules
         else if (File.Exists(typesPath) && GeneratedOutput.IsGenerated(typesPath))
             File.Delete(typesPath);
         Pending.Clear();
+        return TypeScriptNamedTypes.Any;
     }
 
     /// <summary>
