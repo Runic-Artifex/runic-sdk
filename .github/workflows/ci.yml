@@ -1592,6 +1592,18 @@ jobs:
           New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
           icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
           icacls $env:GITHUB_WORKSPACE
+          # #1301: on its first run in a new profile, Edge (the x64 image's default browser for runic-hosted) wrote its
+          # Local State and exited without opening the default-browser smoke's URL. Edge's machine policies skip the
+          # first-run experience and its import, sign-in and sync prompts
+          # (https://learn.microsoft.com/deployedge/microsoft-edge-policies: HideFirstRunExperience,
+          # AutoImportAtFirstRun 4 = DisabledAutoImport, BrowserSignin 0 = Disable with NonRemovableProfileEnabled 0 as
+          # its page asks, SyncDisabled, which also hides the sync consent prompt).
+          $edge = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
+          New-Item -Path $edge -Force | Out-Null
+          foreach ($policy in @{ HideFirstRunExperience = 1; AutoImportAtFirstRun = 4; BrowserSignin = 0; NonRemovableProfileEnabled = 0; SyncDisabled = 1 }.GetEnumerator()) {
+            New-ItemProperty -Path $edge -Name $policy.Key -Value $policy.Value -PropertyType DWord -Force | Out-Null
+          }
+          Get-ItemProperty $edge | Format-List HideFirstRunExperience, AutoImportAtFirstRun, BrowserSignin, NonRemovableProfileEnabled, SyncDisabled
       # D066.25 3: the template's WebView2 script debugging (its VS Code configurations; no launch profile since D070.18) in
       # a real Runic Desktop Window, through dotnet run --launch-profile with the configuration's variables and dotnet
       # runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug attaches to, Runtime.evaluate
@@ -1656,13 +1668,22 @@ jobs:
       # 'Undecided', whose command is C:\Windows\system32\OpenWith.exe "%1" (the "choose an app" prompt), and
       # ShellExecuteEx failing with 1155 (ERROR_NO_ASSOCIATION), which LaunchUriAsync reports as
       # Unavailable(BackendUnavailable), as it should. The x64 image has Edge as a new user's default.
+      # #1301: Edge's first run in runic-hosted's new profile, after the policies of the user's step, runs before the
+      # smoke, not in its timed phase (warm-up-edge.ps1, at most about 90 s and never failing the step).
       - name: Launch the default browser on Windows and macOS
         if: matrix.shard != 'platform' && (runner.os == 'macOS' || (runner.os == 'Windows' && runner.arch == 'X64'))
-        timeout-minutes: 6
+        timeout-minutes: 8
+        shell: bash
         env:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
           RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
-        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --default-browser
+        run: |
+          smoke=tests/native/Runic.Application.HostedWindows.Smoke
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            MSYS2_ARG_CONV_EXCL='*' dotnet "$smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll" --run-unelevated \
+              "$(cygpath -w "$(command -v pwsh)")" -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$smoke/warm-up-edge.ps1")"
+          fi
+          dotnet "$smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll" --default-browser
       # The host cases against real guest processes on the native platforms: the Windows job object (started suspended,
       # kill-on-close, grandchildren), the macOS process group, the same-user check against the real parent (Windows
       # token users), pending starts, windows that open after the guest ended, and the Windows guest's inherited handles.
