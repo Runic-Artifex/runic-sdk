@@ -35,6 +35,7 @@
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE072;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE072</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE075;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE075</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE076;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE076</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE078;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE078</_RunicBridgeWarningsAsErrors>
     <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
   </PropertyGroup>
 

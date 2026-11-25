@@ -1767,6 +1767,65 @@ The rules are in the protocol's
 [reply order](../../../specs/application/README.md#reply-order) and
 [client resolution](../../../specs/application/README.md#client-resolution).
 
+## Which members are published
+
+By default a ViewModel's Bridge publishes every public instance property that
+the ViewModel class itself declares: state, commands, interactions and view
+requests. Indexers are not published, and neither are the properties that a
+base class declares. `[RunicIgnore]` keeps a property on .NET.
+
+That default suits a ViewModel written for its page. A ViewModel ported from
+WPF still has the members its XAML bound to, while its page may read one
+computed record. Explicit publication turns the rule around: only the members
+marked `[RunicInclude]` are published, so a member added later stays on .NET
+until someone marks it. Declare it for every ViewModel of the assembly that
+declares them, or on a ViewModel class:
+
+```csharp
+using Runic.Application.Views;
+
+[assembly: RunicPublication(RunicPublicationMode.Explicit)]
+
+public sealed partial class ImportResultViewModel : ReactiveObject
+{
+    [RunicInclude] public ResultPage Page => BuildPage();
+
+    // Kept for the native view and the tests; not published.
+    public IReadOnlyList<ImportRow> Imported { get; }
+    public ReactiveCommand<Unit, Unit> ShowHelp { get; }
+}
+```
+
+- **Commands** are published only when marked, with all their client members:
+  `x()`, `canX`, `isXExecuting`, and `startX()` and `recoverX()` of an
+  asynchronous command. On a CommunityToolkit `[RelayCommand]` method or
+  `[ObservableProperty]` field, write `[property: RunicInclude]`, which the
+  toolkit puts on the generated property; mark a partial property, such as a
+  ReactiveUI `[Reactive]` one, directly.
+- **Shared clients.** The properties that implement a member of a
+  [`[RunicSharedClient]`](#shared-clients) interface the ViewModel implements
+  count as included, so they need no attribute.
+- **The class wins.** `[RunicPublication]` on a ViewModel class, or the nearest
+  one on a base class, wins over the assembly's:
+  `[RunicPublication(RunicPublicationMode.Implicit)]` returns a ViewModel in an
+  explicit assembly to the default.
+- **Left-out members are never inspected or sent.** The generator does not
+  check them, so a WPF-typed member needs no `[RunicIgnore]`, the Bridge never
+  puts them in a snapshot, and the analyzer and the Hot Reload contract
+  fingerprint select the same members. A `[RunicFailure]`, `[RunicCommandKey]`
+  or `[RunicPresentationScoped]` declaration on a command that is not published
+  is reported as on any member the Bridge does not expose.
+- **Contradictions.** `[RunicInclude]` with `[RunicIgnore]` is error
+  [`RUNICBRIDGE077`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge077),
+  in either mode. `[RunicInclude]` on a member that the Bridge cannot publish,
+  such as a field, a private or static property, or a property a base class
+  declares, is warning
+  [`RUNICBRIDGE078`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge078).
+  In the default mode `[RunicInclude]` on a published property has no effect.
+
+Changing the mode changes the generated contract, so rebuild the .NET
+application and the generated frontend together.
+
 ## Read-only and settable state
 
 The web frontend is the View, so the usual MVVM rule applies: the ViewModel's
@@ -2127,7 +2186,8 @@ publish each of its properties alike, or the build fails with
 
 - through a public property that the ViewModel class declares, which the Bridge
   publishes: not an explicit implementation, an inherited property or a
-  `[RunicIgnore]` one;
+  `[RunicIgnore]` one. In [explicit publication](#which-members-are-published)
+  such a property counts as included without `[RunicInclude]`;
 - with the interface's nullability, including type arguments;
 - with the same generated TypeScript as the other implementing ViewModels: the
   same wire name, value type, command input, key and declared failure. Only
@@ -2171,8 +2231,8 @@ own code, while you type and in the build, so `#pragma warning disable` and
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075` and `076` are warnings; the ones the generator
-reports itself (`020`, `072`, `076`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076` and `078` are warnings; the ones the generator
+reports itself (`020`, `072`, `076`, `078`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -4209,7 +4269,8 @@ public sealed record SavedRequest(string Kind)
 fields have a fixed contract and are emitted even when null or default.
 `[RunicIgnore]` always excludes a property, including one also marked
 `[JsonIgnore(Condition = JsonIgnoreCondition.Never)]`. Root ViewModel properties
-still use `[RunicIgnore]`; System.Text.Json's ignores apply to DTO properties only.
+still use `[RunicIgnore]`, or [explicit publication](#which-members-are-published);
+System.Text.Json's ignores apply to DTO properties only.
 Adding or removing the opt-out changes the DTO wire contract and requires
 rebuilding the .NET application and generated frontend together.
 

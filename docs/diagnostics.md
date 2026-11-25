@@ -104,6 +104,8 @@ and severities are open.
 | [`RUNICBRIDGE074`](#runicbridge074) | Error | Generator | A `[RunicInteractionTimeout]` is on a view question |
 | [`RUNICBRIDGE075`](#runicbridge075) | Warning | Build targets | `RunicDevelopmentOnlyViews` or `RunicBridgeBlobs` is neither auto nor true |
 | [`RUNICBRIDGE076`](#runicbridge076) | Warning | Generator | A generated client loses its declaration map or comments because an assembly has no PDB |
+| [`RUNICBRIDGE077`](#runicbridge077) | Error | Generator | A ViewModel property is marked both [RunicInclude] and [RunicIgnore] |
+| [`RUNICBRIDGE078`](#runicbridge078) | Warning | Generator | A [RunicInclude] declaration on a ViewModel member that the Bridge cannot publish has no effect |
 
 ### Errors and warnings while you type
 
@@ -1035,6 +1037,36 @@ and build again; the clients then have their maps and comments again. A
 project that does not commit its generated clients can suppress the warning with
 `NoWarn`. See
 [Commit generated clients](../packages/dotnet/Runic.Application.Views/README.md#commit-generated-clients).
+
+### RUNICBRIDGE077
+
+An error from the Bridge generator (since 0.24). A ViewModel property has both
+`[RunicInclude]` and `[RunicIgnore]`, on the property itself or on a base
+property it overrides, so the generator cannot tell whether to publish it. It is
+an error in either publication mode. The analyzer does not report it.
+
+**Fix:** remove `[RunicIgnore]` to publish the member, or `[RunicInclude]` to
+keep it on .NET. See
+[Which members are published](../packages/dotnet/Runic.Application.Views/README.md#which-members-are-published).
+
+### RUNICBRIDGE078
+
+A warning from the Bridge generator (since 0.24). `[RunicInclude]` is on a
+member of a ViewModel class that the Bridge never publishes, in either
+publication mode: a field, a static or non-public property, an indexer, the
+ReactiveUI.Validation `ValidationContext`, which the Bridge publishes as the
+validation state, or a property that a base class declares and the ViewModel
+does not override, unless that base class is a generated ViewModel itself. The
+declaration has no effect. The warning repeats on builds that reuse the cached
+generation; a member of a base class shared by several ViewModels is reported
+once. A field has no location in the PDB, so its warning points at the class.
+
+**Fix:** move the attribute to a public instance property that the ViewModel
+class declares. For a CommunityToolkit `[ObservableProperty]` field or a
+`[RelayCommand]` method, write `[property: RunicInclude]`, which the toolkit
+puts on the generated property. Override an inherited property in the
+ViewModel, or remove the attribute. See
+[Which members are published](../packages/dotnet/Runic.Application.Views/README.md#which-members-are-published).
 
 ## dotnet runic
 
