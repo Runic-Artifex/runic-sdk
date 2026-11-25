@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Runic.Application.Views;
 using static TypeScriptModuleBindings;
 
@@ -43,6 +44,9 @@ internal static class SharedClients
     private static readonly string[] PublicTypes = ["ViewClient", "BridgeOutcome", "BridgeOperation", "BridgeStreamOperation",
         "BridgeOperationStartOptions", "RegionCollection", "RegionOutcome", "QueryCollection", "QueryCollectionState"];
     private static readonly Dictionary<Type, SharedClientDeclaration[]> ByModel = [];
+    // The shared clients Generate checked without a problem, with the property that publishes each interface member in
+    // every implementing ViewModel, for the contract IR.
+    private static readonly List<(SharedClientDeclaration Declaration, (PropertyInfo Member, (Type Model, PropertyInfo Published)[] Implementations)[] Members)> Checked = [];
 
     /// <summary>The shared clients of the generated ViewModels; reports invalid declarations.</summary>
     internal static SharedClientDeclaration[] Discover((Type Model, string Name)[] models, IEnumerable<(string Kind, MemberInfo Member)> kinds)
@@ -149,6 +153,8 @@ internal static class SharedClients
             // The ViewModels that do implement every member are compared too, so one build reports each one's first problem.
             var shared = Compare(declaration, members, collected, reportedMembers);
             if (shared is null || collected.Count != declaration.Implementers.Length) continue;
+            Checked.Add((declaration, [.. members.Select(member =>
+                (member, collected.Select(entry => (entry.Model, entry.Members[member].Published)).ToArray()))]));
             var kinds = declaration.Implementers.SelectMany(entry => viewTypes.TryGetValue(entry.Model, out var views)
                 ? views.Select(view => pageKind(entry.Name, contractFor(view))) : [pageKind(entry.Name, null)]).ToArray();
             // A mapped client library's shared client is checked, but the library writes it (ClientModules).
@@ -157,6 +163,30 @@ internal static class SharedClients
             finally { ClientModules.Discarding = false; }
         }
     }
+
+    /// <summary>
+    /// The checked shared clients in the contract IR (specs/application/contract-ir.md). <paramref name="published"/>
+    /// names the View member or command of a property that an implementing ViewModel publishes.
+    /// </summary>
+    internal static IEnumerable<JsonObject> ContractIr(Func<Type, PropertyInfo, JsonObject> published) => Checked.Select(entry =>
+    {
+        var (declaration, members) = entry;
+        var item = new JsonObject { ["id"] = declaration.Interface.FullName, ["name"] = declaration.Name, ["interface"] = declaration.Interface.Name };
+        if (XmlDocumentation.Summary(declaration.Interface) is { } doc) item["doc"] = doc;
+        if (ClientModules.OwnerOfModule(declaration.Module) is { } owner) item["owner"] = owner.Assembly;
+        item["views"] = new JsonArray([.. declaration.Implementers.Select(implementer => (JsonNode)implementer.Model.FullName!)]);
+        item["members"] = new JsonArray([.. members.Select(member =>
+        {
+            var name = member.Member.Name;
+            var result = new JsonObject { ["name"] = char.ToUpperInvariant(name[0]) + name[1..] };
+            if (XmlDocumentation.Summary(member.Member) is { } memberDoc) result["doc"] = memberDoc;
+            if (member.Member.SetMethod is not null) result["settable"] = true;
+            result["published"] = new JsonObject(member.Implementations.Select(implementation =>
+                KeyValuePair.Create(implementation.Model.FullName!, (JsonNode?)published(implementation.Model, implementation.Published))));
+            return (JsonNode)result;
+        })]);
+        return item;
+    });
 
     // The interface's properties and those of the interfaces it extends; a name declared twice is ambiguous.
     private static PropertyInfo[] Members(Type contract)

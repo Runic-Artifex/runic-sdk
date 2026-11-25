@@ -1,0 +1,262 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel",
+      "name": "ReactiveViewRequest",
+      "route": "reactiveViewRequest",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "reactiveViewRequest"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ReactiveViewRequestViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Discard",
+          "wire": "discard",
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "ConfirmDiscard",
+          "wire": "confirmDiscard",
+          "doc": "Asks whether to discard the draft.",
+          "contract": "<fingerprint>:interaction:ConfirmDiscard",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ViewRequestDiscard"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "name": "Focus",
+          "wire": "focus",
+          "doc": "Focuses a field of the editor.",
+          "contract": "<fingerprint>:request:Focus",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ViewRequestFocusTarget"
+            }
+          }
+        },
+        {
+          "name": "Notify",
+          "wire": "notify",
+          "doc": "Shows a toast in every pane.",
+          "contract": "<fingerprint>:request:Notify",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.RequestOnlyViewModel",
+      "name": "RequestOnly",
+      "route": "requestOnly",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "requestOnly"
+      ],
+      "doc": "Only view requests: a ViewModel needs no state, command or interaction besides them.",
+      "members": [],
+      "commands": [],
+      "requests": [
+        {
+          "name": "Focus",
+          "wire": "focus",
+          "contract": "<fingerprint>:request:Focus",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ViewRequestFocusTarget"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel",
+      "name": "ToolkitViewRequest",
+      "route": "toolkitViewRequest",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "toolkitViewRequest"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ToolkitViewRequestViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Discard",
+          "wire": "discard",
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "ConfirmDiscard",
+          "wire": "confirmDiscard",
+          "doc": "Asks whether to discard the draft.",
+          "contract": "<fingerprint>:interaction:ConfirmDiscard",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ViewRequestDiscard"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "name": "Focus",
+          "wire": "focus",
+          "doc": "Focuses a field of the editor.",
+          "contract": "<fingerprint>:request:Focus",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ViewRequestFocusTarget"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "types": {
+    "Runic.Application.Testing.Tests.ViewRequestDiscard": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.ViewRequestDiscard",
+        "base": "ViewRequestDiscard",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "What a discard question shows.",
+      "members": [
+        {
+          "wire": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.ViewRequestFocusTarget": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.ViewRequestFocusTarget",
+        "base": "ViewRequestFocusTarget",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "The field a page focuses.",
+      "members": [
+        {
+          "wire": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "selectAll",
+          "type": {
+            "kind": "boolean"
+          }
+        }
+      ]
+    }
+  },
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.RequestOnlyViewModel": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/command/discard": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/commandState/canDiscard": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/commandState/isDiscardExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/interaction/confirmDiscard": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/request/focus": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ReactiveViewRequestViewModel/request/notify": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.RequestOnlyViewModel/request/focus": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/command/discard": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/commandState/canDiscard": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/commandState/isDiscardExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/interaction/confirmDiscard": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitViewRequestViewModel/request/focus": "tests/dotnet/Runic.Application.Testing.Tests/ViewRequestCodegenFixture.cs"
+  }
+}

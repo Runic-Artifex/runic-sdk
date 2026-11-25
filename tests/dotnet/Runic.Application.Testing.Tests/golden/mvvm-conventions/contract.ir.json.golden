@@ -1,0 +1,1135 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.DocumentedViewModel",
+      "name": "Documented",
+      "route": "documented",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "documented"
+      ],
+      "doc": "Generated TypeScript names its enum and DTO types after the C# types, copies these XML comments and uses the command method's parameter name.",
+      "members": [
+        {
+          "name": "Layout",
+          "wire": "layout",
+          "doc": "The current layout.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DocumentedLayout"
+            }
+          }
+        },
+        {
+          "name": "Item",
+          "wire": "item",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DocumentedItem"
+            }
+          }
+        },
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "doc": "Whether the note has `unsaved` changes.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "Corner",
+          "wire": "corner",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenPoint"
+            }
+          }
+        },
+        {
+          "name": "Note",
+          "wire": "note",
+          "doc": "The note being edited.",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "DocumentedViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "ChangeLayout",
+          "wire": "changeLayout",
+          "doc": "Switches to `layout`.",
+          "parameter": "layout",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DocumentedLayout"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.GeneratedInteractionViewModel",
+      "name": "GeneratedInteraction",
+      "route": "generatedInteraction",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "generatedInteraction"
+      ],
+      "members": [
+        {
+          "name": "Attempt",
+          "wire": "attempt",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "AcceptedCount",
+          "wire": "acceptedCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Ask",
+          "wire": "ask",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "AskWithoutDeadline",
+          "wire": "askWithoutDeadline",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "AskSlowly",
+          "wire": "askSlowly",
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "Confirm",
+          "wire": "confirm",
+          "contract": "<fingerprint>:interaction:Confirm",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.GeneratedInteractionRequest"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "ConfirmWithoutDeadline",
+          "wire": "confirmWithoutDeadline",
+          "contract": "<fingerprint>:interaction:ConfirmWithoutDeadline",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.GeneratedInteractionRequest"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "ConfirmSlowly",
+          "wire": "confirmSlowly",
+          "contract": "<fingerprint>:interaction:ConfirmSlowly",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.GeneratedInteractionRequest"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.GeneratedReactiveViewModel",
+      "name": "GeneratedReactive",
+      "route": "generatedReactive",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "generatedReactive"
+      ],
+      "doc": "Exercises the ReactiveUI 26 generators before the Runic bridge's compiled model inspection runs. The bridge only sees the generated public members.",
+      "members": [
+        {
+          "name": "Name",
+          "wire": "name",
+          "doc": "The name to save.",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "GeneratedReactiveViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "doc": "Whether the name changed since the last save.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "Summary",
+          "wire": "summary",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "SaveCount",
+          "wire": "saveCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.ReactivePasswordViewModel",
+      "name": "ReactivePassword",
+      "route": "reactivePassword",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "reactivePassword"
+      ],
+      "memberErrors": true,
+      "validation": true,
+      "members": [
+        {
+          "name": "NewPassword",
+          "wire": "newPassword",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ReactivePasswordViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "ConfirmPassword",
+          "wire": "confirmPassword",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ReactivePasswordViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.ToolkitCancelViewModel",
+      "name": "ToolkitCancel",
+      "route": "toolkitCancel",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "toolkitCancel"
+      ],
+      "members": [
+        {
+          "name": "CancelledCount",
+          "wire": "cancelledCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "ExportInput",
+          "wire": "exportInput",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "SaveCancel",
+          "wire": "saveCancel",
+          "doc": "Cancels the running `save` call."
+        },
+        {
+          "name": "Export",
+          "wire": "export",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ExportCancel",
+          "wire": "exportCancel",
+          "doc": "Cancels the running `export` call."
+        },
+        {
+          "name": "Background",
+          "wire": "background",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "BackgroundCancel",
+          "wire": "backgroundCancel",
+          "doc": "Cancels the running `background` call."
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.ToolkitTypedViewModel",
+      "name": "ToolkitTyped",
+      "route": "toolkitTyped",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "toolkitTyped"
+      ],
+      "doc": "Public Toolkit command shapes consumed by BridgeCodegen. Keep properties typed as interfaces: inspecting only RelayCommand's concrete type would miss ordinary CommunityToolkit MVVM applications.",
+      "members": [
+        {
+          "name": "Total",
+          "wire": "total",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Label",
+          "wire": "label",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "OptionalDocumentId",
+          "wire": "optionalDocumentId",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "AsyncDocumentId",
+          "wire": "asyncDocumentId",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "AsyncLabel",
+          "wire": "asyncLabel",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "AsyncOptionalDocumentId",
+          "wire": "asyncOptionalDocumentId",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "CancelledCount",
+          "wire": "cancelledCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Apply",
+          "wire": "apply",
+          "parameter": "toolkitCommandRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ToolkitCommandRequest"
+            }
+          }
+        },
+        {
+          "name": "Add",
+          "wire": "add",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Rename",
+          "wire": "rename",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "name": "Optional",
+          "wire": "optional",
+          "parameter": "toolkitCommandRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ToolkitCommandRequest",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "name": "AsyncDto",
+          "wire": "asyncDto",
+          "parameter": "toolkitCommandRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ToolkitCommandRequest"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "AsyncInt",
+          "wire": "asyncInt",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "AsyncString",
+          "wire": "asyncString",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "AsyncOptional",
+          "wire": "asyncOptional",
+          "parameter": "toolkitCommandRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.ToolkitCommandRequest",
+              "nullable": true
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Cancel",
+          "wire": "cancel",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.TypedReactiveViewModel",
+      "name": "TypedReactive",
+      "route": "typedReactive",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "typedReactive"
+      ],
+      "members": [
+        {
+          "name": "SaveEnabled",
+          "wire": "saveEnabled",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "settable": true,
+          "declaringType": "TypedReactiveViewModel",
+          "checked": true
+        },
+        {
+          "name": "Executions",
+          "wire": "executions",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "PlainApplyCount",
+          "wire": "plainApplyCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveResult"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "MultiResult",
+          "wire": "multiResult",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "LastResult",
+          "wire": "lastResult",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "StreamResult",
+          "wire": "streamResult",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "stream": true,
+          "executionState": true
+        },
+        {
+          "name": "EmptyCompletion",
+          "wire": "emptyCompletion",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ImmediateCompletion",
+          "wire": "immediateCompletion",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Fail",
+          "wire": "fail",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Cancel",
+          "wire": "cancel",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "InterfaceOnly",
+          "wire": "interfaceOnly",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "PlainApply",
+          "wire": "plainApply",
+          "parameter": "typedSaveRequest",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.TypedSaveRequest"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "types": {
+    "Runic.Application.Testing.Tests.CodegenPoint": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenPoint",
+        "base": "CodegenPoint",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "x",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "y",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DocumentedItem": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DocumentedItem",
+        "base": "DocumentedItem",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "A documented item.",
+      "members": [
+        {
+          "wire": "title",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The item's `title`."
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DocumentedLayout": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DocumentedLayout",
+        "base": "DocumentedLayout",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "How the documented item is shown.",
+      "cases": [
+        {
+          "wire": "List",
+          "value": "0",
+          "doc": "One item per row."
+        },
+        {
+          "wire": "Grid",
+          "value": "1",
+          "doc": "Items in a grid."
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.GeneratedInteractionRequest": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.GeneratedInteractionRequest",
+        "base": "GeneratedInteractionRequest",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "This public shape is intentionally inspected by BridgeCodegen. It proves an interaction is not merely usable through the hand-authored adapter API.",
+      "members": [
+        {
+          "wire": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "attempt",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.ToolkitCommandRequest": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.ToolkitCommandRequest",
+        "base": "ToolkitCommandRequest",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "documentId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "delta",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.TypedSaveRequest": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.TypedSaveRequest",
+        "base": "TypedSaveRequest",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "documentId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "expectedVersion",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.TypedSaveResult": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.TypedSaveResult",
+        "base": "TypedSaveResult",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "documentId",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "savedVersion",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "contentLength",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    }
+  },
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.DocumentedViewModel": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedReactiveViewModel": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.ReactivePasswordViewModel": "tests/dotnet/Runic.Application.Testing.Tests/ReactiveValidationFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/state/corner": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/state/isDirty": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/state/item": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/state/layout": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/state/note": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/setter/note": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DocumentedViewModel/command/changeLayout": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/state/acceptedCount": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/state/attempt": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/command/ask": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/command/askSlowly": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/command/askWithoutDeadline": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/commandState/canAsk": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/commandState/canAskSlowly": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/commandState/canAskWithoutDeadline": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/commandState/isAskExecuting": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/commandState/isAskSlowlyExecuting": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/commandState/isAskWithoutDeadlineExecuting": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/interaction/confirm": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/interaction/confirmSlowly": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedInteractionViewModel/interaction/confirmWithoutDeadline": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedReactiveViewModel/state/isDirty": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedReactiveViewModel/state/name": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedReactiveViewModel/state/saveCount": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedReactiveViewModel/state/summary": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.GeneratedReactiveViewModel/setter/name": "tests/dotnet/Runic.Application.Testing.Tests/GeneratedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.ReactivePasswordViewModel/state/confirmPassword": "tests/dotnet/Runic.Application.Testing.Tests/ReactiveValidationFixture.cs",
+    "Runic.Application.Testing.Tests.ReactivePasswordViewModel/state/newPassword": "tests/dotnet/Runic.Application.Testing.Tests/ReactiveValidationFixture.cs",
+    "Runic.Application.Testing.Tests.ReactivePasswordViewModel/setter/confirmPassword": "tests/dotnet/Runic.Application.Testing.Tests/ReactiveValidationFixture.cs",
+    "Runic.Application.Testing.Tests.ReactivePasswordViewModel/setter/newPassword": "tests/dotnet/Runic.Application.Testing.Tests/ReactiveValidationFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/state/cancelledCount": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/state/exportInput": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/command/background": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/command/export": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/command/save": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/commandState/canBackground": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/commandState/canSave": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/commandState/isBackgroundExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/commandState/isExportExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitCancelViewModel/commandState/isSaveExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitCancelFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/asyncDocumentId": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/asyncLabel": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/asyncOptionalDocumentId": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/cancelledCount": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/label": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/optionalDocumentId": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/state/total": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/add": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/apply": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/asyncDto": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/asyncInt": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/asyncOptional": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/asyncString": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/cancel": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/optional": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/command/rename": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/commandState/isAsyncDtoExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/commandState/isAsyncIntExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/commandState/isAsyncOptionalExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/commandState/isAsyncStringExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.ToolkitTypedViewModel/commandState/isCancelExecuting": "tests/dotnet/Runic.Application.Testing.Tests/ToolkitTypedFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/state/executions": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/state/plainApplyCount": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/state/saveEnabled": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/setter/saveEnabled": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/cancel": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/emptyCompletion": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/fail": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/immediateCompletion": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/interfaceOnly": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/lastResult": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/multiResult": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/plainApply": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/save": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/command/streamResult": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/canEmptyCompletion": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isCancelExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isEmptyCompletionExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isFailExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isImmediateCompletionExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isInterfaceOnlyExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isLastResultExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isMultiResultExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isSaveExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs",
+    "Runic.Application.Testing.Tests.TypedReactiveViewModel/commandState/isStreamResultExecuting": "tests/dotnet/Runic.Application.Testing.Tests/TypedReactiveFixture.cs"
+  }
+}

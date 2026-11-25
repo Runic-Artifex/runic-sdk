@@ -3,8 +3,10 @@
 //   owners, shared clients, keys, sources);
 // - that the corpus covers every example that commits generated clients, and that the contract of each View is the
 //   one its example's committed clients carry, so a contract change that leaves the corpus behind fails.
+// RUNIC_UPDATE_CONTRACT_IR_CORPUS=1 first copies each example's contract.ir.json from its obj directory into the corpus,
+// with its sources relative to the corpus; build the examples before.
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { root } from "./run.mjs";
@@ -15,6 +17,22 @@ const corpus = join(specs, "corpus");
 const readJson = path => JSON.parse(readFileSync(path, "utf8"));
 const schema = readJson(join(specs, "contract-ir.schema.json"));
 const index = readJson(join(corpus, "index.json"));
+
+if (process.env.RUNIC_UPDATE_CONTRACT_IR_CORPUS === "1") {
+  const directories = path => existsSync(path)
+    ? readdirSync(path, { withFileTypes: true }).filter(item => item.isDirectory()).map(item => join(path, item.name)) : [];
+  for (const entry of index.entries) {
+    // obj/<configuration>/<framework>/runic-bridge/contract.ir.json
+    const found = directories(join(root, dirname(entry.project), "obj")).flatMap(directories)
+      .map(path => join(path, "runic-bridge", "contract.ir.json")).filter(path => existsSync(path));
+    if (found.length !== 1)
+      throw new Error(`${entry.project}: ${found.length === 0 ? "no contract.ir.json; build the project first" : `${found.length} contract.ir.json files; remove all but one build`}`);
+    const ir = readJson(found[0]);
+    for (const location of Object.values(ir.sources)) location.file = relative(corpus, resolve(location.file)).replaceAll("\\", "/");
+    writeFileSync(join(corpus, entry.ir), JSON.stringify(ir, null, 2) + "\n");
+  }
+}
+
 const documents = index.entries.map(entry => ({ entry, ir: readJson(join(corpus, entry.ir)) }));
 
 // Examples whose committed clients the corpus does not cover, with the reason.
