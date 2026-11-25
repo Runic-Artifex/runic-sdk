@@ -1,0 +1,68 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "FirstWindowDesktop"
+  },
+  "views": [
+    {
+      "id": "FirstWindowDesktop.CounterViewModel",
+      "name": "Counter",
+      "route": "counter",
+      "fingerprint": "31F4546467CE0F1535AAB891597E0133DD134465127D31D6952971C8389F828A",
+      "kinds": [
+        "counter"
+      ],
+      "members": [
+        {
+          "name": "Count",
+          "wire": "count",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Increment",
+          "wire": "increment",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "FirstWindowDesktop.CounterViewModel": {
+      "file": "../../../../examples/first-window-desktop/CounterViewModel.cs",
+      "line": 9,
+      "column": 21
+    },
+    "FirstWindowDesktop.CounterViewModel/state/count": {
+      "file": "../../../../examples/first-window-desktop/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "FirstWindowDesktop.CounterViewModel/command/increment": {
+      "file": "../../../../examples/first-window-desktop/CounterViewModel.cs",
+      "line": 18,
+      "column": 34
+    },
+    "FirstWindowDesktop.CounterViewModel/commandState/canIncrement": {
+      "file": "../../../../examples/first-window-desktop/CounterViewModel.cs",
+      "line": 18,
+      "column": 34
+    },
+    "FirstWindowDesktop.CounterViewModel/commandState/isIncrementExecuting": {
+      "file": "../../../../examples/first-window-desktop/CounterViewModel.cs",
+      "line": 18,
+      "column": 34
+    }
+  }
+}

@@ -1,0 +1,464 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "MultiWindow"
+  },
+  "views": [
+    {
+      "id": "MultiWindow.AccountViewModel",
+      "name": "Account",
+      "route": "account",
+      "fingerprint": "D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A",
+      "kinds": [
+        "account"
+      ],
+      "members": [
+        {
+          "name": "Accounts",
+          "wire": "accounts",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "Current",
+          "wire": "current",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Choose",
+          "wire": "choose",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Cancel",
+          "wire": "cancel",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "MultiWindow.DocumentViewModel",
+      "name": "Document",
+      "route": "document",
+      "fingerprint": "D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A",
+      "kinds": [
+        "document"
+      ],
+      "members": [
+        {
+          "name": "Path",
+          "wire": "path",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "ProjectTitle",
+          "wire": "projectTitle",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Close",
+          "wire": "close",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "MultiWindow.ProjectViewModel",
+      "name": "Project",
+      "route": "project",
+      "fingerprint": "D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A",
+      "kinds": [
+        "project"
+      ],
+      "memberErrors": true,
+      "validation": true,
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Theme",
+          "wire": "theme",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "DesktopScheme",
+          "wire": "desktopScheme",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Language",
+          "wire": "language",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Status",
+          "wire": "status",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "text-reference"
+            }
+          }
+        },
+        {
+          "name": "Draft",
+          "wire": "draft",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ProjectViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Account",
+          "wire": "account",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Rename",
+          "wire": "rename",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "NewWindow",
+          "wire": "newWindow",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ChooseTheme",
+          "wire": "chooseTheme",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ChooseLanguage",
+          "wire": "chooseLanguage",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "OpenDocument",
+          "wire": "openDocument",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ChooseAccount",
+          "wire": "chooseAccount",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "MultiWindow.AccountViewModel": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 12,
+      "column": 21
+    },
+    "MultiWindow.DocumentViewModel": {
+      "file": "../../../../examples/multi-window/DocumentWindow.cs",
+      "line": 11,
+      "column": 21
+    },
+    "MultiWindow.ProjectViewModel": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 19,
+      "column": 21
+    },
+    "MultiWindow.AccountViewModel/state/accounts": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 21,
+      "column": 34
+    },
+    "MultiWindow.AccountViewModel/state/current": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 23,
+      "column": 19
+    },
+    "MultiWindow.AccountViewModel/command/cancel": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 18,
+      "column": 9
+    },
+    "MultiWindow.AccountViewModel/command/choose": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 17,
+      "column": 9
+    },
+    "MultiWindow.AccountViewModel/commandState/canCancel": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 18,
+      "column": 9
+    },
+    "MultiWindow.AccountViewModel/commandState/isCancelExecuting": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 18,
+      "column": 9
+    },
+    "MultiWindow.AccountViewModel/commandState/isChooseExecuting": {
+      "file": "../../../../examples/multi-window/AccountWindow.cs",
+      "line": 17,
+      "column": 9
+    },
+    "MultiWindow.DocumentViewModel/state/path": {
+      "file": "../../../../examples/multi-window/DocumentWindow.cs",
+      "line": 28,
+      "column": 19
+    },
+    "MultiWindow.DocumentViewModel/state/projectTitle": {
+      "file": "../../../../examples/multi-window/DocumentWindow.cs",
+      "line": 30,
+      "column": 34
+    },
+    "MultiWindow.DocumentViewModel/command/close": {
+      "file": "../../../../examples/multi-window/DocumentWindow.cs",
+      "line": 24,
+      "column": 9
+    },
+    "MultiWindow.DocumentViewModel/commandState/canClose": {
+      "file": "../../../../examples/multi-window/DocumentWindow.cs",
+      "line": 24,
+      "column": 9
+    },
+    "MultiWindow.DocumentViewModel/commandState/isCloseExecuting": {
+      "file": "../../../../examples/multi-window/DocumentWindow.cs",
+      "line": 24,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/state/account": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 150,
+      "column": 29
+    },
+    "MultiWindow.ProjectViewModel/state/desktopScheme": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 104,
+      "column": 35
+    },
+    "MultiWindow.ProjectViewModel/state/draft": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 115,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/state/language": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 107,
+      "column": 30
+    },
+    "MultiWindow.ProjectViewModel/state/status": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 110,
+      "column": 42
+    },
+    "MultiWindow.ProjectViewModel/state/theme": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 101,
+      "column": 27
+    },
+    "MultiWindow.ProjectViewModel/state/title": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 98,
+      "column": 27
+    },
+    "MultiWindow.ProjectViewModel/setter/draft": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 116,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/command/chooseAccount": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 74,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/command/chooseLanguage": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 56,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/command/chooseTheme": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 87,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/command/newWindow": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 63,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/command/openDocument": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 68,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/command/rename": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 47,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/canChooseAccount": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 74,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/canNewWindow": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 63,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/isChooseAccountExecuting": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 74,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/isChooseLanguageExecuting": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 56,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/isChooseThemeExecuting": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 87,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/isNewWindowExecuting": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 63,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/isOpenDocumentExecuting": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 68,
+      "column": 9
+    },
+    "MultiWindow.ProjectViewModel/commandState/isRenameExecuting": {
+      "file": "../../../../examples/multi-window/ProjectViewModel.cs",
+      "line": 47,
+      "column": 9
+    }
+  }
+}

@@ -1,0 +1,657 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "NotesViewFirst"
+  },
+  "views": [
+    {
+      "id": "NotesWindowViews.ShellViewModel",
+      "name": "Shell",
+      "route": "shell",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "shell"
+      ],
+      "members": [
+        {
+          "name": "Sidebar",
+          "wire": "sidebar",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesWindowViews.SidebarViewModel",
+              "name": "Sidebar",
+              "kind": "sidebar"
+            }
+          ]
+        },
+        {
+          "name": "Main",
+          "wire": "main",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesWindowViews.DocumentViewModel",
+              "name": "Document",
+              "kind": "document"
+            },
+            {
+              "view": "NotesWindowViews.HomeViewModel",
+              "name": "Home",
+              "kind": "home"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        },
+        {
+          "name": "Dialog",
+          "wire": "dialog",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesWindowViews.ConfirmNavigationViewModel",
+              "name": "ConfirmNavigation",
+              "kind": "confirmNavigation"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "NotesWindowViews.SidebarViewModel",
+      "name": "Sidebar",
+      "route": "sidebar",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "sidebar"
+      ],
+      "members": [
+        {
+          "name": "Selected",
+          "wire": "selected",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "OpenHome",
+          "wire": "openHome",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "OpenNotes",
+          "wire": "openNotes",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "NotesWindowViews.HomeViewModel",
+      "name": "Home",
+      "route": "home",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "home"
+      ],
+      "members": [
+        {
+          "name": "Greeting",
+          "wire": "greeting",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "RecentNotes",
+          "wire": "recentNotes",
+          "doc": "The saved notes, most recent first.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "NotesWindowViews.SavedNote"
+              }
+            }
+          },
+          "collectionKey": "title"
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "NotesWindowViews.DocumentViewModel",
+      "name": "Document",
+      "route": "document",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "document"
+      ],
+      "members": [
+        {
+          "name": "CurrentPane",
+          "wire": "currentPane",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesWindowViews.EditorViewModel",
+              "name": "Editor",
+              "kind": "editor"
+            },
+            {
+              "view": "NotesWindowViews.PreviewViewModel",
+              "name": "Preview",
+              "kind": "preview"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        },
+        {
+          "name": "ActivePane",
+          "wire": "activePane",
+          "doc": "The pane the document currently shows.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesWindowViews.DocumentPane"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "ShowEditor",
+          "wire": "showEditor",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ShowPreview",
+          "wire": "showPreview",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "NotesWindowViews.EditorViewModel",
+      "name": "Editor",
+      "route": "editor",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "editor"
+      ],
+      "members": [
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "SavedMessage",
+          "wire": "savedMessage",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "EditorViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Body",
+          "wire": "body",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "EditorViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "doc": "Saves the note. A missing title, or the title of another saved note, is a declared failure.",
+          "failure": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesWindowViews.SaveFailure"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "NotesWindowViews.PreviewViewModel",
+      "name": "Preview",
+      "route": "preview",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "preview"
+      ],
+      "members": [
+        {
+          "name": "Heading",
+          "wire": "heading",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Excerpt",
+          "wire": "excerpt",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "NotesWindowViews.ConfirmNavigationViewModel",
+      "name": "ConfirmNavigation",
+      "route": "confirmNavigation",
+      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "kinds": [
+        "confirmNavigation"
+      ],
+      "members": [
+        {
+          "name": "Message",
+          "wire": "message",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Confirm",
+          "wire": "confirm",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Cancel",
+          "wire": "cancel",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {
+    "NotesWindowViews.DocumentPane": {
+      "kind": "enum",
+      "name": {
+        "source": "NotesWindowViews.DocumentPane",
+        "base": "DocumentPane",
+        "qualifiers": [
+          "NotesWindowViews"
+        ]
+      },
+      "doc": "A pane of the document page.",
+      "cases": [
+        {
+          "wire": "Editor",
+          "value": "0",
+          "doc": "The note editor."
+        },
+        {
+          "wire": "Preview",
+          "value": "1",
+          "doc": "The rendered note."
+        }
+      ]
+    },
+    "NotesWindowViews.SaveFailure": {
+      "kind": "union",
+      "name": {
+        "source": "NotesWindowViews.SaveFailure",
+        "base": "SaveFailure",
+        "qualifiers": [
+          "NotesWindowViews"
+        ]
+      },
+      "doc": "Why a note could not be saved.",
+      "cases": [
+        {
+          "tag": "titleRequired",
+          "object": null
+        },
+        {
+          "tag": "titleTaken",
+          "object": "NotesWindowViews.TitleTaken"
+        }
+      ]
+    },
+    "NotesWindowViews.SavedNote": {
+      "kind": "object",
+      "name": {
+        "source": "NotesWindowViews.SavedNote",
+        "base": "SavedNote",
+        "qualifiers": [
+          "NotesWindowViews"
+        ]
+      },
+      "doc": "A saved note listed on the home page.",
+      "members": [
+        {
+          "wire": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "excerpt",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "NotesWindowViews.TitleTaken": {
+      "kind": "object",
+      "name": {
+        "source": "NotesWindowViews.TitleTaken",
+        "base": "TitleTaken",
+        "qualifiers": [
+          "NotesWindowViews"
+        ]
+      },
+      "doc": "Another saved note already has the title.",
+      "members": [
+        {
+          "wire": "existingTitle",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "sources": {
+    "NotesWindowViews.ConfirmNavigationViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 314,
+      "column": 22
+    },
+    "NotesWindowViews.DocumentViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 158,
+      "column": 22
+    },
+    "NotesWindowViews.EditorViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 236,
+      "column": 22
+    },
+    "NotesWindowViews.HomeViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 146,
+      "column": 22
+    },
+    "NotesWindowViews.PreviewViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 289,
+      "column": 22
+    },
+    "NotesWindowViews.ShellViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 57,
+      "column": 22
+    },
+    "NotesWindowViews.SidebarViewModel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 67,
+      "column": 22
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/state/message": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 316,
+      "column": 19
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/command/cancel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 326,
+      "column": 18
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/command/confirm": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 323,
+      "column": 18
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/commandState/canCancel": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 326,
+      "column": 18
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/commandState/canConfirm": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 323,
+      "column": 18
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/commandState/isCancelExecuting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 326,
+      "column": 18
+    },
+    "NotesWindowViews.ConfirmNavigationViewModel/commandState/isConfirmExecuting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 323,
+      "column": 18
+    },
+    "NotesWindowViews.DocumentViewModel/state/activePane": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 192,
+      "column": 25
+    },
+    "NotesWindowViews.DocumentViewModel/state/currentPane": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 189,
+      "column": 53
+    },
+    "NotesWindowViews.DocumentViewModel/command/showEditor": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 197,
+      "column": 18
+    },
+    "NotesWindowViews.DocumentViewModel/command/showPreview": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 200,
+      "column": 18
+    },
+    "NotesWindowViews.DocumentViewModel/commandState/canShowEditor": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 197,
+      "column": 18
+    },
+    "NotesWindowViews.DocumentViewModel/commandState/canShowPreview": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 200,
+      "column": 18
+    },
+    "NotesWindowViews.DocumentViewModel/commandState/isShowEditorExecuting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 197,
+      "column": 18
+    },
+    "NotesWindowViews.DocumentViewModel/commandState/isShowPreviewExecuting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 200,
+      "column": 18
+    },
+    "NotesWindowViews.EditorViewModel/state/body": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 239,
+      "column": 41
+    },
+    "NotesWindowViews.EditorViewModel/state/isDirty": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 247,
+      "column": 9
+    },
+    "NotesWindowViews.EditorViewModel/state/savedMessage": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 253,
+      "column": 9
+    },
+    "NotesWindowViews.EditorViewModel/state/title": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 238,
+      "column": 41
+    },
+    "NotesWindowViews.EditorViewModel/setter/body": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 239,
+      "column": 41
+    },
+    "NotesWindowViews.EditorViewModel/setter/title": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 238,
+      "column": 41
+    },
+    "NotesWindowViews.HomeViewModel/state/greeting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 148,
+      "column": 19
+    },
+    "NotesWindowViews.HomeViewModel/state/recentNotes": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 152,
+      "column": 52
+    },
+    "NotesWindowViews.PreviewViewModel/state/excerpt": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 300,
+      "column": 19
+    },
+    "NotesWindowViews.PreviewViewModel/state/heading": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 299,
+      "column": 19
+    },
+    "NotesWindowViews.ShellViewModel/state/dialog": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 64,
+      "column": 47
+    },
+    "NotesWindowViews.ShellViewModel/state/main": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 63,
+      "column": 45
+    },
+    "NotesWindowViews.ShellViewModel/state/sidebar": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 62,
+      "column": 29
+    },
+    "NotesWindowViews.SidebarViewModel/state/selected": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 78,
+      "column": 19
+    },
+    "NotesWindowViews.SidebarViewModel/command/openHome": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 83,
+      "column": 18
+    },
+    "NotesWindowViews.SidebarViewModel/command/openNotes": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 86,
+      "column": 18
+    },
+    "NotesWindowViews.SidebarViewModel/commandState/canOpenHome": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 83,
+      "column": 18
+    },
+    "NotesWindowViews.SidebarViewModel/commandState/canOpenNotes": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 86,
+      "column": 18
+    },
+    "NotesWindowViews.SidebarViewModel/commandState/isOpenHomeExecuting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 83,
+      "column": 18
+    },
+    "NotesWindowViews.SidebarViewModel/commandState/isOpenNotesExecuting": {
+      "file": "../../../../examples/notes-view-first/ViewModels.cs",
+      "line": 86,
+      "column": 18
+    }
+  }
+}

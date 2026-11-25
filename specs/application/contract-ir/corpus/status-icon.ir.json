@@ -1,0 +1,89 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "StatusIconSample"
+  },
+  "views": [
+    {
+      "id": "StatusIconSample.CounterViewModel",
+      "name": "Counter",
+      "route": "counter",
+      "fingerprint": "0C5139B243CE41368857833A409BBF0B4B357F0987010DE12C67036485AF437D",
+      "kinds": [
+        "counter"
+      ],
+      "members": [
+        {
+          "name": "Count",
+          "wire": "count",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Increment",
+          "wire": "increment",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Hide",
+          "wire": "hide",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "StatusIconSample.CounterViewModel": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 9,
+      "column": 21
+    },
+    "StatusIconSample.CounterViewModel/state/count": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 27,
+      "column": 9
+    },
+    "StatusIconSample.CounterViewModel/command/hide": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "StatusIconSample.CounterViewModel/command/increment": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 21,
+      "column": 9
+    },
+    "StatusIconSample.CounterViewModel/commandState/canHide": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "StatusIconSample.CounterViewModel/commandState/canIncrement": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 21,
+      "column": 9
+    },
+    "StatusIconSample.CounterViewModel/commandState/isHideExecuting": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "StatusIconSample.CounterViewModel/commandState/isIncrementExecuting": {
+      "file": "../../../../examples/status-icon/CounterViewModel.cs",
+      "line": 21,
+      "column": 9
+    }
+  }
+}

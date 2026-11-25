@@ -1,0 +1,170 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "HostedShell"
+  },
+  "views": [
+    {
+      "id": "HostedShell.ShellViewModel",
+      "name": "Shell",
+      "route": "shell",
+      "fingerprint": "8665B66B00534C16F8C62A5ED364171B393FA9C85B6F06B29128C4911897AD36",
+      "kinds": [
+        "shell"
+      ],
+      "members": [
+        {
+          "name": "Language",
+          "wire": "language",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Theme",
+          "wire": "theme",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "CounterState",
+          "wire": "counterState",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "ChooseLanguage",
+          "wire": "chooseLanguage",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ChooseTheme",
+          "wire": "chooseTheme",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "OpenCounter",
+          "wire": "openCounter",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "StopCounter",
+          "wire": "stopCounter",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "HostedShell.ShellViewModel": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 12,
+      "column": 21
+    },
+    "HostedShell.ShellViewModel/state/counterState": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 74,
+      "column": 34
+    },
+    "HostedShell.ShellViewModel/state/language": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 69,
+      "column": 30
+    },
+    "HostedShell.ShellViewModel/state/theme": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 71,
+      "column": 27
+    },
+    "HostedShell.ShellViewModel/command/chooseLanguage": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 29,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/command/chooseTheme": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 37,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/command/openCounter": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 42,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/command/stopCounter": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 63,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/commandState/canOpenCounter": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 42,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/commandState/canStopCounter": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 63,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/commandState/isChooseLanguageExecuting": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 29,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/commandState/isChooseThemeExecuting": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 37,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/commandState/isOpenCounterExecuting": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 42,
+      "column": 9
+    },
+    "HostedShell.ShellViewModel/commandState/isStopCounterExecuting": {
+      "file": "../../../../examples/hosted-windows/Shell/ShellViewModel.cs",
+      "line": 63,
+      "column": 9
+    }
+  }
+}

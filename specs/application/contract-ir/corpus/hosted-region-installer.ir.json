@@ -1,0 +1,219 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "HostedInstaller"
+  },
+  "views": [
+    {
+      "id": "HostedInstaller.InstallerViewModel",
+      "name": "Installer",
+      "route": "installer",
+      "fingerprint": "FCDD6F4E08352ACB1E87AC946615016973FEBE8B25E1CC5D28BDC9EF82AA5CE5",
+      "kinds": [
+        "installer"
+      ],
+      "members": [
+        {
+          "name": "Design",
+          "wire": "design",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Step",
+          "wire": "step",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "CheckState",
+          "wire": "checkState",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "CheckTitle",
+          "wire": "checkTitle",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "CheckEvent",
+          "wire": "checkEvent",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "CheckNote",
+          "wire": "checkNote",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Next",
+          "wire": "next",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Back",
+          "wire": "back",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "RestartCheck",
+          "wire": "restartCheck",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ChooseDesign",
+          "wire": "chooseDesign",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "HostedInstaller.InstallerViewModel": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 12,
+      "column": 21
+    },
+    "HostedInstaller.InstallerViewModel/state/checkEvent": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 66,
+      "column": 32
+    },
+    "HostedInstaller.InstallerViewModel/state/checkNote": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 69,
+      "column": 19
+    },
+    "HostedInstaller.InstallerViewModel/state/checkState": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 60,
+      "column": 32
+    },
+    "HostedInstaller.InstallerViewModel/state/checkTitle": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 63,
+      "column": 32
+    },
+    "HostedInstaller.InstallerViewModel/state/design": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 53,
+      "column": 28
+    },
+    "HostedInstaller.InstallerViewModel/state/step": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 56,
+      "column": 26
+    },
+    "HostedInstaller.InstallerViewModel/command/back": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 42,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/command/chooseDesign": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 45,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/command/next": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 40,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/command/restartCheck": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 44,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/canBack": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 42,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/canNext": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 40,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/canRestartCheck": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 44,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/isBackExecuting": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 42,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/isChooseDesignExecuting": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 45,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/isNextExecuting": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 40,
+      "column": 9
+    },
+    "HostedInstaller.InstallerViewModel/commandState/isRestartCheckExecuting": {
+      "file": "../../../../examples/hosted-region/Installer/InstallerViewModel.cs",
+      "line": 44,
+      "column": 9
+    }
+  }
+}

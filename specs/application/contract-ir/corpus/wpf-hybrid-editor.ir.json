@@ -1,0 +1,159 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "HybridNotes.Model"
+  },
+  "views": [
+    {
+      "id": "HybridNotes.EditorViewModel",
+      "name": "Editor",
+      "route": "editor",
+      "fingerprint": "3EDB76E7F7CE7BD4599A185B07F1B1E659EAA667FDEAB34B0406CB64EDEE83D3",
+      "kinds": [
+        "editor"
+      ],
+      "members": [
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "ValidationMessage",
+          "wire": "validationMessage",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Error",
+          "wire": "error",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Status",
+          "wire": "status",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "EditorViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Body",
+          "wire": "body",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "EditorViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "SaveCancel",
+          "wire": "saveCancel",
+          "doc": "Cancels the running `save` call."
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "HybridNotes.EditorViewModel": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 10,
+      "column": 29
+    },
+    "HybridNotes.EditorViewModel/state/body": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 40,
+      "column": 20
+    },
+    "HybridNotes.EditorViewModel/state/error": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 47,
+      "column": 27
+    },
+    "HybridNotes.EditorViewModel/state/isDirty": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 42,
+      "column": 17
+    },
+    "HybridNotes.EditorViewModel/state/status": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 48,
+      "column": 28
+    },
+    "HybridNotes.EditorViewModel/state/title": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 37,
+      "column": 20
+    },
+    "HybridNotes.EditorViewModel/state/validationMessage": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 43,
+      "column": 19
+    },
+    "HybridNotes.EditorViewModel/setter/body": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 40,
+      "column": 20
+    },
+    "HybridNotes.EditorViewModel/setter/title": {
+      "file": "../../../../examples/wpf-hybrid-editor/Model/EditorViewModel.cs",
+      "line": 37,
+      "column": 20
+    }
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "FirstWindow"
+  },
+  "views": [
+    {
+      "id": "FirstWindow.CounterViewModel",
+      "name": "Counter",
+      "route": "counter",
+      "fingerprint": "EE069E606CEB12AB893E2F2BA03D2E9AEA82E654B2A56498191DDB2F6649D735",
+      "kinds": [
+        "counter"
+      ],
+      "members": [
+        {
+          "name": "Count",
+          "wire": "count",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Step",
+          "wire": "step",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "settable": true,
+          "declaringType": "CounterViewModel",
+          "checked": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Increment",
+          "wire": "increment"
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "FirstWindow.CounterViewModel": {
+      "file": "../../../../examples/first-window/CounterViewModel.cs",
+      "line": 6,
+      "column": 29
+    },
+    "FirstWindow.CounterViewModel/state/count": {
+      "file": "../../../../examples/first-window/CounterViewModel.cs",
+      "line": 11,
+      "column": 9
+    },
+    "FirstWindow.CounterViewModel/state/step": {
+      "file": "../../../../examples/first-window/CounterViewModel.cs",
+      "line": 15,
+      "column": 38
+    },
+    "FirstWindow.CounterViewModel/setter/step": {
+      "file": "../../../../examples/first-window/CounterViewModel.cs",
+      "line": 15,
+      "column": 38
+    },
+    "FirstWindow.CounterViewModel/command/increment": {
+      "file": "../../../../examples/first-window/CounterViewModel.cs",
+      "line": 18,
+      "column": 18
+    },
+    "FirstWindow.CounterViewModel/commandState/canIncrement": {
+      "file": "../../../../examples/first-window/CounterViewModel.cs",
+      "line": 18,
+      "column": 18
+    }
+  }
+}

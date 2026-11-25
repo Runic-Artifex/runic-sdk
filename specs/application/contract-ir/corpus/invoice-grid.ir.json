@@ -1,0 +1,243 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "InvoiceGrid"
+  },
+  "views": [
+    {
+      "id": "InvoiceGrid.InvoiceViewModel",
+      "name": "Invoice",
+      "route": "invoice",
+      "fingerprint": "F408C558ACE53AE2C58577D42C1413EC9B87B79B6A588FA8F617066757875891",
+      "kinds": [
+        "invoice"
+      ],
+      "doc": "An invoice: an address, editable lines and their total.",
+      "validation": true,
+      "members": [
+        {
+          "name": "Address",
+          "wire": "address",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "InvoiceGrid.InvoiceAddress"
+            }
+          },
+          "settable": true,
+          "declaringType": "InvoiceViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "street"
+              ],
+              "constraints": {
+                "required": true,
+                "maxLength": 80
+              }
+            },
+            {
+              "path": [
+                "postalCode"
+              ],
+              "constraints": {
+                "required": true,
+                "maxLength": 10
+              }
+            },
+            {
+              "path": [
+                "city"
+              ],
+              "constraints": {
+                "required": true,
+                "maxLength": 60
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lines",
+          "wire": "lines",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "InvoiceGrid.InvoiceLine"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "product"
+              ]
+            },
+            {
+              "path": [
+                "quantity"
+              ]
+            },
+            {
+              "path": [
+                "price"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Total",
+          "wire": "total",
+          "doc": "The sum of the lines, recomputed by `UpdateLine`.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "AddLine",
+          "wire": "addLine"
+        },
+        {
+          "name": "RemoveLine",
+          "wire": "removeLine",
+          "parameter": "id",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "types": {
+    "InvoiceGrid.InvoiceAddress": {
+      "kind": "object",
+      "name": {
+        "source": "InvoiceGrid.InvoiceAddress",
+        "base": "InvoiceAddress",
+        "qualifiers": [
+          "InvoiceGrid"
+        ]
+      },
+      "doc": "The billing address. The page edits each member as its own field: `InvoiceFields.address.street`.",
+      "members": [
+        {
+          "wire": "street",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "postalCode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "city",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "InvoiceGrid.InvoiceLine": {
+      "kind": "object",
+      "name": {
+        "source": "InvoiceGrid.InvoiceLine",
+        "base": "InvoiceLine",
+        "qualifiers": [
+          "InvoiceGrid"
+        ]
+      },
+      "doc": "One line of the invoice: an immutable row that the page edits cell by cell (`InvoiceFields.lines.at(id).quantity`). A line reports its own errors, which the page shows at the cell.",
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "product",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "quantity",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "price",
+          "type": {
+            "kind": "decimal"
+          }
+        }
+      ]
+    }
+  },
+  "sources": {
+    "InvoiceGrid.InvoiceViewModel": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 40,
+      "column": 29
+    },
+    "InvoiceGrid.InvoiceViewModel/state/address": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 45,
+      "column": 35
+    },
+    "InvoiceGrid.InvoiceViewModel/state/lines": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 48,
+      "column": 46
+    },
+    "InvoiceGrid.InvoiceViewModel/state/total": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 56,
+      "column": 19
+    },
+    "InvoiceGrid.InvoiceViewModel/setter/address": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 45,
+      "column": 35
+    },
+    "InvoiceGrid.InvoiceViewModel/command/addLine": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 72,
+      "column": 18
+    },
+    "InvoiceGrid.InvoiceViewModel/command/removeLine": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 79,
+      "column": 18
+    },
+    "InvoiceGrid.InvoiceViewModel/commandState/canAddLine": {
+      "file": "../../../../examples/invoice-grid/InvoiceViewModel.cs",
+      "line": 72,
+      "column": 18
+    }
+  }
+}
