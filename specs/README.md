@@ -8,7 +8,8 @@ The .NET designs of the native platform services are not contracts; they are in
 
 - [Desktop](desktop): native transport contract and conformance vectors, and the [host protocol](desktop/host-protocol.md)
   between a host application and the guest application whose windows it shows.
-- [Assets](assets): archive format decisions.
+- [Assets](assets): the [archive format and its reader rules](assets/archive-v1.md), the manifest schema, format
+  decisions and the [archive vectors](assets/vectors/README.md).
 - [Application](application): the Runic Application Views protocol between a producer (the backend of a window) and
   a client (the page), its value types and canonical form, and its [conformance corpus](application/conformance).
 

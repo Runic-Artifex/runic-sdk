@@ -72,8 +72,10 @@ asset when it is first opened, so a large frontend no longer delays startup
 part of the assembly that holds the application's code, and the build checked
 it when it packed it (the packer reads back every archive it writes) or, for
 `RunicAssetsEmbeddedArchive`, before it embedded it (`RAS2006`). An asset that
-inflates to another length, or whose ZIP entry is damaged, fails to open with
-`InvalidDataException`; `ValidateAsync` checks every digest on demand.
+inflates to another length, whose ZIP entry is damaged, or whose bytes do not
+match its entry's CRC-32 (since 0.24) fails to open with
+`InvalidDataException`, so a damaged entry is never served; `ValidateAsync`
+checks every digest on demand.
 `AssetArchive.Read` and `ReadAsync`, for an archive file loaded at run time,
 still inflate and check every asset before they return.
 
@@ -244,7 +246,13 @@ archive without duplicate content is still written as `runic.assets.archive/1`.
 `AssetArchive.Inspect` returns an archive's schema version, its manifest and the
 SHA-256 digest of the canonical manifest bytes. Readers accept
 `runic.assets.archive/1` and `/2` and reject other archive versions; readers
-before 0.22 accept only `/1`. See the [archive specification](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/assets/archive-v1.md).
+before 0.22 accept only `/1`. Since 0.24 readers also reject an entry whose
+bytes do not match its CRC-32, an entry marked encrypted, a manifest that is not
+UTF-8 or has two members of the same name in one object, and a `cacheMode`
+other than the names `NoStore`, `Revalidate` and `Immutable`; archives that
+`AssetArchive.Write*` and the packer write are unaffected. See the
+[archive specification](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/assets/archive-v1.md)
+and its reader rules.
 
 For application integration, consume `IAssetSource.Manifest` directly
 for asset identity, SHA-256, entity tags, and cache metadata. Do not recreate a
