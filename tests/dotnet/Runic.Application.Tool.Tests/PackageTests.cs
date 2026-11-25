@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -62,6 +63,44 @@ internal sealed partial class ToolTests
         False(MacOSPackager.IsTransientDiskImageFailure(""), "a failure without output is not retried");
         Equal(60.0, MacOSPackager.DiskImageRetryDelays.Sum(static delay => delay.TotalSeconds));
         True(MacOSPackager.DiskImageRetryDelays.Zip(MacOSPackager.DiskImageRetryDelays.Skip(1)).All(static pair => pair.First < pair.Second), "the delays grow");
+    }
+
+    // sdk#1334: installing the GNOME SDK failed while Flathub's CDN broke a static delta download.
+    [Test, DisplayName("package flathub --build runs the dependency install once more after a download failure, and nothing else")]
+    public async Task PackageFlathubInstallRetries()
+    {
+        const string delta = "Error: Failed to update org.gnome.Sdk: While pulling runtime/org.gnome.Sdk/x86_64/50 from remote flathub: "
+            + "While fetching https://dl.flathub.org/repo/deltas/61/Cw/12: [92] Stream error in the HTTP/2 framing layer\n";
+        True(FlathubPackager.IsDownloadFailure(delta), "a broken delta download is retried");
+        True(FlathubPackager.IsDownloadFailure("error: [28] Timeout was reached\n"), "a curl error is retried");
+        True(FlathubPackager.IsDownloadFailure("error: Server returned status 503: Service Unavailable\n"), "an HTTP error is retried");
+        False(FlathubPackager.IsDownloadFailure("error: Error parsing manifest: org.example.Notes.yml\n"), "a manifest error is not retried");
+        False(FlathubPackager.IsDownloadFailure("error: No remote refs found for 'org.gnome.Sdk//49'\n"), "a missing runtime is not retried");
+        False(FlathubPackager.IsDownloadFailure(""), "a failure without output is not retried");
+        True(FlathubPackager.InstallRetryDelay > TimeSpan.Zero, "the retry pauses");
+
+        // A fake flatpak-builder: each call writes its standard error and fails, until the outcomes run out.
+        static Func<StringBuilder, CancellationToken, Task> Tool(List<int> calls, params string?[] failures) => (errors, _) =>
+        {
+            calls.Add(calls.Count + 1);
+            if (failures.ElementAtOrDefault(calls.Count - 1) is not { } failure) return Task.CompletedTask;
+            errors.Append(failure);
+            throw new DevDevelopmentException(PackageCodes.ToolFailed, "'flatpak-builder' exited with code 1.");
+        };
+
+        var once = new List<int>();
+        await FlathubPackager.RetryDownloadAsync(Tool(once, delta), TimeSpan.Zero, CancellationToken.None);
+        Equal(2, once.Count);
+
+        var twice = new List<int>();
+        Equal(PackageCodes.ToolFailed, (await ThrowsAsync<DevDevelopmentException>(() =>
+            FlathubPackager.RetryDownloadAsync(Tool(twice, delta, delta), TimeSpan.Zero, CancellationToken.None))).Code);
+        Equal(2, twice.Count);
+
+        var manifest = new List<int>();
+        await ThrowsAsync<DevDevelopmentException>(() =>
+            FlathubPackager.RetryDownloadAsync(Tool(manifest, "error: Error parsing manifest\n"), TimeSpan.Zero, CancellationToken.None));
+        Equal(1, manifest.Count);
     }
 
     [Test, DisplayName("package accepts file types and web link hosts every platform declares")]
