@@ -630,12 +630,17 @@ internal static class DoctorChecks
             : Warn("compatibility-set", $"No Runic package was selected by {Authority.Id}.", "Restore the generated Views Window project."));
     }
 
+    private static bool IsNewerLine(string actual, string train) =>
+        Version.TryParse(NormalizeVersion(actual), out Version? actualVersion) &&
+        Version.TryParse(NormalizeVersion(train), out Version? trainVersion) &&
+        LineOf(actual) != LineOf(train) && actualVersion > trainVersion;
+
     /// <summary>
     /// Checks the installed tool extensions that <c>dotnet runic &lt;name&gt;</c> runs, found as dispatch finds them
     /// from the project directory. Each reports its name, version and protocol with <c>--extension-info</c>, or only its
-    /// version with <c>--version</c> when it predates that option. Another protocol or another release line than the
-    /// compatibility set's fails, an older release of the train's line warns. Without an installed extension the check
-    /// passes: extensions are optional.
+    /// version with <c>--version</c> when it predates that option. Another protocol or an older release line than the
+    /// compatibility set's fails; an older release of the train's line, or a later line, warns. Without an installed
+    /// extension the check passes: extensions are optional.
     /// </summary>
     internal static async Task CheckExtensionsAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
         string dotnetHost, IDoctorRuntime runtime, CancellationToken cancellationToken)
@@ -680,9 +685,15 @@ internal static class DoctorChecks
                 warnings.Add($"{label} {info.Version} is older than {train.Name} {train.Version}, which {Authority.Id} was tested with");
                 remediation.Add($"Run '{update}'.");
             }
+            else if (IsNewerLine(info.Version, train.Version))
+            {
+                // Translations releases on its own between trains, as the compatibility-set check allows.
+                warnings.Add($"{label} {info.Version} is of a later line than {train.Name} {train.Version}, which {Authority.Id} was tested with");
+                remediation.Add($"Use the tested release with '{update}' if a command misbehaves.");
+            }
             else
             {
-                failures.Add($"{label} {info.Version} is not of the {LineOf(train.Version)} line of {train.Name} {train.Version}, which {Authority.Id} was tested with");
+                failures.Add($"{label} {info.Version} is older than the {LineOf(train.Version)} line of {train.Name} {train.Version}, which {Authority.Id} was tested with");
                 remediation.Add($"Run '{update}'.");
             }
         }

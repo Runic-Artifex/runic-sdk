@@ -215,6 +215,8 @@ internal sealed partial class ToolTests
         Equal<ExtensionInfo?>(null, ToolExtensions.ParseInfo("""{"name":"translations","version":"0.16.0"}"""));
         Equal<ExtensionInfo?>(null, ToolExtensions.ParseInfo("Unknown option '--extension-info'."));
         Equal<ExtensionInfo?>(new ExtensionInfo("translations", "0.15.1", null), ToolExtensions.ParseVersion(ToolExtensions.Translations, "0.15.1+0123abc\n"));
+        // The Translations tool's --version names itself first.
+        Equal<ExtensionInfo?>(new ExtensionInfo("translations", "0.15.1", null), ToolExtensions.ParseVersion(ToolExtensions.Translations, "runic-translations 0.15.1\n"));
         Equal<ExtensionInfo?>(null, ToolExtensions.ParseVersion(ToolExtensions.Translations, "runic-translations"));
     }
 
@@ -265,8 +267,14 @@ internal sealed partial class ToolTests
         DoctorCheck line = Check(mismatch, "extensions");
         Equal(DoctorStatus.Failure, line.Status);
         False(mismatch.IsHealthy, "Another release line fails doctor.");
-        Contains(line.Message, $"runic-translations (PATH) {otherLine} is not of the");
+        Contains(line.Message, $"runic-translations (PATH) {otherLine} is older than the");
         Contains(line.Remediation!, $"dotnet tool update dotnet-runic-translations --version {train}");
+
+        // Translations releases between trains, so a later line only warns, as the compatibility-set check does.
+        string laterLine = parsed.Major == 0 ? $"0.{parsed.Minor + 1}.0" : $"{parsed.Major + 1}.0.0";
+        DoctorCheck later = Check(InspectOnPath(Info(laterLine)), "extensions");
+        Equal(DoctorStatus.Warning, later.Status);
+        Contains(later.Message, "of a later line");
 
         DoctorCheck protocol = Check(InspectOnPath(Info(train, protocol: 2)), "extensions");
         Equal(DoctorStatus.Failure, protocol.Status);

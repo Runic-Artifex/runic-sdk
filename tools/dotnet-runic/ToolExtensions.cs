@@ -280,11 +280,14 @@ internal static class ToolExtensions
 
     /// <summary>
     /// Reads the first line of <c>--version</c>, the fallback for an extension released before
-    /// <c>--extension-info</c>; build metadata after <c>+</c> is dropped. Null when it is not a version.
+    /// <c>--extension-info</c>: its last word (<c>runic-translations 0.15.1</c>), without build metadata after
+    /// <c>+</c>. Null when it is not a version.
     /// </summary>
     internal static ExtensionInfo? ParseVersion(KnownExtension extension, string output)
     {
         string line = output.Trim().Split('\n', 2)[0].Trim();
+        int space = line.LastIndexOf(' ');
+        if (space >= 0) line = line[(space + 1)..];
         int metadata = line.IndexOf('+');
         if (metadata >= 0) line = line[..metadata];
         int prerelease = line.IndexOf('-');

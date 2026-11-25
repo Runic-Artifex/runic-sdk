@@ -452,10 +452,11 @@ Checks the tool extensions that `dotnet runic <name>` runs (see
 [Tool extensions](#tool-extensions)), found from the project directory as
 dispatch finds them. Each one reports its name, version and protocol with `--extension-info`,
 or only its version with `--version` when it predates that option. Fails for
-another extension protocol or another release line than the compatibility
-set's Translations release (minor version before 1.0), warns for an older
-release of that line or a tool that reports no version, and remediates with
-the `dotnet tool update` command. Passes when no extension is installed.
+another extension protocol or a release line older than the compatibility
+set's Translations release (minor version before 1.0). Warns for an older
+release of that line, for a later line (Translations releases between trains),
+or for a tool that reports no version. The remediation is the
+`dotnet tool update` command. Passes when no extension is installed.
 Added in 0.24.
 
 #### `views-package-versions`
