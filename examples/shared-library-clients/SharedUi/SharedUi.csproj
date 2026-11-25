@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- A client library: the build generates the TypeScript of the Views below once, into the shared-ui package,
+         with runic-clients.ts and runic-mocks.ts. It builds and copies no frontend, and applications that reference
+         it do not copy one either. -->
+    <RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../shared-ui</RunicApplicationFrontendDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <!-- Outside this repository: <PackageReference Include="Runic.Application.Views" Version="..." />. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
+  </ItemGroup>
+  <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+</Project>

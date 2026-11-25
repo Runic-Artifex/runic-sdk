@@ -1672,6 +1672,190 @@ The [First Window](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples
 [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views)
 examples exercise the packaged graph and generated client.
 
+## Share ViewModels and their clients through a library
+
+When several applications present the same ViewModels, such as an about dialog
+or a support menu, and share a frontend package of components for them, the
+library that holds the ViewModels can generate their TypeScript clients once,
+into that package (since 0.24). The applications import the clients from the
+package instead of generating their own copies, and a component in the package
+is typed by the same clients. One rule decides which side writes a ViewModel's
+TypeScript: **the assembly that declares its Views.**
+[`examples/shared-library-clients`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/shared-library-clients)
+is a library, a package and an application that maps both.
+
+### The library
+
+Set `RunicApplicationFrontendClientLibrary` and point the frontend directory at
+the package, or set `RunicApplicationFrontendGeneratedDirectory` to a folder
+inside it. Declare the Views of the ViewModels the library shares; applications
+that map the library declare none of their own:
+
+```xml
+<!-- SharedUi/SharedUi.csproj -->
+<PropertyGroup>
+  <RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>
+  <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../shared-ui</RunicApplicationFrontendDirectory>
+</PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="Runic.Application.Views" Version="<VERSION>" />
+</ItemGroup>
+```
+
+```csharp
+public sealed partial class AboutView : RunicView<AboutViewModel>;
+public sealed partial class SupportView : RunicView<SupportViewModel>;
+```
+
+The build writes the usual client, contract (`.contract.d.ts` with its map) and
+mock of each ViewModel to `shared-ui/src/generated/`, with `types.ts`, plus
+`runic-clients.ts`, which exports every client, shared client and named type and
+`runicClientContracts`, and `runic-mocks.ts`, which exports the mocks. A client
+library builds and copies no frontend by default, an application that
+references it does not copy its frontend to the application's web root, and a
+library without a View is `RUNICBRIDGE006`.
+
+### Its frontend package
+
+The package exports the generated barrel beside its own components, and lists
+`@runic-artifex/views` as a **peer** dependency, so the page loads one copy of
+the runtime, the application's:
+
+```json
+{
+  "name": "@acme/shared-ui",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./generated": "./src/generated/runic-clients.ts",
+    "./generated/mocks": "./src/generated/runic-mocks.ts"
+  },
+  "peerDependencies": { "@runic-artifex/views": "0.24.x" }
+}
+```
+
+A component imports the clients from its own generated folder, so a changed
+ViewModel is a type error in the package:
+
+```ts
+import type { AboutClient, AboutState } from "./generated/runic-clients.js";
+
+export function mountAboutPanel(host: HTMLElement, about: AboutClient): () => void { ... }
+```
+
+A component that writes a property and then runs a command should wait for the
+write: called without `await`, the command can reach .NET first and see the old
+value. Chain the command on the write's promise, or await pending field writes
+as a form does before Save.
+
+**A compiled package.** A package that ships TypeScript source, as above, needs
+nothing more. A package compiled with `tsc` to `dist/` must copy each
+`src/generated/*.contract.d.ts` and its `.contract.d.ts.map` to
+`dist/generated/` after `tsc`, because `tsc` does not copy `.d.ts` files to its
+output directory. Without them every client's `.d.ts` fails to resolve its
+contract: `TS2307` in a consumer that checks libraries, and, under
+`skipLibCheck`, which the templates set, client types that are silently `any`.
+Keep the two folders at the same depth, so that the maps' relative paths to the
+C# sources still resolve.
+
+### The application
+
+Reference the library and map its assembly to the specifier that the frontend
+imports its barrel by:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../SharedUi/SharedUi.csproj" />
+  <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/shared-ui/generated" />
+</ItemGroup>
+```
+
+- **What it still generates:** the C# Bridges of the library's ViewModels,
+  because its own ViewModels present them and its content switches construct
+  their Bridges, and `AddRunicViews()` registers the library's Views. Register
+  the library's ViewModels yourself, as any ViewModel.
+- **What it imports:** its generated folder has no client, contract or mock of
+  the library's ViewModels, and the first build with the item deletes the copies
+  an earlier build generated. Its own modules import the page functions and page
+  references from the specifier, in the client and in its `.contract.d.ts`:
+  ```ts
+  import { pageAbout } from "@acme/shared-ui/generated";
+  ```
+  The page imports the library's client types from there too, such as
+  `import type { SupportClient } from "@acme/shared-ui/generated"`. `types.ts`
+  declares only the named types of the application's own modules.
+- **Delete its own Views** of the library's ViewModels: a ViewModel's Views must
+  be in one assembly
+  ([`RUNICBRIDGE080`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge080)).
+  A mapped assembly that is not referenced or not built as a client library is
+  [`RUNICBRIDGE079`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge079),
+  a malformed item
+  [`RUNICBRIDGE082`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge082),
+  and a mapped library without a View the warning
+  [`RUNICBRIDGE083`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge083).
+
+### A stale package
+
+The application's generated folder also gets `runic-client-modules.ts`, which
+compares each library client's contract in the package that the frontend
+resolves with the one of the library build that the application compiles
+against. The application's modules that import the library bring it into the
+frontend's type check, so a package generated from another build of the library
+fails the build's type check:
+
+```text
+src/generated/runic-client-modules.ts(11,21): error TS2344: Type '"SharedUi.AboutViewModel:07B2…"' does not satisfy the constraint '"SharedUi.AboutViewModel:F1CA…"'.
+```
+
+The first contract is the package's, the second the library's. Rebuild the
+library, which regenerates the package's `generated/` folder, and then the
+package wherever the frontend gets it: a workspace link sees it at once; a
+compiled or published package needs its build, the copy step above and a new
+install. A ViewModel missing from the package is `TS2339` in the same file.
+
+At run time the production build of `@runic-artifex/views` does not compare a
+page's contract with the application's Bridge when the page connects, so the
+type check is the guard for a release build. The development build does compare
+them since 0.24 and fails the View's connection with a `contract` diagnostic
+([Development build](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#development-build)).
+
+### Resolving the package
+
+Install the package in the application's frontend, normally as a workspace
+dependency (`"@acme/shared-ui": "workspace:*"` in a Bun, pnpm or npm
+workspace) or as a published version. The specifier is any module specifier the
+frontend resolves, so a folder that is not a package also works through
+tsconfig `paths` and a matching Vite `resolve.alias`; the example does that,
+because nothing installs the examples' frontends inside the SDK repository.
+
+- A linked workspace package can resolve its own copy of
+  `@runic-artifex/views`, which would give the page two runtimes. Dedupe it in
+  Vite:
+  ```ts
+  export default defineConfig({ resolve: { dedupe: ["@runic-artifex/views"] } });
+  ```
+- The application's frontend build reruns when its generated files change, which
+  covers a rebuilt library. When the page bundles the package's own sources,
+  list them as an input so an edit to a component rebuilds the frontend too:
+  ```xml
+  <RunicApplicationFrontendInput Include="../shared-ui/src/**/*" />
+  ```
+
+### Not supported
+
+- **Transitive mapping.** A library ViewModel can present only ViewModels whose
+  Views the same library declares, because the library's client types its
+  pages; presenting the application's or another library's ViewModel is
+  [`RUNICBRIDGE081`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge081).
+  A client library that itself maps another library leaves the mapped modules
+  out of its own barrel.
+- **Shared clients with mixed owners.** A `[RunicSharedClient]` interface whose
+  implementers are owned by different assemblies, such as the application and a
+  library, is `RUNICBRIDGE081` too.
+- The application names the specifier with the item; it is not inferred from
+  the library.
+
 ## Threading: state after await
 
 A Window's ViewModels belong to its model context. The bridge reads state,
@@ -2497,6 +2681,8 @@ that import the library bring into the frontend's type check: when the package
 the frontend resolves was generated from another build of the library than the
 application compiles against, its contract differs and the type check fails
 with `TS2344`, naming both contracts. Rebuild the library and its package.
+[Share ViewModels and their clients through a library](#share-viewmodels-and-their-clients-through-a-library)
+is the full guide.
 
 Bridge generation turns on by default for a project that references
 `Runic.Application.Views` directly, references a host adapter
