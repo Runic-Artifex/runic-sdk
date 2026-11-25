@@ -118,6 +118,9 @@ internal static class ClientModules
     /// <summary>The client library that owns <paramref name="model"/>'s TypeScript, or null when the application does.</summary>
     internal static ClientModuleMapping? OwnerOf(Type model) => ModelOwners.GetValueOrDefault(model);
 
+    /// <summary>The client library that owns the generated module <paramref name="module"/>, or null when the application does.</summary>
+    internal static ClientModuleMapping? OwnerOfModule(string module) => ModuleOwners.GetValueOrDefault(module);
+
     /// <summary>True when a client library owns the generated module <paramref name="module"/>.</summary>
     internal static bool IsOwned(string module) => ModuleOwners.ContainsKey(module);
 

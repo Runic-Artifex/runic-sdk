@@ -18,8 +18,9 @@ internal static class BridgeGenerationCache
     // Version 3: generated TypeScript gained named types and XML documentation,
     // so outputs recorded by earlier generators must regenerate. Version 4:
     // generated content failures name their type, and warnings are recorded. Version 5: the development source map
-    // (sources.json) is an output. Version 6: each client has a contract .d.ts and its declaration map (#952).
-    private const int SchemaVersion = 6;
+    // (sources.json) is an output. Version 6: each client has a contract .d.ts and its declaration map (#952). Version 7:
+    // the contract IR (contract.ir.json) is an output.
+    private const int SchemaVersion = 7;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -182,7 +183,8 @@ internal static class BridgeGenerationCache
             || fileName.EndsWith(".View.g.cs", StringComparison.Ordinal)
             || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal)
             || string.Equals(fileName, ClientModules.LibraryMarkerFile, StringComparison.Ordinal)
-            || string.Equals(fileName, BridgeSourceMap.FileName, StringComparison.Ordinal);
+            || string.Equals(fileName, BridgeSourceMap.FileName, StringComparison.Ordinal)
+            || string.Equals(fileName, ContractIr.FileName, StringComparison.Ordinal);
     }
 
     // The TypeScript directory can be application source. Hand-written modules

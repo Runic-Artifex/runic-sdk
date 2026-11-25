@@ -4,6 +4,7 @@ using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Windows.Input;
 using Runic.Application.Views;
@@ -152,6 +153,7 @@ try
             }
             File.WriteAllText(Path.Combine(positional[2], "RunicBridge.NoViews.marker"), "");
             BridgeSourceMap.Remove(positional[2]);
+            ContractIr.Remove(positional[2]);
             Console.WriteLine($"{assembly.GetName().Name}: no Runic Window/View classes found; skipping Bridge generation.");
             return;
         }
@@ -298,6 +300,10 @@ try
                 .OrderBy(view => view.FullName, StringComparer.Ordinal));
         // The development source map, beside the generated C# in obj; recorded by the cache like the C#.
         BridgeSourceMap.Write(positional[2]);
+        // The contract IR (specs/application/contract-ir.md), beside it. A mapping that owns no View imports nothing.
+        ContractIr.Write(positional[2], ContractIr.Serialize(assembly.GetName().Name!, clientLibrary,
+            [.. clientModules.Where(mapping => models.Any(entry => ClientModules.OwnerOf(entry.Model) == mapping))],
+            SharedClients.ContractIr(ContractIr.PublishedAs), BridgeSourceMap.Serialize()));
         BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments, Diagnostics.Warnings);
     }
     else
@@ -786,7 +792,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     (Type Model, string Name)[]? knownModels = null,
     IReadOnlyDictionary<Type, List<Type>>? viewTypes = null)
 {
-    knownModels ??= [(model, shortName)];
+    var plan = PlanView(model, shortName, knownModels ?? [(model, shortName)], viewTypes);
+    // The View in the language-neutral contract IR (specs/application/contract-ir.md), written from the plan alone.
+    ContractIr.AddView(ContractIrView(plan));
+    return EmitView(plan, csharpPath, typescriptPath);
+}
+
+// Discovers and validates one ViewModel's Bridge contract (ViewPlan): what the C# and TypeScript emission and the
+// contract IR read. Reports problems by throwing; writes nothing.
+static ViewPlan PlanView(Type model, string shortName, (Type Model, string Name)[] knownModels,
+    IReadOnlyDictionary<Type, List<Type>>? viewTypes)
+{
     if (!typeof(INotifyPropertyChanged).IsAssignableFrom(model))
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
             $"{model.FullName} must implement INotifyPropertyChanged.", model);
@@ -811,20 +827,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}: state properties {string.Join(" and ", duplicateWireName.Select(property => property.Name))} share the generated wire name '{duplicateWireName.Key}'.",
             duplicateWireName.Last());
-    // [RunicSharedClient] (#839): the client parts of each member, for the shared clients of the interfaces the
-    // ViewModel implements. The declaration names the ViewModel's own types with SharedClients.Owner.
+    // [RunicSharedClient] (#839): the shared clients of the interfaces the ViewModel implements.
     var sharedClients = SharedClients.For(model);
-    void Shared(PropertyInfo owner, string key, string section, string declaration, string? documentation = null,
-        string? comparable = null, bool optional = false, IReadOnlyList<(string Module, string Type)>? imports = null, string? unsupported = null)
-    {
-        if (sharedClients.Count > 0)
-            SharedClients.Record(model, owner, new SharedClientPart(key, section, declaration, comparable ?? declaration, documentation,
-                optional, imports, unsupported));
-    }
-    foreach (var plan in interactions)
-        Shared(plan.Property, "unsupported", "", "", unsupported: "an interaction, which a shared client does not include. Remove it from the interface.");
-    foreach (var plan in requests)
-        Shared(plan.Property, "unsupported", "", "", unsupported: "a view request, which a shared client does not include. Remove it from the interface.");
     var nullability = new NullabilityInfoContext();
     if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0 && requests.Length == 0)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
@@ -969,9 +973,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         valueProperties.Add(property, valueGraph);
     }
-    // Whether the page sets the property: a public setter, unless the property holds a RunicBlob (blobs/1).
-    bool PageSettable(PropertyInfo property) => property.SetMethod?.IsPublic == true
-        && !(valueProperties.TryGetValue(property, out var graph) && graph.Nodes.Any(node => node.Kind == BridgeWireKind.Blob));
+    bool PageSettable(PropertyInfo property) => ViewPlan.IsPageSettable(property, valueProperties);
     var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
     foreach (var property in properties)
     {
@@ -1029,20 +1031,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         && valueProperties.TryGetValue(property, out var graph) && graph.Root.Kind == BridgeWireKind.String).ToArray();
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0 || regionCollections.Count > 0;
     if (viewTypes is not null) WarnContentWithoutView(model, contentProperties, contentCollections, regionSlots, viewTypes);
-    // A region slot presents its Current, whose nullability (always nullable)
-    // is the slot's wire and TypeScript nullability.
-    string ContentAccess(PropertyInfo property) =>
-        regionSlots.Contains(property) ? $"vm.{property.Name}?.Current" : $"vm.{property.Name}";
-    // A selection slot's wire value: SelectedIndex, or null for -1 and for a null selection.
-    static string SelectionIndex(PropertyInfo property) =>
-        $"(vm.{property.Name} is {{ SelectedIndex: var index }} && index >= 0 ? index : (int?)null)";
-    // DeclaredOnly: NavigationRegion<T>.Current hides the non-generic base's object-typed Current.
-    bool IsNullableContent(PropertyInfo property) => (regionSlots.Contains(property)
-        ? nullability.Create(property.PropertyType.GetProperty("Current", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)!)
-        : nullability.Create(property)).ReadState == NullabilityState.Nullable;
     var contentBindings = contentProperties.Concat(contentCollections).Concat(regionCollections).ToArray();
     ClientModules.CheckContent(model, contentBindings);
-    var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     var commandSources = commands.ToDictionary(command => command, command => CommandSourceMethod(model, command));
     foreach (var command in commands)
@@ -1116,12 +1106,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         && getter.GetBaseDefinition() == baseGetter.GetBaseDefinition() && getter != baseGetter);
     ApplyOperationRetirement(model, commands, commandPlans);
     ApplyOperationClose(model, commands, commandPlans);
-    // D072.13: a development-only state property or command ([RunicDevelopmentOnly]) is left out of a trimmed or NativeAOT
-    // publish; its table records and arms are marked, and the client describes it as possibly absent or unavailable.
-    // RUNICBRIDGE072 where the attribute has no effect: an interaction or view request has no such form.
-    bool DevelopmentOnly(PropertyInfo member) => commandPlans.ContainsKey(member)
-        ? BridgeCommandSources.IsDevelopmentOnly(model, member)
-        : member.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null;
+    // D072.13: a development-only state property or command ([RunicDevelopmentOnly], ViewPlan.DevelopmentOnly) is left
+    // out of a trimmed or NativeAOT publish. RUNICBRIDGE072 where the attribute has no effect: an interaction or view
+    // request has no such form.
     foreach (var member in interactions.Select(plan => plan.Property).Concat(requests.Select(plan => plan.Property)))
         if (member.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null)
             Diagnostics.Warn(BridgeDiagnosticCodes.DevelopmentOnly,
@@ -1140,20 +1127,6 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     + "; it has no effect here.", member);
     var scopedCommands = commands.Where(command => BridgeCommandSources.IsPresentationScoped(model, command))
         .Select(command => LowerFirst(command.Name[..^"Command".Length])).ToArray();
-    var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
-    {
-        var plan = commandPlans[command];
-        return new OperationTypeScriptPlan(command.Name[..^"Command".Length],
-            plan.InputGraph?.TypeScriptType() ?? "never",
-            plan.ResultGraph?.TypeScriptType() ?? "void",
-            plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined",
-            plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
-            plan.HasArgument,
-            plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
-            plan.ParameterName,
-            plan.FailureGraph?.TypeScriptType(),
-            plan.FailureGraph?.EmitTypeScriptDecoder("value"));
-    }).ToArray();
 
     if (shortName.Length == 0 || !shortName.All(char.IsLetterOrDigit) || !char.IsLetter(shortName[0]))
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
@@ -1178,7 +1151,6 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // without reflection.
     var checkedProperties = properties
         .Where(property => PageSettable(property) && valueProperties.ContainsKey(property)).ToArray();
-    var needsCheckedWriter = checkedProperties.Length > 0;
     // field-paths/1: the field paths below settable object members and below the rows of editable collections.
     var nestedPaths = checkedProperties
         .Where(property => valueProperties[property].Root.Kind == BridgeWireKind.Dto)
@@ -1198,6 +1170,131 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         checkedProperties, WireName, hasErrors, hasValidation);
     // Interactions and view requests are attached to the presentations of a WindowContentSession.
     var presented = interactions.Length > 0 || requests.Length > 0;
+    return new ViewPlan
+    {
+        Model = model,
+        ShortName = shortName,
+        Prefix = prefix,
+        KnownModels = knownModels,
+        ViewTypes = viewTypes,
+        ContractFingerprint = contractFingerprint,
+        Nullability = nullability,
+        Interactions = interactions,
+        Requests = requests,
+        Commands = commands,
+        Properties = properties,
+        SharedClients = sharedClients,
+        ContentProperties = contentProperties,
+        ContentCollections = contentCollections,
+        RegionSlots = regionSlots,
+        SelectionSlots = selectionSlots,
+        RegionCollections = regionCollections,
+        ContentBindings = contentBindings,
+        ValueProperties = valueProperties,
+        QueryCollections = queryCollections,
+        IncrementalCollections = incrementalCollections,
+        RowEditors = rowEditors,
+        TextFields = textFields,
+        TextMembers = textMembers,
+        HasContent = hasContent,
+        CommandPlans = commandPlans,
+        CommandSources = commandSources,
+        ScopedCommands = scopedCommands,
+        HasErrors = hasErrors,
+        ValidationContextFlavors = validationContextFlavors,
+        HasValidation = hasValidation,
+        CheckedProperties = checkedProperties,
+        NestedPaths = nestedPaths,
+        RowPaths = rowPaths,
+        HasFieldPaths = hasFieldPaths,
+        UsesUploads = usesUploads,
+        Presented = presented,
+    };
+}
+
+// Emits one planned ViewModel's C# Bridge and its TypeScript client modules (through TypeScriptModules). Returns true
+// when the generated bridge requires a WindowContentSession.
+static bool EmitView(ViewPlan view, string csharpPath, string typescriptPath)
+{
+    var model = view.Model;
+    var shortName = view.ShortName;
+    var prefix = view.Prefix;
+    var knownModels = view.KnownModels;
+    var viewTypes = view.ViewTypes;
+    var contractFingerprint = view.ContractFingerprint;
+    var nullability = view.Nullability;
+    var interactions = view.Interactions;
+    var requests = view.Requests;
+    var commands = view.Commands;
+    var properties = view.Properties;
+    var sharedClients = view.SharedClients;
+    var contentProperties = view.ContentProperties;
+    var contentCollections = view.ContentCollections;
+    var regionSlots = view.RegionSlots;
+    var selectionSlots = view.SelectionSlots;
+    var regionCollections = view.RegionCollections;
+    var contentBindings = view.ContentBindings;
+    var valueProperties = view.ValueProperties;
+    var queryCollections = view.QueryCollections;
+    var incrementalCollections = view.IncrementalCollections;
+    var rowEditors = view.RowEditors;
+    var textFields = view.TextFields;
+    var textMembers = view.TextMembers;
+    var hasContent = view.HasContent;
+    var commandPlans = view.CommandPlans;
+    var commandSources = view.CommandSources;
+    var scopedCommands = view.ScopedCommands;
+    var hasErrors = view.HasErrors;
+    var validationContextFlavors = view.ValidationContextFlavors;
+    var hasValidation = view.HasValidation;
+    var checkedProperties = view.CheckedProperties;
+    var nestedPaths = view.NestedPaths;
+    var rowPaths = view.RowPaths;
+    var hasFieldPaths = view.HasFieldPaths;
+    var usesUploads = view.UsesUploads;
+    var presented = view.Presented;
+    var fullType = $"global::{model.FullName}";
+    var needsCheckedWriter = checkedProperties.Length > 0;
+    bool PageSettable(PropertyInfo property) => view.PageSettable(property);
+    // D072.13: a development-only member's table records and arms are marked, and the client describes it as possibly
+    // absent or unavailable.
+    bool DevelopmentOnly(PropertyInfo member) => view.DevelopmentOnly(member);
+    bool IsNullableContent(PropertyInfo property) => view.IsNullableContent(property);
+    // A region slot presents its Current, whose nullability (always nullable)
+    // is the slot's wire and TypeScript nullability.
+    string ContentAccess(PropertyInfo property) =>
+        regionSlots.Contains(property) ? $"vm.{property.Name}?.Current" : $"vm.{property.Name}";
+    // A selection slot's wire value: SelectedIndex, or null for -1 and for a null selection.
+    static string SelectionIndex(PropertyInfo property) =>
+        $"(vm.{property.Name} is {{ SelectedIndex: var index }} && index >= 0 ? index : (int?)null)";
+    // [RunicSharedClient] (#839): the client parts of each member, for the shared clients of the interfaces the
+    // ViewModel implements. The declaration names the ViewModel's own types with SharedClients.Owner.
+    void Shared(PropertyInfo owner, string key, string section, string declaration, string? documentation = null,
+        string? comparable = null, bool optional = false, IReadOnlyList<(string Module, string Type)>? imports = null, string? unsupported = null)
+    {
+        if (sharedClients.Count > 0)
+            SharedClients.Record(model, owner, new SharedClientPart(key, section, declaration, comparable ?? declaration, documentation,
+                optional, imports, unsupported));
+    }
+    foreach (var plan in interactions)
+        Shared(plan.Property, "unsupported", "", "", unsupported: "an interaction, which a shared client does not include. Remove it from the interface.");
+    foreach (var plan in requests)
+        Shared(plan.Property, "unsupported", "", "", unsupported: "a view request, which a shared client does not include. Remove it from the interface.");
+    var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
+    {
+        var plan = commandPlans[command];
+        return new OperationTypeScriptPlan(command.Name[..^"Command".Length],
+            plan.InputGraph?.TypeScriptType() ?? "never",
+            plan.ResultGraph?.TypeScriptType() ?? "void",
+            plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined",
+            plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
+            plan.HasArgument,
+            plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
+            plan.ParameterName,
+            plan.FailureGraph?.TypeScriptType(),
+            plan.FailureGraph?.EmitTypeScriptDecoder("value"));
+    }).ToArray();
+
 
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
@@ -2372,7 +2469,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (root.Kind is BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16
             or BridgeWireKind.Int32 or BridgeWireKind.UInt32) traits += ", integer: true";
         if (root.Kind == BridgeWireKind.DateTimeOffset) traits += ", offset: true";
-        if (FieldConstraints(property) is { } constraints) traits += $", constraints: {constraints}";
+        if (FieldConstraintSet.Of(property)?.TypeScript() is { } constraints) traits += $", constraints: {constraints}";
         if (root.Kind == BridgeWireKind.Enum)
         {
             // The names .NET writes: the first declared name of each value, as the enum codec does.
@@ -2381,128 +2478,6 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 .Select(@case => JsonSerializer.Serialize(@case.WireName)))}]";
         }
         return traits;
-    }
-
-    // C8: the DataAnnotations a page can mirror on its input (`required`, `maxlength`, `min`, `max`, `pattern`). They
-    // describe the C# validation; .NET still validates.
-    static string? FieldConstraints(PropertyInfo property)
-    {
-        var parts = new List<string>();
-        static string Number(object value) => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
-        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RequiredAttribute>(true) is not null) parts.Add("required: true");
-        var stringLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.StringLengthAttribute>(true);
-        var minLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.MinLengthAttribute>(true)?.Length;
-        if (stringLength is { MinimumLength: > 0 } && (minLength is null || stringLength.MinimumLength > minLength)) minLength = stringLength.MinimumLength;
-        if (minLength is > 0) parts.Add($"minLength: {minLength}");
-        var maxLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.MaxLengthAttribute>(true)?.Length;
-        if (maxLength is <= 0) maxLength = null; // [MaxLength] without a length allows the most the store does.
-        if (stringLength is not null && (maxLength is null || stringLength.MaximumLength < maxLength)) maxLength = stringLength.MaximumLength;
-        if (maxLength is not null) parts.Add($"maxLength: {maxLength}");
-        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RangeAttribute>(true) is { } range)
-        {
-            // Numeric bounds are numbers. Decimal bounds (Range(typeof(decimal), "0", "9.99")) are their invariant text,
-            // and date and time bounds their ISO form, the forms an input's min and max take. A bound that does not
-            // read as its type is left out.
-            static string Bound(object value, Type operand)
-            {
-                var invariant = System.Globalization.CultureInfo.InvariantCulture;
-                var text = Convert.ToString(value, invariant) ?? "";
-                const System.Globalization.DateTimeStyles styles = System.Globalization.DateTimeStyles.None;
-                return value switch
-                {
-                    double d when double.IsInfinity(d) || double.IsNaN(d) => "",
-                    int or double => Number(value),
-                    _ when operand == typeof(decimal) => decimal.TryParse(text, System.Globalization.NumberStyles.Number, invariant, out var number)
-                        ? JsonSerializer.Serialize(number.ToString(invariant)) : "",
-                    _ when operand == typeof(DateOnly) => DateOnly.TryParse(text, invariant, styles, out var date)
-                        ? JsonSerializer.Serialize(date.ToString("yyyy-MM-dd", invariant)) : "",
-                    _ when operand == typeof(TimeOnly) => TimeOnly.TryParse(text, invariant, styles, out var time)
-                        ? JsonSerializer.Serialize(time.ToString("HH:mm:ss", invariant)) : "",
-                    _ when operand == typeof(DateTime) => DateTime.TryParse(text, invariant, styles, out var moment)
-                        ? JsonSerializer.Serialize(moment.TimeOfDay == TimeSpan.Zero ? moment.ToString("yyyy-MM-dd", invariant)
-                            : moment.ToString("yyyy-MM-ddTHH:mm:ss", invariant)) : "",
-                    _ when operand == typeof(DateTimeOffset) => DateTimeOffset.TryParse(text, invariant, styles, out var instant)
-                        ? JsonSerializer.Serialize(instant.ToString("yyyy-MM-ddTHH:mm:sszzz", invariant)) : "",
-                    _ when operand == typeof(string) || operand == typeof(int) || operand == typeof(double) => JsonSerializer.Serialize(text),
-                    _ => "",
-                };
-            }
-            var min = Bound(range.Minimum, range.OperandType);
-            var max = Bound(range.Maximum, range.OperandType);
-            if (min.Length != 0) parts.Add($"min: {min}");
-            if (max.Length != 0) parts.Add($"max: {max}");
-            if (range.MinimumIsExclusive) parts.Add("minExclusive: true");
-            if (range.MaximumIsExclusive) parts.Add("maxExclusive: true");
-        }
-        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RegularExpressionAttribute>(true) is { } regex
-            && SimplePattern(regex.Pattern))
-            // Relaxed escaping keeps + < > & readable; the text is TypeScript, not HTML.
-            parts.Add($"pattern: {JsonSerializer.Serialize(regex.Pattern, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })}");
-        return parts.Count == 0 ? null : "{ " + string.Join(", ", parts) + " }";
-    }
-
-    // A .NET pattern that a browser's pattern attribute reads the same way. Browsers compile it with the v flag, which
-    // rejects ( ) [ { } / | and a lone - inside a character class, and doubled punctuators such as && or --. Rejected
-    // too: inline options, named and balancing groups, lookbehind, the .NET-only anchors \A \Z \z \G, Unicode
-    // categories (\p, \P), named backreferences (\k), and \d \w \b (Unicode in .NET, ASCII in JavaScript).
-    static bool SimplePattern(string pattern)
-    {
-        var inClass = false;
-        var classOpen = -1;
-        // In a class: the previous item is one character, which a - can follow to make a range.
-        var single = false;
-        // In a class: the next character ends a range, so it cannot start another.
-        var rangeEnd = false;
-        for (var index = 0; index < pattern.Length; index++)
-        {
-            var character = pattern[index];
-            if (character == '\\')
-            {
-                if (++index >= pattern.Length || "AZzGpPkKdDwWbB".Contains(pattern[index], StringComparison.Ordinal)) return false;
-                if (inClass)
-                {
-                    single = !rangeEnd && pattern[index] is not ('s' or 'S');
-                    rangeEnd = false;
-                }
-                continue;
-            }
-            if (inClass)
-            {
-                if (character == '^' && index == classOpen + 1) continue;
-                if (character == ']')
-                {
-                    // []…] is a literal ] in .NET and an empty class in JavaScript.
-                    if (index == classOpen + 1 || index == classOpen + 2 && pattern[classOpen + 1] == '^') return false;
-                    inClass = false;
-                    continue;
-                }
-                if ("()[{}/|".Contains(character, StringComparison.Ordinal)) return false;
-                if (index + 1 < pattern.Length && pattern[index + 1] == character
-                    && "&!#$%*+,.:;<=>?@^`~-".Contains(character, StringComparison.Ordinal)) return false;
-                if (character == '-')
-                {
-                    if (!single || index + 1 >= pattern.Length || pattern[index + 1] == ']') return false;
-                    single = false;
-                    rangeEnd = true;
-                    continue;
-                }
-                single = !rangeEnd;
-                rangeEnd = false;
-                continue;
-            }
-            if (character == '[')
-            {
-                inClass = true;
-                classOpen = index;
-                single = rangeEnd = false;
-                continue;
-            }
-            if (character == '(' && index + 1 < pattern.Length && pattern[index + 1] == '?'
-                && !(index + 2 < pattern.Length && pattern[index + 2] is ':' or '=' or '!')) return false;
-        }
-        if (inClass) return false;
-        try { _ = new System.Text.RegularExpressions.Regex(pattern); } catch (ArgumentException) { return false; }
-        return true;
     }
 
     string TsPropertyType(PropertyInfo property) => valueProperties.TryGetValue(property, out var graph)
@@ -2532,6 +2507,155 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         return [.. defaults];
     }
+}
+
+// The View in the contract IR (specs/application/contract-ir.md), from its plan. Names are UpperCamelCase: the C#
+// member name with an uppercase first letter, which the emitter appends to set, write, can, start and recover.
+static JsonObject ContractIrView(ViewPlan view)
+{
+    var model = view.Model;
+    static string UpperFirst(string text) => char.ToUpperInvariant(text[0]) + text[1..];
+    static JsonObject Named(string name, string wire, string? doc)
+    {
+        var item = new JsonObject { ["name"] = UpperFirst(name), ["wire"] = wire };
+        if (!string.IsNullOrWhiteSpace(doc)) item["doc"] = doc;
+        return item;
+    }
+    JsonArray Pages(PropertyInfo slot, (Type Model, string Name)[] pages) => new([.. pages.Select(page => (JsonNode)new JsonObject
+    {
+        ["view"] = page.Model.FullName,
+        ["name"] = page.Name,
+        ["kind"] = PageKind(page.Name, ContractFor(slot)),
+    })]);
+    // field-paths/1: the paths below a settable object member or the rows of an editable collection, with the
+    // constraints of the member each path ends at.
+    static JsonArray FieldPaths(IEnumerable<BridgeFieldLeaf> leaves) => new([.. leaves.Select(leaf =>
+    {
+        var item = new JsonObject { ["path"] = new JsonArray([.. leaf.Path.Select(segment => (JsonNode)segment)]) };
+        if (FieldConstraintSet.Of(leaf.Chain[^1].Property) is { } constraints) item["constraints"] = constraints.Json();
+        return (JsonNode)item;
+    })]);
+
+    var members = new JsonArray();
+    foreach (var property in view.Properties)
+    {
+        var item = Named(property.Name, WireName(property), XmlDocumentation.Summary(property));
+        ContractIr.Publish(model, property, command: false, WireName(property));
+        if (view.ContentProperties.TryGetValue(property, out var pages))
+        {
+            item["kind"] = "content";
+            item["pages"] = Pages(property, pages);
+            if (view.IsNullableContent(property)) item["nullable"] = true;
+            if (view.RegionSlots.Contains(property)) item["region"] = true;
+        }
+        else if (view.ContentCollections.TryGetValue(property, out var collectionPages))
+        {
+            item["kind"] = "content-list";
+            item["pages"] = Pages(property, collectionPages);
+            if (view.IsNullableContent(property)) item["nullable"] = true;
+        }
+        else if (view.RegionCollections.TryGetValue(property, out var regionPages))
+        {
+            item["kind"] = "region-collection";
+            item["pages"] = Pages(property, regionPages);
+            item["pageCanClose"] = BridgeContractShape.RegionCollection(property)!.PageCanClose;
+        }
+        else if (view.QueryCollections.TryGetValue(property, out var query))
+        {
+            item["kind"] = "query-collection";
+            item["rows"] = ContractIr.Value(query.Rows);
+            // The mock's default key: a row member named Id or Key of the collection's key type.
+            if (query.Rows.Root.Element!.Members.FirstOrDefault(member => member.Property.Name is "Id" or "Key"
+                && member.Type.NonNullableType == query.Key && !member.Type.IsNullable) is { } defaultKey)
+                item["defaultKey"] = defaultKey.WireName;
+        }
+        else
+        {
+            var graph = view.ValueProperties[property];
+            item["kind"] = view.SelectionSlots.Contains(property) ? "selection" : "value";
+            item["value"] = ContractIr.Value(graph);
+            if (view.PageSettable(property))
+            {
+                item["settable"] = true;
+                item["declaringType"] = property.DeclaringType!.Name.Split('`')[0];
+            }
+            if (view.CheckedProperties.Contains(property))
+            {
+                item["checked"] = true;
+                if (FieldConstraintSet.Of(property) is { } constraints) item["constraints"] = constraints.Json();
+            }
+            if (view.TextMembers.Contains(property)) item["text"] = true;
+            if (view.TextFields.Contains(property)) item["appendOnlyText"] = true;
+            if (view.IncrementalCollections.TryGetValue(property, out var key))
+                item["collectionKey"] = graph.Root.Element!.Members.Single(member => member.Property == key).WireName;
+            if (view.RowEditors.ContainsKey(property)) item["rowEditor"] = true;
+            if (view.NestedPaths.TryGetValue(property, out var nested)) item["fieldPaths"] = FieldPaths(nested);
+            else if (view.RowPaths.TryGetValue(property, out var rows) && rows.Count > 0) item["fieldPaths"] = FieldPaths(rows);
+        }
+        if (view.DevelopmentOnly(property)) item["developmentOnly"] = true;
+        members.Add(item);
+    }
+
+    var commands = new JsonArray();
+    foreach (var command in view.Commands)
+    {
+        var plan = view.CommandPlans[command];
+        var name = command.Name[..^"Command".Length];
+        var item = Named(name, LowerFirst(name), CommandDocumentation(command, view.CommandSources[command], plan.Command));
+        ContractIr.Publish(model, command, command: true, LowerFirst(name));
+        if (plan.HasArgument) item["parameter"] = plan.ParameterName;
+        if (plan.InputGraph is { } input) item["input"] = ContractIr.Value(input);
+        else if (plan.HasStringArgument) item["input"] = ContractIr.UntypedString();
+        if (plan.ResultGraph is { } result) item["result"] = ContractIr.Value(result);
+        if (plan.FailureGraph is { } failure) item["failure"] = ContractIr.Value(failure);
+        if (plan.IsAsync) item["async"] = true;
+        if (plan.Command?.Cardinality is RunicCommandResultCardinality.Stream) item["stream"] = true;
+        if (plan.HasExecutionState) item["executionState"] = true;
+        if (plan.Key is not null) item["keyed"] = true;
+        if (view.ScopedCommands.Contains(LowerFirst(name))) item["scoped"] = true;
+        if (view.DevelopmentOnly(command)) item["developmentOnly"] = true;
+        commands.Add(item);
+    }
+
+    var ir = new JsonObject
+    {
+        ["id"] = model.FullName,
+        ["name"] = view.ShortName,
+        ["route"] = view.Prefix,
+        ["fingerprint"] = view.ContractFingerprint,
+        ["kinds"] = new JsonArray([.. (view.ViewTypes is not null && view.ViewTypes.TryGetValue(model, out var views)
+            ? views.Select(ContractFor) : [null]).Select(contract => (JsonNode)PageKind(view.ShortName, contract))]),
+    };
+    if (XmlDocumentation.Summary(model) is { } modelDoc) ir["doc"] = modelDoc;
+    // D072.12: a development-only ViewModel's Bridge is left out of a trimmed or NativeAOT publish.
+    if (model.GetCustomAttribute<RunicDevelopmentOnlyAttribute>(true) is not null) ir["developmentOnly"] = true;
+    // Application mode (#1318): a mapped client library owns the client of this View.
+    if (ClientModules.OwnerOf(model) is { } owner) ir["owner"] = owner.Assembly;
+    if (view.HasErrors) ir["memberErrors"] = true;
+    if (view.HasValidation) ir["validation"] = true;
+    if (view.UsesUploads) ir["uploads"] = true;
+    if (view.SharedClients.Count > 0)
+        ir["sharedClients"] = new JsonArray([.. view.SharedClients.Select(shared => (JsonNode)shared.Interface.FullName!)]);
+    ir["members"] = members;
+    ir["commands"] = commands;
+    if (view.Interactions.Length > 0)
+        ir["interactions"] = new JsonArray([.. view.Interactions.Select(plan =>
+        {
+            var item = Named(plan.Property.Name, LowerFirst(plan.Property.Name), XmlDocumentation.Summary(plan.Property));
+            item["contract"] = plan.ContractId;
+            item["input"] = ContractIr.Value(plan.Input);
+            item["output"] = ContractIr.Value(plan.Output);
+            return (JsonNode)item;
+        })]);
+    if (view.Requests.Length > 0)
+        ir["requests"] = new JsonArray([.. view.Requests.Select(plan =>
+        {
+            var item = Named(plan.Property.Name, LowerFirst(plan.Property.Name), XmlDocumentation.Summary(plan.Property));
+            item["contract"] = plan.ContractId;
+            item["input"] = ContractIr.Value(plan.Input);
+            return (JsonNode)item;
+        })]);
+    return ir;
 }
 
 // The root namespaces of the ReactiveUI.Validation flavors whose IValidatableViewModel one of the

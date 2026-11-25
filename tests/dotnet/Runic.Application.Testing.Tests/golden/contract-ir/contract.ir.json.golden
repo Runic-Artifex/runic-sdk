@@ -1,0 +1,2651 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.SharedInvoicesViewModel",
+      "name": "SharedInvoices",
+      "route": "sharedInvoices",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "sharedInvoices"
+      ],
+      "doc": "Invoices, with hand-written members.",
+      "sharedClients": [
+        "Runic.Application.Testing.Tests.ISharedResultPage"
+      ],
+      "members": [
+        {
+          "name": "Page",
+          "wire": "page",
+          "doc": "The page the component renders.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.SharedResultPage"
+            }
+          }
+        },
+        {
+          "name": "Filter",
+          "wire": "filter",
+          "doc": "The text that filters the page's elements.",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "SharedInvoicesViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "RunAction",
+          "wire": "runAction",
+          "doc": "Runs the action of the element with the id.",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.SharedOrdersViewModel",
+      "name": "SharedOrders",
+      "route": "sharedOrders",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "sharedOrders",
+        "sharedOrdersCompact"
+      ],
+      "doc": "Orders, with CommunityToolkit's generated members.",
+      "sharedClients": [
+        "Runic.Application.Testing.Tests.ISharedResultPage"
+      ],
+      "members": [
+        {
+          "name": "Page",
+          "wire": "page",
+          "doc": "The page the component renders.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.SharedResultPage"
+            }
+          }
+        },
+        {
+          "name": "Filter",
+          "wire": "filter",
+          "doc": "The text that filters the page's elements.",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "SharedOrdersViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "OpenOrders",
+          "wire": "openOrders",
+          "doc": "The number of open orders, which only this ViewModel publishes.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "RunAction",
+          "wire": "runAction",
+          "doc": "Runs the action of the element with the id.",
+          "parameter": "elementId",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.CatalogViewModel",
+      "name": "Catalog",
+      "route": "catalog",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "catalog"
+      ],
+      "members": [
+        {
+          "name": "Rows",
+          "wire": "rows",
+          "doc": "The catalog's rows.",
+          "kind": "query-collection",
+          "rows": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.CatalogRow"
+              }
+            }
+          },
+          "defaultKey": "id"
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "CatalogViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "SortById",
+          "wire": "sortById",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.NavDocumentsViewModel",
+      "name": "NavDocuments",
+      "route": "navDocuments",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "navDocuments"
+      ],
+      "doc": "Document tabs, CommunityToolkit flavor: a command opens a tab; the page selects and closes them.",
+      "members": [
+        {
+          "name": "Documents",
+          "wire": "documents",
+          "doc": "The open documents.",
+          "kind": "region-collection",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.ReactiveNavEditorViewModel",
+              "name": "ReactiveNavEditor",
+              "kind": "reactiveNavEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavEditorViewModel",
+              "name": "NavEditor",
+              "kind": "navEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavHomeViewModel",
+              "name": "NavHome",
+              "kind": "navHome"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavLogPageViewModel",
+              "name": "NavLogPage",
+              "kind": "navLogPage"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavTabbedPageViewModel",
+              "name": "NavTabbedPage",
+              "kind": "navTabbedPage"
+            }
+          ],
+          "pageCanClose": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Open",
+          "wire": "open",
+          "parameter": "title",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Navigation.NavigationOutcome"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.NavTabsViewModel",
+      "name": "NavTabs",
+      "route": "navTabs",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "navTabs"
+      ],
+      "members": [
+        {
+          "name": "Inbox",
+          "wire": "inbox",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.ReactiveNavEditorViewModel",
+              "name": "ReactiveNavEditor",
+              "kind": "reactiveNavEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavEditorViewModel",
+              "name": "NavEditor",
+              "kind": "navEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavHomeViewModel",
+              "name": "NavHome",
+              "kind": "navHome"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavLogPageViewModel",
+              "name": "NavLogPage",
+              "kind": "navLogPage"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavTabbedPageViewModel",
+              "name": "NavTabbedPage",
+              "kind": "navTabbedPage"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        },
+        {
+          "name": "Archive",
+          "wire": "archive",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.ReactiveNavEditorViewModel",
+              "name": "ReactiveNavEditor",
+              "kind": "reactiveNavEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavEditorViewModel",
+              "name": "NavEditor",
+              "kind": "navEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavHomeViewModel",
+              "name": "NavHome",
+              "kind": "navHome"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavLogPageViewModel",
+              "name": "NavLogPage",
+              "kind": "navLogPage"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavTabbedPageViewModel",
+              "name": "NavTabbedPage",
+              "kind": "navTabbedPage"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        },
+        {
+          "name": "Tabs",
+          "wire": "tabs",
+          "doc": "The shown tab.",
+          "kind": "selection",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32",
+              "nullable": true
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "SelectTab",
+          "wire": "selectTab",
+          "parameter": "index",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Navigation.NavigationOutcome"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.BlobViewModel",
+      "name": "Blob",
+      "route": "blob",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "blob"
+      ],
+      "uploads": true,
+      "members": [
+        {
+          "name": "Avatar",
+          "wire": "avatar",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "blob",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "name": "Attachments",
+          "wire": "attachments",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.BlobAttachment"
+              }
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Attach",
+          "wire": "attach",
+          "parameter": "file",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "upload"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Export",
+          "wire": "export",
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "blob"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.DataShapeViewModel",
+      "name": "DataShape",
+      "route": "dataShape",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "dataShape"
+      ],
+      "members": [
+        {
+          "name": "ExactId",
+          "wire": "exact-id",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "int64"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Amount",
+          "wire": "amount",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "decimal"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Day",
+          "wire": "day",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "local-date"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "When",
+          "wire": "when",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "date-time"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Duration",
+          "wire": "duration",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "duration"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "OptionalItem",
+          "wire": "optionalItem",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DataShapeItem",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "source"
+              ]
+            },
+            {
+              "path": [
+                "__proto__"
+              ]
+            },
+            {
+              "path": [
+                "retry-after"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Optional",
+          "wire": "optional",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "int32",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Items",
+          "wire": "items",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.DataShapeItem"
+              }
+            }
+          }
+        },
+        {
+          "name": "OptionalItems",
+          "wire": "optionalItems",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.DataShapeItem",
+                "nullable": true
+              }
+            }
+          }
+        },
+        {
+          "name": "Groups",
+          "wire": "groups",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.DataShapeGroup"
+              }
+            }
+          }
+        },
+        {
+          "name": "Lookup",
+          "wire": "lookup",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "map",
+              "value": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.DataShapeItem"
+              }
+            }
+          }
+        },
+        {
+          "name": "Payload",
+          "wire": "payload",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DataShapePayload"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Money",
+          "wire": "money",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "custom",
+              "codec": "Runic.Application.Testing.Tests.DataShapeMoneyCodec",
+              "typescript": {
+                "type": "string",
+                "decode": "bridgeWire.decimal($value)",
+                "encode": "$value"
+              }
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Whole",
+          "wire": "whole",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DataShapeItem"
+            }
+          },
+          "settable": true,
+          "declaringType": "DataShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "source"
+              ]
+            },
+            {
+              "path": [
+                "__proto__"
+              ]
+            },
+            {
+              "path": [
+                "retry-after"
+              ]
+            }
+          ]
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.CodegenShapeViewModel",
+      "name": "CodegenShape",
+      "route": "codegenShape",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "codegenShape"
+      ],
+      "members": [
+        {
+          "name": "Mode",
+          "wire": "mode",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenShapeMode"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Numbers",
+          "wire": "numbers",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "int32"
+              }
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "OptionalNames",
+          "wire": "optionalNames",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "string",
+                "nullable": true
+              },
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Origin",
+          "wire": "origin",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenPoint",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "x"
+              ]
+            },
+            {
+              "path": [
+                "y"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Corner",
+          "wire": "corner",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenPoint"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "x"
+              ]
+            },
+            {
+              "path": [
+                "y"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Tags",
+          "wire": "tags",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Labels",
+          "wire": "labels",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "string",
+                "nullable": true
+              }
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Editable",
+          "wire": "editable",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Stamp",
+          "wire": "stamp",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "offset-date-time"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "When",
+          "wire": "when",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "date-time"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "At",
+          "wire": "at",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "local-time"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Required",
+          "wire": "required",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "value"
+              ]
+            },
+            {
+              "path": [
+                "fallback"
+              ]
+            },
+            {
+              "path": [
+                "items"
+              ]
+            },
+            {
+              "path": [
+                "values"
+              ]
+            },
+            {
+              "path": [
+                "map"
+              ]
+            },
+            {
+              "path": [
+                "inner"
+              ]
+            },
+            {
+              "path": [
+                "inner",
+                "value"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Optional",
+          "wire": "optional",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]#2"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "value"
+              ]
+            },
+            {
+              "path": [
+                "fallback"
+              ]
+            },
+            {
+              "path": [
+                "items"
+              ]
+            },
+            {
+              "path": [
+                "values"
+              ]
+            },
+            {
+              "path": [
+                "map"
+              ]
+            },
+            {
+              "path": [
+                "inner"
+              ]
+            },
+            {
+              "path": [
+                "inner",
+                "value"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Derived",
+          "wire": "derived",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenDerived`1[System.String]"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "inherited"
+              ]
+            },
+            {
+              "path": [
+                "own"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Any",
+          "wire": "any",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "json",
+              "jsonNull": true
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "MaybeAny",
+          "wire": "maybeAny",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "json",
+              "jsonNull": true,
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Node",
+          "wire": "node",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "json",
+              "jsonNull": true,
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true
+        },
+        {
+          "name": "Json",
+          "wire": "json",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenJson"
+            }
+          },
+          "settable": true,
+          "declaringType": "CodegenShapeViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "node"
+              ]
+            },
+            {
+              "path": [
+                "required"
+              ]
+            }
+          ]
+        }
+      ],
+      "commands": [
+        {
+          "name": "Apply",
+          "wire": "apply",
+          "parameter": "codegenSlot",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.TranslatedTextViewModel",
+      "name": "TranslatedText",
+      "route": "translatedText",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "translatedText"
+      ],
+      "memberErrors": true,
+      "validation": true,
+      "members": [
+        {
+          "name": "Status",
+          "wire": "status",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "text-reference"
+            }
+          },
+          "settable": true,
+          "declaringType": "TranslatedTextViewModel",
+          "checked": true
+        },
+        {
+          "name": "Previous",
+          "wire": "previous",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "text-reference",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "TranslatedTextViewModel",
+          "checked": true
+        },
+        {
+          "name": "Note",
+          "wire": "note",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "text-reference",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "TranslatedTextViewModel",
+          "checked": true
+        },
+        {
+          "name": "Entries",
+          "wire": "entries",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.TranslatedEntry"
+              }
+            }
+          },
+          "settable": true,
+          "declaringType": "TranslatedTextViewModel",
+          "checked": true
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "TranslatedTextViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "HasErrors",
+          "wire": "hasErrors",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "text-reference"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.FormsViewModel",
+      "name": "Forms",
+      "route": "forms",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "forms"
+      ],
+      "members": [
+        {
+          "name": "Name",
+          "wire": "name",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "required": true,
+            "minLength": 2,
+            "maxLength": 40
+          },
+          "text": true
+        },
+        {
+          "name": "Tag",
+          "wire": "tag",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "maxLength": 8
+          },
+          "text": true
+        },
+        {
+          "name": "Quantity",
+          "wire": "quantity",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "min": 1,
+            "max": 10
+          }
+        },
+        {
+          "name": "Price",
+          "wire": "price",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "decimal"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "min": "0.01",
+            "max": "999.99",
+            "minExclusive": true
+          }
+        },
+        {
+          "name": "Code",
+          "wire": "code",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "pattern": "^[A-Z]{3}$"
+          },
+          "text": true
+        },
+        {
+          "name": "Loose",
+          "wire": "loose",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Slug",
+          "wire": "slug",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Zip",
+          "wire": "zip",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Kebab",
+          "wire": "kebab",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "text": true
+        },
+        {
+          "name": "When",
+          "wire": "when",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "date-time"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "min": "2020-01-01",
+            "max": "2030-12-31T12:30:00"
+          }
+        },
+        {
+          "name": "Rate",
+          "wire": "rate",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "decimal"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true,
+          "constraints": {
+            "min": "0.10"
+          }
+        },
+        {
+          "name": "Priority",
+          "wire": "priority",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.FormsPriority"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormsViewModel",
+          "checked": true
+        },
+        {
+          "name": "Rows",
+          "wire": "rows",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.FormsRow"
+              }
+            }
+          },
+          "collectionKey": "id"
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.TextDeltaViewModel",
+      "name": "TextDelta",
+      "route": "textDelta",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "textDelta"
+      ],
+      "members": [
+        {
+          "name": "Log",
+          "wire": "log",
+          "doc": "The live log.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "appendOnlyText": true
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "TextDeltaViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.ScopedWizardViewModel",
+      "name": "ScopedWizard",
+      "route": "scopedWizard",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "scopedWizard"
+      ],
+      "members": [
+        {
+          "name": "Page",
+          "wire": "page",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "settable": true,
+          "declaringType": "ScopedWizardViewModel",
+          "checked": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Back",
+          "wire": "back",
+          "scoped": true
+        },
+        {
+          "name": "Next",
+          "wire": "next",
+          "scoped": true
+        },
+        {
+          "name": "Ping",
+          "wire": "ping"
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.DtoInteractionViewModel",
+      "name": "DtoInteraction",
+      "route": "dtoInteraction",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "dtoInteraction"
+      ],
+      "members": [
+        {
+          "name": "Picked",
+          "wire": "picked",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DtoListEntry",
+              "nullable": true
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Pick",
+          "wire": "pick",
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "ChooseEntry",
+          "wire": "chooseEntry",
+          "contract": "<fingerprint>:interaction:ChooseEntry",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DtoListEntry"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "sharedClients": [
+    {
+      "id": "Runic.Application.Testing.Tests.ISharedResultPage",
+      "name": "ResultPage",
+      "interface": "ISharedResultPage",
+      "doc": "A read-only result page with one action per element.",
+      "views": [
+        "Runic.Application.Testing.Tests.SharedInvoicesViewModel",
+        "Runic.Application.Testing.Tests.SharedOrdersViewModel"
+      ],
+      "members": [
+        {
+          "name": "Page",
+          "doc": "The page the component renders.",
+          "published": {
+            "Runic.Application.Testing.Tests.SharedInvoicesViewModel": {
+              "member": "page"
+            },
+            "Runic.Application.Testing.Tests.SharedOrdersViewModel": {
+              "member": "page"
+            }
+          }
+        },
+        {
+          "name": "Filter",
+          "doc": "The text that filters the page's elements.",
+          "settable": true,
+          "published": {
+            "Runic.Application.Testing.Tests.SharedInvoicesViewModel": {
+              "member": "filter"
+            },
+            "Runic.Application.Testing.Tests.SharedOrdersViewModel": {
+              "member": "filter"
+            }
+          }
+        },
+        {
+          "name": "RunActionCommand",
+          "doc": "Runs the action of the element with the id.",
+          "published": {
+            "Runic.Application.Testing.Tests.SharedInvoicesViewModel": {
+              "command": "runAction"
+            },
+            "Runic.Application.Testing.Tests.SharedOrdersViewModel": {
+              "command": "runAction"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "types": {
+    "Runic.Application.Testing.Tests.BlobAttachment": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.BlobAttachment",
+        "base": "BlobAttachment",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "preview",
+          "type": {
+            "kind": "blob"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CatalogRow": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CatalogRow",
+        "base": "CatalogRow",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "size",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenDerived`1[System.String]": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenDerived`1[System.String]",
+        "base": "CodegenDerivedOfString",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "inherited",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "own",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenInner`1[System.String]": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenInner`1[System.String]",
+        "base": "CodegenInnerOfString",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenInner`1[System.String]#2": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenInner`1[System.String]",
+        "base": "CodegenInnerOfString",
+        "annotatedBase": "CodegenInnerOfNullableOfString",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "value",
+          "type": {
+            "kind": "string",
+            "nullable": true
+          },
+          "optional": true
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenJson": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenJson",
+        "base": "CodegenJson",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "any",
+          "type": {
+            "kind": "json",
+            "jsonNull": true
+          },
+          "optional": true,
+          "absent": true
+        },
+        {
+          "wire": "node",
+          "type": {
+            "kind": "json",
+            "jsonNull": true,
+            "nullable": true
+          },
+          "optional": true
+        },
+        {
+          "wire": "required",
+          "type": {
+            "kind": "json",
+            "jsonNull": false
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenPoint": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenPoint",
+        "base": "CodegenPoint",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "x",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "y",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenShapeMode": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenShapeMode",
+        "base": "CodegenShapeMode",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "cases": [
+        {
+          "wire": "None",
+          "value": "0"
+        },
+        {
+          "wire": "Default",
+          "value": "0"
+        },
+        {
+          "wire": "Active",
+          "value": "1"
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]",
+        "base": "CodegenSlotOfString",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "fallback",
+          "type": {
+            "kind": "string",
+            "nullable": true
+          },
+          "optional": true
+        },
+        {
+          "wire": "items",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "wire": "values",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "wire": "map",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "wire": "inner",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Application.Testing.Tests.CodegenInner`1[System.String]"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]#2": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.CodegenSlot`1[System.String]",
+        "base": "CodegenSlotOfString",
+        "annotatedBase": "CodegenSlotOfNullableOfString",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "value",
+          "type": {
+            "kind": "string",
+            "nullable": true
+          },
+          "optional": true
+        },
+        {
+          "wire": "fallback",
+          "type": {
+            "kind": "string",
+            "nullable": true
+          },
+          "optional": true
+        },
+        {
+          "wire": "items",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "wire": "values",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "string",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "wire": "map",
+          "type": {
+            "kind": "map",
+            "value": {
+              "kind": "string",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "wire": "inner",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Application.Testing.Tests.CodegenInner`1[System.String]#2"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DataShapeCount": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DataShapeCount",
+        "base": "DataShapeCount",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "count",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DataShapeGroup": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DataShapeGroup",
+        "base": "DataShapeGroup",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "items",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.DataShapeItem"
+            }
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DataShapeItem": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DataShapeItem",
+        "base": "DataShapeItem",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "source",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "__proto__",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "retry-after",
+          "type": {
+            "kind": "int32",
+            "nullable": true
+          },
+          "optional": true
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DataShapePayload": {
+      "kind": "union",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DataShapePayload",
+        "base": "DataShapePayload",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "cases": [
+        {
+          "tag": "count",
+          "object": "Runic.Application.Testing.Tests.DataShapeCount"
+        },
+        {
+          "tag": "text",
+          "object": "Runic.Application.Testing.Tests.DataShapeText"
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DataShapeText": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DataShapeText",
+        "base": "DataShapeText",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.DtoListEntry": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DtoListEntry",
+        "base": "DtoListEntry",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "count",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.FormsPriority": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.FormsPriority",
+        "base": "FormsPriority",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "cases": [
+        {
+          "wire": "Low",
+          "value": "0"
+        },
+        {
+          "wire": "Normal",
+          "value": "1"
+        },
+        {
+          "wire": "High",
+          "value": "2"
+        },
+        {
+          "wire": "Urgent",
+          "value": "2"
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.FormsRow": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.FormsRow",
+        "base": "FormsRow",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int64"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.SharedResultElement": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.SharedResultElement",
+        "base": "SharedResultElement",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "A link or button of a result page.",
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.SharedResultPage": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.SharedResultPage",
+        "base": "SharedResultPage",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "doc": "A computed, read-only result page.",
+      "members": [
+        {
+          "wire": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "elements",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.SharedResultElement"
+            }
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.TranslatedEntry": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.TranslatedEntry",
+        "base": "TranslatedEntry",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "text-reference"
+          }
+        },
+        {
+          "wire": "note",
+          "type": {
+            "kind": "text-reference",
+            "nullable": true
+          },
+          "optional": true
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationArrivalState": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Navigation.NavigationArrivalState",
+        "base": "NavigationArrivalState",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "How the arrival hooks of a committed transition ended (`Arrival`).",
+      "cases": [
+        {
+          "wire": "None",
+          "value": "0",
+          "doc": "No entry the commit made current has an arrival hook."
+        },
+        {
+          "wire": "Completed",
+          "value": "1",
+          "doc": "Every arrival hook returned."
+        },
+        {
+          "wire": "Failed",
+          "value": "2",
+          "doc": "An arrival hook threw; the commit stands."
+        },
+        {
+          "wire": "Cancelled",
+          "value": "3",
+          "doc": "An arrival hook was cancelled, because its entry stopped being current or retired, or the navigator closed, or it was never started for that reason."
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationOutcome": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Navigation.NavigationOutcome",
+        "base": "NavigationOutcome",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command.",
+      "members": [
+        {
+          "wire": "kind",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Navigation.NavigationOutcomeKind"
+          },
+          "doc": "How the request ended."
+        },
+        {
+          "wire": "rejection",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Navigation.NavigationRejection",
+            "nullable": true
+          },
+          "optional": true,
+          "doc": "Why the request was rejected, for `Rejected`; otherwise `null`."
+        },
+        {
+          "wire": "arrival",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Navigation.NavigationArrivalState"
+          },
+          "doc": "Gets how the arrival hooks (`INavigationArrived`) of the entries a `Committed` transition made current ended, so a page can show that their data failed to load; `None` for every other kind. Only the full navigation result carries the exception of a `Failed` hook."
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationOutcomeKind": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Navigation.NavigationOutcomeKind",
+        "base": "NavigationOutcomeKind",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "How a navigation request ended, as reported by `Kind`.",
+      "cases": [
+        {
+          "wire": "Committed",
+          "value": "0",
+          "doc": "The transition committed."
+        },
+        {
+          "wire": "Rejected",
+          "value": "1",
+          "doc": "The transition was rejected; `Rejection` says why."
+        },
+        {
+          "wire": "Superseded",
+          "value": "2",
+          "doc": "A later request replaced this one before it committed."
+        },
+        {
+          "wire": "Failed",
+          "value": "3",
+          "doc": "The transition failed. Only the full navigation result carries the exception."
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationRejection": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Navigation.NavigationRejection",
+        "base": "NavigationRejection",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "Why a navigation request was rejected.",
+      "cases": [
+        {
+          "wire": "Guard",
+          "value": "0",
+          "doc": "A departure guard returned `false`."
+        },
+        {
+          "wire": "Cancelled",
+          "value": "1",
+          "doc": "The caller's token was cancelled before the commit."
+        },
+        {
+          "wire": "Closed",
+          "value": "2",
+          "doc": "The navigator or the region is closed."
+        },
+        {
+          "wire": "Reentrant",
+          "value": "3",
+          "doc": "The request came from a hook of an in-flight transition of the same region, or of a region that holds it or is held by it (an ancestor or a descendant region). The rejection is conservative: such a request could wait on the transition that is running the hook."
+        },
+        {
+          "wire": "NoHistory",
+          "value": "4",
+          "doc": "A back request found no retained entry."
+        },
+        {
+          "wire": "NotCurrent",
+          "value": "5",
+          "doc": "The expected current entry is not current."
+        },
+        {
+          "wire": "EntryNotFound",
+          "value": "6",
+          "doc": "The back-to target is not in the region."
+        },
+        {
+          "wire": "Busy",
+          "value": "7",
+          "doc": "The region admits requests with `RejectWhileBusy` and was busy: an earlier request had not completed."
+        }
+      ]
+    }
+  },
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.BlobViewModel": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DtoInteractionViewModel": "tests/dotnet/Runic.Application.Testing.Tests/DtoInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.NavDocumentsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/RegionCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.NavTabsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/NavigationFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.SharedInvoicesViewModel": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.TextDeltaViewModel": "tests/dotnet/Runic.Application.Testing.Tests/TextDeltaFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/state/attachments": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/state/avatar": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/command/attach": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/command/export": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/commandState/canExport": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/commandState/isAttachExecuting": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.BlobViewModel/commandState/isExportExecuting": "tests/dotnet/Runic.Application.Testing.Tests/BlobFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel/state/rows": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel/command/sortById": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel/commandState/canSortById": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CatalogViewModel/commandState/isSortByIdExecuting": "tests/dotnet/Runic.Application.Testing.Tests/QueryCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/any": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/at": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/corner": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/derived": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/editable": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/json": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/labels": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/maybeAny": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/mode": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/node": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/numbers": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/optional": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/optionalNames": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/origin": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/required": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/stamp": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/tags": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/state/when": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/any": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/at": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/corner": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/derived": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/editable": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/json": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/labels": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/maybeAny": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/mode": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/node": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/numbers": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/optional": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/optionalNames": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/origin": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/required": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/stamp": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/tags": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/setter/when": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.CodegenShapeViewModel/command/apply": "tests/dotnet/Runic.Application.Testing.Tests/CodegenShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/amount": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/day": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/duration": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/exact-id": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/groups": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/items": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/lookup": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/money": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/optional": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/optionalItem": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/optionalItems": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/payload": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/when": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/state/whole": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/amount": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/day": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/duration": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/exact-id": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/money": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/optional": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/optionalItem": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/payload": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/when": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DataShapeViewModel/setter/whole": "tests/dotnet/Runic.Application.Testing.Tests/DataShapeFixture.cs",
+    "Runic.Application.Testing.Tests.DtoInteractionViewModel/state/picked": "tests/dotnet/Runic.Application.Testing.Tests/DtoInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.DtoInteractionViewModel/command/pick": "tests/dotnet/Runic.Application.Testing.Tests/DtoInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.DtoInteractionViewModel/commandState/canPick": "tests/dotnet/Runic.Application.Testing.Tests/DtoInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.DtoInteractionViewModel/commandState/isPickExecuting": "tests/dotnet/Runic.Application.Testing.Tests/DtoInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.DtoInteractionViewModel/interaction/chooseEntry": "tests/dotnet/Runic.Application.Testing.Tests/DtoInteractionFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/code": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/kebab": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/loose": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/name": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/price": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/priority": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/quantity": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/rate": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/rows": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/slug": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/tag": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/when": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/state/zip": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/code": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/kebab": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/loose": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/name": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/price": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/priority": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/quantity": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/rate": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/slug": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/tag": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/when": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.FormsViewModel/setter/zip": "tests/dotnet/Runic.Application.Testing.Tests/FormsFixture.cs",
+    "Runic.Application.Testing.Tests.NavDocumentsViewModel/state/documents": "tests/dotnet/Runic.Application.Testing.Tests/RegionCollectionFixture.cs",
+    "Runic.Application.Testing.Tests.NavTabsViewModel/state/archive": "tests/dotnet/Runic.Application.Testing.Tests/NavigationFixture.cs",
+    "Runic.Application.Testing.Tests.NavTabsViewModel/state/inbox": "tests/dotnet/Runic.Application.Testing.Tests/NavigationFixture.cs",
+    "Runic.Application.Testing.Tests.NavTabsViewModel/state/tabs": "tests/dotnet/Runic.Application.Testing.Tests/NavigationFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/state/page": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/setter/page": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/command/back": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/command/next": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/command/ping": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/commandState/canBack": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/commandState/canNext": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.ScopedWizardViewModel/commandState/canPing": "tests/dotnet/Runic.Application.Testing.Tests/PresentationScopedFixture.cs",
+    "Runic.Application.Testing.Tests.SharedInvoicesViewModel/state/filter": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedInvoicesViewModel/state/page": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedInvoicesViewModel/setter/filter": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedInvoicesViewModel/command/runAction": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedInvoicesViewModel/commandState/isRunActionExecuting": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel/state/filter": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel/state/openOrders": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel/state/page": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel/setter/filter": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel/command/runAction": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.SharedOrdersViewModel/commandState/isRunActionExecuting": "tests/dotnet/Runic.Application.Testing.Tests/SharedClientFixture.cs",
+    "Runic.Application.Testing.Tests.TextDeltaViewModel/state/log": "tests/dotnet/Runic.Application.Testing.Tests/TextDeltaFixture.cs",
+    "Runic.Application.Testing.Tests.TextDeltaViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/TextDeltaFixture.cs",
+    "Runic.Application.Testing.Tests.TextDeltaViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/TextDeltaFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/state/entries": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/state/hasErrors": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/state/note": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/state/previous": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/state/status": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/setter/entries": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/setter/note": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/setter/previous": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/setter/status": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs",
+    "Runic.Application.Testing.Tests.TranslatedTextViewModel/command/save": "tests/dotnet/Runic.Application.Testing.Tests/TranslatedTextFixture.cs"
+  }
+}

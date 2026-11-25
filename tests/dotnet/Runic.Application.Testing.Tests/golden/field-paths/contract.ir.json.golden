@@ -1,0 +1,280 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.PathInvoiceViewModel",
+      "name": "PathInvoice",
+      "route": "pathInvoice",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "pathInvoice"
+      ],
+      "validation": true,
+      "members": [
+        {
+          "name": "Address",
+          "wire": "address",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.PathAddress"
+            }
+          },
+          "settable": true,
+          "declaringType": "PathInvoiceViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "street"
+              ],
+              "constraints": {
+                "required": true,
+                "maxLength": 40
+              }
+            },
+            {
+              "path": [
+                "city"
+              ]
+            },
+            {
+              "path": [
+                "geo"
+              ]
+            },
+            {
+              "path": [
+                "geo",
+                "lat"
+              ]
+            },
+            {
+              "path": [
+                "geo",
+                "lng"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Lines",
+          "wire": "lines",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.PathLine"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "product"
+              ]
+            },
+            {
+              "path": [
+                "quantity"
+              ]
+            },
+            {
+              "path": [
+                "price"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Total",
+          "wire": "total",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "decimal"
+            }
+          },
+          "settable": true,
+          "declaringType": "PathInvoiceViewModel",
+          "checked": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.PathRowsViewModel",
+      "name": "PathRows",
+      "route": "pathRows",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "pathRows"
+      ],
+      "validation": true,
+      "members": [
+        {
+          "name": "Lines",
+          "wire": "lines",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.PathLine"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "product"
+              ]
+            },
+            {
+              "path": [
+                "quantity"
+              ]
+            },
+            {
+              "path": [
+                "price"
+              ]
+            }
+          ]
+        }
+      ],
+      "commands": []
+    }
+  ],
+  "types": {
+    "Runic.Application.Testing.Tests.PathAddress": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.PathAddress",
+        "base": "PathAddress",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "street",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "city",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "geo",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Application.Testing.Tests.PathGeo",
+            "nullable": true
+          },
+          "optional": true
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.PathGeo": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.PathGeo",
+        "base": "PathGeo",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "lat",
+          "type": {
+            "kind": "float64"
+          }
+        },
+        {
+          "wire": "lng",
+          "type": {
+            "kind": "float64"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.PathLine": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.PathLine",
+        "base": "PathLine",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "product",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "quantity",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "price",
+          "type": {
+            "kind": "decimal"
+          }
+        }
+      ]
+    }
+  },
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.PathInvoiceViewModel": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathRowsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathInvoiceViewModel/state/address": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathInvoiceViewModel/state/lines": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathInvoiceViewModel/state/total": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathInvoiceViewModel/setter/address": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathInvoiceViewModel/setter/total": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathRowsViewModel/state/lines": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs"
+  }
+}

@@ -1,0 +1,316 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.DevelopmentToolsViewModel",
+      "name": "DevelopmentTools",
+      "route": "developmentTools",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "developmentTools"
+      ],
+      "doc": "A ViewModel whose development tools a publish leaves out.",
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "DevelopmentToolsViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Debug",
+          "wire": "debug",
+          "doc": "A diagnostics note.",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "DevelopmentToolsViewModel",
+          "checked": true,
+          "text": true,
+          "developmentOnly": true
+        },
+        {
+          "name": "Traces",
+          "wire": "traces",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.DevelopmentTrace"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "developmentOnly": true
+        },
+        {
+          "name": "Resets",
+          "wire": "resets",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Rename",
+          "wire": "rename",
+          "parameter": "title",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "Reset",
+          "wire": "reset",
+          "doc": "Resets the diagnostics.",
+          "developmentOnly": true
+        },
+        {
+          "name": "Inject",
+          "wire": "inject",
+          "parameter": "fault",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true,
+          "developmentOnly": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.LeftOutToolsViewModel",
+      "name": "LeftOutTools",
+      "route": "leftOutTools",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "leftOutTools"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "LeftOutToolsViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Debug",
+          "wire": "debug",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "LeftOutToolsViewModel",
+          "checked": true,
+          "text": true,
+          "developmentOnly": true
+        },
+        {
+          "name": "Traces",
+          "wire": "traces",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.DevelopmentTrace"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "developmentOnly": true
+        },
+        {
+          "name": "Resets",
+          "wire": "resets",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Rename",
+          "wire": "rename",
+          "parameter": "title",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "Reset",
+          "wire": "reset",
+          "developmentOnly": true
+        },
+        {
+          "name": "Inject",
+          "wire": "inject",
+          "parameter": "fault",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true,
+          "developmentOnly": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.DevelopmentPanelViewModel",
+      "name": "DevelopmentPanel",
+      "route": "developmentPanel",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "developmentPanel"
+      ],
+      "doc": "A mock-control panel that only development needs.",
+      "developmentOnly": true,
+      "members": [
+        {
+          "name": "Scenario",
+          "wire": "scenario",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "DevelopmentPanelViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": []
+    }
+  ],
+  "types": {
+    "Runic.Application.Testing.Tests.DevelopmentTrace": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.DevelopmentTrace",
+        "base": "DevelopmentTrace",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.DevelopmentPanelViewModel": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentPanelViewModel/state/scenario": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentPanelViewModel/setter/scenario": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/state/debug": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/state/resets": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/state/traces": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/setter/debug": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/command/inject": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/command/rename": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/command/reset": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/commandState/canReset": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.DevelopmentToolsViewModel/commandState/isInjectExecuting": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/state/debug": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/state/resets": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/state/traces": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/setter/debug": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/command/inject": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/command/rename": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/command/reset": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/commandState/canReset": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs",
+    "Runic.Application.Testing.Tests.LeftOutToolsViewModel/commandState/isInjectExecuting": "tests/dotnet/Runic.Application.Testing.Tests/DevelopmentOnlyFixture.cs"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.ImportResultViewModel",
+      "name": "ImportResult",
+      "route": "importResult",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "importResult"
+      ],
+      "sharedClients": [
+        "Runic.Application.Testing.Tests.IImportSummary"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ImportResultViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Summary",
+          "wire": "summary",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Retry",
+          "wire": "retry"
+        }
+      ]
+    }
+  ],
+  "sharedClients": [
+    {
+      "id": "Runic.Application.Testing.Tests.IImportSummary",
+      "name": "ImportSummary",
+      "interface": "IImportSummary",
+      "doc": "The summary every import result page shows.",
+      "views": [
+        "Runic.Application.Testing.Tests.ImportResultViewModel"
+      ],
+      "members": [
+        {
+          "name": "Summary",
+          "doc": "One line about the import.",
+          "published": {
+            "Runic.Application.Testing.Tests.ImportResultViewModel": {
+              "member": "summary"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.ImportResultViewModel": "tests/dotnet/Runic.Application.Testing.Tests/PublicationFixture.cs",
+    "Runic.Application.Testing.Tests.ImportResultViewModel/state/summary": "tests/dotnet/Runic.Application.Testing.Tests/PublicationFixture.cs",
+    "Runic.Application.Testing.Tests.ImportResultViewModel/state/title": "tests/dotnet/Runic.Application.Testing.Tests/PublicationFixture.cs",
+    "Runic.Application.Testing.Tests.ImportResultViewModel/setter/title": "tests/dotnet/Runic.Application.Testing.Tests/PublicationFixture.cs",
+    "Runic.Application.Testing.Tests.ImportResultViewModel/command/retry": "tests/dotnet/Runic.Application.Testing.Tests/PublicationFixture.cs",
+    "Runic.Application.Testing.Tests.ImportResultViewModel/commandState/canRetry": "tests/dotnet/Runic.Application.Testing.Tests/PublicationFixture.cs"
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.KeyedPlainViewModel",
+      "name": "KeyedPlain",
+      "route": "keyedPlain",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "keyedPlain"
+      ],
+      "members": [
+        {
+          "name": "Picked",
+          "wire": "picked",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Pick",
+          "wire": "pick",
+          "parameter": "slot",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "keyed": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.KeyedReactiveViewModel",
+      "name": "KeyedReactive",
+      "route": "keyedReactive",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "keyedReactive"
+      ],
+      "members": [
+        {
+          "name": "Enabled",
+          "wire": "enabled",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "boolean"
+            }
+          },
+          "settable": true,
+          "declaringType": "KeyedReactiveViewModel",
+          "checked": true
+        },
+        {
+          "name": "Last",
+          "wire": "last",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Delete",
+          "wire": "delete",
+          "doc": "Deletes an item.",
+          "parameter": "itemId",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "uint64"
+            }
+          },
+          "async": true,
+          "executionState": true,
+          "keyed": true
+        },
+        {
+          "name": "Archive",
+          "wire": "archive",
+          "parameter": "itemId",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "uint64"
+            }
+          },
+          "async": true,
+          "executionState": true,
+          "keyed": true
+        },
+        {
+          "name": "Rename",
+          "wire": "rename",
+          "parameter": "itemId",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "uint64"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true,
+          "keyed": true
+        },
+        {
+          "name": "Export",
+          "wire": "export",
+          "parameter": "itemId",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "uint64"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "stream": true,
+          "executionState": true,
+          "keyed": true
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.KeyedToolkitViewModel",
+      "name": "KeyedToolkit",
+      "route": "keyedToolkit",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "keyedToolkit"
+      ],
+      "members": [
+        {
+          "name": "Last",
+          "wire": "last",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Lock",
+          "wire": "lock",
+          "parameter": "id",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "uint64"
+            }
+          },
+          "keyed": true
+        },
+        {
+          "name": "Open",
+          "wire": "open",
+          "parameter": "id",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "uint64"
+            }
+          },
+          "async": true,
+          "executionState": true,
+          "keyed": true
+        },
+        {
+          "name": "Select",
+          "wire": "select",
+          "parameter": "name",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "keyed": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.KeyedPlainViewModel": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedToolkitViewModel": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedPlainViewModel/state/picked": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedPlainViewModel/command/pick": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/state/enabled": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/state/last": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/setter/enabled": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/command/archive": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/command/delete": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/command/export": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/command/rename": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/commandState/isArchiveExecuting": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/commandState/isDeleteExecuting": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/commandState/isExportExecuting": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedReactiveViewModel/commandState/isRenameExecuting": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedToolkitViewModel/state/last": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedToolkitViewModel/command/lock": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedToolkitViewModel/command/open": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedToolkitViewModel/command/select": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs",
+    "Runic.Application.Testing.Tests.KeyedToolkitViewModel/commandState/isOpenExecuting": "tests/dotnet/Runic.Application.Testing.Tests/WireKeyFixture.cs"
+  }
+}

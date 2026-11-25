@@ -34,8 +34,7 @@ internal static partial class TypeScriptNamedTypes
         "try", "type", "typeof", "unique", "var", "while", "with", "yield",
     };
 
-    internal static bool IsNamed(BridgeTypeNode node) =>
-        node.Kind is BridgeWireKind.Enum or BridgeWireKind.Dto or BridgeWireKind.Union;
+    internal static bool IsNamed(BridgeTypeNode node) => TypeNames.IsNamed(node);
 
     /// <summary>Returns the placeholder for a named node and records its definition.</summary>
     /// <remarks>
@@ -47,7 +46,7 @@ internal static partial class TypeScriptNamedTypes
     /// </remarks>
     internal static string Reference(BridgeTypeNode node)
     {
-        var key = (node.NonNullableType, Shape(node));
+        var key = (node.NonNullableType, TypeNames.Shape(node));
         if (!ByShape.TryGetValue(key, out var entry))
         {
             entry = new Entry(Entries.Count, key.NonNullableType, node);
@@ -66,21 +65,6 @@ internal static partial class TypeScriptNamedTypes
 
     // The named types the written modules use, in registration order.
     private static IEnumerable<Entry> Kept => Entries.Where(entry => entry.Kept);
-
-    // A named node's included members and their nullability, down to the named
-    // types they contain. The same DTO can have different exclusions when
-    // ViewModels declared in different assemblies use different policies.
-    private static string Shape(BridgeTypeNode node) => node.Kind switch
-    {
-        BridgeWireKind.Dto => string.Join(",", node.Members.Select(member => JsonSerializer.Serialize(member.WireName) + ":" + Use(member.Type))),
-        BridgeWireKind.Union => string.Join(",", node.Cases.Select(@case => Shape(@case.Type))),
-        _ => "",
-    };
-
-    private static string Use(BridgeTypeNode node) => (node.IsNullable ? "?" : "")
-        + (node.Element is { } element ? "[" + Use(element) + "]" : "")
-        + (node.Value is { } value ? "{" + Use(value) + "}" : "")
-        + (IsNamed(node) ? "(" + Shape(node) + ")" : "");
 
     /// <summary>True when at least one module referenced a named type.</summary>
     internal static bool Any => Entries.Any(entry => entry.Kept);
@@ -127,7 +111,7 @@ internal static partial class TypeScriptNamedTypes
         // BoxOfString and Box<string?> becomes BoxOfNullableOfString.
         foreach (var entry in entries)
             entry.BaseName = entries.Count(other => other.Type == entry.Type) > 1
-                ? BaseName(entry.Type, entry.Node.Nullability) : BaseName(entry.Type, null);
+                ? TypeNames.BaseName(entry.Type, entry.Node.Nullability) : TypeNames.BaseName(entry.Type, null);
 
         var reserved = new HashSet<string>(Globals, StringComparer.Ordinal);
         foreach (var module in modules) reserved.UnionWith(DeclaredNames(module));
@@ -140,7 +124,7 @@ internal static partial class TypeScriptNamedTypes
             var conflicts = entries.GroupBy(entry => Candidate(entry, levels[entry]), StringComparer.Ordinal)
                 .Where(group => group.Count() > 1 || reserved.Contains(group.Key))
                 .SelectMany(group => group)
-                .Where(entry => levels[entry] < Qualifiers(entry.Type).Count)
+                .Where(entry => levels[entry] < TypeNames.Qualifiers(entry.Type).Count)
                 .ToArray();
             if (conflicts.Length == 0) break;
             foreach (var entry in conflicts) levels[entry]++;
@@ -221,49 +205,8 @@ internal static partial class TypeScriptNamedTypes
 
     private static string Candidate(Entry entry, int level)
     {
-        var qualifiers = Qualifiers(entry.Type);
+        var qualifiers = TypeNames.Qualifiers(entry.Type);
         return string.Concat(qualifiers.Take(level).Reverse()) + entry.BaseName;
-    }
-
-    // Declaring types, then namespace segments, innermost first.
-    private static List<string> Qualifiers(Type type)
-    {
-        var result = new List<string>();
-        for (var outer = type.DeclaringType; outer is not null; outer = outer.DeclaringType) result.Add(BaseName(outer, null));
-        if (type.Namespace is { } ns)
-            result.AddRange(ns.Split('.').Reverse().Where(segment => segment.Length > 0)
-                .Select(segment => Identifier(char.ToUpperInvariant(segment[0]) + segment[1..])));
-        return result;
-    }
-
-    // Page<NoteRow> -> PageOfNoteRow, Box<string[]> -> BoxOfArrayOfString,
-    // and with annotations Box<string?> -> BoxOfNullableOfString like
-    // Box<int?> -> BoxOfNullableOfInt32. The result is always a TypeScript
-    // identifier.
-    private static string BaseName(Type type, TypeNullability? nullability)
-    {
-        if (type.IsArray) return "ArrayOf" + ArgumentName(type.GetElementType()!, nullability?.Element);
-        if (type.IsByRef || type.IsPointer) return BaseName(type.GetElementType()!, nullability);
-        if (Nullable.GetUnderlyingType(type) is { } underlying) return "NullableOf" + BaseName(underlying, nullability);
-        var name = type.Name;
-        var tick = name.IndexOf('`', StringComparison.Ordinal);
-        if (tick >= 0) name = name[..tick];
-        if (type.IsGenericType && !type.IsGenericTypeDefinition)
-            name += "Of" + string.Join("And", type.GenericTypeArguments.Select((argument, index) =>
-                ArgumentName(argument, nullability?.Argument(index))));
-        return Identifier(name);
-    }
-
-    private static string ArgumentName(Type type, TypeNullability? nullability) =>
-        (nullability?.IsNullable == true && !type.IsValueType ? "NullableOf" : "") + BaseName(type, nullability);
-
-    private static string Identifier(string name)
-    {
-        var result = new StringBuilder(name.Length);
-        foreach (var character in name)
-            if (char.IsLetterOrDigit(character) || character is '_' or '$') result.Append(character);
-        if (result.Length == 0 || char.IsDigit(result[0])) result.Insert(0, '_');
-        return result.ToString();
     }
 
     private static IEnumerable<string> DeclaredNames(string module)

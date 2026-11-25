@@ -28,7 +28,7 @@ A document is one JSON object of the [JSON profile](values.md#json-profile):
 | --- | --- |
 | `format` | `runic.views.contract-ir/1` |
 | `producer` | `language` (`csharp`, `rust` or `cpp`), `tool` (the program that wrote it), `unit` (the assembly, crate or target name), and `clientLibrary: true` in [library mode](#library-and-application-mode) |
-| `clientModules` | In application mode, the client libraries whose clients the unit imports: `{unit, specifier}` |
+| `clientModules` | In application mode, the client libraries whose clients the unit imports, each owning at least one View: `{unit, specifier}` |
 | `views` | The [Views](#views), in the order the producer generates them |
 | `sharedClients` | The [shared clients](#shared-clients), when the unit has any |
 | `types` | The [named types](#named-types) by id |
@@ -225,3 +225,5 @@ relative to the corpus directory.
 The engineering test `eng/views-contract-ir.test.mjs` (`bun run test eng/views-contract-ir.test.mjs`, and in the
 engineering job) checks every corpus document against the schema, and that the contract of each of its Views is the
 one the example's committed clients carry, so a change to an example's contract that leaves the corpus behind fails.
+To update the corpus, build the examples (`bun run build` builds those of `RunicSdk.Core.slnx`), then run the test with
+`RUNIC_UPDATE_CONTRACT_IR_CORPUS=1`, which copies each example's `contract.ir.json` from its `obj` directory.

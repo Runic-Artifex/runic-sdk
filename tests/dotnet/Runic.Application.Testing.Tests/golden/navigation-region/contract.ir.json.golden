@@ -1,0 +1,62 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Runic.Application.Testing.Tests"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.NavShellViewModel",
+      "name": "NavShell",
+      "route": "navShell",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "navShell"
+      ],
+      "members": [
+        {
+          "name": "Main",
+          "wire": "main",
+          "doc": "The main content; the navigator changes it.",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.ReactiveNavEditorViewModel",
+              "name": "ReactiveNavEditor",
+              "kind": "reactiveNavEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavEditorViewModel",
+              "name": "NavEditor",
+              "kind": "navEditor"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavHomeViewModel",
+              "name": "NavHome",
+              "kind": "navHome"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavLogPageViewModel",
+              "name": "NavLogPage",
+              "kind": "navLogPage"
+            },
+            {
+              "view": "Runic.Application.Testing.Tests.NavTabbedPageViewModel",
+              "name": "NavTabbedPage",
+              "kind": "navTabbedPage"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        }
+      ],
+      "commands": []
+    }
+  ],
+  "types": {},
+  "sourceFiles": {
+    "Runic.Application.Testing.Tests.NavShellViewModel": "tests/dotnet/Runic.Application.Testing.Tests/NavigationFixture.cs",
+    "Runic.Application.Testing.Tests.NavShellViewModel/state/main": "tests/dotnet/Runic.Application.Testing.Tests/NavigationFixture.cs"
+  }
+}
