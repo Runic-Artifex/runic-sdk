@@ -202,6 +202,8 @@ export const platformRules = [
 export const neutralPaths = ["nix", "nixos", "flake.nix", "flake.lock", ".envrc", "eng/release", "eng/verify-packages.mjs",
   "RunicSdk.slnx", "RunicSdk.Core.slnx", "eng/generate-shipping-projects.mjs",
   "eng/ci/apt-install.sh", "eng/ci/permit-webkit-sandbox.sh", "eng/ci/test-managed.mjs",
+  // The macOS job cap check: the coordinator's, and the feed exit's Linux job (train-feed-exit.yml).
+  "eng/ci/runner-wait.py",
   // The coordinator's release-candidate feed for the editors checklist (eng/release/README.md); CI never runs it.
   "eng/ci/candidate-feed.mjs", "eng/ci/candidate-feed"];
 

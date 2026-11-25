@@ -179,9 +179,11 @@ test('the workflow publishes 0.y.z previews, prereleases such as 1.0.0-rc.1 and 
 test('every publishing workflow waits in one fixed concurrency group, so publications never overlap', () => {
   const names = readdirSync(new URL('../../.github/workflows/', import.meta.url)).filter(name => /\.ya?ml$/.test(name));
   const writes = permissions => ['contents', 'id-token', 'attestations', 'packages'].some(name => permissions?.[name] === 'write');
+  // The train environment's job opens the feed exit's pull request and publishes nothing (eng/ci/contracts.test.mjs pins
+  // which job that is); it must not wait for, or hold up, a publication.
   const publishing = names.filter(name => {
     const file = workflow(name);
-    return writes(file.permissions) || Object.values(file.jobs).some(job => writes(job.permissions) || job.environment);
+    return writes(file.permissions) || Object.values(file.jobs).some(job => writes(job.permissions) || (job.environment && job.environment !== 'train'));
   });
   expect(publishing).toContain('publish-preview.yml');
   // One group for every version: a per-version group would let two versions publish and move tags at once.
