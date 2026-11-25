@@ -5,6 +5,7 @@ import {
   getCurrentInstance,
   h,
   reactive,
+  markRaw,
   shallowRef,
   toValue,
   watch,
@@ -19,6 +20,10 @@ import {
 } from "vue";
 import {
   createCommandController,
+  createCommandHandles,
+  type CommandArguments,
+  type CommandName,
+  type CommandResult,
   createLatestOperationController,
   createOperationController,
   createFieldController,
@@ -340,6 +345,78 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
   });
   releaseWithScope("useCommand", () => controller.dispose());
   return { run: controller.run, pending, error, failure, reset: controller.reset };
+}
+
+/** The View whose commands a component runs: a {@link useView} handle, or any client ref. */
+export interface CommandsView<TClient extends object> {
+  readonly client: Readonly<Ref<TClient | undefined>>;
+}
+
+/**
+ * One command of {@link useCommands}: `pending`, `error` and `failure` are getters that templates and effects track,
+ * so a template reads `commands.refresh.pending` without `.value`.
+ */
+export interface CommandsHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
+  /**
+   * Runs the command. Resolves to its result, including a `BridgeOutcome` with a
+   * declared failure, which `failure` then holds, or to undefined after an
+   * unexpected failure, which `error` then holds. Never rejects.
+   */
+  run(...args: TArgs): Promise<TResult | undefined>;
+  /** True while a run is in flight. */
+  readonly pending: boolean;
+  /** Why the latest run failed unexpectedly, until the next run starts. */
+  readonly error: unknown;
+  /**
+   * The declared failure of the latest run, for a command that resolves a
+   * `BridgeOutcome`, until the next run starts. A superseded run sets neither.
+   */
+  readonly failure: TFailure | undefined;
+  /** Clears `error` and `failure`. */
+  reset(): void;
+}
+
+/** One {@link CommandsHandle} per command of a generated client, such as `commands.refresh` and `commands.archive`. */
+export type CommandHandles<TClient> = {
+  readonly [TName in CommandName<TClient>]: CommandsHandle<CommandArguments<TClient, TName>, CommandResult<TClient, TName>>;
+};
+
+/**
+ * The commands of a View as handles while the current effect scope is active, so a component calls a command without
+ * a {@link useCommand} per command. Call it in `setup()` or `effectScope().run()` (development builds warn otherwise).
+ *
+ * ```vue
+ * const orders = useView(() => props.page);
+ * const commands = useCommands(orders);
+ * <button :disabled="commands.refresh.pending" @click="commands.refresh.run()">Refresh</button>
+ * <button @click="commands.archive.run(row.id)">Archive</button>
+ * ```
+ *
+ * The names and arguments are typed from the generated client's commands (`{View}CommandName`); setters, `canX(arg)`,
+ * `startX`, `recoverX`, `upload` and `dispose` are not offered. A handle is made when the component first reads its
+ * name and kept while the scope is active. Each has its own `pending`, `error` and `failure`, getters rather than refs
+ * so a template reads them through `commands.refresh`. A run calls the client connected when it starts, and before the
+ * client connected it resolves to `undefined`. `run()` never rejects: a failed run ends in `error`. Scope disposal
+ * stops the handles' state, while a run still in flight resolves as usual.
+ */
+export function useCommands<TClient extends object>(view: CommandsView<TClient>): CommandHandles<TClient> {
+  const commands = createCommandHandles({
+    client: () => view.client.value,
+    handle: controller => {
+      const state = shallowRef(controller.current);
+      controller.subscribe(() => { state.value = controller.current; });
+      return {
+        run: controller.run,
+        get pending() { return state.value.pending; },
+        get error() { return state.value.error; },
+        get failure() { return state.value.failure; },
+        reset: controller.reset,
+      };
+    },
+  });
+  releaseWithScope("useCommands", () => commands.dispose());
+  // Raw, so a reactive() or ref() that holds it does not wrap it in a deep proxy.
+  return markRaw(commands.handles) as unknown as CommandHandles<TClient>;
 }
 
 /** Each {@link OperationState} field as a shallow ref, with the controller's `run`, `cancel` and `reset`. */

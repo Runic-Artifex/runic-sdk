@@ -647,7 +647,7 @@ describe("useBridgeConnection", () => {
       "createRunicInstance", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
       "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "provideRunicInstance", "regionEntries",
       "resolveText", "runicInstanceKey", "selectedRegion", "syncDocumentLocale", "textDirection",
-      "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useInteraction", "useLatestOperation",
+      "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useCommands", "useField", "useForm", "useInteraction", "useLatestOperation",
       "useMenuBar", "useOperation", "useQueryCollection", "useRunicInstance", "useSuspenseView", "useText", "useTextField",
       "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);

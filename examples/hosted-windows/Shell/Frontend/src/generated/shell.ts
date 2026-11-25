@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ShellState, ShellClient, ShellPageReference } from "./shell.contract.js";
-export type { ShellState, ShellChooseLanguageOperation, ShellChooseThemeOperation, ShellOpenCounterOperation, ShellStopCounterOperation, ShellClient, ShellPageReference } from "./shell.contract.js";
+export type { ShellState, ShellChooseLanguageOperation, ShellChooseThemeOperation, ShellOpenCounterOperation, ShellStopCounterOperation, ShellCommandName, ShellClient, ShellPageReference } from "./shell.contract.js";
 
 const pageShellReferences = viewReferences<ShellPageReference>(id => ({ kind: "shell", connect: () => connectShellAt(`content${id}`) }));
 export function pageShell(id: string): ShellPageReference { return pageShellReferences(id); }

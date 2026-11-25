@@ -3,7 +3,7 @@ import type { BridgeConnectOptions } from "@runic-artifex/views";
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { KeyedPlainState, KeyedPlainClient, KeyedPlainPageReference } from "./keyedPlain.contract.js";
-export type { KeyedPlainState, KeyedPlainClient, KeyedPlainPageReference } from "./keyedPlain.contract.js";
+export type { KeyedPlainState, KeyedPlainCommandName, KeyedPlainClient, KeyedPlainPageReference } from "./keyedPlain.contract.js";
 
 const pageKeyedPlainReferences = viewReferences<KeyedPlainPageReference>(id => ({ kind: "keyedPlain", connect: () => connectKeyedPlainAt(`content${id}`) }));
 export function pageKeyedPlain(id: string): KeyedPlainPageReference { return pageKeyedPlainReferences(id); }

@@ -15,6 +15,10 @@ import {
 } from "react";
 import {
   createCommandController,
+  createCommandHandles,
+  type CommandArguments,
+  type CommandName,
+  type CommandResult,
   createInteractionController,
   interactionSurface,
   type InteractionInput,
@@ -450,6 +454,52 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
   const { pending, error, failure } = useSyncExternalStore(controller.subscribe, read, read);
   if (__RUNIC_DEVELOPMENT__) useDebugValue({ pending, error, failure }, commandLabel);
   return { run: controller.run, pending, error, failure, reset: controller.reset };
+}
+
+/** The View whose commands a component runs: a {@link useView} handle, or any client. */
+export interface CommandsView<TClient extends object> {
+  readonly client: TClient | undefined;
+}
+
+/** One {@link CommandHandle} per command of a generated client, such as `commands.refresh` and `commands.archive`. */
+export type CommandHandles<TClient> = {
+  readonly [TName in CommandName<TClient>]: CommandHandle<CommandArguments<TClient, TName>, CommandResult<TClient, TName>>;
+};
+
+/**
+ * The commands of a View as {@link CommandHandle}s while the component is mounted, so it calls a command without a
+ * {@link useCommand} per command:
+ *
+ * ```tsx
+ * const orders = useView(page);
+ * const commands = useCommands(orders);
+ * <button disabled={commands.refresh.pending} onClick={() => commands.refresh.run()}>Refresh</button>
+ * <button onClick={() => commands.archive.run(row.id)}>Archive</button>
+ * ```
+ *
+ * The names and arguments are typed from the generated client's commands (`{View}CommandName`); setters, `canX(arg)`,
+ * `startX`, `recoverX`, `upload` and `dispose` are not offered. A handle is made when the component first reads its
+ * name, and each has its own `pending`, `error` and `failure`. Like `useCommand`'s, a handle is a snapshot: the same
+ * object across renders until its own state changes, with the same `run` and `reset` while the component is mounted, so
+ * pass `commands.refresh` (not `commands`) to a memoized child. A run calls the latest client, and before the client
+ * connected it resolves to `undefined`. `run()` never rejects: a failed run ends in `error`. Unmounting stops the
+ * handles' state, while a run still in flight resolves as usual.
+ */
+export function useCommands<TClient extends object>(view: CommandsView<TClient>): CommandHandles<TClient> {
+  const latest = useRef(view.client);
+  const { client } = view;
+  useInsertionEffect(() => { latest.current = client; });
+  const commands = useMountedController(() => createCommandHandles({
+    client: () => latest.current,
+    snapshots: true,
+    handle: controller => {
+      const { pending, error, failure } = controller.current;
+      return { run: controller.run, pending, error, failure, reset: controller.reset };
+    },
+  }));
+  const read = useCallback(() => commands.version, [commands]);
+  useSyncExternalStore(commands.subscribe, read, read);
+  return commands.handles as unknown as CommandHandles<TClient>;
 }
 
 export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFailure = never>

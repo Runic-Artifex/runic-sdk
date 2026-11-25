@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, FieldBaseline, BridgeField, BridgeOperationS
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { EditorState, EditorCheckedFields, EditorClient, EditorPageReference } from "./editor.contract.js";
-export type { EditorState, EditorCheckedFields, EditorSaveOperation, EditorClient, EditorPageReference } from "./editor.contract.js";
+export type { EditorState, EditorCheckedFields, EditorSaveOperation, EditorCommandName, EditorClient, EditorPageReference } from "./editor.contract.js";
 import type { SaveFailure } from "./types.js";
 export type { SaveFailure } from "./types.js";
 

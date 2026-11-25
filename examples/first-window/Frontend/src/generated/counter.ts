@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, FieldBaseline, BridgeField } from "@runic-ar
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { CounterState, CounterCheckedFields, CounterClient, CounterPageReference } from "./counter.contract.js";
-export type { CounterState, CounterCheckedFields, CounterClient, CounterPageReference } from "./counter.contract.js";
+export type { CounterState, CounterCheckedFields, CounterCommandName, CounterClient, CounterPageReference } from "./counter.contract.js";
 
 const pageCounterReferences = viewReferences<CounterPageReference>(id => ({ kind: "counter", connect: () => connectCounterAt(`content${id}`) }));
 export function pageCounter(id: string): CounterPageReference { return pageCounterReferences(id); }

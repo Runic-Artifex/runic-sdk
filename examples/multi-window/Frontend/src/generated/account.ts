@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { AccountState, AccountClient, AccountPageReference } from "./account.contract.js";
-export type { AccountState, AccountChooseOperation, AccountCancelOperation, AccountClient, AccountPageReference } from "./account.contract.js";
+export type { AccountState, AccountChooseOperation, AccountCancelOperation, AccountCommandName, AccountClient, AccountPageReference } from "./account.contract.js";
 
 const pageAccountReferences = viewReferences<AccountPageReference>(id => ({ kind: "account", connect: () => connectAccountAt(`content${id}`) }));
 export function pageAccount(id: string): AccountPageReference { return pageAccountReferences(id); }

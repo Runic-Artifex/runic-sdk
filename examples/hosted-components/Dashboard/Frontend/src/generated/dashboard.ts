@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { DashboardState, DashboardClient, DashboardPageReference } from "./dashboard.contract.js";
-export type { DashboardState, DashboardReportEngineOperation, DashboardClient, DashboardPageReference } from "./dashboard.contract.js";
+export type { DashboardState, DashboardReportEngineOperation, DashboardCommandName, DashboardClient, DashboardPageReference } from "./dashboard.contract.js";
 
 const pageDashboardReferences = viewReferences<DashboardPageReference>(id => ({ kind: "dashboard", connect: () => connectDashboardAt(`content${id}`) }));
 export function pageDashboard(id: string): DashboardPageReference { return pageDashboardReferences(id); }

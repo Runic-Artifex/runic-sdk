@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, FieldBaseline, BridgeField, BridgeOperationS
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineInteractions, defineRequests, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ReactiveViewRequestState, ReactiveViewRequestInteractionContext, ReactiveViewRequestInteractions, ReactiveViewRequestViewRequests, ReactiveViewRequestCheckedFields, ReactiveViewRequestClient, ReactiveViewRequestPageReference } from "./reactiveViewRequest.contract.js";
-export type { ReactiveViewRequestState, ReactiveViewRequestInteractionContext, ReactiveViewRequestInteractions, ReactiveViewRequestViewRequestContext, ReactiveViewRequestViewRequests, ReactiveViewRequestCheckedFields, ReactiveViewRequestDiscardOperation, ReactiveViewRequestClient, ReactiveViewRequestPageReference } from "./reactiveViewRequest.contract.js";
+export type { ReactiveViewRequestState, ReactiveViewRequestInteractionContext, ReactiveViewRequestInteractions, ReactiveViewRequestViewRequestContext, ReactiveViewRequestViewRequests, ReactiveViewRequestCheckedFields, ReactiveViewRequestDiscardOperation, ReactiveViewRequestCommandName, ReactiveViewRequestClient, ReactiveViewRequestPageReference } from "./reactiveViewRequest.contract.js";
 import type { ViewRequestDiscard, ViewRequestFocusTarget } from "./types.js";
 export type { ViewRequestDiscard, ViewRequestFocusTarget } from "./types.js";
 

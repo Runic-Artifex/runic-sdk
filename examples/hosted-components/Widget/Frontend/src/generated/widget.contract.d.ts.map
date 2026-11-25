@@ -1,1 +1,1 @@
-{"version":3,"file":"widget.contract.d.ts","sourceRoot":"","sources":["../../../WidgetViewModel.cs"],"names":[],"mappings":"A;A;A;A,iBAQoB,W;A,WAcF,I;A,WAEH,S;A,WAEU,O;A,WAEF,K;A,WATf,O;A,WAAA,e;A;A;A;A;A;A,iBAXY,Y;A,EAWZ,I;A;A;A;A;A,EAAA,S;A;A,EAAA,W;A;A;A,iBAXY,mB;A;A;A;A"}
+{"version":3,"file":"widget.contract.d.ts","sourceRoot":"","sources":["../../../WidgetViewModel.cs"],"names":[],"mappings":"A;A;A;A,iBAQoB,W;A,WAcF,I;A,WAEH,S;A,WAEU,O;A,WAEF,K;A,WATf,O;A,WAAA,e;A;A;A;A;A;A;A;A;A,iBAXY,Y;A;A;A,EAWZ,I;A;A;A;A;A,EAAA,S;A;A,EAAA,W;A;A;A,iBAXY,mB;A;A;A;A"}

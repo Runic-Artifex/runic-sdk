@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { DocumentInfoState, DocumentInfoClient, DocumentInfoPageReference } from "./documentInfo.contract.js";
-export type { DocumentInfoState, DocumentInfoBackOperation, DocumentInfoClient, DocumentInfoPageReference } from "./documentInfo.contract.js";
+export type { DocumentInfoState, DocumentInfoBackOperation, DocumentInfoCommandName, DocumentInfoClient, DocumentInfoPageReference } from "./documentInfo.contract.js";
 
 const pageDocumentInfoReferences = viewReferences<DocumentInfoPageReference>(id => ({ kind: "documentInfo", connect: () => connectDocumentInfoAt(`content${id}`) }));
 export function pageDocumentInfo(id: string): DocumentInfoPageReference { return pageDocumentInfoReferences(id); }

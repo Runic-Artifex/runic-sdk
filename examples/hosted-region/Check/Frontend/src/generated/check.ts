@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { CheckState, CheckClient, CheckPageReference } from "./check.contract.js";
-export type { CheckState, CheckRunOperation, CheckReportAppearanceOperation, CheckClient, CheckPageReference } from "./check.contract.js";
+export type { CheckState, CheckRunOperation, CheckReportAppearanceOperation, CheckCommandName, CheckClient, CheckPageReference } from "./check.contract.js";
 
 const pageCheckReferences = viewReferences<CheckPageReference>(id => ({ kind: "check", connect: () => connectCheckAt(`content${id}`) }));
 export function pageCheck(id: string): CheckPageReference { return pageCheckReferences(id); }

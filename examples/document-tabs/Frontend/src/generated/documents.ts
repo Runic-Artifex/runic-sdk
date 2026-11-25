@@ -5,7 +5,7 @@ import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { pageDocumentInfo } from "./documentInfo.js";
 import { pageDocument } from "./document.js";
 import type { DocumentsState, DocumentsClient, DocumentsPageReference } from "./documents.contract.js";
-export type { DocumentsState, DocumentsNewDocumentOperation, DocumentsClient, DocumentsPageReference } from "./documents.contract.js";
+export type { DocumentsState, DocumentsNewDocumentOperation, DocumentsCommandName, DocumentsClient, DocumentsPageReference } from "./documents.contract.js";
 
 const pageDocumentsReferences = viewReferences<DocumentsPageReference>(id => ({ kind: "documents", connect: () => connectDocumentsAt(`content${id}`) }));
 export function pageDocuments(id: string): DocumentsPageReference { return pageDocumentsReferences(id); }

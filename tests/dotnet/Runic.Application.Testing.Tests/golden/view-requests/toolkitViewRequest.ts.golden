@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, FieldBaseline, BridgeField, BridgeOperationS
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineInteractions, defineRequests, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ToolkitViewRequestState, ToolkitViewRequestInteractionContext, ToolkitViewRequestInteractions, ToolkitViewRequestViewRequests, ToolkitViewRequestCheckedFields, ToolkitViewRequestClient, ToolkitViewRequestPageReference } from "./toolkitViewRequest.contract.js";
-export type { ToolkitViewRequestState, ToolkitViewRequestInteractionContext, ToolkitViewRequestInteractions, ToolkitViewRequestViewRequestContext, ToolkitViewRequestViewRequests, ToolkitViewRequestCheckedFields, ToolkitViewRequestDiscardOperation, ToolkitViewRequestClient, ToolkitViewRequestPageReference } from "./toolkitViewRequest.contract.js";
+export type { ToolkitViewRequestState, ToolkitViewRequestInteractionContext, ToolkitViewRequestInteractions, ToolkitViewRequestViewRequestContext, ToolkitViewRequestViewRequests, ToolkitViewRequestCheckedFields, ToolkitViewRequestDiscardOperation, ToolkitViewRequestCommandName, ToolkitViewRequestClient, ToolkitViewRequestPageReference } from "./toolkitViewRequest.contract.js";
 import type { ViewRequestDiscard, ViewRequestFocusTarget } from "./types.js";
 export type { ViewRequestDiscard, ViewRequestFocusTarget } from "./types.js";
 

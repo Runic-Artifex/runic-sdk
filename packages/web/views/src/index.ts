@@ -131,6 +131,16 @@ export {
   type InteractionOutput,
   type InteractionRequest,
 } from "./interaction-controller.js";
+export {
+  createCommandHandles,
+  type CommandArguments,
+  type CommandHandleController,
+  type CommandHandles,
+  type CommandHandlesOptions,
+  type CommandName,
+  type CommandResult,
+  type viewCommands,
+} from "./command-handles.js";
 export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {
   commitAllFields,

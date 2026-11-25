@@ -7,7 +7,7 @@ import { pageHome } from "./home.js";
 import { pagePinnedTask } from "./pinnedTask.js";
 import { pagePinnedNote } from "./pinnedNote.js";
 import type { ShellState, ShellClient, ShellPageReference } from "./shell.contract.js";
-export type { ShellState, ShellOpenHomeOperation, ShellOpenDocumentOperation, ShellSwapPinnedOperation, ShellRemovePinnedOperation, ShellRestorePinnedOperation, ShellClient, ShellPageReference } from "./shell.contract.js";
+export type { ShellState, ShellOpenHomeOperation, ShellOpenDocumentOperation, ShellSwapPinnedOperation, ShellRemovePinnedOperation, ShellRestorePinnedOperation, ShellCommandName, ShellClient, ShellPageReference } from "./shell.contract.js";
 import type { NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
 export type { NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
 export { NavigationArrivalStateValues, NavigationOutcomeKindValues, NavigationRejectionValues } from "./types.js";

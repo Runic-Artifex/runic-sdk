@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { InstallerState, InstallerClient, InstallerPageReference } from "./installer.contract.js";
-export type { InstallerState, InstallerNextOperation, InstallerBackOperation, InstallerRestartCheckOperation, InstallerChooseDesignOperation, InstallerClient, InstallerPageReference } from "./installer.contract.js";
+export type { InstallerState, InstallerNextOperation, InstallerBackOperation, InstallerRestartCheckOperation, InstallerChooseDesignOperation, InstallerCommandName, InstallerClient, InstallerPageReference } from "./installer.contract.js";
 
 const pageInstallerReferences = viewReferences<InstallerPageReference>(id => ({ kind: "installer", connect: () => connectInstallerAt(`content${id}`) }));
 export function pageInstaller(id: string): InstallerPageReference { return pageInstallerReferences(id); }

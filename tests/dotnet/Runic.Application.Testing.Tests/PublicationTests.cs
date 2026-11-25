@@ -52,6 +52,11 @@ internal sealed class PublicationTests
         var generated = Path.Combine(project, "obj", "bridge-frontend", "generated");
         var configuration = typeof(PublicationTests).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
         var bridges = Path.Combine(project, "obj", configuration, "net10.0", "runic-bridge");
+        // #1317: the command list offers the published Retry, not ShowHelp, which the native view kept.
+        var contract = File.ReadAllText(Path.Combine(generated, "importResult.contract.d.ts"));
+        Require(contract.Contains("export type ImportResultCommandName = \"retry\";", StringComparison.Ordinal)
+                && contract.Contains("  readonly [viewCommands]?: ImportResultCommandName;", StringComparison.Ordinal),
+            "The command list of the explicit ViewModel is not its published commands:\n" + contract);
         DomainFailureCodegenTests.CompareGolden(project, "explicit-publication",
         [
             ("importResult.contract.d.ts", Path.Combine(generated, "importResult.contract.d.ts")),

@@ -560,6 +560,9 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   `failure` is the declared failure of the latest run; `error` stays the
   unexpected failure. Starting a run and `reset()` clear both, and a run
   superseded by a later run or by `reset()` sets neither.
+- `createCommandHandles({ client, handle, snapshots? })` makes the command handles of
+  a View on demand, which Angular's `injectCommands` and `useCommands` in React, Vue
+  and Svelte wrap; see [Command handles](#command-handles).
 - `createCollectionViewportController({ totalCount, rowHeight, overscan? })` has
   `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the
@@ -988,6 +991,35 @@ sign of a command per key or of an application-side copy of the state. See
 [the plugin guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vite-plugin-runic)
 to turn it off. To test a field, type into it key by key against a slow mock
 ([Typing in tests](#typing-in-tests)).
+
+## Command handles
+
+A generated `<Name>Client` lists its commands, the ViewModel's published commands,
+as `<Name>CommandName`, such as `"refresh" | "archive"`. The list is type-only: the
+client's type carries it under the `viewCommands` key, which no client has at run
+time, and setters, `canX(input)`, `startX`, `recoverX`, `upload` and `dispose` are
+not in it. `CommandName<TClient>`, `CommandArguments<TClient, TName>` and
+`CommandResult<TClient, TName>` read it.
+
+The bindings make one command handle per name from it, so a component needs no
+`useCommand` or `injectCommand` per command:
+
+```ts
+// Angular
+readonly orders = injectView(this.page);
+readonly commands = injectCommands(this.orders);
+// <button (click)="commands.refresh.run()">Refresh</button>  <button (click)="commands.archive.run(row.id)">Archive</button>
+```
+
+`useCommands(view)` in React, Vue and Svelte does the same. A handle is made when the
+page first reads its name and kept for the component's lifetime, with the same `run`,
+`pending`, `error`, `failure` and `reset` as `useCommand`; each handle has its own
+`pending` and `error`. `run()` calls the client connected when it starts, and before
+the client connected it resolves to `undefined`. It never rejects: a failed run ends
+in `error`. A binding for another framework uses `createCommandHandles`: `handles.<name>`
+is `handle(controller, name)` for a `createCommandController` that runs
+`client()?.<name>(...args)`; `subscribe` reports each change of a handle's state, and
+`snapshots: true` makes a handle again after its state changed, as React's are.
 
 ## Interactions as state
 

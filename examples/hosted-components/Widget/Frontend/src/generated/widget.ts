@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { WidgetState, WidgetClient, WidgetPageReference } from "./widget.contract.js";
-export type { WidgetState, WidgetPingOperation, WidgetClient, WidgetPageReference } from "./widget.contract.js";
+export type { WidgetState, WidgetPingOperation, WidgetCommandName, WidgetClient, WidgetPageReference } from "./widget.contract.js";
 
 const pageWidgetReferences = viewReferences<WidgetPageReference>(id => ({ kind: "widget", connect: () => connectWidgetAt(`content${id}`) }));
 export function pageWidget(id: string): WidgetPageReference { return pageWidgetReferences(id); }
