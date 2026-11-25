@@ -146,6 +146,26 @@ async fn a_foreign_host_is_refused_before_the_handler() {
 }
 
 #[tokio::test]
+async fn two_host_lines_are_a_bad_request_before_the_host_check() {
+    // RFC 9112 §3.2: two Host field lines get 400, even when each one names the bound loopback port.
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    for second in [format!("rebound.example:{port}"), format!("127.0.0.1:{port}")] {
+        let response = exchange(
+            port,
+            format!(
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nHost: {second}\r\nConnection: close\r\n\
+                 X-Runic-Test: 1\r\n\r\n"
+            ),
+        )
+        .await;
+        assert!(response.starts_with("HTTP/1.1 400"), "{response}");
+        assert!(response.to_ascii_lowercase().contains("x-content-type-options: nosniff"), "{response}");
+    }
+    assert!(events.try_recv().is_err(), "the handler saw no request");
+}
+
+#[tokio::test]
 async fn a_streamed_body_arrives_in_order_and_the_host_headers_are_kept() {
     let (server, mut events) = start(ServerConfig::default());
     let port = server.port();
@@ -168,6 +188,25 @@ async fn a_streamed_body_arrives_in_order_and_the_host_headers_are_kept() {
     assert!(lower.contains("x-frame-options: deny"), "the host's value wins: {response}");
     assert!(lower.contains("set-cookie: a=1") && lower.contains("set-cookie: b=2"), "{response}");
     assert!(response.contains("one ") && response.ends_with("three") || response.contains("three\r\n"), "{response}");
+}
+
+#[tokio::test]
+async fn an_in_memory_body_is_sent_with_its_length_and_left_out_for_head() {
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    for method in ["GET", "HEAD"] {
+        let request = get(port, "/", "").replacen("GET", method, 1);
+        let client = tokio::spawn(exchange(port, request));
+        let Event::Request { id, .. } = next(&mut events).await else { panic!("a request") };
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+        server.respond(id, StatusCode::OK, headers, Body::Bytes(Bytes::from_static(b"in memory"))).unwrap();
+        let response = client.await.unwrap();
+        let lower = response.to_ascii_lowercase();
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert!(lower.contains("content-length: 9") && lower.contains("x-content-type-options: nosniff"), "{response}");
+        assert_eq!(response.ends_with("\r\n\r\nin memory"), method == "GET", "{response}");
+    }
 }
 
 #[tokio::test]

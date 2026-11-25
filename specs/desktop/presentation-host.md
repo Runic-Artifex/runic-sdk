@@ -255,7 +255,10 @@ not a credential.
 
 A loopback listener rejects every HTTP request whose `Host` is not a loopback
 address or `localhost` at the bound port, so a DNS-rebinding page cannot read
-its responses as same-origin content. Credential-bearing bootstrap scripts are
+its responses as same-origin content. Any listener answers a request with more
+than one `Host` header field line with 400 (Bad Request) before that check, as
+RFC 9112 §3.2 requires, so no server has to choose which line to check.
+Credential-bearing bootstrap scripts are
 refused to browser loads whose fetch metadata names another destination than
 `script`, or a site other than `same-origin` or `none`. A cross-site load is
 admitted only when its referrer is an explicitly additional origin. Requests
