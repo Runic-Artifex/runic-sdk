@@ -217,3 +217,34 @@ test("the output of the remaining surface compiles against the package's declara
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// R7 G5 (D080): the dual-run gate (eng/ci/views-dual-run.mjs) found these; the generator tests' dual-run goldens pin
+// the .NET output of the same fixtures.
+test("a numeric constraint bound is written as .NET writes a double", () => {
+  const bounded = (wire: string, min: number, max: number) => ({ name: wire[0]!.toUpperCase() + wire.slice(1), wire, kind: "value" as const,
+    value: { direction: "both" as const, type: { kind: "float64" as const } }, settable: true as const, declaringType: "Bounds", checked: true as const,
+    constraints: { min, max } });
+  const files = generate(document([view("Bounds", { members: [
+    bounded("large", 0, 1e20), bounded("small", 1e-7, 5e-5), bounded("wide", -1.5e300, 1e17), bounded("plain", 0.0001, 9e16),
+    bounded("zero", -0, 1.2345678901234567e19), bounded("tiny", 5e-324, 1.7976931348623157e308),
+  ] })]), { outputDirectory: "/generated" });
+  const client = files.get("bounds.ts")!;
+  for (const expected of ["{ min: 0, max: 1E+20 }", "{ min: 1E-07, max: 5E-05 }", "{ min: -1.5E+300, max: 1E+17 }",
+    "{ min: 0.0001, max: 90000000000000000 }", "{ min: -0, max: 1.2345678901234567E+19 }", "{ min: 5E-324, max: 1.7976931348623157E+308 }"])
+    assert.ok(client.includes(`constraints: ${expected}`), `${expected}\n${client}`);
+});
+
+test("non-ASCII names are bound as the .NET generator binds them", () => {
+  // The own bindings around pageGrößen and connectGrößenAt: JavaScript's ASCII \w left their markers in the output.
+  const files = generate(document([view("Größen", {
+    members: [{ name: "Straße", wire: "straße", kind: "value", value: { direction: "both", type: { kind: "string" } }, settable: true,
+      declaringType: "Größen", checked: true }],
+    commands: [{ name: "Löschen", wire: "löschen" }],
+  })]), { outputDirectory: "/generated" });
+  const client = files.get("größen.ts")!;
+  for (const [name, text] of files) assert.ok(!/[\u0003-\u0006]/.test(text), `${name} keeps a binding marker`);
+  for (const expected of ["export function pageGrößen(id: string): GrößenPageReference { return pageGrößenReferences(id); }",
+    "export function connectGrößen(options?: BridgeConnectOptions)", "async function connectGrößenAt(route: string,",
+    "import type { GrößenState, GrößenCheckedFields, GrößenClient, GrößenPageReference } from"])
+    assert.ok(client.includes(expected), `${expected}\n${client}`);
+});

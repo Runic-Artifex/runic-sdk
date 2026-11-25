@@ -2,17 +2,20 @@
 // from the names a module derives from the IR (#258). Emitters write each own binding through Ref, Import or Shorthand;
 // resolveBindings keeps the name unless a derived binding of the same module uses it, and then renames it `_name`.
 import { ContractIrDiagnostic, NAME_COLLISION } from "./diagnostics.js";
+import { NAME, WORD } from "./text.js";
 
 export const Ref = (name: string) => `\u0003${name}\u0003`;
 export const Import = (name: string) => `\u0004${name}\u0004`;
 export const Shorthand = (name: string) => `\u0005${name}\u0005`;
 
-const marked = /([\u0003\u0004\u0005])([A-Za-z_$][\w$]*)\1/g;
+const marked = new RegExp(String.raw`([\u0003\u0004\u0005])(${NAME})\1`, "gu");
+const declaration = new RegExp(String.raw`^(?:export\s+)?(?:async\s+)?(?:interface|type|function|const|let|var|class|enum)\s+(${NAME})`, "gmu");
+const namespaceImport = new RegExp(String.raw`^import\s+(?:type\s+)?\*\s+as\s+(${NAME})`, "gmu");
 
 /** The names a module's top-level declarations and imports bind; generated modules start each statement in column 0. */
 export function* declaredTopLevel(module: string): Generator<string> {
-  for (const match of module.matchAll(/^(?:export\s+)?(?:async\s+)?(?:interface|type|function|const|let|var|class|enum)\s+([A-Za-z_$][\w$]*)/gm)) yield match[1]!;
-  for (const match of module.matchAll(/^import\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][\w$]*)/gm)) yield match[1]!;
+  for (const match of module.matchAll(declaration)) yield match[1]!;
+  for (const match of module.matchAll(namespaceImport)) yield match[1]!;
   for (const match of module.matchAll(/^import\s+(?:type\s+)?\{([^}]*)\}/gm))
     for (const raw of match[1]!.split(",").map(part => part.trim()).filter(part => part.length > 0)) {
       const name = raw.startsWith("type ") ? raw.slice(5).trim() : raw;
@@ -48,4 +51,4 @@ export const references = (module: string) =>
 export const withoutComments = (module: string) => module.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, "");
 
 export const mentions = (module: string, name: string) =>
-  new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`).test(module);
+  new RegExp(`(?<![${WORD}$])${name.replace(/[$]/g, "\\$")}(?![${WORD}$])`, "u").test(module);

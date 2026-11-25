@@ -175,6 +175,15 @@ export interface GenericBoxOfArrayOfInt32 {
   readonly value: readonly number[] | null;
 }
 
+export interface Größe {
+  readonly maß: string;
+  readonly höhe: number;
+}
+
+export interface Grün {
+  readonly farbton: string;
+}
+
 export interface KeyedRow {
   readonly key: string;
   readonly label: string;

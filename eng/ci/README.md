@@ -922,6 +922,35 @@ sets `RunicFlakyTests`, run by a job that starts `.github/actions/flaky-tests`
 Scripted journey and native smoke steps (the "Exercise …" steps) cannot be listed yet;
 a step would need a `continue-on-error` condition from the plan job.
 
+## Views dual-run gate
+
+Until the build runs the Views TypeScript emitter (`@runic-artifex/views/codegen`, R7 G6), the .NET generator writes
+the generated clients, and `eng/ci/views-dual-run.mjs` checks that the emitter would write the same bytes. After a
+build it runs the emitter on each project's contract IR (`obj/<configuration>/<framework>/runic-bridge/contract.ir.json`)
+and compares every TypeScript file the .NET generator recorded in `.runic-bridge-generation-cache.json` beside it, by
+name and SHA-256, with the emitter's file. It covers:
+
+- **examples:** every built example; an example of the IR corpus without an IR fails the run as unbuilt;
+- **tests:** the other test projects with Views;
+- **goldens:** the whole generator test assembly (`tests/dotnet/Runic.Application.Testing.Tests`), and each
+  `golden/*/*.ts.golden` with only the golden tests' fingerprint placeholder applied;
+- **templates:** each project the template lanes generate, with the emitter of the `@runic-artifex/views` its
+  frontend installed (`tests/templates/Test-Templates.sh`).
+
+```sh
+bun eng/ci/views-dual-run.mjs                       # examples, tests and goldens of the $CONFIGURATION build
+bun eng/ci/views-dual-run.mjs --set goldens         # one set
+bun eng/ci/views-dual-run.mjs --project <csproj> --emitter frontend
+```
+
+Each difference is printed as a short diff with its file and a cause (number formatting, string escaping, a non-ASCII
+name, a declaration map, a stale golden, a file only one side writes); the exit code is 1. The engineering job runs it
+through `eng/ci/views-dual-run.test.mjs` on the restored Linux build; the test skips without a build outside CI.
+`DualRunFixture.cs` holds what no example or golden had: double bounds that .NET writes in exponent form (`1E+20`,
+`1E-07`) and non-ASCII names. Both generators leave a name that starts with a non-ASCII letter (`ÜbersichtState`) out of
+a client's imports and re-exports, because their scans read names as `[A-Za-z_$][\w$]*`; the fixture's names start
+with an ASCII letter, and G6 fixes the scans with the switch-over.
+
 ## GitHub reruns
 
 Use GitHub's **Re-run failed jobs** or select one job to rerun after a transient
