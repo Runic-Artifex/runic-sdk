@@ -1,0 +1,194 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "CheckTool"
+  },
+  "views": [
+    {
+      "id": "CheckTool.CheckViewModel",
+      "name": "Check",
+      "route": "check",
+      "fingerprint": "C8865DDF87FCB3EBED9EC659AE1652163BF37BD3F3439A34013E0C4BC59AD941",
+      "kinds": [
+        "check"
+      ],
+      "members": [
+        {
+          "name": "Space",
+          "wire": "space",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "SpaceDetail",
+          "wire": "spaceDetail",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Folder",
+          "wire": "folder",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "FolderDetail",
+          "wire": "folderDetail",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Account",
+          "wire": "account",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "AccountDetail",
+          "wire": "accountDetail",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Outcome",
+          "wire": "outcome",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Run",
+          "wire": "run",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ReportAppearance",
+          "wire": "reportAppearance",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "CheckTool.CheckViewModel": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 11,
+      "column": 21
+    },
+    "CheckTool.CheckViewModel/state/account": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 44,
+      "column": 29
+    },
+    "CheckTool.CheckViewModel/state/accountDetail": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 46,
+      "column": 35
+    },
+    "CheckTool.CheckViewModel/state/folder": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 40,
+      "column": 28
+    },
+    "CheckTool.CheckViewModel/state/folderDetail": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 42,
+      "column": 34
+    },
+    "CheckTool.CheckViewModel/state/outcome": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 49,
+      "column": 29
+    },
+    "CheckTool.CheckViewModel/state/space": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 36,
+      "column": 27
+    },
+    "CheckTool.CheckViewModel/state/spaceDetail": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 38,
+      "column": 33
+    },
+    "CheckTool.CheckViewModel/command/reportAppearance": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 72,
+      "column": 25
+    },
+    "CheckTool.CheckViewModel/command/run": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 59,
+      "column": 17
+    },
+    "CheckTool.CheckViewModel/commandState/canRun": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 59,
+      "column": 17
+    },
+    "CheckTool.CheckViewModel/commandState/isReportAppearanceExecuting": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 72,
+      "column": 25
+    },
+    "CheckTool.CheckViewModel/commandState/isRunExecuting": {
+      "file": "../../../../examples/hosted-region/Check/CheckViewModel.cs",
+      "line": 59,
+      "column": 17
+    }
+  }
+}

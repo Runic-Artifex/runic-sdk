@@ -1,0 +1,117 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "WidgetTool"
+  },
+  "views": [
+    {
+      "id": "WidgetTool.WidgetViewModel",
+      "name": "Widget",
+      "route": "widget",
+      "fingerprint": "68E3A43F7F17BB041BFE2D58E6EF989AB473EDBCA8689D93A167FF3C8E8ABDFA",
+      "kinds": [
+        "widget"
+      ],
+      "members": [
+        {
+          "name": "Name",
+          "wire": "name",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "ProcessId",
+          "wire": "processId",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Seconds",
+          "wire": "seconds",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Pings",
+          "wire": "pings",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Ping",
+          "wire": "ping",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "WidgetTool.WidgetViewModel": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 9,
+      "column": 21
+    },
+    "WidgetTool.WidgetViewModel/state/name": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 23,
+      "column": 19
+    },
+    "WidgetTool.WidgetViewModel/state/pings": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 29,
+      "column": 24
+    },
+    "WidgetTool.WidgetViewModel/state/processId": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 25,
+      "column": 16
+    },
+    "WidgetTool.WidgetViewModel/state/seconds": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 27,
+      "column": 26
+    },
+    "WidgetTool.WidgetViewModel/command/ping": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 20,
+      "column": 9
+    },
+    "WidgetTool.WidgetViewModel/commandState/canPing": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 20,
+      "column": 9
+    },
+    "WidgetTool.WidgetViewModel/commandState/isPingExecuting": {
+      "file": "../../../../examples/hosted-components/Widget/WidgetViewModel.cs",
+      "line": 20,
+      "column": 9
+    }
+  }
+}

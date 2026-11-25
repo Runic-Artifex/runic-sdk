@@ -1,0 +1,1046 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "NotesReactiveViews"
+  },
+  "views": [
+    {
+      "id": "NotesReactiveViews.ShellViewModel",
+      "name": "Shell",
+      "route": "shell",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "shell"
+      ],
+      "members": [
+        {
+          "name": "Main",
+          "wire": "main",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesReactiveViews.DocumentViewModel",
+              "name": "Document",
+              "kind": "document"
+            },
+            {
+              "view": "NotesReactiveViews.HomeViewModel",
+              "name": "Home",
+              "kind": "home"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        },
+        {
+          "name": "Pinned",
+          "wire": "pinned",
+          "kind": "content-list",
+          "pages": [
+            {
+              "view": "NotesReactiveViews.PinnedTaskViewModel",
+              "name": "PinnedTask",
+              "kind": "pinnedTask"
+            },
+            {
+              "view": "NotesReactiveViews.PinnedNoteViewModel",
+              "name": "PinnedNote",
+              "kind": "pinnedNote"
+            }
+          ]
+        }
+      ],
+      "commands": [
+        {
+          "name": "OpenHome",
+          "wire": "openHome",
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Navigation.NavigationOutcome"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "OpenDocument",
+          "wire": "openDocument",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "SwapPinned",
+          "wire": "swapPinned",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "RemovePinned",
+          "wire": "removePinned",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "RestorePinned",
+          "wire": "restorePinned",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "NotesReactiveViews.HomeViewModel",
+      "name": "Home",
+      "route": "home",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "home"
+      ],
+      "members": [
+        {
+          "name": "Greeting",
+          "wire": "greeting",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "LastResult",
+          "wire": "lastResult",
+          "doc": "How the last visit to the document ended.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "NotesReactiveViews.DocumentViewModel",
+      "name": "Document",
+      "route": "document",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "document"
+      ],
+      "members": [
+        {
+          "name": "CurrentPane",
+          "wire": "currentPane",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesReactiveViews.EditorViewModel",
+              "name": "Editor",
+              "kind": "editor"
+            },
+            {
+              "view": "NotesReactiveViews.PreviewViewModel",
+              "name": "Preview",
+              "kind": "preview"
+            }
+          ],
+          "nullable": true,
+          "region": true
+        },
+        {
+          "name": "CompactNote",
+          "wire": "compactNote",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "NotesReactiveViews.EditorViewModel",
+              "name": "Editor",
+              "kind": "editorCompact"
+            }
+          ]
+        },
+        {
+          "name": "ActivePane",
+          "wire": "activePane",
+          "doc": "The pane the child region currently shows.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesReactiveViews.DocumentPane"
+            }
+          }
+        },
+        {
+          "name": "Status",
+          "wire": "status",
+          "doc": "Whether the note has unsaved changes, while the document is current.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "ShowEditor",
+          "wire": "showEditor",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ShowPreview",
+          "wire": "showPreview",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "SaveAndClose",
+          "wire": "saveAndClose",
+          "doc": "Saves the note and closes the document with its title as the result.",
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Navigation.NavigationOutcome"
+            }
+          },
+          "failure": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesReactiveViews.SaveFailure"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Close",
+          "wire": "close",
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Navigation.NavigationOutcome"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "ConfirmLeave",
+          "wire": "confirmLeave",
+          "contract": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmLeave",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesReactiveViews.DiscardNoteRequest"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "NotesReactiveViews.EditorViewModel",
+      "name": "Editor",
+      "route": "editor",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "editor",
+        "editorCompact"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "EditorViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Body",
+          "wire": "body",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "EditorViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "doc": "Whether the title or body differs from the last save.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "SavedMessage",
+          "wire": "savedMessage",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "ActivationCount",
+          "wire": "activationCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "DeactivationCount",
+          "wire": "deactivationCount",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save",
+          "doc": "Saves the note. A missing or overlong title is a declared failure.",
+          "failure": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesReactiveViews.SaveFailure"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Discard",
+          "wire": "discard",
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "ConfirmDiscard",
+          "wire": "confirmDiscard",
+          "contract": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmDiscard",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "NotesReactiveViews.DiscardNoteRequest"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "NotesReactiveViews.PreviewViewModel",
+      "name": "Preview",
+      "route": "preview",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "preview"
+      ],
+      "members": [
+        {
+          "name": "Heading",
+          "wire": "heading",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Body",
+          "wire": "body",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "NotesReactiveViews.PinnedNoteViewModel",
+      "name": "PinnedNote",
+      "route": "pinnedNote",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "pinnedNote"
+      ],
+      "members": [
+        {
+          "name": "Label",
+          "wire": "label",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "NotesReactiveViews.PinnedTaskViewModel",
+      "name": "PinnedTask",
+      "route": "pinnedTask",
+      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "kinds": [
+        "pinnedTask"
+      ],
+      "members": [
+        {
+          "name": "Priority",
+          "wire": "priority",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": []
+    }
+  ],
+  "types": {
+    "NotesReactiveViews.DiscardNoteRequest": {
+      "kind": "object",
+      "name": {
+        "source": "NotesReactiveViews.DiscardNoteRequest",
+        "base": "DiscardNoteRequest",
+        "qualifiers": [
+          "NotesReactiveViews"
+        ]
+      },
+      "members": [
+        {
+          "wire": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "bodyLength",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "NotesReactiveViews.DocumentPane": {
+      "kind": "enum",
+      "name": {
+        "source": "NotesReactiveViews.DocumentPane",
+        "base": "DocumentPane",
+        "qualifiers": [
+          "NotesReactiveViews"
+        ]
+      },
+      "doc": "A pane of the document page.",
+      "cases": [
+        {
+          "wire": "Editor",
+          "value": "0",
+          "doc": "The note editor."
+        },
+        {
+          "wire": "Preview",
+          "value": "1",
+          "doc": "The rendered note."
+        }
+      ]
+    },
+    "NotesReactiveViews.SaveFailure": {
+      "kind": "union",
+      "name": {
+        "source": "NotesReactiveViews.SaveFailure",
+        "base": "SaveFailure",
+        "qualifiers": [
+          "NotesReactiveViews"
+        ]
+      },
+      "doc": "Why a note could not be saved.",
+      "cases": [
+        {
+          "tag": "titleRequired",
+          "object": null
+        },
+        {
+          "tag": "titleTooLong",
+          "object": "NotesReactiveViews.TitleTooLong"
+        }
+      ]
+    },
+    "NotesReactiveViews.TitleTooLong": {
+      "kind": "object",
+      "name": {
+        "source": "NotesReactiveViews.TitleTooLong",
+        "base": "TitleTooLong",
+        "qualifiers": [
+          "NotesReactiveViews"
+        ]
+      },
+      "doc": "The title is longer than the notes store accepts.",
+      "members": [
+        {
+          "wire": "maximumLength",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationArrivalState": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Navigation.NavigationArrivalState",
+        "base": "NavigationArrivalState",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "How the arrival hooks of a committed transition ended (`Arrival`).",
+      "cases": [
+        {
+          "wire": "None",
+          "value": "0",
+          "doc": "No entry the commit made current has an arrival hook."
+        },
+        {
+          "wire": "Completed",
+          "value": "1",
+          "doc": "Every arrival hook returned."
+        },
+        {
+          "wire": "Failed",
+          "value": "2",
+          "doc": "An arrival hook threw; the commit stands."
+        },
+        {
+          "wire": "Cancelled",
+          "value": "3",
+          "doc": "An arrival hook was cancelled, because its entry stopped being current or retired, or the navigator closed, or it was never started for that reason."
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationOutcome": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Navigation.NavigationOutcome",
+        "base": "NavigationOutcome",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command.",
+      "members": [
+        {
+          "wire": "kind",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Navigation.NavigationOutcomeKind"
+          },
+          "doc": "How the request ended."
+        },
+        {
+          "wire": "rejection",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Navigation.NavigationRejection",
+            "nullable": true
+          },
+          "optional": true,
+          "doc": "Why the request was rejected, for `Rejected`; otherwise `null`."
+        },
+        {
+          "wire": "arrival",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Navigation.NavigationArrivalState"
+          },
+          "doc": "Gets how the arrival hooks (`INavigationArrived`) of the entries a `Committed` transition made current ended, so a page can show that their data failed to load; `None` for every other kind. Only the full navigation result carries the exception of a `Failed` hook."
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationOutcomeKind": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Navigation.NavigationOutcomeKind",
+        "base": "NavigationOutcomeKind",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "How a navigation request ended, as reported by `Kind`.",
+      "cases": [
+        {
+          "wire": "Committed",
+          "value": "0",
+          "doc": "The transition committed."
+        },
+        {
+          "wire": "Rejected",
+          "value": "1",
+          "doc": "The transition was rejected; `Rejection` says why."
+        },
+        {
+          "wire": "Superseded",
+          "value": "2",
+          "doc": "A later request replaced this one before it committed."
+        },
+        {
+          "wire": "Failed",
+          "value": "3",
+          "doc": "The transition failed. Only the full navigation result carries the exception."
+        }
+      ]
+    },
+    "Runic.Navigation.NavigationRejection": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Navigation.NavigationRejection",
+        "base": "NavigationRejection",
+        "qualifiers": [
+          "Navigation",
+          "Runic"
+        ]
+      },
+      "doc": "Why a navigation request was rejected.",
+      "cases": [
+        {
+          "wire": "Guard",
+          "value": "0",
+          "doc": "A departure guard returned `false`."
+        },
+        {
+          "wire": "Cancelled",
+          "value": "1",
+          "doc": "The caller's token was cancelled before the commit."
+        },
+        {
+          "wire": "Closed",
+          "value": "2",
+          "doc": "The navigator or the region is closed."
+        },
+        {
+          "wire": "Reentrant",
+          "value": "3",
+          "doc": "The request came from a hook of an in-flight transition of the same region, or of a region that holds it or is held by it (an ancestor or a descendant region). The rejection is conservative: such a request could wait on the transition that is running the hook."
+        },
+        {
+          "wire": "NoHistory",
+          "value": "4",
+          "doc": "A back request found no retained entry."
+        },
+        {
+          "wire": "NotCurrent",
+          "value": "5",
+          "doc": "The expected current entry is not current."
+        },
+        {
+          "wire": "EntryNotFound",
+          "value": "6",
+          "doc": "The back-to target is not in the region."
+        },
+        {
+          "wire": "Busy",
+          "value": "7",
+          "doc": "The region admits requests with `RejectWhileBusy` and was busy: an earlier request had not completed."
+        }
+      ]
+    }
+  },
+  "sources": {
+    "NotesReactiveViews.DocumentViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 122,
+      "column": 21
+    },
+    "NotesReactiveViews.EditorViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 203,
+      "column": 21
+    },
+    "NotesReactiveViews.HomeViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 109,
+      "column": 29
+    },
+    "NotesReactiveViews.PinnedNoteViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 99,
+      "column": 14
+    },
+    "NotesReactiveViews.PinnedTaskViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 104,
+      "column": 21
+    },
+    "NotesReactiveViews.PreviewViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 294,
+      "column": 21
+    },
+    "NotesReactiveViews.ShellViewModel": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 33,
+      "column": 21
+    },
+    "NotesReactiveViews.DocumentViewModel/state/activePane": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 169,
+      "column": 38
+    },
+    "NotesReactiveViews.DocumentViewModel/state/compactNote": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 167,
+      "column": 28
+    },
+    "NotesReactiveViews.DocumentViewModel/state/currentPane": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 165,
+      "column": 44
+    },
+    "NotesReactiveViews.DocumentViewModel/state/status": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 171,
+      "column": 28
+    },
+    "NotesReactiveViews.DocumentViewModel/command/close": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 156,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/command/saveAndClose": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 151,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/command/showEditor": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 137,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/command/showPreview": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 138,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/canClose": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 156,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/canSaveAndClose": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 151,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/canShowEditor": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 137,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/canShowPreview": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 138,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/isCloseExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 156,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/isSaveAndCloseExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 151,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/isShowEditorExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 137,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/commandState/isShowPreviewExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 138,
+      "column": 9
+    },
+    "NotesReactiveViews.DocumentViewModel/interaction/confirmLeave": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 172,
+      "column": 50
+    },
+    "NotesReactiveViews.EditorViewModel/state/activationCount": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 238,
+      "column": 34
+    },
+    "NotesReactiveViews.EditorViewModel/state/body": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 234,
+      "column": 26
+    },
+    "NotesReactiveViews.EditorViewModel/state/deactivationCount": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 239,
+      "column": 36
+    },
+    "NotesReactiveViews.EditorViewModel/state/isDirty": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 236,
+      "column": 17
+    },
+    "NotesReactiveViews.EditorViewModel/state/savedMessage": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 237,
+      "column": 34
+    },
+    "NotesReactiveViews.EditorViewModel/state/title": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 233,
+      "column": 27
+    },
+    "NotesReactiveViews.EditorViewModel/setter/body": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 234,
+      "column": 40
+    },
+    "NotesReactiveViews.EditorViewModel/setter/title": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 233,
+      "column": 42
+    },
+    "NotesReactiveViews.EditorViewModel/command/discard": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 224,
+      "column": 9
+    },
+    "NotesReactiveViews.EditorViewModel/command/save": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 223,
+      "column": 9
+    },
+    "NotesReactiveViews.EditorViewModel/commandState/canDiscard": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 224,
+      "column": 9
+    },
+    "NotesReactiveViews.EditorViewModel/commandState/canSave": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 223,
+      "column": 9
+    },
+    "NotesReactiveViews.EditorViewModel/commandState/isDiscardExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 224,
+      "column": 9
+    },
+    "NotesReactiveViews.EditorViewModel/commandState/isSaveExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 223,
+      "column": 9
+    },
+    "NotesReactiveViews.EditorViewModel/interaction/confirmDiscard": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 240,
+      "column": 50
+    },
+    "NotesReactiveViews.HomeViewModel/state/greeting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 112,
+      "column": 19
+    },
+    "NotesReactiveViews.HomeViewModel/state/lastResult": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 114,
+      "column": 32
+    },
+    "NotesReactiveViews.PinnedNoteViewModel/state/label": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 101,
+      "column": 19
+    },
+    "NotesReactiveViews.PinnedTaskViewModel/state/priority": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 106,
+      "column": 19
+    },
+    "NotesReactiveViews.PreviewViewModel/state/body": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 303,
+      "column": 19
+    },
+    "NotesReactiveViews.PreviewViewModel/state/heading": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 302,
+      "column": 19
+    },
+    "NotesReactiveViews.ShellViewModel/state/main": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 55,
+      "column": 40
+    },
+    "NotesReactiveViews.ShellViewModel/state/pinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 56,
+      "column": 39
+    },
+    "NotesReactiveViews.ShellViewModel/command/openDocument": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 48,
+      "column": 9
+    },
+    "NotesReactiveViews.ShellViewModel/command/openHome": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 47,
+      "column": 9
+    },
+    "NotesReactiveViews.ShellViewModel/command/removePinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 87,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/command/restorePinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 92,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/command/swapPinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 82,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/canOpenDocument": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 48,
+      "column": 9
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/canOpenHome": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 47,
+      "column": 9
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/canRemovePinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 87,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/canRestorePinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 92,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/canSwapPinned": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 82,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/isOpenDocumentExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 48,
+      "column": 9
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/isOpenHomeExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 47,
+      "column": 9
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/isRemovePinnedExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 87,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/isRestorePinnedExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 92,
+      "column": 18
+    },
+    "NotesReactiveViews.ShellViewModel/commandState/isSwapPinnedExecuting": {
+      "file": "../../../../examples/notes-reactive-views/ViewModels.cs",
+      "line": 82,
+      "column": 18
+    }
+  }
+}

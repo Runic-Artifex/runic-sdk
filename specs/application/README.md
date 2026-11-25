@@ -16,6 +16,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
+| [contract-ir.md](contract-ir.md) | The contract IR: a producer unit's Views, members, commands and types in a language-neutral form that client emitters read, with its schema and corpus |
 | [conformance/](conformance/README.md) | Vectors and scenarios |
 | [collection-deltas.md](collection-deltas.md) | Protocol 3's collection delta frames, kept with their fixtures while the .NET state tracker's tests read them |
 

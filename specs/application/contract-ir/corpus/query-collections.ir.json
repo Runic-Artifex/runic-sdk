@@ -1,0 +1,150 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "QueryCollectionsExample"
+  },
+  "views": [
+    {
+      "id": "QueryCollectionsExample.CatalogViewModel",
+      "name": "Catalog",
+      "route": "catalog",
+      "fingerprint": "997D7C5D156BE970A9106B043B6265CE1D6D3D843B8AC4AA42D41EC3D9B15DF8",
+      "kinds": [
+        "catalog"
+      ],
+      "doc": "One window's catalog. The rows stay in the store: each page loads the rows it shows, and sorts and filters with setQuery. The query is this ViewModel's state, so every page of the window shares it.",
+      "members": [
+        {
+          "name": "Products",
+          "wire": "products",
+          "doc": "Every product, as the page sorts and filters it.",
+          "kind": "query-collection",
+          "rows": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "QueryCollectionsExample.Product"
+              }
+            }
+          },
+          "defaultKey": "id"
+        }
+      ],
+      "commands": [
+        {
+          "name": "Restock",
+          "wire": "restock",
+          "doc": "Adds ten to a product's stock.",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Add",
+          "wire": "add",
+          "doc": "Adds a product at the end of the catalog.",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {
+    "QueryCollectionsExample.Product": {
+      "kind": "object",
+      "name": {
+        "source": "QueryCollectionsExample.Product",
+        "base": "Product",
+        "qualifiers": [
+          "QueryCollectionsExample"
+        ]
+      },
+      "doc": "A product of the catalog. Notes vary in length, so rows vary in height.",
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "price",
+          "type": {
+            "kind": "decimal"
+          }
+        },
+        {
+          "wire": "stock",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "notes",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "sources": {
+    "QueryCollectionsExample.CatalogViewModel": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 50,
+      "column": 21
+    },
+    "QueryCollectionsExample.CatalogViewModel/state/products": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 74,
+      "column": 47
+    },
+    "QueryCollectionsExample.CatalogViewModel/command/add": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 70,
+      "column": 9
+    },
+    "QueryCollectionsExample.CatalogViewModel/command/restock": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 68,
+      "column": 9
+    },
+    "QueryCollectionsExample.CatalogViewModel/commandState/canAdd": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 70,
+      "column": 9
+    },
+    "QueryCollectionsExample.CatalogViewModel/commandState/isAddExecuting": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 70,
+      "column": 9
+    },
+    "QueryCollectionsExample.CatalogViewModel/commandState/isRestockExecuting": {
+      "file": "../../../../examples/query-collections/CatalogViewModel.cs",
+      "line": 68,
+      "column": 9
+    }
+  }
+}

@@ -1,0 +1,682 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-views/contract-ir-1.schema.json",
+  "title": "Runic Views contract IR",
+  "description": "What one producer unit (a .NET model assembly, a Rust crate, a C++ target) exposes to pages through the Views protocol, in a language-neutral form that a client emitter reads. A build intermediate. See ../contract-ir.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "producer", "views", "types", "sources"],
+  "properties": {
+    "format": {"const": "runic.views.contract-ir/1"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "tool", "unit"],
+      "properties": {
+        "language": {"enum": ["csharp", "rust", "cpp"]},
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The program that wrote the document."
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The producer unit: assembly, crate or target name."
+        },
+        "clientLibrary": {
+          "const": true,
+          "description": "Library mode: the unit's clients are a module that other frontends import (runic-clients and runic-mocks barrels)."
+        }
+      }
+    },
+    "clientModules": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Application mode: client libraries whose Views this unit presents and whose generated clients it imports instead of writing copies.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["unit", "specifier"],
+        "properties": {
+          "unit": {"type": "string", "minLength": 1},
+          "specifier": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A package or path alias module specifier, never relative."
+          }
+        }
+      }
+    },
+    "views": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/view"}},
+    "sharedClients": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sharedClient"}},
+    "types": {
+      "type": "object",
+      "description": "Named types by id: one definition per source type and member shape.",
+      "additionalProperties": {"$ref": "#/$defs/typeDefinition"}
+    },
+    "sources": {
+      "type": "object",
+      "description": "Source locations by id: a View id, or {view}/{state|setter|command|commandState|interaction|request}/{member}.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line", "column"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Absolute, or relative to the directory of the IR document."
+          },
+          "line": {"type": "integer", "minimum": 1},
+          "column": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "doc": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Documentation as Markdown text, rendered from the source language's doc comments."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[\\p{Lu}\\p{Lt}_][\\p{L}\\p{M}\\p{N}\\p{Pc}]*$",
+      "description": "UpperCamelCase, as the emitter appends it to set, write, can, is…Executing, start and recover. A producer converts its source name: a Rust producer its snake_case identifier, a C# producer the member name with an uppercase first letter."
+    },
+    "wire": {"type": "string", "minLength": 1},
+    "direction": {"enum": ["to-page", "from-page", "both"]},
+    "value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direction", "type"],
+      "properties": {
+        "direction": {"$ref": "#/$defs/direction"},
+        "type": {"$ref": "#/$defs/typeRef"},
+        "untyped": {
+          "const": true,
+          "description": "A legacy command argument: a string without a typed input graph."
+        }
+      }
+    },
+    "typeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "boolean",
+            "int8",
+            "uint8",
+            "int16",
+            "uint16",
+            "int32",
+            "uint32",
+            "int64",
+            "uint64",
+            "big-integer",
+            "float32",
+            "float64",
+            "decimal",
+            "string",
+            "uuid",
+            "local-date",
+            "local-time",
+            "date-time",
+            "offset-date-time",
+            "duration",
+            "text-reference",
+            "blob",
+            "upload",
+            "json",
+            "list",
+            "map",
+            "named",
+            "custom"
+          ]
+        },
+        "nullable": {"const": true},
+        "element": {"$ref": "#/$defs/typeRef"},
+        "value": {"$ref": "#/$defs/typeRef"},
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "named: a key of types."
+        },
+        "jsonNull": {
+          "type": "boolean",
+          "description": "json: whether JSON null is a value or only absence."
+        },
+        "codec": {
+          "type": "string",
+          "minLength": 1,
+          "description": "custom: the codec's identity."
+        },
+        "typescript": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "decode", "encode"],
+          "description": "custom: the page-side form the codec declares; $value stands for the expression.",
+          "properties": {
+            "type": {"type": "string"},
+            "decode": {"type": "string"},
+            "encode": {"type": "string"}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "list"}}},
+          "then": {"required": ["element"]},
+          "else": {"not": {"required": ["element"]}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "map"}}},
+          "then": {"required": ["value"]},
+          "else": {"not": {"required": ["value"]}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "named"}}},
+          "then": {"required": ["ref"]},
+          "else": {"not": {"required": ["ref"]}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "json"}}},
+          "then": {"required": ["jsonNull"]},
+          "else": {"not": {"required": ["jsonNull"]}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "custom"}}},
+          "then": {"required": ["codec", "typescript"]},
+          "else": {
+            "not": {
+              "anyOf": [
+                {"required": ["codec"]},
+                {"required": ["typescript"]}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nameHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "base", "qualifiers"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The source type's full name; it orders names that tie."
+        },
+        "base": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$",
+          "description": "An identifier, such as PageOfNoteRow for Page<NoteRow>."
+        },
+        "annotatedBase": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$",
+          "description": "With the use's nullable annotations, such as BoxOfNullableOfString; present when it differs from base."
+        },
+        "qualifiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+          },
+          "description": "Declaring types, then namespace or module segments, innermost first."
+        }
+      }
+    },
+    "enumCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wire", "value"],
+      "properties": {
+        "wire": {"$ref": "#/$defs/wire"},
+        "value": {"type": "string", "pattern": "^-?[0-9]+$"},
+        "doc": {"$ref": "#/$defs/doc"}
+      }
+    },
+    "unionCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "object"],
+      "properties": {
+        "tag": {"type": "string", "minLength": 1},
+        "object": {"type": ["string", "null"]}
+      }
+    },
+    "objectMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wire", "type"],
+      "properties": {
+        "wire": {"$ref": "#/$defs/wire"},
+        "type": {"$ref": "#/$defs/typeRef"},
+        "optional": {
+          "const": true,
+          "description": "The producer fills it in when a page leaves it out."
+        },
+        "absent": {
+          "const": true,
+          "description": "Left out of the object when it holds no value."
+        },
+        "doc": {"$ref": "#/$defs/doc"}
+      }
+    },
+    "typeDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": {"enum": ["enum", "object", "union"]},
+        "name": {"$ref": "#/$defs/nameHints"},
+        "doc": {"$ref": "#/$defs/doc"},
+        "cases": {"type": "array"},
+        "members": {"type": "array", "items": {"$ref": "#/$defs/objectMember"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "enum"}}},
+          "then": {
+            "required": ["cases"],
+            "properties": {"cases": {"items": {"$ref": "#/$defs/enumCase"}}},
+            "not": {"required": ["members"]}
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "union"}}},
+          "then": {
+            "required": ["cases"],
+            "properties": {
+              "cases": {
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/unionCase"
+                }
+              }
+            },
+            "not": {"required": ["members"]}
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "object"}}},
+          "then": {"required": ["members"], "not": {"required": ["cases"]}}
+        }
+      ]
+    },
+    "pageRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "name", "kind"],
+      "properties": {
+        "view": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The id of the presented View."
+        },
+        "name": {"type": "string", "minLength": 1, "description": "Its public name."},
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The presentation kind, such as editorCompact."
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "required": {"const": true},
+        "minLength": {"type": "integer", "minimum": 1},
+        "maxLength": {"type": "integer", "minimum": 0},
+        "min": {"type": ["number", "string"]},
+        "max": {"type": ["number", "string"]},
+        "minExclusive": {"const": true},
+        "maxExclusive": {"const": true},
+        "pattern": {"type": "string"}
+      }
+    },
+    "fieldPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/wire"}
+        },
+        "constraints": {"$ref": "#/$defs/constraints"}
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "wire", "kind"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "wire": {"$ref": "#/$defs/wire"},
+        "doc": {"$ref": "#/$defs/doc"},
+        "kind": {
+          "enum": [
+            "value",
+            "selection",
+            "content",
+            "content-list",
+            "region-collection",
+            "query-collection"
+          ]
+        },
+        "developmentOnly": {"const": true},
+        "value": {"$ref": "#/$defs/value"},
+        "settable": {"const": true},
+        "declaringType": {"type": "string", "minLength": 1},
+        "checked": {"const": true},
+        "constraints": {"$ref": "#/$defs/constraints"},
+        "text": {"const": true},
+        "appendOnlyText": {"const": true},
+        "collectionKey": {"$ref": "#/$defs/wire"},
+        "rowEditor": {"const": true},
+        "fieldPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/fieldPath"}
+        },
+        "pages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pageRef"}},
+        "nullable": {"const": true},
+        "region": {"const": true},
+        "pageCanClose": {"type": "boolean"},
+        "rows": {"$ref": "#/$defs/value"},
+        "defaultKey": {"$ref": "#/$defs/wire"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"enum": ["value", "selection"]}}},
+          "then": {
+            "required": ["value"],
+            "not": {
+              "anyOf": [
+                {"required": ["pages"]},
+                {"required": ["nullable"]},
+                {"required": ["region"]},
+                {"required": ["pageCanClose"]},
+                {"required": ["rows"]},
+                {"required": ["defaultKey"]}
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {"required": ["value"]},
+                {"required": ["settable"]},
+                {"required": ["declaringType"]},
+                {"required": ["checked"]},
+                {"required": ["constraints"]},
+                {"required": ["text"]},
+                {"required": ["appendOnlyText"]},
+                {"required": ["collectionKey"]},
+                {"required": ["rowEditor"]},
+                {"required": ["fieldPaths"]}
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "content",
+                  "content-list",
+                  "region-collection"
+                ]
+              }
+            }
+          },
+          "then": {"required": ["pages"]}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "region-collection"}}},
+          "then": {
+            "required": ["pageCanClose"],
+            "not": {"anyOf": [{"required": ["nullable"]}, {"required": ["region"]}]}
+          },
+          "else": {"not": {"required": ["pageCanClose"]}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "content-list"}}},
+          "then": {"not": {"required": ["region"]}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "query-collection"}}},
+          "then": {
+            "required": ["rows"],
+            "not": {
+              "anyOf": [
+                {"required": ["pages"]},
+                {"required": ["nullable"]},
+                {"required": ["region"]}
+              ]
+            }
+          },
+          "else": {"not": {"anyOf": [{"required": ["rows"]}, {"required": ["defaultKey"]}]}}
+        },
+        {
+          "if": {"required": ["settable"]},
+          "then": {"required": ["declaringType"]},
+          "else": {"not": {"required": ["declaringType"]}}
+        },
+        {"if": {"required": ["constraints"]}, "then": {"required": ["checked"]}},
+        {"if": {"required": ["rowEditor"]}, "then": {"required": ["collectionKey"]}}
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "wire"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "wire": {"$ref": "#/$defs/wire"},
+        "doc": {"$ref": "#/$defs/doc"},
+        "parameter": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$",
+          "description": "The parameter name of the client method; present when the command takes an argument."
+        },
+        "input": {"$ref": "#/$defs/value"},
+        "result": {"$ref": "#/$defs/value"},
+        "failure": {"$ref": "#/$defs/value"},
+        "async": {"const": true},
+        "stream": {"const": true},
+        "executionState": {"const": true},
+        "keyed": {"const": true},
+        "scoped": {"const": true},
+        "developmentOnly": {"const": true}
+      },
+      "allOf": [
+        {
+          "if": {"required": ["input"]},
+          "then": {"required": ["parameter"]},
+          "else": {"not": {"required": ["parameter"]}}
+        },
+        {"if": {"required": ["keyed"]}, "then": {"required": ["input"]}},
+        {"if": {"required": ["stream"]}, "then": {"required": ["async"]}}
+      ]
+    },
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "wire", "contract", "input", "output"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "wire": {"$ref": "#/$defs/wire"},
+        "doc": {"$ref": "#/$defs/doc"},
+        "contract": {"type": "string", "minLength": 1},
+        "input": {"$ref": "#/$defs/value"},
+        "output": {"$ref": "#/$defs/value"}
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "wire", "contract", "input"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "wire": {"$ref": "#/$defs/wire"},
+        "doc": {"$ref": "#/$defs/doc"},
+        "contract": {"type": "string", "minLength": 1},
+        "input": {"$ref": "#/$defs/value"}
+      }
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "route", "fingerprint", "kinds", "members", "commands"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The stable View id, the {view} of the contract string {view}:{fingerprint}."
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^\\p{L}[\\p{L}\\p{N}]*$",
+          "description": "The public name, such as Counter; prefixes the client's TypeScript names."
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^\\p{L}[\\p{L}\\p{N}]*$",
+          "description": "The route prefix and module name: the public name with a lowercase first letter."
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[\\x21-\\x39\\x3B-\\x7E]{1,128}$",
+          "description": "The producer's contract fingerprint, opaque."
+        },
+        "kinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "Presentation kinds, one per View contract; the first is the default."
+        },
+        "doc": {"$ref": "#/$defs/doc"},
+        "developmentOnly": {
+          "const": true,
+          "description": "A View that a trimmed or NativeAOT publish leaves out."
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Application mode: the unit of the clientModules entry that owns this View's client."
+        },
+        "memberErrors": {"const": true},
+        "validation": {"const": true},
+        "uploads": {"const": true},
+        "sharedClients": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "Ids of the shared clients the View implements."
+        },
+        "members": {"type": "array", "items": {"$ref": "#/$defs/member"}},
+        "commands": {"type": "array", "items": {"$ref": "#/$defs/command"}},
+        "interactions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/interaction"}
+        },
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/request"}
+        }
+      }
+    },
+    "sharedClient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "interface", "views", "members"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {
+          "type": "string",
+          "pattern": "^\\p{Lu}[\\p{L}\\p{N}]*$",
+          "description": "Names {Name}State, {Name}Client, {Name}PageReference and the module {name}."
+        },
+        "interface": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The declaring type's name, for documentation."
+        },
+        "doc": {"$ref": "#/$defs/doc"},
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Application mode: the client library that writes the module."
+        },
+        "views": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "published"],
+            "properties": {
+              "name": {"$ref": "#/$defs/name"},
+              "doc": {"$ref": "#/$defs/doc"},
+              "settable": {"const": true},
+              "published": {
+                "type": "object",
+                "minProperties": 1,
+                "description": "By View id: the View member or command that publishes it.",
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "member"
+                      ],
+                      "properties": {
+                        "member": {
+                          "$ref": "#/$defs/wire"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "command"
+                      ],
+                      "properties": {
+                        "command": {
+                          "$ref": "#/$defs/wire"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "CounterTool"
+  },
+  "views": [
+    {
+      "id": "CounterTool.CounterViewModel",
+      "name": "Counter",
+      "route": "counter",
+      "fingerprint": "696E3FD9B1158A19E43080BD57AC0CA7C04424D69421BEE6D2842876440CDC06",
+      "kinds": [
+        "counter"
+      ],
+      "members": [
+        {
+          "name": "Count",
+          "wire": "count",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Status",
+          "wire": "status",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "text-reference",
+              "nullable": true
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Increment",
+          "wire": "increment",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "Reset",
+          "wire": "reset",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "OpenDocumentation",
+          "wire": "openDocumentation",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "CounterTool.CounterViewModel": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 13,
+      "column": 21
+    },
+    "CounterTool.CounterViewModel/state/count": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 45,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/state/status": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 52,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/command/increment": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/command/openDocumentation": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 36,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/command/reset": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 24,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/commandState/canIncrement": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/commandState/canOpenDocumentation": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 36,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/commandState/canReset": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 24,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/commandState/isIncrementExecuting": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 22,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/commandState/isOpenDocumentationExecuting": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 36,
+      "column": 9
+    },
+    "CounterTool.CounterViewModel/commandState/isResetExecuting": {
+      "file": "../../../../examples/hosted-windows/Counter/CounterViewModel.cs",
+      "line": 24,
+      "column": 9
+    }
+  }
+}

@@ -1,0 +1,371 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "DocumentTabs"
+  },
+  "views": [
+    {
+      "id": "DocumentTabs.DocumentsViewModel",
+      "name": "Documents",
+      "route": "documents",
+      "fingerprint": "FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5",
+      "kinds": [
+        "documents"
+      ],
+      "doc": "The Window's ViewModel: the open documents, one tab each.",
+      "members": [
+        {
+          "name": "Documents",
+          "wire": "documents",
+          "doc": "The open documents. Each tab is a navigation region with its own back stack. The page selects and closes tabs by key; a close asks every page of the tab to retire.",
+          "kind": "region-collection",
+          "pages": [
+            {
+              "view": "DocumentTabs.DocumentInfoViewModel",
+              "name": "DocumentInfo",
+              "kind": "documentInfo"
+            },
+            {
+              "view": "DocumentTabs.DocumentViewModel",
+              "name": "Document",
+              "kind": "document"
+            }
+          ],
+          "pageCanClose": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "NewDocument",
+          "wire": "newDocument",
+          "doc": "Opens a new document in a tab of its own and selects it.",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "DocumentTabs.DocumentViewModel",
+      "name": "Document",
+      "route": "document",
+      "fingerprint": "FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5",
+      "kinds": [
+        "document"
+      ],
+      "doc": "A document, the first page of its tab: `documents/{id}`.",
+      "members": [
+        {
+          "name": "Id",
+          "wire": "id",
+          "doc": "The document's id in the store.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "doc": "Whether the title or body differ from the saved document.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "Saves",
+          "wire": "saves",
+          "doc": "How often the document was saved.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "DocumentViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Body",
+          "wire": "body",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "DocumentViewModel",
+          "checked": true,
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Save",
+          "wire": "save"
+        },
+        {
+          "name": "Discard",
+          "wire": "discard",
+          "doc": "Returns to the saved title and body."
+        },
+        {
+          "name": "ShowDetails",
+          "wire": "showDetails",
+          "doc": "Shows the document's details on a second page of the same tab: `documents/{id}/info`.",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    },
+    {
+      "id": "DocumentTabs.DocumentInfoViewModel",
+      "name": "DocumentInfo",
+      "route": "documentInfo",
+      "fingerprint": "FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5",
+      "kinds": [
+        "documentInfo"
+      ],
+      "doc": "The details of a document, pushed over it in its tab: `documents/{id}/info`.",
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Words",
+          "wire": "words",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Characters",
+          "wire": "characters",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Saves",
+          "wire": "saves",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "IsDirty",
+          "wire": "isDirty",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Back",
+          "wire": "back",
+          "doc": "Goes back to the document in the same tab.",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "DocumentTabs.DocumentInfoViewModel": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 242,
+      "column": 29
+    },
+    "DocumentTabs.DocumentViewModel": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 159,
+      "column": 29
+    },
+    "DocumentTabs.DocumentsViewModel": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 15,
+      "column": 29
+    },
+    "DocumentTabs.DocumentInfoViewModel/state/characters": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 249,
+      "column": 16
+    },
+    "DocumentTabs.DocumentInfoViewModel/state/isDirty": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 251,
+      "column": 17
+    },
+    "DocumentTabs.DocumentInfoViewModel/state/saves": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 250,
+      "column": 16
+    },
+    "DocumentTabs.DocumentInfoViewModel/state/title": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 247,
+      "column": 19
+    },
+    "DocumentTabs.DocumentInfoViewModel/state/words": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 248,
+      "column": 16
+    },
+    "DocumentTabs.DocumentInfoViewModel/command/back": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 265,
+      "column": 18
+    },
+    "DocumentTabs.DocumentInfoViewModel/commandState/canBack": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 265,
+      "column": 18
+    },
+    "DocumentTabs.DocumentInfoViewModel/commandState/isBackExecuting": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 265,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/state/body": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 171,
+      "column": 20
+    },
+    "DocumentTabs.DocumentViewModel/state/id": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 176,
+      "column": 16
+    },
+    "DocumentTabs.DocumentViewModel/state/isDirty": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 179,
+      "column": 17
+    },
+    "DocumentTabs.DocumentViewModel/state/saves": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 184,
+      "column": 9
+    },
+    "DocumentTabs.DocumentViewModel/state/title": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 167,
+      "column": 20
+    },
+    "DocumentTabs.DocumentViewModel/setter/body": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 171,
+      "column": 20
+    },
+    "DocumentTabs.DocumentViewModel/setter/title": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 167,
+      "column": 20
+    },
+    "DocumentTabs.DocumentViewModel/command/discard": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 211,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/command/save": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 200,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/command/showDetails": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 220,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/commandState/canDiscard": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 211,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/commandState/canSave": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 200,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/commandState/canShowDetails": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 220,
+      "column": 18
+    },
+    "DocumentTabs.DocumentViewModel/commandState/isShowDetailsExecuting": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 220,
+      "column": 18
+    },
+    "DocumentTabs.DocumentsViewModel/state/documents": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 59,
+      "column": 32
+    },
+    "DocumentTabs.DocumentsViewModel/command/newDocument": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 63,
+      "column": 18
+    },
+    "DocumentTabs.DocumentsViewModel/commandState/canNewDocument": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 63,
+      "column": 18
+    },
+    "DocumentTabs.DocumentsViewModel/commandState/isNewDocumentExecuting": {
+      "file": "../../../../examples/document-tabs/ViewModels.cs",
+      "line": 63,
+      "column": 18
+    }
+  }
+}

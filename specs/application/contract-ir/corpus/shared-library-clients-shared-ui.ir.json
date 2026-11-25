@@ -1,0 +1,201 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "SharedUi",
+    "clientLibrary": true
+  },
+  "views": [
+    {
+      "id": "SharedUi.AboutViewModel",
+      "name": "About",
+      "route": "about",
+      "fingerprint": "F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD",
+      "kinds": [
+        "about"
+      ],
+      "doc": "The about panel that every application shows.",
+      "members": [
+        {
+          "name": "ProductName",
+          "wire": "productName",
+          "doc": "The product's name.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Version",
+          "wire": "version",
+          "doc": "The installed version.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Channel",
+          "wire": "channel",
+          "doc": "Which releases `CheckForUpdatesCommand` looks for.",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "SharedUi.UpdateChannel"
+            }
+          },
+          "settable": true,
+          "declaringType": "AboutViewModel",
+          "checked": true
+        },
+        {
+          "name": "Status",
+          "wire": "status",
+          "doc": "The result of the last update check.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "CheckForUpdates",
+          "wire": "checkForUpdates",
+          "doc": "Checks the channel for a newer release."
+        }
+      ]
+    },
+    {
+      "id": "SharedUi.SupportViewModel",
+      "name": "Support",
+      "route": "support",
+      "fingerprint": "F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD",
+      "kinds": [
+        "support"
+      ],
+      "doc": "The support menu that every application shows.",
+      "members": [
+        {
+          "name": "ReportsSent",
+          "wire": "reportsSent",
+          "doc": "How many problem reports this session sent.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "ReportProblem",
+          "wire": "reportProblem",
+          "doc": "Sends a problem report."
+        }
+      ]
+    }
+  ],
+  "types": {
+    "SharedUi.UpdateChannel": {
+      "kind": "enum",
+      "name": {
+        "source": "SharedUi.UpdateChannel",
+        "base": "UpdateChannel",
+        "qualifiers": [
+          "SharedUi"
+        ]
+      },
+      "doc": "Which releases the update check offers.",
+      "cases": [
+        {
+          "wire": "Stable",
+          "value": "0"
+        },
+        {
+          "wire": "Preview",
+          "value": "1"
+        }
+      ]
+    }
+  },
+  "sources": {
+    "SharedUi.AboutViewModel": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 10,
+      "column": 29
+    },
+    "SharedUi.SupportViewModel": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/SupportViewModel.cs",
+      "line": 7,
+      "column": 29
+    },
+    "SharedUi.AboutViewModel/state/channel": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 20,
+      "column": 34
+    },
+    "SharedUi.AboutViewModel/state/productName": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 13,
+      "column": 19
+    },
+    "SharedUi.AboutViewModel/state/status": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 24,
+      "column": 27
+    },
+    "SharedUi.AboutViewModel/state/version": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 16,
+      "column": 19
+    },
+    "SharedUi.AboutViewModel/setter/channel": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 20,
+      "column": 34
+    },
+    "SharedUi.AboutViewModel/command/checkForUpdates": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 28,
+      "column": 18
+    },
+    "SharedUi.AboutViewModel/commandState/canCheckForUpdates": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/AboutViewModel.cs",
+      "line": 28,
+      "column": 18
+    },
+    "SharedUi.SupportViewModel/state/reportsSent": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/SupportViewModel.cs",
+      "line": 11,
+      "column": 24
+    },
+    "SharedUi.SupportViewModel/command/reportProblem": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/SupportViewModel.cs",
+      "line": 15,
+      "column": 18
+    },
+    "SharedUi.SupportViewModel/commandState/canReportProblem": {
+      "file": "../../../../examples/shared-library-clients/SharedUi/SupportViewModel.cs",
+      "line": 15,
+      "column": 18
+    }
+  }
+}

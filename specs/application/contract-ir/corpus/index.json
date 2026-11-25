@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {"ir": "attachments.ir.json", "project": "examples/attachments/Attachments.csproj", "generated": "examples/attachments/Frontend/src/generated"},
+    {"ir": "document-tabs.ir.json", "project": "examples/document-tabs/DocumentTabs.csproj", "generated": "examples/document-tabs/Frontend/src/generated"},
+    {"ir": "first-window.ir.json", "project": "examples/first-window/FirstWindow.csproj", "generated": "examples/first-window/Frontend/src/generated"},
+    {"ir": "first-window-desktop.ir.json", "project": "examples/first-window-desktop/FirstWindowDesktop.csproj", "generated": "examples/first-window-desktop/Frontend/src/generated"},
+    {"ir": "hosted-components-dashboard.ir.json", "project": "examples/hosted-components/Dashboard/HostedDashboard.csproj", "generated": "examples/hosted-components/Dashboard/Frontend/src/generated"},
+    {"ir": "hosted-components-widget.ir.json", "project": "examples/hosted-components/Widget/WidgetTool.csproj", "generated": "examples/hosted-components/Widget/Frontend/src/generated"},
+    {"ir": "hosted-region-check.ir.json", "project": "examples/hosted-region/Check/CheckTool.csproj", "generated": "examples/hosted-region/Check/Frontend/src/generated"},
+    {"ir": "hosted-region-installer.ir.json", "project": "examples/hosted-region/Installer/HostedInstaller.csproj", "generated": "examples/hosted-region/Installer/Frontend/src/generated"},
+    {"ir": "hosted-windows-counter.ir.json", "project": "examples/hosted-windows/Counter/CounterTool.csproj", "generated": "examples/hosted-windows/Counter/Frontend/src/generated"},
+    {"ir": "hosted-windows-shell.ir.json", "project": "examples/hosted-windows/Shell/HostedShell.csproj", "generated": "examples/hosted-windows/Shell/Frontend/src/generated"},
+    {"ir": "invoice-grid.ir.json", "project": "examples/invoice-grid/InvoiceGrid.csproj", "generated": "examples/invoice-grid/Frontend/src/generated"},
+    {"ir": "multi-window.ir.json", "project": "examples/multi-window/MultiWindow.csproj", "generated": "examples/multi-window/Frontend/src/generated"},
+    {"ir": "notes-reactive-views.ir.json", "project": "examples/notes-reactive-views/NotesReactiveViews.csproj", "generated": "examples/notes-reactive-views/Frontend/src/generated"},
+    {"ir": "notes-view-first.ir.json", "project": "examples/notes-view-first/NotesViewFirst.csproj", "generated": "examples/notes-view-first/Frontend/src/generated"},
+    {"ir": "query-collections.ir.json", "project": "examples/query-collections/QueryCollectionsExample.csproj", "generated": "examples/query-collections/Frontend/src/generated"},
+    {"ir": "shared-library-clients-app.ir.json", "project": "examples/shared-library-clients/App/SharedLibraryApp.csproj", "generated": "examples/shared-library-clients/App/Frontend/src/generated"},
+    {"ir": "shared-library-clients-shared-ui.ir.json", "project": "examples/shared-library-clients/SharedUi/SharedUi.csproj", "generated": "examples/shared-library-clients/shared-ui/src/generated"},
+    {"ir": "side-panel.ir.json", "project": "examples/side-panel/SidePanelSample.csproj", "generated": "examples/side-panel/Frontend/src/generated"},
+    {"ir": "status-icon.ir.json", "project": "examples/status-icon/StatusIconSample.csproj", "generated": "examples/status-icon/Frontend/src/generated"},
+    {"ir": "wpf-hybrid-editor.ir.json", "project": "examples/wpf-hybrid-editor/Model/HybridNotes.Model.csproj", "generated": "examples/wpf-hybrid-editor/Frontend/src/generated"}
+  ]
+}

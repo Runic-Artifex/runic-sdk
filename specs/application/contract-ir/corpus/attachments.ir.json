@@ -1,0 +1,135 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "Attachments"
+  },
+  "views": [
+    {
+      "id": "Attachments.ProfileViewModel",
+      "name": "Profile",
+      "route": "profile",
+      "fingerprint": "51044CF1EA21539A98081DA51B87A0718F1297F1AACDC7F689C619EB6B19DEB6",
+      "kinds": [
+        "profile"
+      ],
+      "doc": "A profile with an avatar that the ViewModel draws, and attachments that the page uploads (Views feature blobs/1).",
+      "uploads": true,
+      "members": [
+        {
+          "name": "Avatar",
+          "wire": "avatar",
+          "doc": "The avatar, drawn by .NET; the page shows it with <img src>.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "blob"
+            }
+          }
+        },
+        {
+          "name": "Attachments",
+          "wire": "attachments",
+          "doc": "The attachments, newest last.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Attachments.Attachment"
+              }
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Redraw",
+          "wire": "redraw",
+          "doc": "Draws the avatar in the next color: a new blob, so the page loads a new URL and the old one is released."
+        },
+        {
+          "name": "Attach",
+          "wire": "attach",
+          "doc": "Stores an upload as an attachment. Its name, type and content come from the page and are untrusted.",
+          "parameter": "file",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "upload"
+            }
+          },
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {
+    "Attachments.Attachment": {
+      "kind": "object",
+      "name": {
+        "source": "Attachments.Attachment",
+        "base": "Attachment",
+        "qualifiers": [
+          "Attachments"
+        ]
+      },
+      "doc": "An attachment the user uploaded, which the page offers as a download.",
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The file name the page reported, reduced to a file name."
+        },
+        {
+          "wire": "size",
+          "type": {
+            "kind": "int64"
+          },
+          "doc": "The number of bytes received."
+        },
+        {
+          "wire": "file",
+          "type": {
+            "kind": "blob"
+          },
+          "doc": "The stored file, served as a download."
+        }
+      ]
+    }
+  },
+  "sources": {
+    "Attachments.ProfileViewModel": {
+      "file": "../../../../examples/attachments/ProfileViewModel.cs",
+      "line": 18,
+      "column": 29
+    },
+    "Attachments.ProfileViewModel/state/attachments": {
+      "file": "../../../../examples/attachments/ProfileViewModel.cs",
+      "line": 33,
+      "column": 47
+    },
+    "Attachments.ProfileViewModel/state/avatar": {
+      "file": "../../../../examples/attachments/ProfileViewModel.cs",
+      "line": 29,
+      "column": 30
+    },
+    "Attachments.ProfileViewModel/command/redraw": {
+      "file": "../../../../examples/attachments/ProfileViewModel.cs",
+      "line": 37,
+      "column": 18
+    },
+    "Attachments.ProfileViewModel/commandState/canRedraw": {
+      "file": "../../../../examples/attachments/ProfileViewModel.cs",
+      "line": 37,
+      "column": 18
+    }
+  }
+}

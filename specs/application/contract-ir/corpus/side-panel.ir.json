@@ -1,0 +1,187 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "Runic.Application.Views.Codegen",
+    "unit": "SidePanelSample"
+  },
+  "views": [
+    {
+      "id": "SidePanelSample.MainViewModel",
+      "name": "Main",
+      "route": "main",
+      "fingerprint": "5ED9DECD0167CA31B2D3923868C3212C91F5D54C8C5CE7E85A26BA62E72C69D0",
+      "kinds": [
+        "main"
+      ],
+      "doc": "A small order form with a debug panel. The panel opens beside the Window, which grows by its width, so the form keeps its size and its place on the screen. Where the Window cannot grow, the page shows the same panel as an overlay.",
+      "members": [
+        {
+          "name": "Quantity",
+          "wire": "quantity",
+          "doc": "How many of the item the order has.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Log",
+          "wire": "log",
+          "doc": "What happened, newest last; the debug panel lists it.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "IsDebugPanelOpen",
+          "wire": "isDebugPanelOpen",
+          "doc": "Whether the debug panel is open beside the Window.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "IsDebugPanelOnLeft",
+          "wire": "isDebugPanelOnLeft",
+          "doc": "Whether the panel is docked on the Window's left edge; otherwise on its right edge.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "ShowDebugOverlay",
+          "wire": "showDebugOverlay",
+          "doc": "Whether the page shows the debug panel as an overlay, because the Window could not grow.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "boolean"
+            }
+          }
+        },
+        {
+          "name": "Refusal",
+          "wire": "refusal",
+          "doc": "Why the Window did not grow or move the panel, such as `Maximized`; empty when it did.",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Add",
+          "wire": "add"
+        },
+        {
+          "name": "Remove",
+          "wire": "remove"
+        },
+        {
+          "name": "ToggleDebug",
+          "wire": "toggleDebug",
+          "doc": "Shows the debug panel beside the Window, or as an overlay when the Window cannot grow; hides it when shown.",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "MoveDebug",
+          "wire": "moveDebug",
+          "doc": "Docks the panel on the other edge. An overlay moves to the other side of the page.",
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "CloseDebug",
+          "wire": "closeDebug",
+          "doc": "Closes the panel, and the Window shrinks back; or hides the overlay.",
+          "async": true,
+          "executionState": true
+        }
+      ]
+    }
+  ],
+  "types": {},
+  "sources": {
+    "SidePanelSample.MainViewModel": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 17,
+      "column": 29
+    },
+    "SidePanelSample.MainViewModel/state/isDebugPanelOnLeft": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 45,
+      "column": 25
+    },
+    "SidePanelSample.MainViewModel/state/isDebugPanelOpen": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 41,
+      "column": 25
+    },
+    "SidePanelSample.MainViewModel/state/log": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 37,
+      "column": 43
+    },
+    "SidePanelSample.MainViewModel/state/quantity": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 33,
+      "column": 24
+    },
+    "SidePanelSample.MainViewModel/state/refusal": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 53,
+      "column": 27
+    },
+    "SidePanelSample.MainViewModel/state/showDebugOverlay": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 49,
+      "column": 25
+    },
+    "SidePanelSample.MainViewModel/command/add": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 56,
+      "column": 18
+    },
+    "SidePanelSample.MainViewModel/command/remove": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 63,
+      "column": 18
+    },
+    "SidePanelSample.MainViewModel/commandState/canAdd": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 56,
+      "column": 18
+    },
+    "SidePanelSample.MainViewModel/commandState/canRemove": {
+      "file": "../../../../examples/side-panel/MainViewModel.cs",
+      "line": 63,
+      "column": 18
+    }
+  }
+}
