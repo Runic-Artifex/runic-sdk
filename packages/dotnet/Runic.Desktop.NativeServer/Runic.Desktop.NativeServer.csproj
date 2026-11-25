@@ -36,7 +36,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <None Include="buildTransitive/Runic.Desktop.NativeServer.props;buildTransitive/Runic.Desktop.NativeServer.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="README.md" Pack="true" PackagePath="/" />
-    <None Include="../../../native/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
+    <None Include="../../../native/runic-server/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <!-- The shared libraries of every runtime identifier; the static libraries, ≈19 MiB each, are in one
        Runic.Desktop.NativeServer.Static.<rid> package per runtime identifier, which runtime.json makes NuGet restore

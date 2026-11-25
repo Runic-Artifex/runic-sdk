@@ -1,12 +1,19 @@
 # The native Desktop server (X1, X2). Runs only when the native server,
 # its .NET binding or this workflow changes; applications that do not reference Runic.Desktop.NativeServer are covered
 # by ci.yml alone.
+# The server's paths are native/runic-server (its notices file included) and the workspace files that change its bytes
+# (Cargo.toml's profiles, the toolchain, the format rules). native/Cargo.lock is not one: a lock change that touches the
+# server's graph changes native/runic-server/THIRD-PARTY-NOTICES.md (eng/native/crates.mjs), and the other crates under
+# native/ are ci.yml's `rust` component (eng/ci/README.md, "Windows and macOS legs").
 name: Native Desktop server
 on:
   push:
     branches: [main]
     paths:
-      - 'native/**'
+      - 'native/runic-server/**'
+      - 'native/Cargo.toml'
+      - 'native/rust-toolchain.toml'
+      - 'native/rustfmt.toml'
       - 'eng/native/build-runic-server.sh'
       - 'eng/native/crates.mjs'
       - 'eng/native/verify-native-server-package.mjs'
@@ -27,7 +34,10 @@ on:
       - '.github/actions/native-server-libraries/**'
   pull_request:
     paths:
-      - 'native/**'
+      - 'native/runic-server/**'
+      - 'native/Cargo.toml'
+      - 'native/rust-toolchain.toml'
+      - 'native/rustfmt.toml'
       - 'eng/native/build-runic-server.sh'
       - 'eng/native/crates.mjs'
       - 'eng/native/verify-native-server-package.mjs'
@@ -71,7 +81,7 @@ jobs:
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
-      # Licenses, THIRD-PARTY-NOTICES.md and D038's one-day rule for crate versions.
+      # Licenses, each library's THIRD-PARTY-NOTICES.md and D038's one-day rule for crate versions.
       - name: Check the crates
         run: node eng/native/crates.mjs check --release-age
 

@@ -19,7 +19,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)static/README.md" Pack="true" PackagePath="/" />
-    <None Include="$(MSBuildThisFileDirectory)../../../../native/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)../../../../native/runic-server/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
     <None Include="$(_RunicNativeServerArtifacts)$(_RunicNativeServerRuntime)/$(_RunicNativeServerStaticName)"
           Pack="true" PackagePath="runtimes/$(_RunicNativeServerRuntime)/native/" Condition="Exists('$(_RunicNativeServerArtifacts)$(_RunicNativeServerRuntime)/$(_RunicNativeServerStaticName)')" />
   </ItemGroup>

@@ -1348,7 +1348,7 @@ jobs:
         uses: ./.github/actions/dependency-cache
         with:
           path: artifacts/native/runic-server/linux-x64
-          key: runic-server-${{ hashFiles('native/**', 'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml') }}-linux-x64
+          key: runic-server-${{ hashFiles('native/runic-server/**', 'native/Cargo.toml', 'native/rust-toolchain.toml', 'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml') }}-linux-x64
           defer-save: "true"
           enable-cross-os-archive: "true"
       # NativeAOT links the library statically: the published executable is the whole application.
