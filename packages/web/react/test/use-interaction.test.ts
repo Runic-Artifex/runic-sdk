@@ -131,10 +131,7 @@ describe("useInteraction (#1319)", () => {
     await setClient(next);
     expect(discard().request).toBeUndefined();
     expect(await open).toEqual({ kind: "cancelled" });
-    let pending!: Awaited<ReturnType<typeof requestShown<DiscardInput, boolean>>>;
-    await act(async () => {
-      pending = await requestShown(mock.interactions.confirmDiscard, { title: "Leaving" }, () => discard().request !== undefined);
-    });
+    const pending = await requestShown(mock.interactions.confirmDiscard, { title: "Leaving" }, () => discard().request !== undefined, actUntil);
     await act(async () => { root!.unmount(); });
     root = undefined;
     expect(await pending.reply).toEqual({ kind: "cancelled" });

@@ -69,13 +69,16 @@ export async function until(condition: () => boolean, message: string): Promise<
  * asks again until `shown()` holds. Resolves with the
  * pending reply, wrapped so that awaiting this does not wait for the answer.
  */
-export async function requestShown<TInput, TOutput>(interaction: MockTypedInteraction<TInput, TOutput>, input: TInput, shown: () => boolean):
-  Promise<{ readonly reply: ReturnType<MockTypedInteraction<TInput, TOutput>["request"]> }> {
+export async function requestShown<TInput, TOutput>(
+  interaction: MockTypedInteraction<TInput, TOutput>, input: TInput, shown: () => boolean,
+  // React waits inside act(), so that each render happens while it waits.
+  wait: (condition: () => boolean, message: string) => Promise<void> = until,
+): Promise<{ readonly reply: ReturnType<MockTypedInteraction<TInput, TOutput>["request"]> }> {
   for (let attempt = 0; attempt < 100; attempt++) {
     let settled = false;
     const reply = interaction.request(input);
     void reply.then(() => { settled = true; });
-    await until(() => shown() || settled, "The request was neither shown nor answered.");
+    await wait(() => shown() || settled, "The request was neither shown nor answered.");
     if (shown()) return { reply };
     const { kind } = await reply;
     if (kind !== "unhandled" && kind !== "cancelled") return { reply };
