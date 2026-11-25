@@ -29,15 +29,18 @@ public sealed partial class BridgeShapeAnalyzer
         private readonly BridgeSymbols _symbols;
         private readonly Lazy<Dictionary<INamedTypeSymbol, List<string>>> _missingViews;
 
-        internal BridgeApplication(BridgeSymbols symbols, CancellationToken cancellationToken)
+        internal BridgeApplication(BridgeSymbols symbols, IReadOnlyList<string> clientModules, CancellationToken cancellationToken)
         {
             _symbols = symbols;
-            Views = symbols.FindViews(cancellationToken);
+            Views = symbols.FindViews(cancellationToken, clientModules);
             Models = new HashSet<INamedTypeSymbol>(Views.Keys, SymbolEqualityComparer.Default);
             _missingViews = new Lazy<Dictionary<INamedTypeSymbol, List<string>>>(() => FindMissingViews(cancellationToken));
         }
 
-        /// <summary>The concrete Windows and Views by ViewModel, in the generator's order.</summary>
+        /// <summary>
+        /// The concrete Windows and Views by ViewModel, in the generator's order: this compilation's, then those of the
+        /// mapped client libraries (RunicApplicationFrontendClientModule), which have no source location.
+        /// </summary>
         internal Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> Views { get; }
 
         internal HashSet<INamedTypeSymbol> Models { get; }
@@ -191,7 +194,7 @@ public sealed partial class BridgeShapeAnalyzer
             return;
         }
         if (NameCollisions(application).Any()) return;
-        foreach (var (owner, message) in FileCollisions(application))
+        foreach (var (owner, message) in FileCollisions(application, context.Compilation))
             if (SymbolEqualityComparer.Default.Equals(owner, view)) Report(context, BridgeRules.NameCollision, view, message);
         var kinds = application.Views.Keys.SelectMany(owner => application.ValidViews(owner)
                 .Where(candidate => IsFirstOfContract(application, owner, candidate))
@@ -226,18 +229,19 @@ public sealed partial class BridgeShapeAnalyzer
             Report(context, BridgeRules.NameCollision, model,
                 $"Bridge ViewModel names must be unique within an application: {string.Join(" and ", group.Select(FullName))} both use '{group.Key}'.");
         if (!NameCollisions(application).Any())
-            foreach (var (owner, message) in FileCollisions(application))
+            foreach (var (owner, message) in FileCollisions(application, context.Compilation))
                 if (SymbolEqualityComparer.Default.Equals(owner, model)) Report(context, BridgeRules.NameCollision, model, message);
     }
 
     // Program.cs, the generated files (RUNICBRIDGE004): each ViewModel's {FullName}.Bridge.g.cs, {name}.ts and
     // {name}.mock.ts, each View's {FullName}.View.g.cs and the named types' types.ts, unique ignoring case. Reported at
     // the first ViewModel that writes one, else at the first View. The shared clients' modules (RUNICBRIDGE036) stay
-    // the generator's.
-    private static IEnumerable<(INamedTypeSymbol Owner, string Message)> FileCollisions(BridgeApplication application)
+    // the generator's. A mapped client library's own build writes its View partials, so its Views have none here.
+    private static IEnumerable<(INamedTypeSymbol Owner, string Message)> FileCollisions(BridgeApplication application, Compilation compilation)
     {
         var models = application.Views.Keys.Where(model => !model.IsGenericType).ToArray();
-        var views = models.SelectMany(model => application.ValidViews(model).Where(view => IsFirstOfContract(application, model, view))).ToArray();
+        var views = models.SelectMany(model => application.ValidViews(model).Where(view => IsFirstOfContract(application, model, view)))
+            .Where(view => SymbolEqualityComparer.Default.Equals(view.ContainingAssembly, compilation.Assembly)).ToArray();
         var outputs = models.Select(model => (Path: FullName(model) + ".Bridge.g.cs", Owner: (INamedTypeSymbol?)model, Name: FullName(model)))
             .Concat(views.Select(view => (Path: FullName(view) + ".View.g.cs", Owner: (INamedTypeSymbol?)view, Name: FullName(view))))
             .Concat(models.Select(model => (Path: LowerFirst(PublicName(model)) + ".ts", Owner: (INamedTypeSymbol?)model, Name: FullName(model))))

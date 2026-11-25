@@ -25,6 +25,9 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
 {
     internal const string GenerationEnabledProperty = "build_property.RunicApplicationFrontendGenerationEnabled";
     internal const string ModelAssemblyProperty = "build_property.RunicApplicationFrontendModelAssembly";
+    // The Include names of the project's RunicApplicationFrontendClientModule items (#1318), separated by semicolons,
+    // which the targets set before the compiler reads them.
+    internal const string ClientModulesProperty = "build_property._RunicApplicationFrontendClientModules";
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => BridgeRules.All;
@@ -47,10 +50,20 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 return;
             if (BridgeSymbols.Create(start.Compilation) is not { } symbols) return;
             var cancellation = start.CancellationToken;
-            var application = new Lazy<BridgeApplication>(() => new BridgeApplication(symbols, cancellation));
+            var clientModules = ClientModules(options);
+            var application = new Lazy<BridgeApplication>(() => new BridgeApplication(symbols, clientModules, cancellation));
             start.RegisterSymbolAction(symbol => Analyze(symbol, symbols, application), SymbolKind.NamedType);
         });
     }
+
+    // The mapped client libraries, in the items' order, as the targets pass --client-module: their Views are the
+    // application's too, so their ViewModels are content that it presents. The analyzer reports nothing at them; the
+    // library's own build analyzes the library.
+    private static string[] ClientModules(AnalyzerConfigOptions options) =>
+        options.TryGetValue(ClientModulesProperty, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value.Split(';').Select(name => name.Trim()).Where(name => name.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            : [];
 
     private static void Analyze(SymbolAnalysisContext context, BridgeSymbols symbols, Lazy<BridgeApplication> application)
     {
