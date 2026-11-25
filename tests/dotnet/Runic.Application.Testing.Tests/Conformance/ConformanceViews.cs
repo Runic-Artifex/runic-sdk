@@ -52,6 +52,9 @@ internal interface IConformanceWindow : IDisposable
 
     // field-flush/1: asks the pages to write their field drafts, as before a departure guard; whether every page answered.
     Task<bool> FlushFieldsAsync();
+
+    // Completes when the window has run the model turns queued so far (ScenarioTransport.SettleAsync).
+    Task RunQueuedTurnsAsync() => Task.CompletedTask;
 }
 
 // What the runner gives the window: its transport (the ScenarioTransport), its virtual clock and its input limit
@@ -180,6 +183,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         public Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout) => _session.DrainAsync(timeout).AsTask();
 
         public Task<bool> FlushFieldsAsync() => _session.FlushFieldsAsync();
+
+        public Task RunQueuedTurnsAsync() => _session.ModelContext!.InvokeAsync(static () => { }).AsTask();
 
         public void Dispose()
         {

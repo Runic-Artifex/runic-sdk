@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Channels;
 using Runic.Application.Views;
@@ -19,6 +20,8 @@ internal sealed class ScenarioTransport : IBridgeConnectionTransport, IDisposabl
     private IBridgeRequestHandler? _handler;
     private bool _holding;
     private bool _disposed;
+    // The messages recorded so far, which SettleAsync compares between its passes.
+    private long _recorded;
 
     public IDisposable Serve(IBridgeRequestHandler handler)
     {
@@ -93,6 +96,37 @@ internal sealed class ScenarioTransport : IBridgeConnectionTransport, IDisposabl
         }
     }
 
+    // The settle step of the conformance driver (eng/conformance/PROTOCOL.md, views.settle): waits until the producer
+    // has no work in flight that needs no further input. The window has run the turns queued so far, every delivery has
+    // settled what it was handed (unless delivery is held, when the producer waits for the client), and a pass recorded
+    // no new message. A reply that waits for the virtual clock or for a page is not in flight. False when that did not
+    // happen within the limit.
+    internal async Task<bool> SettleAsync(Func<Task> runQueuedTurns, TimeSpan limit)
+    {
+        ArgumentNullException.ThrowIfNull(runQueuedTurns);
+        var started = Stopwatch.GetTimestamp();
+        var quietPasses = 0;
+        while (true)
+        {
+            long before;
+            bool holding;
+            lock (_gate) (before, holding) = (_recorded, _holding);
+            await runQueuedTurns().ConfigureAwait(false);
+            if (!holding && BridgeReplyOrder.For(this).WhenPublished() is { } published)
+            {
+                var remaining = limit - Stopwatch.GetElapsedTime(started);
+                if (remaining <= TimeSpan.Zero) return false;
+                try { await published.WaitAsync(remaining).ConfigureAwait(false); }
+                catch (TimeoutException) { return false; }
+            }
+            // Replies and pushes reach the transport through continuations the runtime schedules later.
+            await Task.Delay(1).ConfigureAwait(false);
+            lock (_gate) quietPasses = _recorded == before ? quietPasses + 1 : 0;
+            if (quietPasses >= 2) return true;
+            if (Stopwatch.GetElapsedTime(started) >= limit) return false;
+        }
+    }
+
     public void Dispose()
     {
         lock (_gate)
@@ -115,7 +149,10 @@ internal sealed class ScenarioTransport : IBridgeConnectionTransport, IDisposabl
     private void RecordReply(ScenarioConnection connection, string requestId, ReadOnlyMemory<byte> reply)
     {
         lock (_gate)
+        {
+            _recorded++;
             if (connection.IsOpen) connection.Messages.Writer.TryWrite(new(requestId, Encoding.UTF8.GetString(reply.Span)));
+        }
     }
 
     private Task<bool> Push(string? connectionKey, ReadOnlyMemory<byte> message)
@@ -135,6 +172,7 @@ internal sealed class ScenarioTransport : IBridgeConnectionTransport, IDisposabl
     // Records a push to one connection, or to every open one; the gate is held.
     private bool Record(string? connectionKey, string json)
     {
+        _recorded++;
         if (connectionKey is not null)
         {
             if (!_connections.TryGetValue(connectionKey, out var target) || !target.IsOpen) return false;

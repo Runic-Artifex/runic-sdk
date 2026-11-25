@@ -35,6 +35,7 @@
     "regen": "bun tools/dotnet-runic/metadata/generate.mjs --write && bun eng/generate-shipping-projects.mjs && bun eng/run.mjs build",
     "lock:nuget": "dotnet restore RunicSdk.Core.slnx --force-evaluate -p:RunicUpdateLockFiles=true",
     "ci": "bun eng/ci/local.mjs",
+    "conformance": "bun eng/conformance/cli.ts",
     "dependencies:audit": "bun eng/dependencies/audit.mjs",
     "scaling": "bun tests/scaling/run.mjs"
   },

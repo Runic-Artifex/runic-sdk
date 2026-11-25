@@ -109,6 +109,7 @@
     <Project Path="tests/dotnet/Runic.Application.Views.Wpf.Tests/Runic.Application.Views.Wpf.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/Runic.Application.Views.Wpf.Windows.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Testing.Tests/Runic.Application.Testing.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Views.Conformance/Runic.Application.Views.Conformance.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Scaling.Tests/Runic.Application.Scaling.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Views.Translations.Tests/Runic.Application.Views.Translations.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Spelling.Tests/Runic.Spelling.Tests.csproj" />

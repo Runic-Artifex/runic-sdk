@@ -157,6 +157,10 @@ handed to the transport. Teardown runs inline when an application-owned context 
 
 ## Intentional differences
 
+A row with an anchor is a difference that the conformance status files cite: a case that an implementation fails
+because of it has the status `deviation`, naming the row as `specs/application/language-mappings.md#<anchor>`
+([the conformance driver](../../eng/conformance/README.md#status-files)).
+
 | Shared semantic | .NET | TypeScript | Reason |
 | --- | --- | --- | --- |
 | Enum values and union case tags | C# member names; declared `[RunicUnionCase]` names | the same strings | See [Names](#names) (D051.4). |
@@ -164,3 +168,4 @@ handed to the transport. Teardown runs inline when an application-owned context 
 | Failures | Exceptions classified by type | `BridgeError` values and declared failure values | The wire carries `error.kind`, `reason` and `failure`, not exception types. |
 | 64-bit integers | `long`, `ulong` | strings (`int64String`) or `bigint` | JavaScript numbers are doubles. |
 | Operation progress | an ambient `Report(double)` | `progress` on statuses and controllers | .NET command signatures stay unchanged. |
+| <a id="date-time-offset"></a>A `date-time` with an offset | Read as a `DateTimeKind.Local` `DateTime`, converted to the machine's local time, and written with the machine's offset: the instant is kept, the offset as read is not, so `12:00:00+00:00` is written `13:00:00+01:00` on a machine at `+01:00`. | The normal-form string, with the offset as read. | A `DateTime` holds no offset, and changing the mapping would change the .NET API ([Values](#values)). A member that must keep its offset is an `offset-date-time` (`DateTimeOffset`). The two `values.dates-and-times` vectors with an offset are this deviation for .NET. |

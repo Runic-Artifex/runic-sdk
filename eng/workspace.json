@@ -572,11 +572,12 @@
       ]
     },
     "conformance": {
-      "dependsOn": [],
+      "dependsOn": ["application"],
       "paths": [
         "specs/application/conformance",
         "specs/desktop/conformance",
-        "eng/conformance"
+        "eng/conformance",
+        "tests/dotnet/Runic.Application.Views.Conformance"
       ]
     },
     "tool-aot": {
