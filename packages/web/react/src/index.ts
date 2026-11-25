@@ -15,6 +15,11 @@ import {
 } from "react";
 import {
   createCommandController,
+  createInteractionController,
+  interactionSurface,
+  type InteractionInput,
+  type InteractionName,
+  type InteractionOutput,
   createLatestOperationController,
   createOperationController,
   createFieldController,
@@ -750,6 +755,57 @@ export function useField<TClient extends ViewClient, TValue>(
   return handle;
 }
 
+/** The View whose interaction is answered: a {@link useView} handle, or any client. */
+export interface InteractionView<TClient extends ViewClient> {
+  readonly client: TClient | undefined;
+}
+
+/** An interaction answered from the render: its open request, and `respond`. */
+export interface InteractionHandle<TInput, TOutput> {
+  /** The input of the oldest open request, or `undefined` while none is open. */
+  readonly request: TInput | undefined;
+  /** How many requests are open; for an interaction without an input (`Unit`), `pending > 0` tells that one is. */
+  readonly pending: number;
+  /** Answers the oldest open request, and shows the next one. Ignored when no request is open. The same on every render. */
+  readonly respond: (answer: TOutput) => void;
+}
+
+/**
+ * Handles one interaction of a View while the component is mounted, through `createInteractionController`: render
+ * the dialog from `request` and answer it with `respond`. Pass the name of a generated interaction, such as
+ * `"confirmDiscard"` for `Interaction<DiscardInput, bool> ConfirmDiscard`; the input and the answer are typed from it.
+ *
+ * ```tsx
+ * const editor = useView(page);
+ * const discard = useInteraction(editor, "confirmDiscard");
+ * {discard.request && <Confirm text={discard.request.title} onYes={() => discard.respond(true)} onNo={() => discard.respond(false)} />}
+ * ```
+ *
+ * The handler is registered while the View's client is connected, and removed when the client changes or the
+ * component unmounts. A request ends when `respond` answers it, or when .NET stops waiting for it: the command that
+ * asked was cancelled, the deadline passed, the window closed or the client changed. `request` then is the next open
+ * request, oldest first, or `undefined`; an answer with no open request is ignored.
+ */
+export function useInteraction<TClient extends ViewClient, TName extends InteractionName<TClient>>(
+  view: InteractionView<TClient>,
+  name: TName,
+): InteractionHandle<InteractionInput<TClient, TName>, InteractionOutput<TClient, TName>> {
+  type TInput = InteractionInput<TClient, TName>;
+  type TOutput = InteractionOutput<TClient, TName>;
+  const controller = useMountedController(() => createInteractionController<TInput, TOutput>());
+  const { client } = view;
+  useEffect(() => {
+    controller.setSurface(interactionSurface<TInput, TOutput>(client, name));
+    return () => controller.setSurface(undefined);
+  }, [controller, client, name]);
+  const readRequest = useCallback(() => controller.request, [controller]);
+  const readPending = useCallback(() => controller.pending, [controller]);
+  const request = useSyncExternalStore(controller.subscribe, readRequest, readRequest);
+  const pending = useSyncExternalStore(controller.subscribe, readPending, readPending);
+  const respond = useCallback((answer: TOutput) => controller.respond(answer), [controller]);
+  return { request, pending, respond };
+}
+
 export interface BridgeConnectionHandle {
   /** The connection to the .NET host, as `onBridgeConnection` reports it. */
   readonly state: BridgeConnectionState;
@@ -899,6 +955,7 @@ export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstan
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
+export type { InteractionInput, InteractionName, InteractionOutput } from "@runic-artifex/views";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
