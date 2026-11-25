@@ -417,10 +417,30 @@ Other runs choose legs this way:
   the lowest framework (or Vite) version each peer range accepts
   (`tests/web/lowest-peers`). The `web` job's Svelte checks and npm framework consumers
   follow `svelte`; `views` follows `examples`; package consumers and templates run for
-  any affected component.
+  any affected component that a package is built from (all but `unpackagedComponents`
+  in `plan.mjs`: `ci`, `rust`, `cpp` and `conformance`).
   Native jobs follow `desktop`, `platform`, `application`, `examples` and
   `administration-windows`, with the legs above; the screen reader legs follow
   `screenReaderPaths` (see [Screen reader speech](#screen-reader-speech)).
+- The Rust, C++, conformance and NativeAOT tool work has components before it has
+  jobs (D080, R7 G1), so a new path under them plans Linux only instead of every job
+  and leg. None has dependents or platform rules:
+  - `rust`: the Rust workspace (`native/Cargo.toml`, `Cargo.lock`, the toolchain and
+    format files), the crates under `native/crates` and `eng/native/crates.mjs`.
+    `desktop` owns `native/runic-server` only, plus the workspace files that change its
+    bytes (`Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`), which both own. A crate
+    or a `Cargo.lock` change alone runs no skippable job until the `rust` job lands.
+  - `cpp`: `native/cpp`; no skippable job until its CI slice.
+  - `conformance`: the corpora's conformance directories (which their spec owners keep
+    too) and the shared driver `eng/conformance`; the engineering job checks them.
+  - `tool-aot`: `eng/aot`, the NativeAOT tool builds; package consumers and templates on
+    Linux until its Windows and macOS jobs land.
+
+  Outside ci.yml, `native-server.yml` filters on runic-server's paths (not `native/**`),
+  and the native libraries' cache key hashes `native/runic-server/**`, `native/Cargo.toml`,
+  `native/rust-toolchain.toml`, the build script and the library workflow. `Cargo.lock` is
+  in neither: each shipped library has its own notices file in its crate
+  (`eng/native/crates.mjs`), which changes with that library's dependency graph.
 
 Skipped jobs report `skipped`, so no check stays pending. The required `verify` job
 (`eng/ci/gate.mjs`) accepts `skipped` only for jobs in the plan's skip list; a
@@ -524,7 +544,7 @@ it) plus the pull request, and runs `ci.yml` on it as a `merge_group` event. The
   and keeps only what that run did not run: the suites, legs and jobs it skipped. Usually
   that is nothing, and the push run skips every job, `build` and `engineering` included,
   except `native-libraries`: only runs on `main` save caches, and the native server
-  libraries' cache entries have exact keys (a new one with every `native/` change, the
+  libraries' cache entries have exact keys (a new one with every change to runic-server's paths, the
   post-release version bump included), so its lookup job runs and builds and saves only a
   missing library. The other caches (NuGet, Bun, apt) fall back to an older entry until the
   nightly run saves new ones. `verify` still reports on `main`. When several entries merge

@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - name: Compute the cache key
         id: key
-        run: echo "key=runic-server-${{ hashFiles('native/**', 'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml') }}" >> "$GITHUB_OUTPUT"
+        run: echo "key=runic-server-${{ hashFiles('native/runic-server/**', 'native/Cargo.toml', 'native/rust-toolchain.toml', 'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml') }}" >> "$GITHUB_OUTPUT"
       - name: Look up linux-x64
         id: linux-x64
         uses: ./.github/actions/dependency-cache

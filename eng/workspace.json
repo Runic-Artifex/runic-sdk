@@ -265,8 +265,16 @@
         "packages/dotnet/Runic.Desktop.Kestrel",
         "packages/dotnet/Runic.Desktop.NativeServer",
         "packages/dotnet/Runic.Desktop.NativeServer.Static",
-        "native",
-        "eng/native",
+        "native/runic-server",
+        "native/Cargo.toml",
+        "native/rust-toolchain.toml",
+        "native/rustfmt.toml",
+        "eng/native/README.md",
+        "eng/native/at-spi2-core-release-embedded-message.patch",
+        "eng/native/build-runic-server.sh",
+        "eng/native/collect-libraries.mjs",
+        "eng/native/plan-library-jobs.mjs",
+        "eng/native/verify-native-server-package.mjs",
         "nix/runic-server.nix",
         "eng/ci/windows-dismiss-oobe.ps1",
         "eng/ci/native-musl.sh"
@@ -543,6 +551,38 @@
         "eng/ci/windows-native-run.mjs",
         "eng/ci/windows-crash-report.ps1",
         "eng/ci/real-portal.sh"
+      ]
+    },
+    "rust": {
+      "dependsOn": [],
+      "paths": [
+        "native/Cargo.toml",
+        "native/Cargo.lock",
+        "native/rust-toolchain.toml",
+        "native/rustfmt.toml",
+        "native/.gitignore",
+        "native/crates",
+        "eng/native/crates.mjs"
+      ]
+    },
+    "cpp": {
+      "dependsOn": [],
+      "paths": [
+        "native/cpp"
+      ]
+    },
+    "conformance": {
+      "dependsOn": [],
+      "paths": [
+        "specs/application/conformance",
+        "specs/desktop/conformance",
+        "eng/conformance"
+      ]
+    },
+    "tool-aot": {
+      "dependsOn": [],
+      "paths": [
+        "eng/aot"
       ]
     },
     "ci": {

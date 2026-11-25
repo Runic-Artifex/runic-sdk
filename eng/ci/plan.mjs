@@ -101,6 +101,19 @@ export const reusedSkip = [...skippableJobs, "native-libraries", "build", "engin
 // leg list (legLists), such as a leg's runner or matrix values, plans the jobs whose matrix it is, with all their legs.
 export const ciComponent = "ci";
 
+// Components that no NuGet or npm package is built from, so their changes alone run no package consumers or templates
+// (D080, R7 G1). They have no dependents and no platform rules, so they plan Linux only, and until their own jobs land
+// no skippable job:
+// - rust: the Rust workspace's shared files and crates (native/crates); runic-server stays desktop's, and the workspace
+//   files that change its bytes (Cargo.toml, the toolchain, the format rules) belong to both. Its ci.yml job comes with
+//   the first crate's CI slice.
+// - cpp: the C++ layer (native/cpp); its jobs come with its CI slice (CX).
+// - conformance: the corpora's conformance files and the shared driver (eng/conformance), which the engineering job
+//   checks; the implementations that run them keep their own components.
+// The fourth new component, tool-aot (eng/aot, the NativeAOT tool builds), builds a shipped tool, so it runs the package
+// consumers and templates; its Windows and macOS jobs come with its CI slice.
+export const unpackagedComponents = [ciComponent, "rust", "cpp", "conformance"];
+
 // The leg lists of platforms.mjs by the plan output that carries them; the job whose matrix reads that output
 // (`fromJSON(needs.plan.outputs.<name>)` in ci.yml) runs those legs.
 export const legLists = { native: nativeLegs, wpf: wpfLegs, packaging: packagingLegs, "screen-readers": screenReaderLegs };
@@ -534,8 +547,8 @@ export function planFor({ full, components, screenReaders: readers = true, webKi
   // A planned job's legs: those of its own platforms, and those the components plan.
   const legs = (list, job, componentLegs) => forced(job)
     ? list.filter(leg => !leg.platform || jobs[job].platforms.includes(leg.platform) || componentLegs.includes(leg)) : componentLegs;
-  // Package consumers and templates cover every shipped component (every component but the CI component).
-  const packages = full || components.some(name => name !== ciComponent);
+  // Package consumers and templates cover every shipped component (every component but unpackagedComponents).
+  const packages = full || components.some(name => !unpackagedComponents.includes(name));
   // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration; and Runic.Spelling's
   // private word list when its Windows x64 rule planned that leg (DEV-SEC-88), whose step checks the Windows access list.
   const nativeChecks = full || has("desktop", "platform", "application", "examples", "administration-windows")

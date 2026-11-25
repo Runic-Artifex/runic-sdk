@@ -922,6 +922,88 @@ test('the CI component plans only the always-run jobs, without Windows or macOS 
   assert.ok(runs(plan(['eng/ci/plan.mjs', 'packages/web/svelte/src/index.ts']), 'templates'));
 });
 
+// D080, R7 G1: the components later work needs, declared before their paths exist, so no new path under them plans
+// every job and leg. Rust crates plan Linux only, the C++ layer and the conformance driver no skippable job, runic-server
+// as before (the desktop component and its dependents, Linux legs only), the NativeAOT tool builds the package jobs.
+test('the Rust, C++, conformance and NativeAOT tool components plan Linux only, and runic-server as before', () => {
+  const linuxOnly = result => { assert.equal(result.full, false); assert.deepEqual(result.platforms, []); };
+  // runic-server: desktop and every component that depends on it, with the native job's Linux legs, as when desktop
+  // owned all of native/.
+  const desktop = plan(['eng/native/build-runic-server.sh']);
+  linuxOnly(desktop);
+  assert.ok(desktop.components.includes('desktop') && !desktop.components.includes('rust'));
+  assert.deepEqual(desktop.skip, ['wpf', 'screen-readers', 'webkit-cdp']);
+  assert.deepEqual(desktop.native.include, nativeLegs.filter(leg => !leg.platform));
+  for (const file of ['native/runic-server/src/lib.rs', 'native/runic-server/Cargo.toml', 'native/runic-server/THIRD-PARTY-NOTICES.md',
+    'native/runic-server/include/runic_server.h', 'nix/runic-server.nix']) {
+    const result = plan([file]);
+    // The notices file is Markdown, which ci.yml's jobs do not read (native-server.yml's filters run its check).
+    if (file.endsWith('.md')) assert.deepEqual(result.components, [], file);
+    else assert.deepEqual(result, desktop, file);
+  }
+  // The workspace files that change runic-server's bytes plan desktop and rust.
+  for (const file of ['native/Cargo.toml', 'native/rust-toolchain.toml', 'native/rustfmt.toml']) {
+    const result = plan([file]);
+    assert.deepEqual(result.components.sort(), [...desktop.components, 'rust'].sort(), file);
+    assert.deepEqual({ ...result, components: [] }, { ...desktop, components: [] }, file);
+  }
+  for (const [component, files, jobs] of [
+    ['rust', ['native/crates/views/src/lib.rs', 'native/crates/desktop/Cargo.toml', 'native/crates/capi/src/lib.rs', 'native/Cargo.lock',
+      'eng/native/crates.mjs', 'native/.gitignore'], []],
+    ['cpp', ['native/cpp/CMakeLists.txt', 'native/cpp/server/server.cpp', 'native/cpp/conanfile.py', 'native/cpp/samples/hello/main.cpp'], []],
+    ['conformance', ['eng/conformance/core/driver.ts', 'eng/conformance/views/cases.json'], []],
+    ['tool-aot', ['eng/aot/publish.sh', 'eng/aot/compare-rax.sh'], ['package-consumers', 'templates']],
+  ]) {
+    assert.deepEqual(workspace.components[component].dependsOn, [], component);
+    assert.ok(!Object.values(workspace.components).some(item => item.dependsOn.includes(component)), `no component depends on ${component}`);
+    for (const path of workspace.components[component].paths)
+      assert.ok(!platformRules.some(rule => rule.paths.some(item => matchesPath(path, item) || matchesPath(item, path))), `${path} has a platform rule`);
+    for (const file of [...files, files]) {
+      const result = plan([file].flat());
+      linuxOnly(result);
+      assert.deepEqual(result.components, [component], String(file));
+      assert.deepEqual(skippableJobs.filter(job => runs(result, job)), jobs, String(file));
+    }
+  }
+  // native/cpp plans no desktop job, and a new crate none of runic-server's.
+  for (const file of ['native/cpp/CMakeLists.txt', 'native/crates/views/src/lib.rs'])
+    for (const job of ['native', 'native-musl', 'managed', 'views', 'package-consumers', 'templates']) assert.ok(!runs(plan([file]), job), `${file}: ${job}`);
+  // The existing conformance corpora keep their owners' plans and add the conformance component.
+  const corpus = plan(['specs/application/conformance/scenario.schema.json']);
+  assert.ok(corpus.components.includes('application') && corpus.components.includes('conformance'));
+  assert.deepEqual({ ...corpus, components: [] }, { ...plan(['specs/application/fixtures/example.json']), components: [] });
+  // With a shipped component, the package jobs run as before.
+  assert.ok(runs(plan(['native/crates/views/src/lib.rs', 'packages/web/svelte/src/index.ts']), 'templates'));
+});
+
+// R1 SDK-1: native-server.yml runs, and the native libraries rebuild, only for runic-server's own paths, so a crate or a
+// Cargo.lock change runs neither (a lock change in runic-server's graph changes its notices file, which both include).
+test('native-server.yml and the library cache key follow runic-server, not all of native/', () => {
+  const serverPaths = ['native/runic-server/**', 'native/Cargo.toml', 'native/rust-toolchain.toml', 'native/rustfmt.toml'];
+  const server = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/native-server.yml'), 'utf8'));
+  for (const event of ['push', 'pull_request']) {
+    const paths = server.on[event].paths;
+    assert.deepEqual(paths.filter(path => path.startsWith('native/')), serverPaths, event);
+    for (const path of paths.filter(path => path.startsWith('native/'))) {
+      const file = path.replace('/**', '/src/lib.rs');
+      assert.ok(owners(file).includes('desktop'), `${path} is runic-server's`);
+    }
+  }
+  const libraries = readFileSync(resolve(root, '.github/workflows/native-libraries.yml'), 'utf8');
+  const key = /key=runic-server-\$\{\{ hashFiles\(([^)]*)\) \}\}/.exec(libraries)?.[1];
+  assert.ok(key, 'native-libraries.yml computes the key');
+  assert.deepEqual(key.split(', ').map(item => item.slice(1, -1)), ['native/runic-server/**', 'native/Cargo.toml', 'native/rust-toolchain.toml',
+    'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml']);
+  // ci.yml's native job restores the linux-x64 library under the same key.
+  const restore = workflow.jobs.native.steps.find(step => step.name === "Restore the native server's linux-x64 library");
+  assert.equal(restore.with.key, `runic-server-\${{ hashFiles(${key}) }}-linux-x64`);
+  // Each shipped library's notices file is in its crate's directory, so the filters and the key cover it.
+  const crates = readFileSync(resolve(root, 'eng/native/crates.mjs'), 'utf8');
+  const notices = [...crates.matchAll(/notices: "([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(notices, ['native/runic-server/THIRD-PARTY-NOTICES.md']);
+  for (const path of notices) assert.ok(tracked(path).length === 1, path);
+});
+
 test('the CI scripts of platform steps belong to the component whose job runs them and plan its legs only', () => {
   for (const [file, component, legs, jobs] of [
     ['eng/ci/macos-voiceover.sh', 'platform', ['osx-arm64'], ['native']],
