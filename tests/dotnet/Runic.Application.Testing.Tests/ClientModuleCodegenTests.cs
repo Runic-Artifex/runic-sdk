@@ -150,8 +150,7 @@ internal sealed class ClientLibraryTypeCheckTests
         var typescript = Path.Combine(directory, "generated");
         try
         {
-            await GeneratedHarnessProcess.RunAsync("dotnet", [generator, "--generate", typeof(ClientLibraryTypeCheckTests).Assembly.Location,
-                Path.Combine(directory, "cs"), typescript, "--client-library"], root).ConfigureAwait(false);
+            await GenerateAsync(root, generator, Path.Combine(directory, "cs"), typescript).ConfigureAwait(false);
             var check = Path.Combine(typescript, "client-library-check.ts");
             File.WriteAllText(check, """
                 import { runicClientContracts, type DataShapeClient, type ResultPageClient } from "./runic-clients.js";
@@ -172,6 +171,33 @@ internal sealed class ClientLibraryTypeCheckTests
         {
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
+    }
+
+    // The generator over this whole assembly, which normally takes a few seconds. It runs outside the generated-client
+    // harness, whose 30 seconds are for the small Bun clients: on a loaded runner the generator needs the margin that
+    // CodegenDiagnosticsTests.GeneratorTimeout gives it (#348).
+    private static async Task GenerateAsync(string root, string generator, string csharp, string typescript)
+    {
+        using var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, WorkingDirectory = root,
+                ArgumentList = { generator, "--generate", typeof(ClientLibraryTypeCheckTests).Assembly.Location, csharp, typescript, "--client-library" },
+            },
+        };
+        process.Start();
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(60));
+        try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException($"The bridge generator did not finish within 60 seconds.\n{await output.ConfigureAwait(false)}{await error.ConfigureAwait(false)}");
+        }
+        var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
+        if (process.ExitCode != 0) throw new InvalidOperationException($"The bridge generator failed.\n{text}");
     }
 
     private static string FindWorkspaceRoot()
