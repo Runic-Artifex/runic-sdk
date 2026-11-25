@@ -202,7 +202,21 @@ jobs:
         with:
           ref: ${{ needs.exit.outputs.base-sha }}
           persist-credentials: false
+      # The artifact service fails a download now and then (B5). This job runs no local action (in a rehearsal its
+      # checkout is an older commit), so it retries inline as .github/actions/download-artifact does: once more after 30 s.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        id: download
+        continue-on-error: true
+        with:
+          name: feed-exit-${{ github.run_id }}
+          path: ${{ runner.temp }}/feed-exit
+      - name: Wait before downloading again
+        if: steps.download.outcome == 'failure'
+        run: |
+          echo "::warning title=Infrastructure retry::Downloading the feed exit's patch failed; trying once more in 30 s."
+          sleep 30
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: steps.download.outcome == 'failure'
         with:
           name: feed-exit-${{ github.run_id }}
           path: ${{ runner.temp }}/feed-exit

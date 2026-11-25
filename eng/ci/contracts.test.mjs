@@ -512,9 +512,15 @@ test('an upload that only keeps diagnostics cannot fail a job, one a later job d
 
 test('CI tries an artifact download and a .NET SDK install twice', () => {
   // The artifact service and dotnet-install fail a job now and then (B5, eng/ci/README.md "Flakes"). The release
-  // workflow downloads the published run's packages once, by artifact id, and is left as it is.
+  // workflow downloads the published run's packages once, by artifact id, and is left as it is. The feed exit's token
+  // job runs no local action, so it retries its download inline (checked below).
   const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0')
-    .filter(path => /\.ya?ml$/.test(path) && !['.github/workflows/publish-preview.yml', '.github/actions/download-artifact/action.yml'].includes(path));
+    .filter(path => /\.ya?ml$/.test(path) && !['.github/workflows/publish-preview.yml', '.github/workflows/train-feed-exit.yml',
+      '.github/actions/download-artifact/action.yml'].includes(path));
+  const feedExit = yaml('.github/workflows/train-feed-exit.yml').jobs.open.steps.filter(step => step.uses?.startsWith('actions/download-artifact@'));
+  assert.deepEqual(feedExit.map(step => [step.if, step['continue-on-error']]), [
+    [undefined, true], ["steps.download.outcome == 'failure'", undefined]]);
+  assert.deepEqual(feedExit[0].with, feedExit[1].with);
   for (const path of files) {
     const document = yaml(path);
     const steps = [...Object.values(document.jobs ?? {}).flatMap(job => job.steps ?? []), ...(document.runs?.steps ?? [])];
