@@ -676,3 +676,91 @@ test('the Windows native wrapper reports the exit code Windows gave and what Git
   const step = workflow.jobs.native.steps.find(step => step.name === 'Verify Windows message boxes with JIT and NativeAOT');
   assert.equal(step.run.match(/node eng\/ci\/windows-native-run\.mjs /g)?.length, 2);
 });
+
+// E1: the train App's key reaches one job only, through the train environment (which admits main only), from a
+// workflow that a pull request cannot start; that job runs no repository code.
+const TRAIN_TOKEN_JOBS = ['train-feed-exit.yml#open'];
+const APP_TOKEN_PIN = 'actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc';
+test('only the feed exit\'s open job uses the train environment and the train App\'s key', () => {
+  const files = readdirSync(resolve(root, '.github/workflows')).filter(name => /\.ya?ml$/.test(name)).sort();
+  const users = [];
+  for (const file of files) {
+    const text = readFileSync(resolve(root, '.github/workflows', file), 'utf8');
+    const parsed = Bun.YAML.parse(text);
+    for (const [name, job] of Object.entries(parsed.jobs ?? {})) {
+      const environment = typeof job.environment === 'object' ? job.environment?.name : job.environment;
+      const named = JSON.stringify(job);
+      if (environment === 'train' || /TRAIN_APP_PRIVATE_KEY|create-github-app-token/.test(named)) users.push(`${file}#${name}`);
+      if (/TRAIN_APP_PRIVATE_KEY|create-github-app-token/.test(named)) assert.equal(environment, 'train', `${file}#${name} mints the train App's token outside the train environment`);
+    }
+    if (users.some(user => user.startsWith(`${file}#`))) {
+      const triggers = Object.keys(parsed.on ?? parsed[true] ?? {});
+      for (const trigger of ['pull_request', 'pull_request_target', 'workflow_run', 'repository_dispatch', 'issue_comment', 'push', 'schedule'])
+        assert.ok(!triggers.includes(trigger), `${file} names the train environment and runs on ${trigger}`);
+    }
+  }
+  assert.deepEqual(users, TRAIN_TOKEN_JOBS);
+  for (const user of users) {
+    const [file, name] = user.split('#');
+    const steps = yaml(`.github/workflows/${file}`).jobs[name].steps;
+    const tokens = steps.filter(step => step.uses?.startsWith('actions/create-github-app-token@'));
+    assert.equal(tokens.length, 1, user);
+    assert.equal(tokens[0].uses, APP_TOKEN_PIN);
+    assert.equal(tokens[0].with.owner, 'Runic-Artifex');
+    assert.equal(tokens[0].with.repositories, 'runic-sdk');
+    assert.equal(tokens[0].with['private-key'], '${{ secrets.TRAIN_APP_PRIVATE_KEY }}');
+  }
+  const pinned = readFileSync(resolve(root, '.github/workflows/train-feed-exit.yml'), 'utf8');
+  assert.match(pinned, new RegExp(`uses: ${APP_TOKEN_PIN} # v3\\.4\\.0\\n`));
+});
+
+test('the feed exit computes without a token and pushes only a checked patch with git, gh and jq', () => {
+  const text = readFileSync(resolve(root, '.github/workflows/train-feed-exit.yml'), 'utf8');
+  const exitWorkflow = yaml('.github/workflows/train-feed-exit.yml');
+  const { exit, open } = exitWorkflow.jobs;
+  assert.deepEqual(Object.keys(exitWorkflow.on), ['workflow_dispatch']);
+  assert.equal(exitWorkflow.on.workflow_dispatch.inputs['dry-run'].default, true);
+  assert.deepEqual(exitWorkflow.permissions, { contents: 'read' });
+  // exit: repository code, no environment, no secret, read-only.
+  assert.equal(exit.environment, undefined);
+  assert.doesNotMatch(JSON.stringify(exit), /secrets\./);
+  assert.deepEqual(exit.permissions, { contents: 'read', actions: 'read' });
+  assert.match(exit.if, /github\.ref == 'refs\/heads\/main'/);
+  assert.ok(exit.steps.filter(step => step.uses?.startsWith('actions/checkout@')).every(step => step.with['persist-credentials'] === false));
+  const tree = exit.steps.find(step => step.id === 'tree').run;
+  assert.match(tree, /if \[ "\$DRY_RUN" != true \]; then\n\s+echo "::error title=Feed exit::from is for dry runs only/);
+  assert.ok(exit.steps.some(step => /bun eng\/ci\/train-feed\.mjs exit --wait/.test(step.run ?? '')));
+  assert.ok(exit.steps.some(step => /bun eng\/ci\/train-feed\.mjs exit-report/.test(step.run ?? '')));
+  assert.ok(exit.steps.some(step => /python3 eng\/ci\/runner-wait\.py --cap-only --macos-jobs "\$jobs" --wait-minutes 60/.test(step.run ?? '')));
+  // open: only the token action, checkout and download; its shell runs no repository script or package manager.
+  assert.match(open.if, /needs\.exit\.outputs\.exit == 'true'/);
+  assert.match(open.if, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(open.if, /vars\.TRAIN_HANDOFF != 'off'/);
+  assert.deepEqual(open.permissions, { contents: 'read' });
+  for (const step of open.steps) {
+    if (step.uses) assert.match(step.uses, /^actions\/(create-github-app-token|checkout|download-artifact)@[0-9a-f]{40}$/, step.uses);
+    if (step.uses?.startsWith('actions/checkout@')) assert.equal(step.with['persist-credentials'], false);
+    if (step.run) assert.doesNotMatch(step.run, /\b(bun|bunx|node|npm|npx|pnpm|dotnet|python3?|make)\b|eng\/|\.\/|\bsource\b/, step.name);
+  }
+  assert.ok(open.steps.some(step => /--force-with-lease=/.test(step.run ?? '')));
+  assert.doesNotMatch(JSON.stringify(open), /x-access-token@|extraheader/);
+  // One allowlist: defined once for the workflow, read by both jobs.
+  assert.equal(text.match(/FEED_EXIT_PATHS:/g).length, 1);
+  assert.ok(exitWorkflow.env.FEED_EXIT_PATHS);
+  for (const job of [exit, open]) {
+    assert.equal(job.env?.FEED_EXIT_PATHS, undefined);
+    const checks = job.steps.filter(step => (step.run ?? '').includes('grep -Ev -e "$FEED_EXIT_PATHS"'));
+    assert.equal(checks.length, 1);
+    assert.match(checks[0].run, /grep -E '\^\\\.github\/'/);
+  }
+  const allowed = new RegExp(exitWorkflow.env.FEED_EXIT_PATHS);
+  for (const path of ['Directory.Packages.props', 'src/Runic.Application/packages.lock.json', 'packages.lock.json',
+    'tests/dotnet/X/packages.linux-x64.lock.json', 'tests/fixtures/nix/completions/App/App.csproj', 'tests/fixtures/nix/completions/App/packages.lock.json'])
+    assert.ok(allowed.test(path), path);
+  for (const path of ['eng/ci/train-feed.mjs', 'src/Directory.Packages.props', 'NuGet.config', 'package.json', 'bun.lock', 'packages.lock.json.orig',
+    'tests/fixtures/nix/completions/App/Program.cs', 'src/a/packages/x.lock.json'])
+    assert.ok(!allowed.test(path), path);
+  // Dispatch inputs reach shell only through env.
+  for (const job of [exit, open])
+    for (const step of job.steps) assert.doesNotMatch(step.run ?? '', /\$\{\{/, `${step.name ?? step.uses}: an expression inside run`);
+});

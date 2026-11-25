@@ -160,6 +160,52 @@ GH_TOKEN=$(gh auth token) bun eng/ci/train-feed.mjs exit && bun run lock:nuget &
 
 Prose that names the candidate (docs, upgrading notes) stays agent work.
 
+### Train feed exit workflow
+
+`.github/workflows/train-feed-exit.yml` (`workflow_dispatch` on `main` only) runs these steps and opens the pull
+request. The coordinator dispatches it when they approve the last upstream publish of the train; it waits for the
+indexing itself:
+
+```sh
+gh workflow run train-feed-exit.yml -R Runic-Artifex/runic-sdk --ref main -f dry-run=false
+```
+
+| Input | Default | |
+| --- | --- | --- |
+| `dry-run` | `true` | Compute and print everything; push nothing, open nothing |
+| `wait-minutes` | `70` | `exit --wait` (1 to 90) |
+| `from` | empty | Dry runs only: a past `main` commit (full SHA) to compute the exit in, as a rehearsal |
+
+- **`exit`** (`contents: read`, `actions: read`, no environment, no secret) checks out `main` (with `from`, also that
+  commit as a worktree, with its own .NET SDK). It runs `setup-sdk` with `nuget: none` and no train feed, then
+  `train-feed.mjs exit`, `bun run lock:nuget`, the Nix fixture's restore and `exit-report`. Every changed path must
+  match `FEED_EXIT_PATHS` (`Directory.Packages.props`, `packages.lock.json` and `packages.<rid>.lock.json` files, the
+  Nix fixture's `App.csproj`), nothing below `.github/` and no mode change. It uploads the patch, `base-sha`,
+  `exit.json` and `pr-body.md` as `feed-exit-<run id>` (7 days), and the job summary shows the diff. Last, it waits
+  up to 60 minutes until the pull request's macOS jobs (`eng/ci/plan.mjs --files`) fit under the cap of 5
+  (`eng/ci/runner-wait.py --cap-only`; D077.26(1)). A dry run only reports the cap.
+- **`open`** (environment `train`, which admits `main` only; skipped while the repository variable
+  `TRAIN_HANDOFF` is `off`) mints the train App's token for runic-sdk, read-only on a dry run, and runs only `git`,
+  `gh` and `jq`. It checks out `base-sha` and fails if `main` moved since (real runs). It applies the patch and checks
+  the same allowlist again. Then it commits as `runic-artifex-train[bot]` and pushes `train-bot/feed-exit` with
+  `--force-with-lease`, the token passed through a one-shot credential helper. Last, it opens the pull request, or
+  updates the open one. A branch whose tree already equals the change only gets its body refreshed. A closed,
+  unmerged pull request with the same marker (`<!-- train-handoff: feed-exit … -->`) stops it: reopen that one or
+  delete the branch.
+- The bot never queues, approves or merges. The coordinator merges through the queue after every check; the queue
+  run of a `TrainCommit` change runs every leg and is the green `main` run (D077.22).
+
+**Dry runs** (none needs the maintainer; they write nothing):
+
+1. `gh workflow run train-feed-exit.yml -R Runic-Artifex/runic-sdk --ref main` on a `main` without a
+   `TrainCommit`: `nothing to exit`, and `open` is skipped. This proves the trigger.
+2. `… -f from=a6d6c9f00dce859631886fa20ee7ee838c96b66d` (0.23 step 6): `exit` computes #1244's change without its
+   prose (the `TrainCommit` of Translations 0.15.0 and the Nix fixture to Command Line 0.14.0). `open` mints the
+   read-only token, applies the patch to that commit, and prints the would-be push, the pull requests and the body.
+3. `… -f from=291a8be3b208d04e86fecec9543df99be43aaeaf` (the 0.15.1 candidate): #1259's one-line change.
+
+The rehearsals read the `train-feed` artifacts of those runs, which expire on 2026-12-20.
+
 ## Scenarios
 
 All consumers build with `TreatWarningsAsErrors` and NuGet audit on, outside the repository (no runic-sdk

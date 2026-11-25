@@ -1,0 +1,294 @@
+name: Train feed exit
+# The feed exit's pull request (eng/train/README.md, "Train feed exit workflow"). The coordinator dispatches it when
+# they approve the last upstream publish of a train. `exit` computes the change with the repository's scripts and no
+# token; `open` holds the train App's token, runs only git, gh and jq, and pushes the checked patch to
+# train-bot/feed-exit and opens or updates its pull request. Nobody merges but the coordinator.
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Compute and print the change; push nothing, open nothing
+        type: boolean
+        default: true
+      wait-minutes:
+        description: How long to wait for nuget.org and npm to serve the packages (1 to 90 minutes)
+        type: string
+        default: "70"
+      from:
+        description: "Dry run only: a past main commit (full SHA) to compute the exit in, as a rehearsal"
+        type: string
+        default: ""
+permissions:
+  contents: read
+concurrency:
+  group: train-feed-exit
+  cancel-in-progress: false
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  # The only paths a feed exit may change, one extended regular expression for `git diff --name-only`. Both jobs check
+  # the change against this one value: exit before it uploads the patch, open again before it pushes.
+  FEED_EXIT_PATHS: '^(Directory\.Packages\.props|([^/]+/)*packages(\.[^/]+)?\.lock\.json|tests/fixtures/nix/completions/App/App\.csproj)$'
+  FEED_EXIT_BRANCH: train-bot/feed-exit
+jobs:
+  exit:
+    if: github.repository == 'Runic-Artifex/runic-sdk' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Up to 90 minutes of indexing, the restores, and up to 60 minutes for room under the macOS cap.
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      exit: ${{ steps.exit.outputs.exit }}
+      base-sha: ${{ steps.tree.outputs.base-sha }}
+    steps:
+      # The history: the feed run is the one at or after the last change of Directory.Packages.props, and `from` must
+      # be a commit on main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Choose the checkout to compute the exit in
+        id: tree
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          FROM: ${{ inputs.from }}
+          WAIT_MINUTES: ${{ inputs.wait-minutes }}
+        run: |
+          if ! [[ "$WAIT_MINUTES" =~ ^[1-9][0-9]?$ ]]; then
+            echo "::error title=Feed exit::wait-minutes takes 1 to 90 minutes, not '$WAIT_MINUTES'"
+            exit 1
+          fi
+          tree="$GITHUB_WORKSPACE"
+          if [ -n "$FROM" ]; then
+            # A rehearsal of a past exit computes it in that commit with main's scripts; a real run never takes `from`.
+            if [ "$DRY_RUN" != true ]; then
+              echo "::error title=Feed exit::from is for dry runs only; a real run computes the exit on main"
+              exit 1
+            fi
+            if ! [[ "$FROM" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$FROM" HEAD; then
+              echo "::error title=Feed exit::from takes the full SHA of a commit on main, not '$FROM'"
+              exit 1
+            fi
+            tree="$RUNNER_TEMP/tree"
+            git worktree add --detach "$tree" "$FROM"
+          fi
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "base-sha=$(git -C "$tree" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      # nuget: none restores no NuGet cache, so every package comes from nuget.org (NuGet.config), and without
+      # train-feed no RUNIC_TRAIN_FEED adds the candidates.
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: none
+          train-feed: "false"
+          node: "false"
+          install: "true"
+      # global.json pins its SDK with rollForward disabled, so a rehearsal restores with the SDK of its `from` commit,
+      # installed next to main's.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: inputs.from != ''
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet
+        with:
+          global-json-file: ${{ steps.tree.outputs.tree }}/global.json
+      - name: Compute the feed exit
+        id: exit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TREE: ${{ steps.tree.outputs.tree }}
+          WAIT_MINUTES: ${{ inputs.wait-minutes }}
+        run: bun eng/ci/train-feed.mjs exit --wait "$WAIT_MINUTES" --tree "$TREE" --out "$RUNNER_TEMP/feed-exit"
+      - name: Rewrite the lock files against nuget.org
+        if: steps.exit.outputs.exit == 'true'
+        working-directory: ${{ steps.tree.outputs.tree }}
+        run: |
+          if [ -n "${RUNIC_TRAIN_FEED:-}" ]; then
+            echo "::error title=Feed exit::RUNIC_TRAIN_FEED is set; the lock files must hash nuget.org's packages"
+            exit 1
+          fi
+          bun run lock:nuget
+          if jq -e '.nix' "$RUNNER_TEMP/feed-exit/exit.json" > /dev/null; then
+            dotnet restore tests/fixtures/nix/completions/App --force-evaluate
+          fi
+      - name: Check the change and record the lock files
+        if: steps.exit.outputs.exit == 'true'
+        env:
+          TREE: ${{ steps.tree.outputs.tree }}
+        run: bun eng/ci/train-feed.mjs exit-report --tree "$TREE" --out "$RUNNER_TEMP/feed-exit"
+      - name: Check the changed paths and write the patch
+        if: steps.exit.outputs.exit == 'true'
+        working-directory: ${{ steps.tree.outputs.tree }}
+        env:
+          BASE_SHA: ${{ steps.tree.outputs.base-sha }}
+        run: |
+          out="$RUNNER_TEMP/feed-exit"
+          git add --all
+          outside=$(git diff --cached --name-only | grep -Ev -e "$FEED_EXIT_PATHS" || true)
+          workflows=$(git diff --cached --name-only | grep -E '^\.github/' || true)
+          modes=$(git diff --cached --summary | grep -Ev '^ (create|delete) mode 100644 ' || true)
+          if [ -n "$outside$workflows$modes" ]; then
+            echo "::error title=Feed exit::The feed exit changed paths or modes outside its allowlist: $(echo "$outside $workflows $modes" | tr '\n' ' ')"
+            exit 1
+          fi
+          git diff --cached --binary > "$out/feed-exit.patch"
+          git diff --cached --name-only > "$out/files.txt"
+          echo "$BASE_SHA" > "$out/base-sha"
+          {
+            echo "## Feed exit: $(jq -r .title "$out/exit.json")"
+            echo
+            echo '```'
+            git diff --cached --stat
+            echo '```'
+            echo
+            echo '```diff'
+            git diff --cached -- Directory.Packages.props tests/fixtures/nix/completions/App/App.csproj
+            echo '```'
+            echo
+            echo '<details><summary>exit.json</summary>'
+            echo
+            echo '```json'
+            cat "$out/exit.json"
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.exit.outputs.exit == 'true'
+        with:
+          name: feed-exit-${{ github.run_id }}
+          path: ${{ runner.temp }}/feed-exit
+          retention-days: 7
+          if-no-files-found: error
+      # D077.26(1): at most 5 macOS jobs queued or running at once. The pull request's plan (eng/ci/plan.mjs) has to fit
+      # before it opens; a real run waits up to 60 minutes for room, a dry run only reports.
+      - name: Wait for room under the macOS job cap
+        if: steps.exit.outputs.exit == 'true'
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t files < "$RUNNER_TEMP/feed-exit/files.txt"
+          jobs=$(bun eng/ci/plan.mjs --files --base HEAD "${files[@]}" \
+            | sed -n 's/^[a-z-]*=\({"include".*\)$/\1/p' | jq -s '[.[].include[] | select(.os | test("^macos"))] | length')
+          echo "The pull request's plan has $jobs macOS job(s)."
+          if [ "$DRY_RUN" = true ]; then
+            python3 eng/ci/runner-wait.py --cap-only --macos-jobs "$jobs" || echo "::notice title=Feed exit::A real run would wait for room under the macOS cap now."
+          else
+            python3 eng/ci/runner-wait.py --cap-only --macos-jobs "$jobs" --wait-minutes 60 --interval 120
+          fi
+  open:
+    needs: exit
+    if: needs.exit.outputs.exit == 'true' && github.ref == 'refs/heads/main' && vars.TRAIN_HANDOFF != 'off'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The train environment admits main only; this job runs git, gh and jq, and no repository code.
+    environment: train
+    permissions:
+      contents: read
+    steps:
+      # A dry run mints a read-only token: it proves the environment, variable, key and installation without write
+      # scope. The post step revokes the token.
+      - id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.TRAIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.TRAIN_APP_PRIVATE_KEY }}
+          owner: Runic-Artifex
+          repositories: runic-sdk
+          permission-contents: ${{ inputs.dry-run && 'read' || 'write' }}
+          permission-pull-requests: ${{ inputs.dry-run && 'read' || 'write' }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.exit.outputs.base-sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: feed-exit-${{ github.run_id }}
+          path: ${{ runner.temp }}/feed-exit
+      - name: Apply the checked patch
+        env:
+          BASE_SHA: ${{ needs.exit.outputs.base-sha }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          out="$RUNNER_TEMP/feed-exit"
+          if [ "$(cat "$out/base-sha")" != "$BASE_SHA" ] || [ "$(git rev-parse HEAD)" != "$BASE_SHA" ]; then
+            echo "::error title=Feed exit::The patch was computed on $(cat "$out/base-sha"), not this checkout"
+            exit 1
+          fi
+          # A stale patch never reaches a newer main. A dry run with `from` applies to that commit instead.
+          if [ "$DRY_RUN" != true ]; then
+            main=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+            if [ "$main" != "$BASE_SHA" ]; then
+              echo "::error title=Feed exit::main moved from $BASE_SHA to $main since the exit was computed; dispatch again"
+              exit 1
+            fi
+          fi
+          git apply --index --check "$out/feed-exit.patch"
+          git apply --index "$out/feed-exit.patch"
+          outside=$(git diff --cached --name-only | grep -Ev -e "$FEED_EXIT_PATHS" || true)
+          workflows=$(git diff --cached --name-only | grep -E '^\.github/' || true)
+          modes=$(git diff --cached --summary | grep -Ev '^ (create|delete) mode 100644 ' || true)
+          if [ -n "$outside$workflows$modes" ] || git diff --cached --quiet; then
+            echo "::error title=Feed exit::The patch is empty or changes paths or modes outside the allowlist: $(echo "$outside $workflows $modes" | tr '\n' ' ')"
+            exit 1
+          fi
+          git diff --cached --stat
+      - name: Push the branch and open or update the pull request
+        env:
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          out="$RUNNER_TEMP/feed-exit"
+          title=$(jq -r .title "$out/exit.json")
+          marker=$(jq -r .marker "$out/exit.json")
+          bot="${APP_SLUG}[bot]"
+          id=$(gh api "users/$APP_SLUG%5Bbot%5D" --jq .id)
+          { printf '%s\n\n' "$title"; cat "$out/pr-body.md"; } | git -c user.name="$bot" -c user.email="$id+$bot@users.noreply.github.com" commit --quiet --file=-
+          tree=$(git rev-parse 'HEAD^{tree}')
+          # The token reaches git through a one-shot credential helper, never a URL or .git/config.
+          # shellcheck disable=SC2016 # git's shell expands GH_TOKEN when it asks the helper.
+          helper='!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f'
+          if remote=$(gh api "repos/$GITHUB_REPOSITORY/branches/$FEED_EXIT_BRANCH" --jq .commit.sha 2> "$RUNNER_TEMP/branch.err"); then
+            remote_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$remote" --jq .tree.sha)
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/branch.err"; then
+            remote='' remote_tree=''
+          else
+            cat "$RUNNER_TEMP/branch.err"
+            exit 1
+          fi
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$FEED_EXIT_BRANCH" --state all --json number,state,body,url)
+          open_pr=$(jq -r '[.[] | select(.state == "OPEN")][0].number // empty' <<< "$prs")
+          closed=$(jq -r --arg marker "$marker" '[.[] | select(.state == "CLOSED" and (.body | contains($marker)))][0].url // empty' <<< "$prs")
+          if [ -z "$open_pr" ] && [ -n "$closed" ]; then
+            echo "::error title=Feed exit::$closed has this exit and was closed by the coordinator; reopen it or delete $FEED_EXIT_BRANCH"
+            exit 1
+          fi
+          # The same tree on the branch: only the body is refreshed, with no push and no new CI.
+          push=true
+          if [ -n "$remote" ] && [ "$remote_tree" = "$tree" ]; then push=false; fi
+          if [ "$push" = true ]; then plan="push $(git rev-parse HEAD) to $FEED_EXIT_BRANCH (now ${remote:-absent})"; else plan="leave $FEED_EXIT_BRANCH at $remote (the same tree)"; fi
+          if [ -n "$open_pr" ]; then plan="$plan, then update #$open_pr"; else plan="$plan, then open a pull request"; fi
+          if [ "$DRY_RUN" = true ]; then plan="Dry run: would $plan"; else plan="${plan^}"; fi
+          {
+            echo "## $title"
+            echo
+            echo "$plan."
+            echo
+            echo "Pull requests on $FEED_EXIT_BRANCH: $(jq -r 'map("#\(.number) \(.state)") | join(", ") | if . == "" then "none" else . end' <<< "$prs")"
+            echo
+            cat "$out/pr-body.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$plan."
+          # A dry run's token read the branch and the pull requests above; it stops before writing anything.
+          if [ "$DRY_RUN" = true ]; then exit 0; fi
+          if [ "$push" = true ]; then
+            git -c credential.helper= -c credential.helper="$helper" push --force-with-lease="refs/heads/$FEED_EXIT_BRANCH:$remote" origin "HEAD:refs/heads/$FEED_EXIT_BRANCH"
+          fi
+          if [ -n "$open_pr" ]; then
+            gh pr edit "$open_pr" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$out/pr-body.md"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$FEED_EXIT_BRANCH" --title "$title" --body-file "$out/pr-body.md"
+          fi
