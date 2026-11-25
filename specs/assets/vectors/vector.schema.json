@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-assets/archive-vector-1.schema.json",
+  "title": "Runic Assets archive vector set",
+  "description": "A file of archive vectors: archives in base64 and what a reader reports for each, in eager and lazy reading. See README.md in this directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "id", "contract", "description", "cases"],
+  "properties": {
+    "format": { "const": "runic.assets.vector/1" },
+    "id": { "$ref": "#/$defs/dottedId" },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "versions"],
+      "properties": {
+        "id": { "const": "runic.assets.archive" },
+        "versions": { "const": [1, 2] }
+      }
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } }
+  },
+  "$defs": {
+    "dottedId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "operation", "input", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/dottedId" },
+        "description": { "type": "string", "minLength": 1 },
+        "operation": { "const": "read" },
+        "input": {
+          "description": "The archive's bytes in base64 (RFC 4648 section 4).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["encoding", "value"],
+          "properties": {
+            "encoding": { "const": "base64" },
+            "value": { "type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$" }
+          }
+        },
+        "expect": { "$ref": "#/$defs/result" },
+        "expectLazy": {
+          "description": "The result of lazy reading where it differs from expect.",
+          "$ref": "#/$defs/result"
+        }
+      }
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result", "assets"],
+          "properties": {
+            "result": { "const": "valid" },
+            "assets": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/asset" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result", "error"],
+          "properties": {
+            "result": { "const": "invalid" },
+            "error": {
+              "enum": ["zip-invalid", "zip-encrypted", "zip-duplicate-entry", "crc-mismatch", "manifest-missing",
+                "manifest-not-json", "manifest-version", "asset-invalid", "path-invalid", "manifest-invalid",
+                "content-path-invalid", "entry-missing", "entry-undeclared", "length-mismatch", "digest-mismatch",
+                "limit-exceeded"]
+            }
+          }
+        }
+      ]
+    },
+    "asset": {
+      "description": "An asset as a reader reports it: normalized path, digest in lower case.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mediaType", "length", "sha256", "entryPoint", "cacheMode"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "length": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "entryPoint": { "type": "boolean" },
+        "cacheMode": { "enum": ["NoStore", "Revalidate", "Immutable"] }
+      }
+    }
+  }
+}

@@ -99,9 +99,10 @@ internal sealed class PackerContractTests
         Equal("1", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
         True(output.Contains("\"RAS1006\"", StringComparison.Ordinal), output);
 
-        // The stored asset keeps its length with other content, so only its digest tells.
+        // The stored asset keeps its length and CRC-32 with other content, so only its digest tells.
         byte[] bytes = File.ReadAllBytes(archive);
         bytes[bytes.AsSpan().IndexOf("stored, not"u8)] = (byte)'S';
+        ZipTestEdits.UpdateStoredCrc(bytes, "assets/image.png");
         File.WriteAllBytes(archive, bytes);
         (exitCode, _, error) = await RunPackerAsync("verify", archive).ConfigureAwait(false);
         Equal("1", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));

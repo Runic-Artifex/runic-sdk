@@ -271,11 +271,17 @@ internal sealed class AssetsTests
             SequenceEqual(index % 2 == 0 ? Encoding.UTF8.GetBytes("<!doctype html><p>entry</p>") : File.ReadAllBytes(image), reads[index]);
         }
 
-        // Same length, other content: an archive from outside the assembly fails to load; read in place, the digest
-        // is checked by ValidateAsync only.
+        // Same length, other content, the entry's CRC-32 unchanged: neither reader serves it (F3, D080).
         byte[] tampered = (byte[])bytes.Clone();
         int stored = tampered.AsSpan().IndexOf("not really"u8);
         tampered[stored] = (byte)'N';
+        Throws<InvalidDataException>(() => AssetArchive.Read(new MemoryStream(tampered, writable: false)));
+        AssetArchiveSource damagedInPlace = AssetArchive.ReadInPlace(new MemoryStream(tampered, writable: false), null);
+        await ThrowsAsync<InvalidDataException>(async () => await ReadAllAsync(damagedInPlace, "image.png").ConfigureAwait(false)).ConfigureAwait(false);
+
+        // With a matching CRC-32, only the digest tells: an archive from outside the assembly fails to load; read in
+        // place, the digest is checked by ValidateAsync only.
+        ZipTestEdits.UpdateStoredCrc(tampered, "assets/image.png");
         Throws<InvalidDataException>(() => AssetArchive.Read(new MemoryStream(tampered, writable: false)));
         AssetArchiveSource inPlace = AssetArchive.ReadInPlace(new MemoryStream(tampered, writable: false), null);
         Equal((byte)'N', (await ReadAllAsync(inPlace, "image.png").ConfigureAwait(false))[0]);
