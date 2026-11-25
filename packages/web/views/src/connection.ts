@@ -244,7 +244,6 @@ const revisionTimeout = 5_000;
 const reopenAttempts = 20;
 const reopenDelay = 250;
 
-/** The shared state of one open route: its producer state, revision, overlay and presentations. */
 /**
  * view-contract/1, in the development build: the failure for an `open` reply whose Bridge contract is not the page's,
  * reported once, with the View and both fingerprints, as a `contract` diagnostic, which also reaches the Runic DevTools
@@ -262,6 +261,7 @@ function contractMismatch(slots: Slots, route: string, contract: string, bridgeC
   return error;
 }
 
+/** The shared state of one open route: its producer state, revision, overlay and presentations. */
 class RouteEntry {
   readonly presentations = new Set<Lease>();
   active = true;
