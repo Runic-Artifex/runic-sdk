@@ -315,12 +315,20 @@ export condition) has the development tools that would otherwise run on every
 page: [Bridge-call reports and async stack tagging](#bridge-calls-in-the-browsers-developer-tools),
 with the C# handler timing and trace context that a followed call asks for and
 carries (the Views protocol features `handler-timing/1` and `trace-context/1`),
-and the Runic Translations [text channel](#translated-text) that updates an
-edited message in place, and the descriptions of connected clients that the
-bindings' DevTools labels show. The **production build** (`dist/`, the `import` and
+the Runic Translations [text channel](#translated-text) that updates an
+edited message in place, the descriptions of connected clients that the
+bindings' DevTools labels show, and (since 0.24) the **contract check**: with a
+.NET host of 0.24 or later (the Views protocol feature `view-contract/1`), a
+View whose generated client comes from another build of its ViewModel than the
+application's Bridge, such as a stale `generated/` folder or a frontend package
+built from an earlier library, fails to connect with a `BridgeError` that says
+the page and the application were generated from different builds, and one
+`contract` diagnostic that names the View and both contract fingerprints, before
+its state is decoded with the wrong members. The **production build** (`dist/`, the `import` and
 `default` conditions) leaves them out: a production bundle contains no
 call-reporting code, tags no call, creates no global for them, and its `hello`
-lists neither feature, so no request carries their members. Everything
+lists none of these features, so no request or reply carries their members, and
+a page connects without comparing contracts, as before 0.24. Everything
 else, including the development state inspector that Runic Inspect reads, is
 the same in both.
 
@@ -1697,8 +1705,10 @@ reads it fails) and `version` for a .NET
 host whose `Runic.Application.Views` is of another release than this package
 (each once per Bridge; no other producer is compared), `revision-timeout` for a
 reply whose revision the route did not reach within five seconds (a producer bug;
-the client then reads a snapshot), and `stale-input`, which only
-`@runic-artifex/vite-plugin-runic` reports in development
+the client then reads a snapshot), `contract` for a View whose generated client
+comes from another build than the application's Bridge (the
+[development build](#development-build) only; the connection fails), and
+`stale-input`, which only `@runic-artifex/vite-plugin-runic` reports in development
 ([Text inputs](#text-inputs)). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
 forwards them to its DevTools dock during development. A call of a released
 View is expected around every navigation, so its `released` rejection reaches

@@ -293,6 +293,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `trace-context/1` | A call's request carries the page's W3C trace context, the parent of the producer's span for the call: [trace context](#trace-context) | 0.20 |
 | `handler-timing/1` | A call's request asks for its handler's name and duration, which the reply carries; a producer offers it only in development: [handler timing](#handler-timing) | 0.20 |
 | `open-ended-interactions/1` | An interaction request without a deadline carries no `expiresAt`: [interaction deadlines](#interaction-deadlines) | 0.23 |
+| `view-contract/1` | An `open` reply names the route's generated contract, which the page compares with its own: [presentations](#presentations) | 0.24 |
 
 ### Request sessions
 
@@ -1126,7 +1127,7 @@ A client registers each route it shows with `open`, and ends the registration wi
 
 | Request | Members | Reply |
 | --- | --- | --- |
-| `open` | `route`, `presentation`, `handlers?` | `{ok:true, revision, epoch?, state, fields?, presentation, registration?}` |
+| `open` | `route`, `presentation`, `handlers?` | `{ok:true, revision, epoch?, state, fields?, presentation, registration?, contract?}` |
 | `close` | `route`, `presentation` | `{ok:true, presentation}` |
 | `snapshot` | `route` | `{ok:true, revision, epoch?, state, fields?}` |
 
@@ -1145,6 +1146,12 @@ A client registers each route it shows with `open`, and ends the registration wi
 - `snapshot` reads the full state without registering anything. Clients use it for recovery.
 - On a connection that uses `presentation-epoch/1`, the `open` and `snapshot` replies carry the route's current
   `epoch` ([presentation epochs](#presentation-epochs)), also the `open` of a reconnect.
+- On a connection that uses `view-contract/1`, the `open` reply carries `contract`, the route's generated contract
+  `{view}:{fingerprint}` (the [identity](#identity) of its operations), when the producer has one. A client whose
+  generated client of the route has another contract was generated from another build of the ViewModel: its member
+  set and codecs may not match the state. It does not accept the state; it closes the presentation and fails the
+  connection. `@runic-artifex/views` lists the feature only in its development build, where the failure is a
+  `BridgeError` of kind `failed` and a `contract` diagnostic naming the View and both fingerprints.
 - A suspended route whose presentations are still open keeps them. When its object is presented again before the
   page closed them, as when one command sets `Main = b; Main = a;` and the page never saw `b`, the open presentations
   resume on the new View in a later turn of the window. The producer then pushes the new View's first state as a
@@ -2097,4 +2104,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`, and 0.23 the feature `open-ended-interactions/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`, and 0.23 the feature `open-ended-interactions/1`, and 0.24 the feature `view-contract/1`. |

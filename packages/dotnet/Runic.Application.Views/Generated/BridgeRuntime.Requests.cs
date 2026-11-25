@@ -53,6 +53,9 @@ public partial class ViewModelBridge
         {
             writer.WriteString("presentation", outcome == BridgePresentationOutcome.Ok ? "ok" : "ignored");
             if (registration is not null) writer.WriteString("registration", registration);
+            // view-contract/1: the route's generated contract, which a page's development build compares with its own
+            // (specs/application, "Presentations").
+            if (request.Connection.UsesViewContract && _contractFingerprint is not null) writer.WriteString("contract", ViewContract);
         }, reuseFirstState: true);
         // presented/1: a connection that opens the route while the application waits for it to be painted is asked
         // too, after this reply.

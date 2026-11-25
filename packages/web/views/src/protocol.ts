@@ -35,6 +35,11 @@ export const fieldPathsFeature = "field-paths/1";
  * has no deadline; its handler runs until it answers or the producer cancels the request.
  */
 export const openEndedInteractionsFeature = "open-ended-interactions/1";
+/**
+ * `view-contract/1` (specs/application/README.md, "Presentations"): an `open` reply names the route's generated
+ * contract, `"{ViewModel}:{fingerprint}"`, which the page compares with its own. Only the development build lists it.
+ */
+export const viewContractFeature = "view-contract/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {

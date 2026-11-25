@@ -80,6 +80,7 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeHostedRegions.Feature);
             writer.WriteStringValue(BridgeDispatcher.TraceContextFeature);
             writer.WriteStringValue(BridgeDispatcher.OpenEndedInteractionsFeature);
+            writer.WriteStringValue(BridgeDispatcher.ViewContractFeature);
             if (handlerTiming) writer.WriteStringValue(BridgeDispatcher.HandlerTimingFeature);
             writer.WriteEndArray();
             if (grant is not null)
