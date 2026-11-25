@@ -55,7 +55,7 @@ async function request(url, { token, accept = 'application/json', fetchImpl = fe
   }
 }
 
-async function json(url, options) {
+export async function json(url, options) {
   const response = await request(url, options);
   if (!response.ok) throw Object.assign(new Error(`GET ${url.split('?')[0]}: HTTP ${response.status}`), { status: response.status });
   return response.json();
