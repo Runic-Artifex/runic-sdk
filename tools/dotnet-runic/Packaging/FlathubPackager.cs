@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
@@ -29,7 +30,7 @@ internal sealed record FlathubBuild(
 /// desktop and metainfo files. <c>--build</c> then builds it as Flathub does: dependencies and sources first, then
 /// offline.
 /// </summary>
-internal static class FlathubPackager
+internal static partial class FlathubPackager
 {
     /// <summary>The Flathub SDK extensions of .NET 10 and Node.js 24, which follow the GNOME SDK's branch.</summary>
     internal const string DotNetExtension = "org.freedesktop.Sdk.Extension.dotnet10";
@@ -111,7 +112,8 @@ internal static class FlathubPackager
         string output = context.Output;
         string state = $"--state-dir={Path.Combine(output, ".flatpak-builder")}";
         string build = Path.Combine(output, "build");
-        await PackageTools.RunAsync(builder, ["--user", "--install-deps-from=flathub", "--install-deps-only", state, build, manifest], output, cancellationToken).ConfigureAwait(false);
+        await RetryDownloadAsync((errors, token) => PackageTools.RunAsync(builder, ["--user", "--install-deps-from=flathub", "--install-deps-only", state, build, manifest],
+            output, token, errors: errors), InstallRetryDelay, cancellationToken).ConfigureAwait(false);
         await PackageTools.RunAsync(builder, ["--download-only", state, build, manifest], output, cancellationToken).ConfigureAwait(false);
         string repository = Path.Combine(output, "repo");
         await PackageTools.RunAsync(builder, ["--user", "--disable-download", "--force-clean", "--disable-rofiles-fuse", state, $"--repo={repository}", build, manifest],
@@ -120,6 +122,37 @@ internal static class FlathubPackager
         await PackageTools.RunAsync(flatpak, ["build-bundle", repository, bundle, context.Identity.Id], output, cancellationToken).ConfigureAwait(false);
         PackageTools.Delete(build);
         context.Add(bundle, "flatpak", "none");
+    }
+
+    // Installing the runtime, SDK and extensions downloads them from Flathub, whose CDN breaks a download now and then:
+    // "While pulling runtime/org.gnome.Sdk/x86_64/50 from remote flathub: While fetching https://dl.flathub.org/repo/deltas/…:
+    // [92] Stream error in the HTTP/2 framing layer" (sdk#1334). Such a failure is run once more after a pause; any other
+    // failure, and the second one, fails the package.
+    internal static readonly TimeSpan InstallRetryDelay = TimeSpan.FromSeconds(30);
+
+    internal static bool IsDownloadFailure(string errors) =>
+        errors.Contains("While fetching ", StringComparison.Ordinal) || errors.Contains("While pulling ", StringComparison.Ordinal)
+        || errors.Contains("Server returned status ", StringComparison.Ordinal) || CurlError().IsMatch(errors);
+
+    // libostree reports a curl error as "[<curl code>] <message>".
+    [GeneratedRegex(@"(?:^|: )\[\d{1,3}\] \S", RegexOptions.Multiline)]
+    private static partial Regex CurlError();
+
+    /// <summary>Runs <paramref name="run"/>, which collects the tool's standard error, and once more after <paramref name="delay"/> when it failed on a download error.</summary>
+    internal static async Task RetryDownloadAsync(Func<StringBuilder, CancellationToken, Task> run, TimeSpan delay, CancellationToken cancellationToken)
+    {
+        var errors = new StringBuilder();
+        try
+        {
+            await run(errors, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        catch (DevDevelopmentException) when (IsDownloadFailure(errors.ToString()))
+        {
+            Console.Out.WriteLine($"flatpak-builder could not download from Flathub (attempt 1 of 2); retrying in {delay.TotalSeconds} s.");
+        }
+        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        await run(new StringBuilder(), cancellationToken).ConfigureAwait(false);
     }
 
     private sealed record AotEvaluation(string LockFile, string RuntimeVersion, string FrontendDirectory, IReadOnlyList<(FlathubNuGetPackage Package, string ContentHash)> Locked);
