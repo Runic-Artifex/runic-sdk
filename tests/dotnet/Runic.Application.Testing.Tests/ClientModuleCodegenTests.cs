@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Microsoft.CodeAnalysis;
 using System.Text.RegularExpressions;
 using TUnit.Core;
 
@@ -122,6 +124,472 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(exitCode != 0 && output.Contains("error RUNICBRIDGE006:", StringComparison.Ordinal)
                     && output.Contains("no Runic Window/View classes found, but Bridge generation is required here.", StringComparison.Ordinal),
                 $"A client library without Views was not RUNICBRIDGE006.\n{output}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+}
+
+// Application mode (#1318, RunicApplicationFrontendClientModule, --client-module A=S): an application adds the Views of a
+// referenced client library and writes their Bridges, but imports the library's generated TypeScript from S.
+internal sealed partial class CodegenDiagnosticsTests
+{
+    private const string SharedUiSpecifier = "@fixture/shared-ui/generated";
+
+    // A client library's source: its own namespace and base class, and with the library-mode marker that
+    // RunicClientLibrary.g.cs compiles into it.
+    private static string ClientLibrarySource(string ns, string body, bool marked = true) => $$"""
+        using System;
+        using System.Collections.Generic;
+        using System.ComponentModel;
+        using CommunityToolkit.Mvvm.Input;
+        using Runic.Application.Views;
+        {{(marked ? "[assembly: System.Reflection.AssemblyMetadata(\"Runic.Application.Views.ClientLibrary\", \"1\")]" : "")}}
+
+        namespace {{ns}};
+
+        public abstract class SharedModel : INotifyPropertyChanged
+        {
+            public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        }
+
+        """ + body;
+
+    private const string SharedUiViewModels = """
+        public sealed record LicenseEntry(string Name, string Text);
+        public enum Channel { Stable, Preview }
+        [RunicSharedClient]
+        public interface ITitled
+        {
+            string Title { get; }
+        }
+        public sealed class AboutDialogViewModel : SharedModel, ITitled
+        {
+            public string Title => "";
+            public IReadOnlyList<LicenseEntry> Licenses { get; } = [];
+            public IRelayCommand CloseCommand { get; } = new RelayCommand(() => { });
+        }
+        public sealed class SupportMenuViewModel : SharedModel, ITitled
+        {
+            public string Title => "";
+            public Channel Channel { get; set; }
+            public AboutDialogViewModel? About { get; }
+        }
+
+        """;
+
+    private const string SharedUiViews = """
+        public sealed partial class AboutDialogView : RunicView<AboutDialogViewModel>;
+        [RunicViewContract("Compact")]
+        public sealed partial class AboutDialogCompactView : RunicView<AboutDialogViewModel>;
+        public sealed partial class SupportMenuView : RunicView<SupportMenuViewModel>;
+
+        """;
+
+    // The application: its own ViewModels present the library's, and use one of its enums.
+    private const string ClientModuleApplication = """
+        public sealed class MainViewModel : FixtureModel
+        {
+            public string Title => "";
+            public SharedUi.Channel Channel { get; set; }
+            public SharedUi.SupportMenuViewModel? Support { get; }
+            [RunicViewContract("Compact")]
+            public SharedUi.AboutDialogViewModel? About { get; }
+            public SettingsViewModel? Settings { get; }
+        }
+        public sealed class SettingsViewModel : FixtureModel
+        {
+            public int Volume { get; set; }
+        }
+        public sealed partial class MainWindow : RunicWindow<MainViewModel>;
+        public sealed partial class SettingsView : RunicView<SettingsViewModel>;
+
+        """;
+
+    // Before the mapping, each application declared the library ViewModels' Views itself.
+    private const string ClientModuleApplicationViews = """
+        public sealed partial class AboutDialogView : RunicView<SharedUi.AboutDialogViewModel>;
+        [RunicViewContract("Compact")]
+        public sealed partial class AboutDialogCompactView : RunicView<SharedUi.AboutDialogViewModel>;
+        public sealed partial class SupportMenuView : RunicView<SharedUi.SupportMenuViewModel>;
+
+        """;
+
+    /// <summary>Compiles and generates the SharedUi client library; returns its assembly and generated TypeScript.</summary>
+    private static async Task<(MetadataReference Reference, string TypeScript)> GenerateSharedUiAsync(string generator, string temporaryRoot)
+    {
+        var (exitCode, output, directory) = await RunGeneratorAsync(generator, temporaryRoot, "SharedUi",
+            ClientLibrarySource("SharedUi", SharedUiViewModels + SharedUiViews), "--client-library").ConfigureAwait(false);
+        Require(exitCode == 0, $"The SharedUi client library did not generate.\n{output}");
+        return (MetadataReference.CreateFromFile(Path.Combine(directory, "FixtureSharedUi.dll")), Path.Combine(directory, "ts"));
+    }
+
+    private static Dictionary<string, string> Snapshot(string directory) => Directory.EnumerateFiles(directory)
+        .ToDictionary(path => Path.GetFileName(path), File.ReadAllText, StringComparer.Ordinal);
+
+    [Test]
+    public async Task ClientModuleImportsTheLibraryClientsAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-client-modules-{Guid.NewGuid():N}");
+        try
+        {
+            var (library, libraryTypescript) = await GenerateSharedUiAsync(generator, temporaryRoot).ConfigureAwait(false);
+            var mapping = $"FixtureSharedUi={SharedUiSpecifier}";
+
+            // The status quo: the application declares the Views and generates copies of the library's clients.
+            var (copiesExit, copiesOutput, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "App",
+                Preamble + ClientModuleApplication + ClientModuleApplicationViews, [library]).ConfigureAwait(false);
+            Require(copiesExit == 0 && File.Exists(Path.Combine(directory, "ts", "aboutDialog.ts")),
+                $"The application with its own Views of the library's ViewModels did not generate.\n{copiesOutput}");
+            var assembly = Path.Combine(directory, "FixtureApp.dll");
+
+            // B: with the mapping, the application's own Views of a library ViewModel are an error.
+            var (splitExit, splitOutput) = await RunProcessAsync(generator, assembly, directory, "--client-module", mapping).ConfigureAwait(false);
+            Require(splitExit != 0 && splitOutput.Contains("error RUNICBRIDGE080:", StringComparison.Ordinal)
+                    && splitOutput.Contains("FixtureApp declares AboutDialogView for SharedUi.AboutDialogViewModel, whose Views and client FixtureSharedUi owns", StringComparison.Ordinal),
+                $"Views of a mapped ViewModel in the application were not RUNICBRIDGE080.\n{splitOutput}");
+
+            // The application without those Views, with the mapping.
+            var (exitCode, output, _) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "App",
+                Preamble + ClientModuleApplication, [library], "--client-module", mapping, "--di-composition", "Fixture.FixtureViews").ConfigureAwait(false);
+            Require(exitCode == 0, $"The application that maps the library did not generate.\n{output}");
+            var typescript = Path.Combine(directory, "ts");
+            var csharp = Path.Combine(directory, "cs");
+            // The library's modules are not written, and the copies of the first build are deleted.
+            string[] expected = ["main.contract.d.ts", "main.mock.ts", "main.ts", "runic-client-modules.ts", "settings.contract.d.ts",
+                "settings.mock.ts", "settings.ts", "types.ts"];
+            var written = Directory.EnumerateFiles(typescript, "*.ts").Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray();
+            Require(written.SequenceEqual(expected) && !Directory.EnumerateFiles(typescript, "aboutDialog*").Any()
+                    && !Directory.EnumerateFiles(typescript, "supportMenu*").Any(),
+                $"The application wrote {string.Join(", ", written)} instead of only its own modules.");
+            // The client and its contract import the library's pages from the specifier, and the client brings in the check.
+            var main = File.ReadAllText(Path.Combine(typescript, "main.ts"));
+            var contract = File.ReadAllText(Path.Combine(typescript, "main.contract.d.ts"));
+            Require(main.Contains($"import {{ pageAboutDialogCompact }} from \"{SharedUiSpecifier}\";", StringComparison.Ordinal)
+                    && main.Contains($"import {{ pageSupportMenu }} from \"{SharedUiSpecifier}\";", StringComparison.Ordinal)
+                    && main.Contains("import { pageSettings } from \"./settings.js\";", StringComparison.Ordinal)
+                    && main.Contains("import type {} from \"./runic-client-modules.js\";", StringComparison.Ordinal)
+                    && !main.Contains("./aboutDialog", StringComparison.Ordinal) && !main.Contains("./supportMenu", StringComparison.Ordinal),
+                $"main.ts does not import the library's pages from {SharedUiSpecifier}.\n{main}");
+            Require(contract.Contains($"import type {{ AboutDialogCompactPageReference }} from \"{SharedUiSpecifier}\";", StringComparison.Ordinal)
+                    && contract.Contains($"import type {{ SupportMenuPageReference }} from \"{SharedUiSpecifier}\";", StringComparison.Ordinal)
+                    && contract.Contains("import type { SettingsPageReference } from \"./settings.contract.js\";", StringComparison.Ordinal)
+                    && !contract.Contains("./aboutDialog", StringComparison.Ordinal) && !contract.Contains("runic-client-modules", StringComparison.Ordinal),
+                $"main.contract.d.ts does not import the library's page references from {SharedUiSpecifier}.\n{contract}");
+            Require(!File.ReadAllText(Path.Combine(typescript, "settings.ts")).Contains("runic-client-modules", StringComparison.Ordinal),
+                "A module that imports no library brings in the check module.");
+            // types.ts declares only what the application's own modules use: the enum, not the library's DTO.
+            var types = File.ReadAllText(Path.Combine(typescript, "types.ts"));
+            Require(types.Contains("export type Channel =", StringComparison.Ordinal) && !types.Contains("LicenseEntry", StringComparison.Ordinal),
+                $"types.ts does not hold exactly the named types the application's modules use.\n{types}");
+            // The C#: the library ViewModels' Bridges and the registration of their Views, but not the library's View partials.
+            Require(File.Exists(Path.Combine(csharp, "SharedUi.AboutDialogViewModel.Bridge.g.cs"))
+                    && File.Exists(Path.Combine(csharp, "SharedUi.SupportMenuViewModel.Bridge.g.cs"))
+                    && File.Exists(Path.Combine(csharp, "Fixture.MainWindow.View.g.cs"))
+                    && !Directory.EnumerateFiles(csharp, "SharedUi.*.View.g.cs").Any()
+                    && !File.Exists(Path.Combine(csharp, "Fixture.AboutDialogView.View.g.cs")),
+                $"The application's C# is not the library ViewModels' Bridges without the library's View partials: {string.Join(", ", Directory.EnumerateFiles(csharp).Select(Path.GetFileName))}");
+            var composition = File.ReadAllText(Path.Combine(csharp, "RunicBridgeComposition.g.cs"));
+            Require(composition.Contains("global::SharedUi.AboutDialogView", StringComparison.Ordinal)
+                    && composition.Contains("global::SharedUi.AboutDialogCompactView", StringComparison.Ordinal)
+                    && composition.Contains("global::SharedUi.SupportMenuView", StringComparison.Ordinal),
+                $"AddRunicViews() does not register the library's Views.\n{composition}");
+
+            // The fingerprints agree: the library's module, the check module and the application's Bridge carry one contract,
+            // so the development-build contract check at connect (#1324) compares equal strings.
+            var barrel = File.ReadAllText(Path.Combine(libraryTypescript, "runic-clients.ts"));
+            string LibraryContract(string module)
+            {
+                var match = Regex.Match(barrel, $"  {module}: \"([^\"]+)\",");
+                Require(match.Success, $"runic-clients.ts has no contract for {module}.\n{barrel}");
+                return match.Groups[1].Value;
+            }
+            var about = LibraryContract("aboutDialog");
+            var support = LibraryContract("supportMenu");
+            var check = File.ReadAllText(Path.Combine(typescript, "runic-client-modules.ts"));
+            Require(check == $$"""
+                // <auto-generated />
+                // The clients that RunicApplicationFrontendClientModule imports from client libraries. A type error here means that a
+                // library's module was generated from another build of the assembly than this application compiles against:
+                // rebuild the library and its package.
+                import type { runicClientContracts as FixtureSharedUi } from "{{SharedUiSpecifier}}";
+
+                type RunicSameContract<Package extends Application, Application extends string> = Package;
+
+                /** Each imported client's contract in its library's module, which must be the one this application's Bridge carries. */
+                export type RunicClientModuleCheck = [
+                  RunicSameContract<typeof FixtureSharedUi.aboutDialog, "{{about}}">,
+                  RunicSameContract<typeof FixtureSharedUi.supportMenu, "{{support}}">,
+                ];
+
+                """, $"runic-client-modules.ts does not check the library's contracts.\n{check}");
+            // The Bridge carries the fingerprint, and the runtime prefixes the ViewModel's full name.
+            Require(File.ReadAllText(Path.Combine(csharp, "SharedUi.AboutDialogViewModel.Bridge.g.cs")).Contains($"\"{about.Split(':')[^1]}\"", StringComparison.Ordinal)
+                    && File.ReadAllText(Path.Combine(csharp, "SharedUi.SupportMenuViewModel.Bridge.g.cs")).Contains($"\"{support.Split(':')[^1]}\"", StringComparison.Ordinal),
+                "The application's Bridge of a library ViewModel carries another contract than the library's client.");
+
+            // A: an assembly that is not referenced.
+            var (missingExit, missingOutput) = await RunProcessAsync(generator, assembly, directory,
+                "--client-module", mapping, "--client-module", "Missing=@fixture/missing").ConfigureAwait(false);
+            Require(missingExit != 0 && missingOutput.Contains("error RUNICBRIDGE079:", StringComparison.Ordinal)
+                    && missingOutput.Contains("Missing is mapped to @fixture/missing by RunicApplicationFrontendClientModule, but FixtureApp does not reference it", StringComparison.Ordinal),
+                $"An unreferenced mapped assembly was not RUNICBRIDGE079.\n{missingOutput}");
+            // D, when the generator is called without the build's checks.
+            foreach (var (value, message) in new[]
+            {
+                ("FixtureSharedUi", "must be <assembly>=<module specifier>"),
+                ("FixtureSharedUi=../shared-ui/src/generated/runic-clients.js", "has the relative Specifier '../shared-ui/src/generated/runic-clients.js'"),
+            })
+            {
+                var (itemExit, itemOutput) = await RunProcessAsync(generator, assembly, directory, "--client-module", value).ConfigureAwait(false);
+                Require(itemExit != 0 && itemOutput.Contains("error RUNICBRIDGE082:", StringComparison.Ordinal) && itemOutput.Contains(message, StringComparison.Ordinal),
+                    $"--client-module {value} was not RUNICBRIDGE082.\n{itemOutput}");
+            }
+            var (twiceExit, twiceOutput) = await RunProcessAsync(generator, assembly, directory,
+                "--client-module", mapping, "--client-module", "FixtureSharedUi=@fixture/other").ConfigureAwait(false);
+            Require(twiceExit != 0 && twiceOutput.Contains("error RUNICBRIDGE082: FixtureSharedUi is mapped more than once", StringComparison.Ordinal),
+                $"A duplicate mapping was not RUNICBRIDGE082.\n{twiceOutput}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ClientModuleDiagnosticsAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-client-module-diagnostics-{Guid.NewGuid():N}");
+        try
+        {
+            var (library, _) = await GenerateSharedUiAsync(generator, temporaryRoot).ConfigureAwait(false);
+
+            // A: a referenced assembly that was not built in library mode.
+            var (unmarkedExit, unmarkedOutput, unmarkedDirectory) = await RunGeneratorAsync(generator, temporaryRoot, "SharedUnmarked",
+                ClientLibrarySource("SharedUi", SharedUiViewModels + SharedUiViews, marked: false)).ConfigureAwait(false);
+            Require(unmarkedExit == 0, $"The unmarked library did not generate.\n{unmarkedOutput}");
+            var (notLibraryExit, notLibraryOutput, _) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "AppUnmarked",
+                Preamble + ClientModuleApplication, [MetadataReference.CreateFromFile(Path.Combine(unmarkedDirectory, "FixtureSharedUnmarked.dll"))],
+                "--client-module", "FixtureSharedUnmarked=@fixture/shared-ui/generated").ConfigureAwait(false);
+            Require(notLibraryExit != 0 && notLibraryOutput.Contains("error RUNICBRIDGE079:", StringComparison.Ordinal)
+                    && notLibraryOutput.Contains("but was not built with RunicApplicationFrontendClientLibrary=true", StringComparison.Ordinal),
+                $"A mapped assembly without the library-mode marker was not RUNICBRIDGE079.\n{notLibraryOutput}");
+
+            // C: a library ViewModel's slot admits an application ViewModel.
+            var (hostExit, hostOutput, hostDirectory) = await RunGeneratorAsync(generator, temporaryRoot, "SharedHost",
+                ClientLibrarySource("SharedHost", """
+                    public interface IPanel;
+                    public sealed class NotesPanelViewModel : SharedModel, IPanel
+                    {
+                        public string Text => "";
+                    }
+                    public sealed partial class NotesPanelView : RunicView<NotesPanelViewModel>;
+                    public sealed class HostViewModel : SharedModel
+                    {
+                        public string Title => "";
+                        public IPanel? Panel { get; }
+                    }
+                    public sealed partial class HostView : RunicView<HostViewModel>;
+                    """), "--client-library").ConfigureAwait(false);
+            Require(hostExit == 0, $"The SharedHost library did not generate.\n{hostOutput}");
+            var (contentExit, contentOutput, _) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "AppHost", Preamble + """
+                public sealed class MainViewModel : FixtureModel
+                {
+                    public SharedHost.HostViewModel? Host { get; }
+                }
+                public sealed class PanelViewModel : FixtureModel, SharedHost.IPanel
+                {
+                    public int Width { get; set; }
+                }
+                public sealed partial class MainWindow : RunicWindow<MainViewModel>;
+                public sealed partial class PanelView : RunicView<PanelViewModel>;
+                """, [MetadataReference.CreateFromFile(Path.Combine(hostDirectory, "FixtureSharedHost.dll"))],
+                "--client-module", "FixtureSharedHost=@fixture/shared-host/generated").ConfigureAwait(false);
+            Require(contentExit != 0 && contentOutput.Contains("error RUNICBRIDGE081:", StringComparison.Ordinal)
+                    && contentOutput.Contains("HostViewModel.Panel presents Fixture.PanelViewModel, whose client the application owns, but SharedHost.HostViewModel's client is FixtureSharedHost's", StringComparison.Ordinal),
+                $"A library ViewModel presenting an application ViewModel was not RUNICBRIDGE081.\n{contentOutput}");
+
+            // C: a shared client whose implementers have different owners.
+            var (sharedExit, sharedOutput, _) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "AppTitled", Preamble + """
+                public sealed class LocalViewModel : FixtureModel, SharedUi.ITitled
+                {
+                    public string Title => "";
+                }
+                public sealed partial class LocalWindow : RunicWindow<LocalViewModel>;
+                """, [library], "--client-module", $"FixtureSharedUi={SharedUiSpecifier}").ConfigureAwait(false);
+            Require(sharedExit != 0 && sharedOutput.Contains("error RUNICBRIDGE081:", StringComparison.Ordinal)
+                    && sharedOutput.Contains("ITitled: the shared client Titled has implementers whose clients have different owners: AboutDialogViewModel (FixtureSharedUi), LocalViewModel (the application), SupportMenuViewModel (FixtureSharedUi).", StringComparison.Ordinal),
+                $"A shared client with implementers of different owners was not RUNICBRIDGE081.\n{sharedOutput}");
+
+            // E, and an empty mapping changes nothing: a mapped library without Views leaves every generated file as it was.
+            var (plainExit, plainOutput, plainDirectory) = await RunGeneratorAsync(generator, temporaryRoot, "SharedPlain",
+                ClientLibrarySource("SharedPlain", "public sealed class PlainService { public int Value => 1; }"), "--optional").ConfigureAwait(false);
+            Require(plainExit == 0, $"The plain library did not compile.\n{plainOutput}");
+            var (beforeExit, beforeOutput, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "AppPlain",
+                Preamble + ClientModuleApplication + ClientModuleApplicationViews + """
+                    public sealed class PlainUse
+                    {
+                        public SharedPlain.PlainService? Service { get; }
+                    }
+                    """, [library, MetadataReference.CreateFromFile(Path.Combine(plainDirectory, "FixtureSharedPlain.dll"))]).ConfigureAwait(false);
+            Require(beforeExit == 0, $"The application did not generate.\n{beforeOutput}");
+            var csharp = Snapshot(Path.Combine(directory, "cs"));
+            var typescript = Snapshot(Path.Combine(directory, "ts"));
+            var (emptyExit, emptyOutput) = await RunProcessAsync(generator, Path.Combine(directory, "FixtureAppPlain.dll"), directory,
+                "--client-module", "FixtureSharedPlain=@fixture/plain/generated").ConfigureAwait(false);
+            Require(emptyExit == 0 && emptyOutput.Contains("warning RUNICBRIDGE083: FixtureSharedPlain is mapped to @fixture/plain/generated by RunicApplicationFrontendClientModule, but declares no Runic Window or View", StringComparison.Ordinal),
+                $"A mapped library without Views was not RUNICBRIDGE083.\n{emptyOutput}");
+            foreach (var (name, before, after) in new[] { ("C#", csharp, Snapshot(Path.Combine(directory, "cs"))), ("TypeScript", typescript, Snapshot(Path.Combine(directory, "ts"))) })
+                Require(before.Count == after.Count && before.All(file => after.TryGetValue(file.Key, out var text) && text == file.Value),
+                    $"A mapping that owns no ViewModel changed the generated {name}: {string.Join(", ", before.Keys.Concat(after.Keys).Distinct().Where(key => before.GetValueOrDefault(key) != after.GetValueOrDefault(key)))}.");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ClientModuleMappingIsACacheArgumentAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-client-module-cache-{Guid.NewGuid():N}");
+        try
+        {
+            var (library, _) = await GenerateSharedUiAsync(generator, temporaryRoot).ConfigureAwait(false);
+            var (exitCode, output, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "AppCached",
+                Preamble + ClientModuleApplication, [library], "--client-module", $"FixtureSharedUi={SharedUiSpecifier}").ConfigureAwait(false);
+            Require(exitCode == 0, $"The application did not generate.\n{output}");
+            var assembly = Path.Combine(directory, "FixtureAppCached.dll");
+            var cached = Path.Combine(directory, "cached");
+            async Task<string> GenerateCachedAsync(string specifier)
+            {
+                using var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo("dotnet")
+                    {
+                        RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+                        ArgumentList = { generator, "--generate", assembly, Path.Combine(cached, "cs"), Path.Combine(cached, "ts"),
+                            "--client-module", $"FixtureSharedUi={specifier}" },
+                    },
+                };
+                process.StartInfo.Environment.Remove("RUNIC_BRIDGE_CODEGEN_CACHE");
+                process.Start();
+                var standardOutput = process.StandardOutput.ReadToEndAsync();
+                var standardError = process.StandardError.ReadToEndAsync();
+                using var timeout = TestTimeouts.Cancellation(GeneratorTimeout);
+                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                var text = await standardOutput.ConfigureAwait(false) + await standardError.ConfigureAwait(false);
+                Require(process.ExitCode == 0, $"The cached generation failed.\n{text}");
+                return text;
+            }
+            await GenerateCachedAsync(SharedUiSpecifier).ConfigureAwait(false);
+            Require((await GenerateCachedAsync(SharedUiSpecifier).ConfigureAwait(false)).Contains("Bridge generation is up to date.", StringComparison.Ordinal),
+                "The same mapping was not a cache hit.");
+            var changed = await GenerateCachedAsync("@fixture/shared-ui-next/generated").ConfigureAwait(false);
+            Require(!changed.Contains("Bridge generation is up to date.", StringComparison.Ordinal)
+                    && File.ReadAllText(Path.Combine(cached, "ts", "main.ts")).Contains("from \"@fixture/shared-ui-next/generated\";", StringComparison.Ordinal),
+                "A changed mapping was a cache hit.");
+
+            // A library ViewModel change, rebuilt beside the application as its project reference does, misses the cache
+            // through the hash of the assemblies beside it and changes the contract that runic-client-modules.ts checks.
+            var checkPath = Path.Combine(cached, "ts", "runic-client-modules.ts");
+            var before = File.ReadAllText(checkPath);
+            var edited = Compile("SharedUi", ClientLibrarySource("SharedUi", SharedUiViewModels.Replace(
+                "public IReadOnlyList<LicenseEntry> Licenses { get; } = [];",
+                "public IReadOnlyList<LicenseEntry> Licenses { get; } = [];\n    public string Version => \"\";", StringComparison.Ordinal) + SharedUiViews));
+            var emitted = edited.Emit(Path.Combine(directory, "FixtureSharedUi.dll"));
+            Require(emitted.Success, string.Join('\n', emitted.Diagnostics));
+            var rebuilt = await GenerateCachedAsync("@fixture/shared-ui-next/generated").ConfigureAwait(false);
+            var after = File.ReadAllText(checkPath);
+            Require(!rebuilt.Contains("Bridge generation is up to date.", StringComparison.Ordinal) && after != before
+                    && Regex.Match(after, "aboutDialog, \"([^\"]+)\"").Groups[1].Value != Regex.Match(before, "aboutDialog, \"([^\"]+)\"").Groups[1].Value
+                    && Regex.Match(after, "supportMenu, \"([^\"]+)\"").Groups[1].Value != "",
+                $"A changed library ViewModel did not regenerate runic-client-modules.ts.\n{before}\n{after}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Type-checks an application's generated modules against the library's package: the application's state names the
+    /// library's page references, the library's command list (#1317) reaches the application through the specifier, and
+    /// a package generated from another build of the library is TS2344 in runic-client-modules.ts.
+    /// </summary>
+    [Test]
+    [NotInParallel("GeneratedHarnessProcess")]
+    public async Task ClientModuleTypeChecksAgainstTheLibraryPackageAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        // Below the project, so that the modules resolve @runic-artifex/views from the workspace's node_modules.
+        var temporaryRoot = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "obj", $"client-modules-{Guid.NewGuid():N}");
+        try
+        {
+            var (library, libraryTypescript) = await GenerateSharedUiAsync(generator, temporaryRoot).ConfigureAwait(false);
+            // The library's frontend package, installed as a workspace would link it.
+            var package = Path.Combine(temporaryRoot, "node_modules", "@fixture", "shared-ui");
+            Directory.CreateDirectory(Path.Combine(package, "generated"));
+            File.WriteAllText(Path.Combine(package, "package.json"), """
+                { "name": "@fixture/shared-ui", "type": "module", "sideEffects": false,
+                  "exports": { "./generated": "./generated/runic-clients.ts" } }
+                """);
+            foreach (var file in Directory.EnumerateFiles(libraryTypescript))
+                File.Copy(file, Path.Combine(package, "generated", Path.GetFileName(file)));
+            var (exitCode, output, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "App",
+                Preamble + ClientModuleApplication, [library], "--client-module", $"FixtureSharedUi={SharedUiSpecifier}").ConfigureAwait(false);
+            Require(exitCode == 0, $"The application did not generate.\n{output}");
+            var typescript = Path.Combine(directory, "ts");
+            var check = Path.Combine(typescript, "client-modules-check.ts");
+            File.WriteAllText(check, $$"""
+                import { pageAboutDialogCompact, type AboutDialogCommandName, type AboutDialogCompactPageReference, type SupportMenuClient } from "{{SharedUiSpecifier}}";
+                import type { MainState } from "./main.js";
+
+                // The application's state names the library's page references.
+                export const about: AboutDialogCompactPageReference | null = null as unknown as MainState["about"];
+                export const support: Promise<SupportMenuClient> | undefined = (null as unknown as MainState)["support"]?.connect();
+                export const page: AboutDialogCompactPageReference = pageAboutDialogCompact("1");
+                // #1317: the library's command list reaches the application through the specifier.
+                export const close: AboutDialogCommandName = "close";
+                // @ts-expect-error AboutDialogViewModel has no Open command.
+                export const open: AboutDialogCommandName = "open";
+
+                """);
+            string[] arguments = [Path.Combine(root, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "--strict", "--target", "ES2022",
+                "--module", "ESNext", "--moduleResolution", "bundler", "--skipLibCheck", "--verbatimModuleSyntax", "--isolatedModules",
+                .. Directory.GetFiles(typescript, "*.ts").Where(path => !path.EndsWith(".d.ts", StringComparison.Ordinal))];
+            await GeneratedHarnessProcess.RunAsync("bun", arguments, root).ConfigureAwait(false);
+
+            // A package generated from another build of the library: its contract differs from the application's.
+            var barrelPath = Path.Combine(package, "generated", "runic-clients.ts");
+            var barrel = File.ReadAllText(barrelPath);
+            var current = Regex.Match(barrel, "  aboutDialog: \"([^\"]+)\",").Groups[1].Value;
+            var stale = "SharedUi.AboutDialogViewModel:0000000000000000";
+            Require(current.Length > 0 && current != stale, $"runic-clients.ts has no aboutDialog contract.\n{barrel}");
+            File.WriteAllText(barrelPath, barrel.Replace(current, stale, StringComparison.Ordinal));
+            string failure = "";
+            try { await GeneratedHarnessProcess.RunAsync("bun", arguments, root).ConfigureAwait(false); }
+            catch (InvalidOperationException error) { failure = error.Message; }
+            Require(failure.Contains("runic-client-modules.ts", StringComparison.Ordinal) && failure.Contains("error TS2344", StringComparison.Ordinal)
+                    && failure.Contains($"'\"{stale}\"'", StringComparison.Ordinal) && failure.Contains($"'\"{current}\"'", StringComparison.Ordinal),
+                $"A stale library package was not TS2344 in runic-client-modules.ts naming both contracts.\n{failure}");
         }
         finally
         {

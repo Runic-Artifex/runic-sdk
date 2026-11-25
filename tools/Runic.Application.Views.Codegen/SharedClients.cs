@@ -151,7 +151,10 @@ internal static class SharedClients
             if (shared is null || collected.Count != declaration.Implementers.Length) continue;
             var kinds = declaration.Implementers.SelectMany(entry => viewTypes.TryGetValue(entry.Model, out var views)
                 ? views.Select(view => pageKind(entry.Name, contractFor(view))) : [pageKind(entry.Name, null)]).ToArray();
-            TypeScriptModules.Add(Path.Combine(directory, $"{declaration.Module}.ts"), Emit(declaration, shared, kinds), declaration.Interface);
+            // A mapped client library's shared client is checked, but the library writes it (ClientModules).
+            ClientModules.Discarding = ClientModules.IsOwned(declaration.Module);
+            try { TypeScriptModules.Add(Path.Combine(directory, $"{declaration.Module}.ts"), Emit(declaration, shared, kinds), declaration.Interface); }
+            finally { ClientModules.Discarding = false; }
         }
     }
 
@@ -395,7 +398,7 @@ internal static class SharedClients
         module.AppendLine($"import type {{ {string.Join(", ", publicImports)} }} from \"@runic-artifex/views\";");
         foreach (var group in shared.SelectMany(entry => entry.Part.Imports ?? []).Distinct().GroupBy(entry => entry.Module, StringComparer.Ordinal)
                      .OrderBy(group => group.Key, StringComparer.Ordinal))
-            module.AppendLine($"import type {{ {string.Join(", ", group.Select(entry => entry.Type).Order(StringComparer.Ordinal))} }} from \"./{group.Key}.js\";");
+            module.AppendLine($"import type {{ {string.Join(", ", group.Select(entry => entry.Type).Order(StringComparer.Ordinal))} }} from \"{ClientModules.Specifier(group.Key, ".js")}\";");
         module.AppendLine(TypeScriptModules.NamedTypeImports);
         module.AppendLine();
         module.Append(text);

@@ -28,6 +28,7 @@ try
         var optional = false;
         var analyzerWarnings = false;
         var clientLibrary = false;
+        var clientModules = new List<ClientModuleMapping>();
         string? compositionType = null;
         var pathMap = "";
         var frameworks = new List<string>();
@@ -44,6 +45,11 @@ try
                 // Library mode (#1318, ClientModules): the TypeScript is also an importable module, and the Views are
                 // required.
                 case "--client-library": clientLibrary = true; break;
+                // Application mode (#1318, ClientModules): <assembly>=<specifier> of a client library whose Views the
+                // application adds and whose generated TypeScript it imports instead of writing copies.
+                case "--client-module" when i + 1 < args.Length:
+                    clientModules.Add(ClientModules.ParseMapping(args[++i]));
+                    break;
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
@@ -67,14 +73,20 @@ try
         }
         var positional = values.ToArray();
         if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--client-library] [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--client-library] [--client-module <assembly>=<specifier>]... [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
         // A client library generates its Views' clients for other applications, so it must declare them.
         if (clientLibrary) optional = false;
+        foreach (var group in clientModules.GroupBy(mapping => mapping.Assembly, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ClientModuleItem,
+                $"{group.Key} is mapped more than once by RunicApplicationFrontendClientModule ({string.Join(" and ", group.Select(mapping => mapping.Specifier))}). Keep one item per assembly.");
 
         string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}", $"path-map={pathMap}", $"analyzer-warnings={analyzerWarnings}",
             $"frameworks={string.Join(";", frameworks.Order(StringComparer.OrdinalIgnoreCase))}",
             .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments),
-            .. (clientLibrary ? (string[])["client-library=true"] : [])];
+            .. (clientLibrary ? (string[])["client-library=true"] : []),
+            .. (clientModules.Count > 0
+                ? (string[])[$"client-modules={string.Join(";", clientModules.Select(mapping => $"{mapping.Assembly}={mapping.Specifier}").Order(StringComparer.Ordinal))}"]
+                : [])];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
         {
             foreach (var warning in cachedWarnings) Console.Error.WriteLine(warning);
@@ -109,6 +121,12 @@ try
             }
         }
         if (Diagnostics.HasErrors) return;
+        // Application mode: the mapped client libraries' Views, whose ViewModels' TypeScript the libraries own.
+        if (clientModules.Count > 0)
+        {
+            ClientModules.Discover(assembly, positional[1], clientModules, viewTypes, ViewModelFor, model => LowerFirst(PublicName(model)));
+            if (Diagnostics.HasErrors) return;
+        }
         var models = viewTypes.Keys.Select(type => (Model: type, Name: PublicName(type))).ToArray();
         // Without Views, optional generation removes the generated output. Not
         // when types were skipped for a missing assembly: they may be the Views.
@@ -180,14 +198,18 @@ try
         // [RunicSharedClient] interfaces that the ViewModels implement (#839).
         var sharedClients = SharedClients.Discover(models, presentationKinds);
         if (Diagnostics.HasErrors) return;
+        ClientModules.AssignSharedClients(sharedClients);
+        if (Diagnostics.HasErrors) return;
 
         Directory.CreateDirectory(positional[2]);
         Directory.CreateDirectory(positional[3]);
         // View partials and ViewModel bridges use distinct suffixes and full
         // type names: MainWindow and MainWindowViewModel, or two ItemViews in
         // different namespaces, must not overwrite each other's file.
+        // A mapped client library's own build writes its View partials.
         var csharpOutputs = models.Select(entry => (Path: BridgeFileName(entry.Model), Owner: entry.Model.FullName!))
-            .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
+            .Concat(viewTypes.Values.SelectMany(variants => variants).Where(view => view.Assembly == assembly)
+                .Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
             .Append((Path: BridgeSharedCodecs.FileName, Owner: "the shared Bridge codecs"))
             .Concat(BridgeSupportFiles.All.Select(file => (Path: file, Owner: "the shared Bridge command helpers")))
             .Concat(clientLibrary ? [(Path: ClientModules.LibraryMarkerFile, Owner: "the client library marker")] : [])
@@ -197,7 +219,8 @@ try
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}{ClientDeclarationMap.Suffix}", Owner: entry.Model.FullName!)))
             .Concat(sharedClients.Select(shared => (Path: $"{shared.Module}.ts", Owner: shared.Interface.FullName!)))
             .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types"))
-            .Concat(clientLibrary ? ClientModules.LibraryTypeScriptOutputs() : []).ToArray();
+            .Concat(clientLibrary ? ClientModules.LibraryTypeScriptOutputs() : [])
+            .Concat(ClientModules.ApplicationTypeScriptOutputs()).ToArray();
         foreach (var group in csharpOutputs.Concat(typescriptOutputs)
             .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
@@ -209,7 +232,14 @@ try
                 $"{Path.GetFullPath(namedTypesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or set RunicApplicationFrontendGeneratedDirectory to a dedicated directory.");
         var expectedCsharp = csharpOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[2], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
-        var expectedTypescript = typescriptOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[3], output.Path)))
+        // The modules of a mapped client library's ViewModels and shared clients are checked for collisions with the
+        // application's own above, but the library writes them; an application's earlier copies are stale output.
+        var ownedTypescript = models.Where(entry => ClientModules.OwnerOf(entry.Model) is not null)
+            .SelectMany(entry => (string[])[$"{LowerFirst(entry.Name)}.ts", $"{LowerFirst(entry.Name)}.mock.ts", $"{LowerFirst(entry.Name)}{ClientDeclarationMap.Suffix}"])
+            .Concat(sharedClients.Where(shared => ClientModules.IsOwned(shared.Module)).Select(shared => $"{shared.Module}.ts"))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var expectedTypescript = typescriptOutputs.Where(output => !ownedTypescript.Contains(output.Path))
+            .Select(output => Path.GetFullPath(Path.Combine(positional[3], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
         // Remove only stale generator output. The TypeScript directory may be
         // an application source directory with hand-written modules.
@@ -228,16 +258,23 @@ try
             try
             {
                 Diagnostics.InjectInternalErrorForTests(entry.Model);
+                // The Bridge of a ViewModel that a mapped client library owns is generated as any other, since this
+                // application's content switches construct it; its TypeScript is the library's.
+                ClientModules.Discarding = ClientModules.OwnerOf(entry.Model) is not null;
                 if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
                     Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, models, viewTypes))
                     contentRequired.Add(entry.Model);
                 if (viewTypes.TryGetValue(entry.Model, out var views))
-                    foreach (var view in views)
+                    foreach (var view in views.Where(view => view.Assembly == assembly))
                         GenerateViewPartial(Path.Combine(positional[2], ViewFileName(view)), view, entry.Model, entry.Name);
             }
             catch (Exception error) when (Diagnostics.IsReportable(error))
             {
                 Diagnostics.Report(error, entry.Model);
+            }
+            finally
+            {
+                ClientModules.Discarding = false;
             }
         }
         // The Bridges generated so far, as before, even when another ViewModel failed.
@@ -247,8 +284,10 @@ try
         if (Diagnostics.HasErrors) return;
         var namedTypes = TypeScriptModules.WriteAll(positional[3]);
         if (clientLibrary)
-            ClientModules.WriteLibrary(positional[2], positional[3], [.. models.Select(entry => (entry.Model, LowerFirst(entry.Name)))],
-                sharedClients.Select(shared => shared.Module), namedTypes);
+            ClientModules.WriteLibrary(positional[2], positional[3],
+                [.. models.Where(entry => ClientModules.OwnerOf(entry.Model) is null).Select(entry => (entry.Model, LowerFirst(entry.Name)))],
+                sharedClients.Select(shared => shared.Module).Where(module => !ClientModules.IsOwned(module)), namedTypes);
+        ClientModules.WriteCheck(positional[3], [.. models.Select(entry => (entry.Model, LowerFirst(entry.Name)))]);
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
         if (compositionType is null)
         {
@@ -1002,6 +1041,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ? nullability.Create(property.PropertyType.GetProperty("Current", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)!)
         : nullability.Create(property)).ReadState == NullabilityState.Nullable;
     var contentBindings = contentProperties.Concat(contentCollections).Concat(regionCollections).ToArray();
+    ClientModules.CheckContent(model, contentBindings);
     var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     var commandSources = commands.ToDictionary(command => command, command => CommandSourceMethod(model, command));
@@ -2107,10 +2147,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var (module, functions, references) in contentImports)
     {
         var used = functions.Concat(references.Where(reference => TypeScriptModuleBindings.Mentions(code, reference)).Select(reference => "type " + reference));
-        ts.AppendLine($"import {{ {string.Join(", ", used)} }} from \"./{module}.js\";");
+        ts.AppendLine($"import {{ {string.Join(", ", used)} }} from \"{ClientModules.Specifier(module, ".js")}\";");
     }
     foreach (var shared in sharedClients.Where(shared => TypeScriptModuleBindings.Mentions(code, shared.ReferenceType)))
-        ts.AppendLine($"import type {{ {shared.ReferenceType} }} from \"./{shared.Module}.js\";");
+        ts.AppendLine($"import type {{ {shared.ReferenceType} }} from \"{ClientModules.Specifier(shared.Module, ".js")}\";");
     var contractImports = contractNames.Where(name => TypeScriptModuleBindings.Mentions(code, name)).ToArray();
     if (contractImports.Length > 0)
         ts.AppendLine($"import type {{ {string.Join(", ", contractImports)} }} from \"{ClientDeclarationMap.Specifier(typescriptPath)}\";");
@@ -2133,9 +2173,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         contractModule.AppendLine("import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
     foreach (var (module, _, references) in contentImports)
         if (references.Where(reference => TypeScriptModuleBindings.Mentions(declarations, reference)).ToArray() is { Length: > 0 } used)
-            contractModule.AppendLine($"import type {{ {string.Join(", ", used)} }} from \"./{module}.contract.js\";");
+            contractModule.AppendLine($"import type {{ {string.Join(", ", used)} }} from \"{ClientModules.Specifier(module, ".contract.js")}\";");
     foreach (var shared in sharedClients.Where(shared => TypeScriptModuleBindings.Mentions(declarations, shared.ReferenceType)))
-        contractModule.AppendLine($"import type {{ {shared.ReferenceType} }} from \"./{shared.Module}.js\";");
+        contractModule.AppendLine($"import type {{ {shared.ReferenceType} }} from \"{ClientModules.Specifier(shared.Module, ".js")}\";");
     contractModule.AppendLine(TypeScriptModules.NamedTypeImports);
     contractModule.AppendLine();
     contractModule.Append(contractBody);
@@ -2860,6 +2900,16 @@ static class BridgeDiagnosticCodes
     internal const string IncludeIgnored = "RUNICBRIDGE077";
     /// <summary>Warning: [RunicInclude] on a ViewModel member that the Bridge cannot publish has no effect (#1320).</summary>
     internal const string IncludeUnpublishable = "RUNICBRIDGE078";
+    /// <summary>A RunicApplicationFrontendClientModule names an assembly that is not referenced or not a client library (#1318).</summary>
+    internal const string ClientModuleLibrary = "RUNICBRIDGE079";
+    /// <summary>A ViewModel whose Views a mapped client library declares also has Views in another assembly (#1318).</summary>
+    internal const string ClientModuleViews = "RUNICBRIDGE080";
+    /// <summary>A mapped client library's ViewModel presents content of another owner, or a shared client has mixed owners (#1318).</summary>
+    internal const string ClientModuleOwner = "RUNICBRIDGE081";
+    /// <summary>A RunicApplicationFrontendClientModule item is malformed: no Specifier, a relative one, or a duplicate Include (#1318).</summary>
+    internal const string ClientModuleItem = "RUNICBRIDGE082";
+    /// <summary>Warning: a mapped client library declares no View, so its RunicApplicationFrontendClientModule does nothing (#1318).</summary>
+    internal const string ClientModuleEmpty = "RUNICBRIDGE083";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2920,6 +2970,11 @@ static class BridgeDiagnosticCodes
         (ClientWithoutPdb, "warning", "A generated client loses its declaration map or comments because an assembly has no PDB"),
         (IncludeIgnored, "error", "A ViewModel property is marked both [RunicInclude] and [RunicIgnore]"),
         (IncludeUnpublishable, "warning", "A [RunicInclude] declaration on a ViewModel member that the Bridge cannot publish has no effect"),
+        (ClientModuleLibrary, "error", "A RunicApplicationFrontendClientModule names an assembly that is not referenced or not built as a client library"),
+        (ClientModuleViews, "error", "A mapped client library's ViewModel also has Views in another assembly"),
+        (ClientModuleOwner, "error", "A mapped client library's ViewModel presents content of another owner, or a shared client's implementers have different owners"),
+        (ClientModuleItem, "error", "A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include"),
+        (ClientModuleEmpty, "warning", "A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -3122,8 +3177,13 @@ static class TypeScriptModules
 
     // Assigns the module's own bindings (TypeScriptModuleBindings) before the
     // named types, which avoid every name the resolved modules declare.
-    internal static void Add(string path, string text, MemberInfo? owner = null) =>
-        Pending.Add((path, TypeScriptModuleBindings.Resolve(text, path, owner), owner));
+    // A module that a mapped client library owns (ClientModules.Discarding) is resolved, so its name checks still run,
+    // but the library writes it.
+    internal static void Add(string path, string text, MemberInfo? owner = null)
+    {
+        var resolved = TypeScriptModuleBindings.Resolve(text, path, owner);
+        if (!ClientModules.Discarding) Pending.Add((path, resolved, owner));
+    }
 
     /// <summary>Writes the pending modules and <c>types.ts</c>; true when there are named types, so <c>types.ts</c> exists.</summary>
     internal static bool WriteAll(string directory)
@@ -3144,6 +3204,8 @@ static class TypeScriptModules
             var reexported = TypeScriptNamedTypes.Used(exported);
             var values = TypeScriptNamedTypes.UsedValues(exported);
             var lines = new List<string>();
+            // A module that imports a client library's module brings in the check of the library's contracts.
+            if (!contract && ClientModules.ImportsLibrary(text)) lines.Add(ClientModules.CheckImport);
             if (used.Count > 0) lines.Add($"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
             if (!contract && reexported.Count > 0) lines.Add($"export type {{ {string.Join(", ", reexported)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
             if (!contract && values.Count > 0) lines.Add($"export {{ {string.Join(", ", values)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");

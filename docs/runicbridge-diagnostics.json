@@ -270,6 +270,31 @@
       "id": "RUNICBRIDGE078",
       "severity": "warning",
       "title": "A [RunicInclude] declaration on a ViewModel member that the Bridge cannot publish has no effect"
+    },
+    {
+      "id": "RUNICBRIDGE079",
+      "severity": "error",
+      "title": "A RunicApplicationFrontendClientModule names an assembly that is not referenced or not built as a client library"
+    },
+    {
+      "id": "RUNICBRIDGE080",
+      "severity": "error",
+      "title": "A mapped client library's ViewModel also has Views in another assembly"
+    },
+    {
+      "id": "RUNICBRIDGE081",
+      "severity": "error",
+      "title": "A mapped client library's ViewModel presents content of another owner, or a shared client's implementers have different owners"
+    },
+    {
+      "id": "RUNICBRIDGE082",
+      "severity": "error",
+      "title": "A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include"
+    },
+    {
+      "id": "RUNICBRIDGE083",
+      "severity": "warning",
+      "title": "A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing"
     }
   ]
 }

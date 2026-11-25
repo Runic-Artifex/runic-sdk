@@ -36,6 +36,7 @@
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE075;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE075</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE076;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE076</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE078;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE078</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE083;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE083</_RunicBridgeWarningsAsErrors>
     <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
@@ -179,6 +180,30 @@
     <Warning Code="RUNICBRIDGE075" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge075"
              Condition="'$(RunicBridgeBlobs)' != '' and '$(RunicBridgeBlobs)' != 'auto' and '$(RunicBridgeBlobs)' != 'true'"
              Text="RunicBridgeBlobs is '$(RunicBridgeBlobs)', which is neither auto nor true, so the build uses auto: a trimmed or NativeAOT publish leaves Bridge blobs and uploads out when no assembly's Bridges use them. Set true to keep them in every publish, or remove the property." />
+  </Target>
+  <!-- #1318: each RunicApplicationFrontendClientModule maps a referenced client library's assembly (Include, its simple
+       name) to the module specifier of its generated runic-clients.ts (Specifier), which this application's generated
+       modules import instead of generating copies. A missing or blank Specifier, a relative one, which every
+       generated module would resolve from its own folder, and an assembly mapped twice are RUNICBRIDGE082; the
+       generator reports the rest (RUNICBRIDGE079 to 081 and 083). -->
+  <Target Name="RunicViewsCheckClientModules" BeforeTargets="PrepareForBuild"
+          Condition="'@(RunicApplicationFrontendClientModule)' != '' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <ItemGroup>
+      <_RunicClientModule Include="@(RunicApplicationFrontendClientModule)" TrimmedSpecifier="$([System.String]::Copy('%(RunicApplicationFrontendClientModule.Specifier)').Trim())" />
+      <_RunicClientModuleRelative Include="@(_RunicClientModule)"
+                                  Condition="'%(TrimmedSpecifier)' == '.' or '%(TrimmedSpecifier)' == '..' or $([System.String]::Copy('%(TrimmedSpecifier)').StartsWith('./')) or $([System.String]::Copy('%(TrimmedSpecifier)').StartsWith('../')) or $([System.String]::Copy('%(TrimmedSpecifier)').StartsWith('.\')) or $([System.String]::Copy('%(TrimmedSpecifier)').StartsWith('..\'))" />
+      <!-- Batched by Include, so the count is that of the items with the same assembly. -->
+      <_RunicClientModuleDuplicate Include="%(RunicApplicationFrontendClientModule.Identity)" Condition="'@(RunicApplicationFrontendClientModule->Count())' &gt; 1" />
+    </ItemGroup>
+    <Error Code="RUNICBRIDGE082" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge082" ContinueOnError="ErrorAndContinue"
+           Condition="'%(_RunicClientModule.TrimmedSpecifier)' == ''"
+           Text="The RunicApplicationFrontendClientModule %(_RunicClientModule.Identity) has no Specifier. Set it to the module specifier of the library's generated runic-clients.ts, as the frontend imports it, such as Specifier=&quot;@acme/shared-ui/generated&quot;." />
+    <Error Code="RUNICBRIDGE082" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge082" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicClientModuleRelative)' != ''"
+           Text="The RunicApplicationFrontendClientModule %(_RunicClientModuleRelative.Identity) has the relative Specifier '%(_RunicClientModuleRelative.TrimmedSpecifier)', which every generated module would resolve from its own folder. Use a package specifier, such as @acme/shared-ui/generated, or a tsconfig paths alias." />
+    <Error Code="RUNICBRIDGE082" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge082" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicClientModuleDuplicate)' != ''"
+           Text="The assembly %(_RunicClientModuleDuplicate.Identity) has more than one RunicApplicationFrontendClientModule. Keep one item per assembly." />
   </Target>
   <Target Name="_RunicViewsPublishFeatureSwitches" BeforeTargets="PrepareForILLink">
     <ItemGroup>
@@ -875,6 +900,13 @@
       <_RunicBridgeClientLibraryArgument Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true'">--client-library</_RunicBridgeClientLibraryArgument>
       <_RunicBridgeSkipped>false</_RunicBridgeSkipped>
     </PropertyGroup>
+    <!-- #1318: the client libraries whose generated TypeScript this application imports (RunicViewsCheckClientModules). -->
+    <ItemGroup>
+      <_RunicBridgeClientModule Include="@(RunicApplicationFrontendClientModule)" TrimmedSpecifier="$([System.String]::Copy('%(RunicApplicationFrontendClientModule.Specifier)').Trim())" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicBridgeClientModuleArguments>@(_RunicBridgeClientModule->'--client-module &quot;%(Identity)=%(TrimmedSpecifier)&quot;', ' ')</_RunicBridgeClientModuleArguments>
+    </PropertyGroup>
     <!-- The generated code calls the command helpers of the Runic ReactiveUI adapter that this project compiles
          against, so that adapter's flavor is the generator's. Package, transitive package and project references
          all resolve to ReferencePath, which ResolveReferences has filled before CoreCompile and before WPF's
@@ -923,7 +955,7 @@
     <!-- The generator reports its diagnostics in canonical form. They are
          logged once with their codes (see RunicViewsReportCommandResult);
          a failure that reported none is RUNICBRIDGE024, an internal error. -->
-    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgeClientLibraryArgument) $(_RunicBridgeAnalyzerWarningsArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgeClientLibraryArgument) $(_RunicBridgeClientModuleArguments) $(_RunicBridgeAnalyzerWarningsArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
           Condition="'$(_RunicBridgeReuseGenerated)' != 'true'">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeCodegenExitCode" />

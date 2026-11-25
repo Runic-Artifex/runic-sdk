@@ -2231,8 +2231,8 @@ own code, while you type and in the build, so `#pragma warning disable` and
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076` and `078` are warnings; the ones the generator
-reports itself (`020`, `072`, `076`, `078`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076`, `078` and `083` are warnings; the ones the generator
+reports itself (`020`, `072`, `076`, `078`, `083`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -2468,6 +2468,35 @@ directory are inputs already (see [Incremental generation](#incremental-generati
   <RunicApplicationFrontendBuildEnvironment Include="APP_FLAVOR" />
 </ItemGroup>
 ```
+
+`RunicApplicationFrontendClientModule` (since 0.24) maps a referenced client
+library (`RunicApplicationFrontendClientLibrary`) to the module specifier of its
+generated `runic-clients.ts`. `Include` is the library's assembly name, and
+`Specifier` is required and not relative:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../SharedUi/SharedUi.csproj" />
+  <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/shared-ui/generated" />
+</ItemGroup>
+```
+
+The library owns the generated TypeScript of the ViewModels whose Views it
+declares. The application adds those Views to its own generation: it still
+generates their Bridges, which its content slots construct, and registers the
+Views in `AddRunicViews()`, but it writes no client, contract or mock module for
+them. Its own modules import their page functions and page references from the
+specifier, and the copies an earlier build generated are deleted. `types.ts`
+declares only the named types of the application's own modules. The application
+must not declare Views of the library's ViewModels itself
+([`RUNICBRIDGE080`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge080)),
+and a library ViewModel can present only the library's ViewModels
+([`RUNICBRIDGE081`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge081)).
+The generated directory also gets `runic-client-modules.ts`, which the modules
+that import the library bring into the frontend's type check: when the package
+the frontend resolves was generated from another build of the library than the
+application compiles against, its contract differs and the type check fails
+with `TS2344`, naming both contracts. Rebuild the library and its package.
 
 Bridge generation turns on by default for a project that references
 `Runic.Application.Views` directly, references a host adapter
