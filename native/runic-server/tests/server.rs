@@ -7,7 +7,7 @@ use std::time::Duration;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
-use runic_server::{
+use rax_server::{
     Body, BodyRead, Handler, MessageKind, RequestHead, Server, ServerConfig, WebSocketClose, WriteOutcome,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

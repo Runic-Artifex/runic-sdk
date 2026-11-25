@@ -1356,10 +1356,10 @@ jobs:
         if: matrix.shard != 'window' && matrix.rid == 'linux-x64'
         timeout-minutes: 10
         run: |
-          test -e artifacts/native/runic-server/linux-x64/librunic_server.a || eng/native/build-runic-server.sh linux-x64
+          test -e artifacts/native/runic-server/linux-x64/librax_server.a || eng/native/build-runic-server.sh linux-x64
           dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 \
             -p:RunicDesktopServer=Native -p:PublishAot=true -o artifacts/native-server-aot
-          test ! -e artifacts/native-server-aot/librunic_server.so
+          test ! -e artifacts/native-server-aot/librax_server.so
           # The host loads neither ICU nor OpenSSL before its page is served. LANG=C, because the console's charset
           # lookup for a UTF-8 locale loads ICU in any .NET program that writes to it, as serve-only does.
           LANG=C LC_ALL=C node tests/benchmarks/native-server/startup.mjs artifacts/native-server-aot/FirstWindowDesktop 5 | tee "$RUNNER_TEMP/startup.json"

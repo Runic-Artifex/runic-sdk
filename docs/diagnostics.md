@@ -1794,7 +1794,7 @@ that links the server's static library (`RunicDesktopNativeServerLinkage`
 `Static`, the default) found none (`Runic.Desktop.NativeServer.Static.<rid>`,
 which NuGet restores through `Runic.Desktop.NativeServer`'s `runtime.json` for a
 runtime-specific restore), or `RunicDesktopNativeServerLibraryDirectory` names a
-directory without `librunic_server` or `runic_server`.
+directory without `librax_server` or `rax_server`.
 
 **Fix:** publish with the runtime identifier (`dotnet publish -r <rid>`
 restores for it), use a runtime identifier the package supports (its README
@@ -1808,7 +1808,7 @@ with the library, as `buildRunicApplication` does with its source build.
 Desktop server: `Static` links the package's static library into the
 executable, `Shared` puts the shared library beside it, and `Application`
 leaves the server to the application's own Rust static library, which links the
-`runic-server` crate. It has no effect on builds that run under the JIT. Since
+`runic-artifex-server` crate. It has no effect on builds that run under the JIT. Since
 0.17.1.
 
 **Fix:** set one of the three values, or remove the property for the default,

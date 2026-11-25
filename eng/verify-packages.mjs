@@ -37,7 +37,7 @@ export const packageLayouts = {
   // One static library each, which only Runic.Desktop.NativeServer's targets use.
   ...Object.fromEntries(nativeServerRuntimes.map(rid => [`Runic.Desktop.NativeServer.Static.${rid}`, {
     files: [`Runic.Desktop.NativeServer.Static.${rid}.nuspec`, "README.md", "THIRD-PARTY-NOTICES.md", "icon.png",
-      `runtimes/${rid}/native/${rid.startsWith("win-") ? "runic_server.lib" : "librunic_server.a"}`],
+      `runtimes/${rid}/native/${rid.startsWith("win-") ? "rax_server.lib" : "librax_server.a"}`],
     dependencies: [],
   }])),
   // Navigation is a plain library: no build targets, tools or content (W240-001 D3).

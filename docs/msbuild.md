@@ -152,8 +152,8 @@ See [NativeAOT and an application's own Rust library](../packages/dotnet/Runic.D
 
 | Property | Default | Purpose |
 | --- | --- | --- |
-| `RunicDesktopNativeServerLinkage` | `Static` | How a NativeAOT publish gets the server: `Static` links the static library of `Runic.Desktop.NativeServer.Static.<rid>` into the executable, `Shared` puts the shared library beside it, and `Application` leaves the server to the application's own Rust library, which links the `runic-server` crate. Other builds always use the shared library. |
-| `RunicDesktopNativeServerLibraryDirectory` | none | A directory whose `librunic_server.so`, `.dylib` or `.a`, or `runic_server.dll` or `.lib`, replaces the package's, such as a library built from source ([Nix builder](../nix/README.md)). |
+| `RunicDesktopNativeServerLinkage` | `Static` | How a NativeAOT publish gets the server: `Static` links the static library of `Runic.Desktop.NativeServer.Static.<rid>` into the executable, `Shared` puts the shared library beside it, and `Application` leaves the server to the application's own Rust library, which links the `runic-artifex-server` crate. Other builds always use the shared library. |
+| `RunicDesktopNativeServerLibraryDirectory` | none | A directory whose `librax_server.so`, `.dylib` or `.a`, or `rax_server.dll` or `.lib`, replaces the package's, such as a library built from source ([Nix builder](../nix/README.md)). |
 
 ## Runic.Spelling
 
