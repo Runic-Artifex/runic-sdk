@@ -20,7 +20,7 @@ test("every entry resolves for types, the development build, import and require-
     assert.equal(conditions["types"], conditions["default"]!.replace(/\.js$/, ".d.ts"), `${entry}: types`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
-    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./package.json"]);
+    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./codegen", "./package.json"]);
 });
 
 test("binding and generator APIs are not in the application entries; graduated APIs are", async () => {
