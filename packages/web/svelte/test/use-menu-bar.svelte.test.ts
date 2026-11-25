@@ -121,7 +121,7 @@ describe("useMenuBar", () => {
       "configureTranslatedText", "createRunicInstance", "fieldErrorText", "getRunicInstance", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
       "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "preloadView", "regionEntries", "resolveText", "selectedRegion", "setRunicInstance",
       "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand",
-      "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
+      "useField", "useForm", "useInteraction", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
       "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).

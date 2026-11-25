@@ -24,6 +24,10 @@ export {
   type FieldState,
 } from "@runic-artifex/views";
 export { injectForm, type FormFieldHandle, type FormHandle, type InjectFormOptions } from "./inject-form.js";
+export {
+  injectInteraction, type InjectInteractionOptions, type InteractionHandle, type InteractionView,
+} from "./inject-interaction.js";
+export type { InteractionInput, InteractionName, InteractionOutput, InteractionRequest } from "@runic-artifex/views";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { injectTextField, type InjectTextFieldOptions, type TextFieldHandle, type TextFieldView } from "./inject-text-field.js";
 export {

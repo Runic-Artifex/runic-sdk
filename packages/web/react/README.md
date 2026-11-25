@@ -731,6 +731,33 @@ the application's own dialog.
   such as a close during the page's first render, is answered by the
   ViewModel's .NET fallback handler, or fails closed without one.
 
+### A dialog in the render
+
+A page that renders its dialog itself, rather than awaiting a dialog service in
+`handle`, uses `useInteraction`: the oldest open request as `request`, which the
+dialog answers with the request's `respond`:
+
+```tsx
+export function EditPage({ page }: { page: EditPageReference }) {
+  const view = useView(page);
+  const { request } = useInteraction(view, "confirmDiscard");
+  return request && (
+    <Confirm text={request.input.itemName} onYes={() => request.respond(true)} onNo={() => request.respond(false)} />
+  );
+}
+```
+
+Each open request is one object, `{ input, respond(answer) }`, the same while the
+request is open. Its `respond` answers that request only, and is ignored once
+the request has ended: answered already, as by a double click, or ended by .NET
+(the departure was superseded, the deadline passed, the window closed) or by a
+client change. A late answer therefore never reaches another request. The
+handler is registered while the client is connected and removed when the
+client changes or the page unmounts. Several open requests are answered in order:
+`request` is the oldest one, and answering it shows the next. An interaction
+whose input is empty (`Unit`) still has a request object while one is open. The
+input and the answer are typed from the generated interaction.
+
 The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
 has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the

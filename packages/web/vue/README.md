@@ -707,6 +707,38 @@ application's own dialog.
   departure before that is answered by the ViewModel's .NET fallback handler, or
   fails closed without one.
 
+### A dialog in the template
+
+A page that renders its dialog in its own template, rather than awaiting a
+dialog service in `handle`, uses `useInteraction`: the oldest open request as
+`request`, which the dialog answers with the request's `respond`:
+
+```vue
+<script setup lang="ts">
+import { useInteraction, useView } from "@runic-artifex/vue";
+
+const props = defineProps<{ page: EditPageReference }>();
+const view = useView(() => props.page);
+const discard = useInteraction(view, "confirmDiscard");
+</script>
+
+<template>
+  <Confirm v-if="discard.request" :text="discard.request.input.itemName"
+    @yes="discard.request.respond(true)" @no="discard.request.respond(false)" />
+</template>
+```
+
+Each open request is one object, `{ input, respond(answer) }`, the same while the
+request is open. Its `respond` answers that request only, and is ignored once
+the request has ended: answered already, as by a double click, or ended by .NET
+(the departure was superseded, the deadline passed, the window closed) or by a
+client change. A late answer therefore never reaches another request. The
+handler is registered while the client is connected and removed when the
+client changes or the effect scope ends. Several open requests are answered in order:
+`request` is the oldest one, and answering it shows the next. An interaction
+whose input is empty (`Unit`) still has a request object while one is open. The
+input and the answer are typed from the generated interaction.
+
 The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
 has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the

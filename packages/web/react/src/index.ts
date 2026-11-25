@@ -15,6 +15,12 @@ import {
 } from "react";
 import {
   createCommandController,
+  createInteractionController,
+  interactionSurface,
+  type InteractionInput,
+  type InteractionName,
+  type InteractionOutput,
+  type InteractionRequest,
   createLatestOperationController,
   createOperationController,
   createFieldController,
@@ -750,6 +756,55 @@ export function useField<TClient extends ViewClient, TValue>(
   return handle;
 }
 
+/** The View whose interaction is answered: a {@link useView} handle, or any client. */
+export interface InteractionView<TClient extends ViewClient> {
+  readonly client: TClient | undefined;
+}
+
+/** An interaction answered from the render: its oldest open request. */
+export interface InteractionHandle<TInput, TOutput> {
+  /**
+   * The oldest open request, `{ input, respond(answer) }`, or `undefined` while none is open: the same object while the
+   * request is open, so it can be a key. Its `respond` answers that request only, and is ignored once it has ended.
+   */
+  readonly request: InteractionRequest<TInput, TOutput> | undefined;
+}
+
+/**
+ * Handles one interaction of a View while the component is mounted, through `createInteractionController`: render
+ * the dialog from `request` and answer it with the request's `respond`. Pass the name of a generated interaction, such as
+ * `"confirmDiscard"` for `Interaction<DiscardInput, bool> ConfirmDiscard`; the input and the answer are typed from it.
+ *
+ * ```tsx
+ * const editor = useView(page);
+ * const discard = useInteraction(editor, "confirmDiscard");
+ * const request = discard.request;
+ * {request && <Confirm key={request.input.id} text={request.input.title} onYes={() => request.respond(true)} onNo={() => request.respond(false)} />}
+ * ```
+ *
+ * The handler is registered while the View's client is connected, and removed when the client changes or the
+ * component unmounts. A request ends when its `respond` answers it, or when .NET stops waiting for it: the command
+ * that asked was cancelled, the deadline passed, the window closed or the client changed. `request` then is the next
+ * open request, oldest first, or `undefined`. A request's `respond` is ignored once it has ended, so a double click or
+ * a late answer never answers another request.
+ */
+export function useInteraction<TClient extends ViewClient & { readonly interactions: object }, TName extends InteractionName<TClient>>(
+  view: InteractionView<TClient>,
+  name: TName,
+): InteractionHandle<InteractionInput<TClient, TName>, InteractionOutput<TClient, TName>> {
+  type TInput = InteractionInput<TClient, TName>;
+  type TOutput = InteractionOutput<TClient, TName>;
+  const controller = useMountedController(() => createInteractionController<TInput, TOutput>());
+  const { client } = view;
+  useEffect(() => {
+    controller.setSurface(interactionSurface<TInput, TOutput>(client, name));
+    return () => controller.setSurface(undefined);
+  }, [controller, client, name]);
+  const readRequest = useCallback(() => controller.request, [controller]);
+  const request = useSyncExternalStore(controller.subscribe, readRequest, readRequest);
+  return { request };
+}
+
 export interface BridgeConnectionHandle {
   /** The connection to the .NET host, as `onBridgeConnection` reports it. */
   readonly state: BridgeConnectionState;
@@ -899,6 +954,7 @@ export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstan
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
+export type { InteractionInput, InteractionName, InteractionOutput, InteractionRequest } from "@runic-artifex/views";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";

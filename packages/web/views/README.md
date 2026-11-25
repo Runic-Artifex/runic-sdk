@@ -986,6 +986,31 @@ sign of a command per key or of an application-side copy of the state. See
 to turn it off. To test a field, type into it key by key against a slow mock
 ([Typing in tests](#typing-in-tests)).
 
+## Interactions as state
+
+`client.interactions.<name>.handle((input, { signal }) => answer)` suits a dialog service that returns a promise. A
+page that renders its dialog from state uses `createInteractionController`, which the bindings wrap as Angular's
+`injectInteraction` and `useInteraction` in React, Vue and Svelte:
+
+```ts
+const discard = createInteractionController<DiscardNoteRequest, boolean>();
+discard.setSurface(interactionSurface(editor, "confirmDiscard"));
+discard.subscribe(() => {
+  const request = discard.request;
+  dialog.hidden = request === undefined;
+  yes.onclick = () => request?.respond(true);
+});
+```
+
+`request` is the oldest open request, `{ input, respond(answer) }` (an `InteractionRequest`), or `undefined`; the
+same object while the request is open. Its `respond` answers that request only, and the next open request becomes
+`request`. It is ignored once the request has ended, so a double click or an answer that arrives after .NET stopped
+waiting never answers another request. A request ends when .NET stops waiting for it: its `signal` aborts when the
+command that asked was cancelled, the deadline passed, the window closed or the client disconnected. `setSurface`
+with another client, or `undefined`, removes the handler and ends the open requests, as `dispose()` does; .NET
+receives them as cancelled. `InteractionName<TClient>`, `InteractionInput<TClient, TName>` and
+`InteractionOutput<TClient, TName>` read the names and types from a generated client.
+
 ## Operation feedback and latest selection
 
 An operation Start receipt proves admission; it does not prove completion. A Cancel

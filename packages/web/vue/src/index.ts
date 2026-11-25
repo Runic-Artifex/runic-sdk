@@ -22,6 +22,12 @@ import {
   createLatestOperationController,
   createOperationController,
   createFieldController,
+  createInteractionController,
+  interactionSurface,
+  type InteractionInput,
+  type InteractionName,
+  type InteractionOutput,
+  type InteractionRequest,
   createTextFieldController,
   createViewController,
   onBridgeConnection,
@@ -592,6 +598,55 @@ export function useField<TClient extends ViewClient, TValue>(
   }) as FieldHandle<TValue>;
 }
 
+/** The View whose interaction is answered: a {@link useView} handle, or any client ref. */
+export interface InteractionView<TClient extends ViewClient> {
+  readonly client: Readonly<Ref<TClient | undefined>>;
+}
+
+/** An interaction answered from the template: its oldest open request. */
+export interface InteractionHandle<TInput, TOutput> {
+  /**
+   * The oldest open request, `{ input, respond(answer) }`, or `undefined` while none is open: the same object while the
+   * request is open. Its `respond` answers that request only, and is ignored once it has ended.
+   */
+  readonly request: InteractionRequest<TInput, TOutput> | undefined;
+}
+
+/**
+ * Handles one interaction of a View while the current effect scope is active, through `createInteractionController`:
+ * render the dialog from `request` and answer it with the request's `respond`. Pass the name of a generated
+ * interaction, such as `"confirmDiscard"` for `Interaction<DiscardInput, bool> ConfirmDiscard`; the input and the answer
+ * are typed from it. `request` is a getter that templates and effects track. Call it in `setup()` or `effectScope().run()`: outside an effect scope it is never
+ * released (development builds warn).
+ *
+ * ```vue
+ * const editor = useView(() => props.page);
+ * const discard = useInteraction(editor, "confirmDiscard");
+ * <Confirm v-if="discard.request" :text="discard.request.input.title"
+ *   @yes="discard.request.respond(true)" @no="discard.request.respond(false)" />
+ * ```
+ *
+ * The handler is registered while the View's client is connected, and removed when the client changes or the scope
+ * ends. A request ends when its `respond` answers it, or when .NET stops waiting for it: the command that asked was
+ * cancelled, the deadline passed, the window closed or the client changed. `request` then is the next open request,
+ * oldest first, or `undefined`. A request's `respond` is ignored once it has ended, so a double click or a late answer
+ * never answers another request.
+ */
+export function useInteraction<TClient extends ViewClient & { readonly interactions: object }, TName extends InteractionName<TClient>>(
+  view: InteractionView<TClient>,
+  name: TName,
+): InteractionHandle<InteractionInput<TClient, TName>, InteractionOutput<TClient, TName>> {
+  type TInput = InteractionInput<TClient, TName>;
+  type TOutput = InteractionOutput<TClient, TName>;
+  const controller = useRunicInstance().run(() => createInteractionController<TInput, TOutput>());
+  const request = shallowRef<InteractionRequest<TInput, TOutput> | undefined>(undefined);
+  controller.subscribe(() => { request.value = controller.request; });
+  watch(view.client, client => controller.setSurface(interactionSurface<TInput, TOutput>(client, name)), { immediate: true });
+  releaseWithScope("useInteraction", () => controller.dispose());
+  // A getter rather than `reactive`, so `request` is the controller's frozen object and not a deep proxy of it.
+  return { get request() { return request.value; } };
+}
+
 export interface BridgeConnectionHandle {
   /** The connection to the .NET host, as `onBridgeConnection` reports it. */
   readonly state: Readonly<Ref<BridgeConnectionState>>;
@@ -705,6 +760,7 @@ export { provideRunicInstance, runicInstanceKey, useRunicInstance } from "./inst
 export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstanceOptions } from "@runic-artifex/views";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
+export type { InteractionInput, InteractionName, InteractionOutput, InteractionRequest } from "@runic-artifex/views";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export {
   configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,

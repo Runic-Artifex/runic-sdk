@@ -9,6 +9,8 @@ export { useOperation, type OperationHandle } from "./use-operation.svelte.js";
 export { useTextField, type TextFieldHandle, type TextFieldView, type UseTextFieldOptions } from "./use-text-field.svelte.js";
 export { useField, type FieldElement, type FieldHandle } from "./use-field.svelte.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./use-form.svelte.js";
+export { useInteraction, type InteractionHandle, type InteractionView } from "./use-interaction.svelte.js";
+export type { InteractionInput, InteractionName, InteractionOutput, InteractionRequest } from "@runic-artifex/views";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { useLatestOperation, type LatestOperationHandle } from "./use-latest-operation.svelte.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./use-collection-viewport.svelte.js";
