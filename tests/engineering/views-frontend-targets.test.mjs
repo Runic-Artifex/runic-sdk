@@ -1487,3 +1487,131 @@ test("RUNICBRIDGE030: an unknown value, no single host and an own RunicAssetsDis
   assert.equal(dev.staged, undefined);
   assert.equal(dev.packed, undefined);
 });
+
+// #1318: a client library (RunicApplicationFrontendClientLibrary=true) generates its Views' TypeScript as a module that
+// other frontends import. Its generation is required, it builds and copies no frontend unless it asks to, and an
+// application that references it does not copy its frontend to www/.
+test("a client library builds and copies no frontend unless it asks to", () => {
+  const library = fixture("client-library", { name: "shared-ui", private: true });
+  writeFileSync(join(library.frontend, "emits-dist"), "");
+  const output = join(library.project, "out") + "/";
+  const properties = ["RunicApplicationFrontendClientLibrary=true", `TargetDir=${output}`];
+  let result = build(library, { targets: "RunicViewsCollectFrontendInputs;RunicViewsCopyFrontend", properties });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [], "A client library neither installs nor builds its frontend by default.");
+  assert.ok(!existsSync(join(output, "www")), "A client library copies no frontend to www/.");
+  assert.doesNotMatch(result.output, /RUNICBRIDGE014/);
+
+  // The project may still build its package from MSBuild; the output is not copied.
+  result = build(library, { targets: "RunicViewsCollectFrontendInputs;RunicViewsCopyFrontend",
+    properties: [...properties, "RunicApplicationFrontendBuildEnabled=true"] });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(builds(result), 1);
+  assert.ok(existsSync(join(library.frontend, "dist/index.html")) && !existsSync(join(output, "www")), result.output);
+
+  const evaluate = extra => {
+    const result = spawnSync("dotnet", ["msbuild", join(library.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+      ...extra, "-getProperty:RunicApplicationFrontendBuildEnabled", "-getProperty:RunicApplicationFrontendCopyEnabled"],
+      { cwd: library.project, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return JSON.parse(result.stdout).Properties;
+  };
+  assert.deepEqual(evaluate(["-p:RunicApplicationFrontendClientLibrary=true"]),
+    { RunicApplicationFrontendBuildEnabled: "false", RunicApplicationFrontendCopyEnabled: "false" });
+  assert.deepEqual(evaluate([]), { RunicApplicationFrontendBuildEnabled: "", RunicApplicationFrontendCopyEnabled: "" },
+    "Without the property, nothing changes.");
+});
+
+// The generator gets --client-library, and never --optional: a client library without a View is RUNICBRIDGE006.
+test("a client library passes --client-library to the generator, which requires its Views", () => {
+  const project = join(directory, "client-library-arguments");
+  const fake = join(project, "fake-dotnet");
+  mkdirSync(fake, { recursive: true });
+  writeFileSync(join(fake, "dotnet"), `#!/bin/sh\necho "$@" >> "${join(project, "generator.log")}"\n`, { mode: 0o755 });
+  // No frontend and no RunicApplicationFrontendGenerationEnabled: generation is on by default and optional.
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <AssemblyName>SharedUi</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <Target Name="ResolveProjectReferences" />
+  <Target Name="InitializeSourceRootMappedPaths" />
+  <Target Name="Build" />
+  <Import Project="${targets}" />
+</Project>
+`);
+  const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
+  const generate = (extra = []) => {
+    rmSync(join(project, "generator.log"), { force: true });
+    // RunicViewsGenerateBridge's condition is evaluated before its dependencies, so detect the generation first, as
+    // PrepareForBuild does.
+    const result = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-t:RunicViewsDetectBridgeUse;RunicViewsGenerateBridge",
+      `-p:Configuration=${configuration}`, ...extra, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"],
+      { cwd: project, encoding: "utf8", env: { ...process.env, PATH: `${fake}:${process.env.PATH}` } });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return readFileSync(join(project, "generator.log"), "utf8").split("\n").find(line => line.includes("--generate")).split(" ");
+  };
+  // The fake generator writes no NoViews marker, so an application without a frontend would be RUNICBRIDGE014.
+  let generator = generate(["-p:RunicApplicationFrontendBuildEnabled=false"]);
+  assert.ok(generator.includes("--optional") && !generator.includes("--client-library"), generator.join(" "));
+  generator = generate(["-p:RunicApplicationFrontendClientLibrary=true"]);
+  assert.ok(generator.includes("--client-library") && !generator.includes("--optional"), generator.join(" "));
+});
+
+test("an application does not copy a referenced client library's frontend to www/", () => {
+  const project = join(directory, "client-library-reference");
+  // The Microsoft.NET.Sdk targets that RunicViewsCollectReferencedFrontends depends on.
+  const references = `  <Target Name="AssignProjectConfiguration" />
+  <Target Name="_GetProjectReferenceTargetFrameworkProperties" />
+  <Target Name="_SplitProjectReferencesByFileExistence">
+    <ItemGroup><_MSBuildProjectReferenceExistent Include="@(ProjectReference)" /></ItemGroup>
+  </Target>`;
+  const reference = (name, page, properties = "") => {
+    mkdirSync(join(project, name, "frontend/dist"), { recursive: true });
+    writeFileSync(join(project, name, "frontend/dist", page), `<p>${name}</p>`);
+    writeFileSync(join(project, name, `${name}.proj`), `<Project>
+  <PropertyGroup>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/frontend</RunicApplicationFrontendDirectory>
+${properties}
+  </PropertyGroup>
+${references}
+  <Import Project="${targets}" />
+</Project>
+`);
+  };
+  // A model project whose frontend is a page (#1318 keeps that), and a client library whose frontend is a package.
+  reference("Model", "model.html");
+  reference("SharedUi", "shared-ui.html", "    <RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>");
+  mkdirSync(join(project, "App"), { recursive: true });
+  writeFileSync(join(project, "App/App.proj"), `<Project>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetDir>$(MSBuildProjectDirectory)/bin/</TargetDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Model/Model.proj" />
+    <ProjectReference Include="../SharedUi/SharedUi.proj" />
+  </ItemGroup>
+${references}
+  <Import Project="${targets}" />
+</Project>
+`);
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App/App.proj"), "-t:RunicViewsCopyReferencedFrontends",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(readdirSync(join(project, "App/bin/www")), ["model.html"]);
+});
+
+test("a client library compiles the library-mode marker", () => {
+  const generated = ["App.AboutDialogViewModel.Bridge.g.cs", "App.AboutDialogView.View.g.cs", "RunicBridgeComposition.g.cs", "RunicClientLibrary.g.cs"];
+  const { project, output } = noBuildProject("no-build-client-library", { generated });
+  const compile = extra => {
+    const result = generateWithoutBuild(project, [...extra, "-getItem:Compile"]);
+    assert.equal(result.status, 0, result.output);
+    return JSON.parse(result.output.slice(result.output.indexOf("{"))).Items.Compile.map(item => item.FullPath.slice(output.length + 1)).sort();
+  };
+  assert.deepEqual(compile(["-p:RunicApplicationFrontendClientLibrary=true"]), [...generated].sort());
+  assert.deepEqual(compile([]), generated.filter(file => file !== "RunicClientLibrary.g.cs").sort(),
+    "Only a client library compiles the marker, which the generator deletes without library mode.");
+});

@@ -54,8 +54,8 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendAllowUnlockedInstall` | property | `false` | Install without a lock file. |
 | `RunicApplicationFrontendInstallEnabled` | property | `true` | `false` when a workspace install owns the packages. |
 | `RunicApplicationFrontendNodeModulesDirectory` | property | none | A `node_modules` installed elsewhere, such as by the Nix builder. |
-| `RunicApplicationFrontendBuildEnabled` | property | `true` | `false` when another tool builds the frontend. |
-| `RunicApplicationFrontendCopyEnabled` | property | `true` | Mirror the frontend output to the web root. |
+| `RunicApplicationFrontendBuildEnabled` | property | `true`, `false` in a client library | `false` when another tool builds the frontend. |
+| `RunicApplicationFrontendCopyEnabled` | property | `true`, `false` in a client library | Mirror the frontend output to the web root. |
 | `RunicApplicationFrontendDevSessionEnabled` | property | `true` | `false` makes a build ignore a running `dotnet runic dev` session, which otherwise skips the frontend build and keeps dev's development pages in the web root (since 0.20). |
 | `RunicApplicationFrontendOutputDirectory` | property | `dist` | The frontend build's output, relative to the frontend directory. |
 | `RunicApplicationFrontendWebRoot` | property | `www` | The web root below the build and publish output. |
@@ -65,6 +65,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationHost` | property | the only host adapter referenced | `desktop` or `cswebui`, when a project references both. |
 | `RunicApplicationFrontendCompositionType` | property | `<RootNamespace>.RunicViewsComposition` | The generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | property | the project itself | A separately built ViewModel assembly. |
+| `RunicApplicationFrontendClientLibrary` | property | `false` | `true` generates the project's Views' TypeScript as a module that other frontends import: `runic-clients.ts` (clients, named types and `runicClientContracts`) and `runic-mocks.ts` in the generated directory. Its Views are required, it builds and copies no frontend by default, and applications that reference it do not copy its frontend (since 0.24). |
 | `RunicApplicationFrontendGenerationEnabled` | property | inferred | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | property | `true` | XML documentation for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | property | `false` | Marks the Window project that `dotnet runic dev` and `doctor` run. |
