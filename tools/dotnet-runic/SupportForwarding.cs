@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Runic.CommandLine;
 
@@ -19,8 +18,8 @@ namespace Runic.Application.Tool;
 internal sealed class SupportForwarding
 {
     internal const string Command = "support";
-    internal const string ToolCommand = "runic-translations";
-    internal const string ToolPackage = "dotnet-runic-translations";
+    internal static string ToolCommand => ToolExtensions.Translations.Command;
+    internal static string ToolPackage => ToolExtensions.Translations.Package;
     internal const string MissingToolCode = "RAPPCLI1012";
     internal const string MissingToolMessage =
         "dotnet runic support moved to 'runic-translations support'. Install the dotnet-runic-translations tool, for example with 'dotnet tool install dotnet-runic-translations', and run 'runic-translations support preview|collect|remove'.";
@@ -86,38 +85,17 @@ internal sealed class SupportForwarding
     }
 
     /// <summary>
-    /// The Translations tool's command line: <c>runic-translations</c> on <c>PATH</c> (a global tool or a tool path),
-    /// else <c>dotnet tool run runic-translations</c> when a local tool manifest in the current directory or above
-    /// names the package; <see langword="null"/> when neither exists.
+    /// The Translations tool's command line, found as <c>dotnet runic translations</c> finds it
+    /// (<see cref="ToolExtensions.Resolve"/>): <c>RAX_TRANSLATIONS_TOOL</c>, then <c>dotnet tool run
+    /// runic-translations</c> when a local tool manifest in the current directory or above lists the tool, then
+    /// <c>node_modules/.bin</c>, then <c>runic-translations</c> on <c>PATH</c>; <see langword="null"/> when none exists.
     /// </summary>
     internal static (string Executable, IReadOnlyList<string> Prefix)? ResolveTool(
-        string currentDirectory, Func<string, string?> findExecutable, string dotnetHost)
-    {
-        if (findExecutable(ToolCommand) is { } global) return (global, []);
-        for (DirectoryInfo? directory = new(currentDirectory); directory is not null; directory = directory.Parent)
-        {
-            foreach (string manifest in new[] { Path.Combine(directory.FullName, ".config", "dotnet-tools.json"), Path.Combine(directory.FullName, "dotnet-tools.json") })
-            {
-                if (File.Exists(manifest) && NamesTool(manifest)) return (dotnetHost, ["tool", "run", ToolCommand, "--"]);
-            }
-        }
-        return null;
-    }
+        string currentDirectory, Func<string, string?> findExecutable, string dotnetHost) =>
+        ResolveTool(currentDirectory, new ExtensionEnvironment(Environment.GetEnvironmentVariable, findExecutable, dotnetHost));
 
-    private static bool NamesTool(string manifest)
-    {
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifest));
-            return document.RootElement.TryGetProperty("tools", out JsonElement tools) &&
-                tools.ValueKind == JsonValueKind.Object &&
-                tools.TryGetProperty(ToolPackage, out _);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return false;
-        }
-    }
+    internal static (string Executable, IReadOnlyList<string> Prefix)? ResolveTool(string currentDirectory, ExtensionEnvironment environment) =>
+        ToolExtensions.Resolve(ToolExtensions.Translations, currentDirectory, environment) is { } tool ? (tool.Executable, tool.Prefix) : null;
 
     /// <summary>Runs the Translations tool with this console's standard streams and returns its exit code.</summary>
     internal async Task<int> RunAsync((string Executable, IReadOnlyList<string> Prefix) tool, ICommandConsole console)

@@ -2422,6 +2422,8 @@ internal sealed partial class ToolTests
         /// <summary>The output of dotnet --list-runtimes; null makes the command fail.</summary>
         public string? DotNetRuntimes { get; init; }
         public HashSet<string> VisualStudioComponents { get; init; } = [];
+        /// <summary>Answers other commands, such as a tool extension's --extension-info, before the defaults; null passes.</summary>
+        public Func<string, IReadOnlyList<string>, CommandResult?>? Commands { get; init; }
         // No os-release by default, so remediation does not depend on the machine running the tests.
         public string OsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
         public string FallbackOsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
@@ -2446,6 +2448,7 @@ internal sealed partial class ToolTests
             string executable, string workingDirectory, IReadOnlyList<string> arguments,
             CancellationToken cancellationToken)
         {
+            if (Commands?.Invoke(executable, arguments) is { } answered) return Task.FromResult(answered);
             if (executable == "pkg-config")
             {
                 return Task.FromResult(Gtk4Version is null

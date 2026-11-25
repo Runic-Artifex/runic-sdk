@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -49,6 +50,15 @@ internal static partial class Program
             SupportForwarding.ResolveTool(Environment.CurrentDirectory, SystemDoctorRuntime.Instance.FindExecutable, DevApplication.ResolveDotNetHost()) is { } translations)
         {
             return await forwarding!.RunAsync(translations, console ?? new SpectreCommandConsole()).ConfigureAwait(false);
+        }
+        // dotnet runic translations … runs the installed extension with the arguments unchanged. Without it, the
+        // command of the same name below prints the install command; it gets no arguments, so that an extension's
+        // options are not reported as unknown options of the core.
+        if (ToolExtensions.TryParseDispatch(arguments, out KnownExtension? extension, out IReadOnlyList<string> leading, out IReadOnlyList<string> rest))
+        {
+            if (ToolExtensions.Resolve(extension!, Environment.CurrentDirectory, ExtensionEnvironment.System()) is { } resolved)
+                return await ToolExtensions.RunAsync(resolved, [.. leading, .. rest], Environment.CurrentDirectory).ConfigureAwait(false);
+            arguments = [.. leading, extension!.Name];
         }
         // Command Line handles Ctrl+C, SIGTERM and SIGQUIT and reports 0, 1, 2, 3 and 130 as every Runic tool does;
         // dev protects its cleanup from a repeated signal with CommandExecutionContext.ProtectShutdown.
@@ -216,6 +226,22 @@ internal static partial class Program
     {
         _ = (mode, editorDiagnostics, destination);
         return Failure<CommandUnit>(CommandExitCategory.Unavailable, SupportForwarding.MissingToolCode, SupportForwarding.MissingToolMessage);
+    }
+
+    /// <summary>
+    /// <c>dotnet runic translations</c>: <see cref="RunAsync"/> runs the installed Translations tool with the
+    /// arguments; this command runs only when it is not installed and prints the command that installs it.
+    /// </summary>
+    [Command(ToolExtensions.TranslationsName, Description = "Run the Translations tool, runic-translations, with these arguments.",
+        Examples = ["dotnet runic translations compile", "dotnet runic translations --help"])]
+    internal static CommandOutcome<CommandUnit> Translations() => MissingExtension(ToolExtensions.Translations);
+
+    internal static CommandOutcome<CommandUnit> MissingExtension(KnownExtension extension)
+    {
+        string? version = CompatibilitySetAuthority.Current.Train
+            .FirstOrDefault(repository => repository.Name == extension.TrainRepository)?.Version;
+        return Failure<CommandUnit>(CommandExitCategory.Unavailable, ToolExtensions.MissingCode,
+            ToolExtensions.MissingMessage(extension, version, Environment.CurrentDirectory));
     }
 
     /// <summary>

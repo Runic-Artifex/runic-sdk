@@ -1215,13 +1215,35 @@ without `--runtime`.
 ### RAPPCLI1012
 
 `dotnet runic support`, the former name of `runic-translations support`, found
-no Translations tool to forward to: neither `runic-translations` on `PATH` nor
-a local tool manifest that lists `dotnet-runic-translations`.
+no Translations tool to forward to: no `RAX_TRANSLATIONS_TOOL`, local tool
+manifest that lists `dotnet-runic-translations`, `node_modules/.bin/runic-translations`
+or `runic-translations` on `PATH`.
 
 **Fix:** install the tool, for example with `dotnet tool install
 dotnet-runic-translations`, and run `runic-translations support
 preview|collect|remove`. See
 [Support envelopes](../tools/dotnet-runic/README.md#support-envelopes).
+
+### RAPPCLI1013
+
+`dotnet runic translations` found no Translations tool to run: no
+`RAX_TRANSLATIONS_TOOL`, local tool manifest that lists
+`dotnet-runic-translations`, `node_modules/.bin/runic-translations` or
+`runic-translations` on `PATH`. Exit code 1. The message names the command
+that installs the tested release.
+
+**Fix:** run the printed `dotnet tool install dotnet-runic-translations
+--version …` command, then the command again. See
+[Tool extensions](../tools/dotnet-runic/README.md#tool-extensions).
+
+### RAPPCLI1014
+
+`dotnet runic translations` found the Translations tool but could not start
+it, for example because `RAX_TRANSLATIONS_TOOL` names a file that does not
+exist or is not executable. The message names the program and where it was
+found. Exit code 1.
+
+**Fix:** correct or unset `RAX_TRANSLATIONS_TOOL`, or reinstall the tool.
 
 ### RAPPDEV1002
 
