@@ -1,1 +1,7 @@
 #nullable enable
+Runic.Application.Views.RunicPublicationAttribute
+Runic.Application.Views.RunicPublicationAttribute.Mode.get -> Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.RunicPublicationAttribute.RunicPublicationAttribute(Runic.Application.Views.RunicPublicationMode mode) -> void
+Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.RunicPublicationMode.Explicit = 1 -> Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.RunicPublicationMode.Implicit = 0 -> Runic.Application.Views.RunicPublicationMode

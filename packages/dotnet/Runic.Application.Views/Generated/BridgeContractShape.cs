@@ -293,10 +293,10 @@ public static class BridgeContractShape
         var candidate = type.GetInterfaces().Append(type).FirstOrDefault(entry => entry.IsGenericType && entry.GetGenericTypeDefinition() is var generic && (generic == typeof(IReadOnlyDictionary<,>) || generic == typeof(IDictionary<,>)) && entry.GenericTypeArguments[0] == typeof(string));
         value = candidate?.GenericTypeArguments[1]; return value is not null;
     }
-    // Excluded properties are filtered first, by attribute name: resolving the
-    // signature (GetIndexParameters) of an excluded WPF-typed property would
-    // fail in the code generator, which has no Windows Desktop framework.
-    private static IEnumerable<PropertyInfo> PublicModelProperties(Type type) => type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public).Where(property => !BridgeDtoContract.IsRunicIgnored(property) && property.GetIndexParameters().Length == 0);
+    // The generator's BridgedProperties (BridgePublication, #1320). Excluded properties are filtered first, by
+    // attribute name: resolving the signature (GetIndexParameters) of an excluded WPF-typed property would fail in the
+    // code generator, which has no Windows Desktop framework.
+    private static IEnumerable<PropertyInfo> PublicModelProperties(Type type) => BridgePublication.Candidates(type).Where(property => property.GetIndexParameters().Length == 0);
     private static IEnumerable<PropertyInfo> PublicDtoProperties(Type type, bool honorJsonIgnore)
     {
         var hierarchy = new Stack<Type>();

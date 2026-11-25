@@ -1,0 +1,13 @@
+    // global::System.String
+    internal static class String
+    {
+        internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        internal static global::System.String Read(global::System.Text.Json.JsonElement element)
+        {
+            return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
+        }
+    }

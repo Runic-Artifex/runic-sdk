@@ -310,13 +310,13 @@ static void AppendNamespace(StringBuilder source, string? ns)
     if (ns is not null) source.AppendLine($"namespace {ns};");
 }
 
-// The ViewModel's bridged properties: public, declared, not [RunicIgnore] and
-// not indexers. [RunicIgnore] is checked first, by name: the signature of an
-// ignored property, which GetIndexParameters resolves, may need an assembly
-// the generator cannot load, such as a WPF ImageSource.
+// The ViewModel's bridged properties: public, declared, not [RunicIgnore], in explicit publication only the included
+// ones (BridgePublication, #1320), and not indexers. The name-only selection comes first: the signature of a left-out
+// property, which GetIndexParameters resolves, may need an assembly the generator cannot load, such as a WPF
+// ImageSource. BridgeContractShape selects the same properties, so the Hot Reload fingerprint agrees.
 static PropertyInfo[] BridgedProperties(Type model) =>
-    model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
-        .Where(property => !BridgeDtoContract.IsRunicIgnored(property) && property.GetIndexParameters().Length == 0)
+    BridgePublication.Candidates(model)
+        .Where(property => property.GetIndexParameters().Length == 0)
         .OrderBy(property => property.MetadataToken)
         .ToArray();
 
@@ -743,6 +743,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
             $"{model.FullName}: a Bridge ViewModel must be a public, top-level class.", model);
 
+    PublicationChecks.Check(model, knownModels);
     var declared = BridgedProperties(model);
     var contractFingerprint = BridgeContractShape.Compute(model);
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
@@ -2829,6 +2830,10 @@ static class BridgeDiagnosticCodes
     internal const string AutoPropertyValue = "RUNICBRIDGE075";
     /// <summary>Warning: a generated client loses declaration map entries or comments because an assembly has no PDB (#1298).</summary>
     internal const string ClientWithoutPdb = "RUNICBRIDGE076";
+    /// <summary>A ViewModel property is marked both [RunicInclude] and [RunicIgnore] (#1320).</summary>
+    internal const string IncludeIgnored = "RUNICBRIDGE077";
+    /// <summary>Warning: [RunicInclude] on a ViewModel member that the Bridge cannot publish has no effect (#1320).</summary>
+    internal const string IncludeUnpublishable = "RUNICBRIDGE078";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2887,6 +2892,8 @@ static class BridgeDiagnosticCodes
         (ViewQuestionTimeout, "error", "A [RunicInteractionTimeout] is on a view question"),
         (AutoPropertyValue, "warning", "RunicDevelopmentOnlyViews or RunicBridgeBlobs is neither auto nor true"),
         (ClientWithoutPdb, "warning", "A generated client loses its declaration map or comments because an assembly has no PDB"),
+        (IncludeIgnored, "error", "A ViewModel property is marked both [RunicInclude] and [RunicIgnore]"),
+        (IncludeUnpublishable, "warning", "A [RunicInclude] declaration on a ViewModel member that the Bridge cannot publish has no effect"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

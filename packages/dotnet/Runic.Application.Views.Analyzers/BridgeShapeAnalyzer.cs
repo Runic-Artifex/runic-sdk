@@ -375,12 +375,49 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
 
     private static bool IsPublic(IMethodSymbol? accessor) => accessor?.DeclaredAccessibility == Accessibility.Public;
 
-    // Program.cs BridgedProperties: public, declared, instance, not [RunicIgnore] and not indexers.
-    internal static IPropertySymbol[] BridgedProperties(INamedTypeSymbol model) => model.GetMembers().OfType<IPropertySymbol>()
-        .Where(property => !property.IsStatic && !property.IsIndexer
-            && (IsPublic(property.GetMethod) || IsPublic(property.SetMethod))
-            && !IsRunicIgnored(property))
-        .ToArray();
+    // Program.cs BridgedProperties: public, declared, instance, not [RunicIgnore], not indexers and, in explicit publication
+    // (BridgePublication, #1320), [RunicInclude] or implementing a member of a [RunicSharedClient] interface.
+    internal static IPropertySymbol[] BridgedProperties(INamedTypeSymbol model)
+    {
+        var candidates = model.GetMembers().OfType<IPropertySymbol>()
+            .Where(property => !property.IsStatic && !property.IsIndexer
+                && (IsPublic(property.GetMethod) || IsPublic(property.SetMethod))
+                && !IsRunicIgnored(property));
+        if (!IsExplicitPublication(model)) return candidates.ToArray();
+        var shared = SharedClientImplementations(model);
+        return candidates.Where(property => BridgeSymbols.InheritedAttribute(property, RunicInclude) is not null || shared.Contains(property)).ToArray();
+    }
+
+    private const string RunicInclude = "Runic.Application.Views.RunicIncludeAttribute";
+    private const string RunicPublication = "Runic.Application.Views.RunicPublicationAttribute";
+    private const string RunicSharedClient = "Runic.Application.Views.RunicSharedClientAttribute";
+
+    // BridgePublication.DeclaredMode: the class's or the nearest base class's [RunicPublication], then the assembly's.
+    private static bool IsExplicitPublication(INamedTypeSymbol model)
+    {
+        for (var current = model; current is not null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+            if (PublicationMode(BridgeSymbols.Attribute(current, RunicPublication)) is { } mode) return mode == 1;
+        return PublicationMode(BridgeSymbols.Attribute(model.ContainingAssembly, RunicPublication)) == 1;
+    }
+
+    private static int? PublicationMode(AttributeData? attribute) =>
+        attribute is { ConstructorArguments.Length: 1 } && attribute.ConstructorArguments[0].Value is int mode ? mode : null;
+
+    // BridgePublication.SharedClientGetters: the ViewModel's own properties that implement a property of a
+    // [RunicSharedClient] interface or of an interface it extends.
+    private static HashSet<IPropertySymbol> SharedClientImplementations(INamedTypeSymbol model)
+    {
+        var implementations = new HashSet<IPropertySymbol>(SymbolEqualityComparer.Default);
+        foreach (var contract in model.AllInterfaces)
+        {
+            if (BridgeSymbols.Attribute(contract.OriginalDefinition, RunicSharedClient) is null) continue;
+            foreach (var member in contract.AllInterfaces.Prepend(contract).SelectMany(type => type.GetMembers().OfType<IPropertySymbol>()))
+                if (model.FindImplementationForInterfaceMember(member) is IPropertySymbol implementation
+                    && SymbolEqualityComparer.Default.Equals(implementation.ContainingType, model))
+                    implementations.Add(implementation);
+        }
+        return implementations;
+    }
 
     // BridgeDtoContract.IsRunicIgnored: [RunicIgnore] on the property or one it overrides, and the ValidationContext of a
     // ReactiveUI.Validation IValidatableViewModel, which the validation projection represents.

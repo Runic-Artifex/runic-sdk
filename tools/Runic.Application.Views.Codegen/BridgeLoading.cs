@@ -233,7 +233,7 @@ static class BridgeLoading
 
     /// <summary>
     /// Checks that the bridged surface of <paramref name="model"/> loads: its
-    /// public properties that are not <c>[RunicIgnore]</c>, their generic
+    /// published properties (public, not <c>[RunicIgnore]</c> and, in explicit publication, included), their generic
     /// arguments and the members of the DTOs they reach. A member whose type
     /// needs an assembly the generator cannot load is reported at that member,
     /// before the contract of the application's ViewModels is computed (which
@@ -243,8 +243,7 @@ static class BridgeLoading
     {
         var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
         var visited = new HashSet<Type>();
-        foreach (var property in model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
-            .Where(property => !BridgeDtoContract.IsRunicIgnored(property)).OrderBy(property => property.MetadataToken))
+        foreach (var property in BridgePublication.Candidates(model).OrderBy(property => property.MetadataToken))
         {
             CheckProperty(property, $"{model.Name}.{property.Name}", visited, honorJsonIgnore);
             // A command's [RunicFailure] value crosses the Bridge too.

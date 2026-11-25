@@ -104,6 +104,49 @@ public sealed class BridgeShapeAnalyzerTests
         Require(diagnostics.IsEmpty, $"{member}:{Environment.NewLine}{Describe(diagnostics)}");
     }
 
+    // #1320: in explicit publication the analyzer checks only the members the generator publishes: [RunicInclude] ones and
+    // those implementing a [RunicSharedClient] interface. The class's declaration wins over the assembly's.
+    private const string UnpublishedMembers = """
+            [RunicInclude] public string Title { get; set; } = "";
+            public HashSet<string> Tags { get; } = [];
+            public IRelayCommand NewCommand { get; } = null!;
+        """;
+
+    private static string Publication(string onClass, string onAssembly, string types = "", string interfaces = "") =>
+        AppSource(UnpublishedMembers, types)
+            .Replace("namespace App;", onAssembly + "\nnamespace App;", StringComparison.Ordinal)
+            // The harness's PageViewModel publishes its Title in either mode.
+            .Replace("public string Title { get; } = \"\";", "[RunicInclude] public string Title { get; } = \"\";", StringComparison.Ordinal)
+            .Replace("public sealed partial class MainViewModel : INotifyPropertyChanged",
+                onClass + " public sealed partial class MainViewModel : INotifyPropertyChanged" + interfaces, StringComparison.Ordinal);
+
+    private const string ExplicitAssembly = "[assembly: RunicPublication(RunicPublicationMode.Explicit)]";
+
+    [Test]
+    [Arguments("[RunicPublication(RunicPublicationMode.Explicit)]", "")]
+    [Arguments("", ExplicitAssembly)]
+    public async Task ExplicitPublicationChecksOnlyIncludedMembers(string onClass, string onAssembly)
+    {
+        var diagnostics = await AnalyzeAsync(Publication(onClass, onAssembly));
+        Require(diagnostics.IsEmpty, Describe(diagnostics));
+    }
+
+    [Test]
+    public async Task ImplicitPublicationOnTheClassWinsOverTheAssembly()
+    {
+        var diagnostics = await AnalyzeAsync(Publication("[RunicPublication(RunicPublicationMode.Implicit)]", ExplicitAssembly));
+        Require(diagnostics.Select(diagnostic => diagnostic.Id).Order(StringComparer.Ordinal).SequenceEqual(["RUNICBRIDGE003", "RUNICBRIDGE004"]),
+            Describe(diagnostics));
+    }
+
+    [Test]
+    public async Task ExplicitPublicationChecksSharedClientMembers()
+    {
+        var diagnostics = await AnalyzeAsync(Publication("", ExplicitAssembly,
+            "[RunicSharedClient] public interface ITagged { HashSet<string> Tags { get; } }", ", ITagged"));
+        Require(diagnostics.Length == 1 && diagnostics[0].Id == "RUNICBRIDGE003", Describe(diagnostics));
+    }
+
     // CommunityToolkit generates SaveCommand from [RelayCommand] Save, SaveAsync or OnSave: the error is at the method.
     [Test]
     public async Task ReportsAToolkitCommandAtItsMethod()

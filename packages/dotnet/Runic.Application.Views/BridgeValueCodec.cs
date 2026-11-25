@@ -9,6 +9,15 @@ using System.Text.Json;
 namespace Runic.Application.Views;
 
 /// <summary>Marks a public data member as deliberately included in a generated bridge contract.</summary>
+/// <remarks>
+/// A ViewModel in <see cref="RunicPublicationMode.Explicit"/> mode (<see cref="RunicPublicationAttribute"/>) publishes
+/// only the properties marked with it, commands included, and the members of its <see cref="RunicSharedClientAttribute"/>
+/// interfaces. A ViewModel in the default mode publishes its public properties anyway, so there it has no effect. The
+/// attribute on a <see cref="RunicIgnoreAttribute"/> ViewModel property is error <c>RUNICBRIDGE077</c>, and on a
+/// ViewModel member the Bridge cannot publish (a field, a static, non-public or inherited property, or an indexer)
+/// warning <c>RUNICBRIDGE078</c>. On a CommunityToolkit <c>[ObservableProperty]</c> field or <c>[RelayCommand]</c>
+/// method, apply it to the generated property with <c>[property: RunicInclude]</c>.
+/// </remarks>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Property | AttributeTargets.Field,
     AllowMultiple = false, Inherited = true)]
 public sealed class RunicIncludeAttribute : Attribute;
