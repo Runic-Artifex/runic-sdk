@@ -187,6 +187,11 @@ is written. A string set on `value` of a field that is not text is taken as its 
   `commit: "input"`, writes each input. `commit()` resolves with the field's state once its writes settled, so a
   command that depends on the field can follow them and skip a failed write:
   `if ((await title.commit()).error === undefined) await editor.save()`.
+- `commit: "change"` writes the draft only on `commit()`, which blur calls, so the ViewModel's setter runs once, when
+  the user leaves the field. It is the mode a WPF port wants: WPF binds `TextBox.Text` with
+  `UpdateSourceTrigger=LostFocus`, and its setters often validate, normalize or start work. There is no timer, so
+  pass no `delay`; a value `v-model` sets on a boolean field (a checkbox) or a field with `choices` (a `<select>` or radios of an enum) is still written at once, as WPF's default `PropertyChanged` trigger does for those controls; for a `<select>` of another field, add `@change="field.commit"`. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
+  window close or a departure (`field-flush/1`) write the draft too, and so does leaving the scope.
 - `checked: true` writes with the member's checked write, so a change by another writer while the user edits is a
   conflict instead of being overwritten. A `rejected` receipt keeps the draft and sets `error` to a `FieldError` with
   the setter's message; a `conflict` keeps the draft, sets `conflict` to the producer's `{ value, version }` and

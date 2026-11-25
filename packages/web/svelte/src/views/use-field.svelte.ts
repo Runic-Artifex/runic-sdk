@@ -44,7 +44,8 @@ export interface FieldHandle<TValue> {
   /** The user changed the value. */
   input(value: TValue): void;
   /**
-   * The user is done with the field (`attach` calls it on blur): with `commit: "pause"` the draft is written now.
+   * The user is done with the field (`attach` calls it on blur): with `commit: "pause"` or `"change"` the draft is
+   * written now.
    * Resolves with the field's state once its writes settled, so a command that depends on the field can run after
    * it and skip a failed write: `if ((await title.commit()).error === undefined) await editor.save()`. Never
    * rejects; a failure is `error`.
@@ -57,7 +58,8 @@ export interface FieldHandle<TValue> {
   /**
    * Wires an `<input>`, `<textarea>` or `<select>` to the field: `<input {@attach title.attach}>`. It writes the text
    * typed (`input` events; `change` of a `<select>` or checkbox, whose `checked` is the value), writes nothing during
-   * IME composition, commits on blur, keeps the element's text (a checkbox's `checked`) equal to the field's without
+   * IME composition, commits on blur (and, with `commit: "change"`, after each choice of a checkbox or
+   * `<select>`), keeps the element's text (a checkbox's `checked`) equal to the field's without
    * moving the caret while it already shows it, and sets `aria-invalid` while the field has `errors` or an `error`.
    */
   readonly attach: Attachment<FieldElement>;
@@ -98,12 +100,16 @@ export function useField<TClient extends ViewClient, TValue>(
     });
   });
 
+  // With `commit: "change"` a choice is written at once; typed text waits for the blur.
+  const commitsChoices = controller.field.commitMode === "change";
   const attach: Attachment<FieldElement> = element => {
     const checkbox = element instanceof HTMLInputElement && element.type === "checkbox";
+    const choice = checkbox || element instanceof HTMLSelectElement;
     let composing = false;
     const changed = () => {
       if (checkbox) controller.input((element as HTMLInputElement).checked as TValue);
       else controller.inputText(element.value);
+      if (commitsChoices && choice) void controller.commit();
     };
     const compositionStart = () => { composing = true; controller.compositionStart(); };
     const compositionEnd = () => { composing = false; controller.compositionEnd(element.value); };
@@ -133,9 +139,15 @@ export function useField<TClient extends ViewClient, TValue>(
 
   // One derived per member, so a reader of one member runs again only when that member changes.
   const fields = derivedFields(() => current, ["value", "text", "editing", "error", "errors", "conflict", "validating"] as const);
+  // `bind:value` and `bind:checked`: with `commit: "change"`, a value set on a boolean field (a checkbox) or a field
+  // with choices (a select or radios) is written at once.
+  const setsChoice = commitsChoices && (controller.field.kind === "boolean" || controller.field.choices !== undefined);
   return {
     get value() { return fields.value(); },
-    set value(value: TValue) { controller.input(value); },
+    set value(value: TValue) {
+      controller.input(value);
+      if (setsChoice) void controller.commit();
+    },
     get text() { return fields.text(); },
     set text(text: string) { controller.inputText(text); },
     get editing() { return fields.editing(); },

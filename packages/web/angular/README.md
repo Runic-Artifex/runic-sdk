@@ -258,6 +258,15 @@ The options are those of the controller and `injector`:
   once its writes settled, so a command that depends on the field can follow it
   and skip a failed write:
   `if ((await this.title.commit()).error === undefined) await this.editor.client()?.save();`.
+- `commit: "change"` writes the draft only on `commit()`, which blur calls, so the
+  ViewModel's setter runs once, when the user leaves the field. It is the mode a
+  WPF port wants: WPF binds `TextBox.Text` with `UpdateSourceTrigger=LostFocus`,
+  and its setters often validate, normalize or start work. There is no timer, so
+  pass no `delay`; `[runicField]` still writes each choice of a checkbox, radio or
+  select at once, as WPF's default `PropertyChanged` trigger does for those
+  controls. `injectForm`'s `submit()` and `commit()`, `commitAllFields()` and the
+  runtime's flush before a window close or a departure (`field-flush/1`) write the
+  draft too, and so does destroying the injection context.
 - `checked: true` writes with the member's checked write: a change by another writer
   since the draft started is a conflict instead of being overwritten.
 - `coalesce` and `keepDraftOnError`, as for `injectTextField`.
@@ -378,8 +387,9 @@ export class EditorPage {
 
 Signal Forms does not tell the field when the element loses focus: always bind
 `(blur)="title.commit()"` next to `[formField]`, as above. Without it a
-`commit: "pause"` field writes only after the pause, and a value typed just before
-Save may still wait. `[formField]` also writes during IME composition; prefer
+`commit: "pause"` field writes only after the pause, a `commit: "change"` field
+only when a form or a flush commits it, and a value typed just before Save may
+still wait. `[formField]` also writes during IME composition; prefer
 `[runicField]` where composition matters.
 
 ## Outlet

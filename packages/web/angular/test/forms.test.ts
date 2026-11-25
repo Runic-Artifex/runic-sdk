@@ -113,6 +113,66 @@ describe("RunicFieldDirective alone", () => {
   });
 });
 
+class OnBlur {
+  readonly editor = viewOf(editor);
+  readonly title = injectField(this.editor, Fields.title, { commit: "change" });
+  readonly done = injectField(this.editor, Fields.done, { commit: "change" });
+  readonly count = injectField(this.editor, Fields.count, { commit: "change" });
+  readonly picked = injectField(this.editor, Fields.count, { commit: "change" });
+}
+Component({
+  selector: "test-on-blur",
+  standalone: true,
+  imports: [RunicFieldDirective],
+  template: `<input id="title" [runicField]="title"><input id="done" type="checkbox" [runicField]="done">
+    <select id="count" [runicField]="count"><option value="0">0</option><option value="2">2</option></select>
+    <input id="three" type="radio" name="picked" value="3" [runicField]="picked">`,
+})(OnBlur);
+
+describe("RunicFieldDirective with commit: \"change\" (#1316)", () => {
+  test("writes typed text on blur only, and a checkbox's, select's or radio's choice at once", async () => {
+    editor = new FakeEditor();
+    const { fixture, root } = await render(OnBlur);
+    const input = root.querySelector<HTMLInputElement>("#title")!;
+    type(input, "host");
+    type(input, "host.example");
+    await stable(fixture);
+    expect(editor.written).toEqual([]);
+    expect(fixture.componentInstance.title.editing()).toBe(true);
+    expect(input.value).toBe("host.example");
+    input.dispatchEvent(new Event("change"));
+    input.dispatchEvent(new Event("blur"));
+    expect(editor.written).toEqual(["host.example"]);
+
+    const checkbox = root.querySelector<HTMLInputElement>("#done")!;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(editor.written).toEqual(["host.example", true]);
+
+    const select = root.querySelector<HTMLSelectElement>("#count")!;
+    select.value = "2";
+    select.dispatchEvent(new Event("change"));
+    expect(editor.written).toEqual(["host.example", true, 2]);
+
+    const radio = root.querySelector<HTMLInputElement>("#three")!;
+    radio.checked = true;
+    radio.dispatchEvent(new Event("change"));
+    expect(editor.written).toEqual(["host.example", true, 2, 3]);
+    await stable(fixture);
+    expect(fixture.componentInstance.title.editing()).toBe(false);
+    fixture.destroy();
+  });
+
+  test("disposal writes a draft that waits for the blur", async () => {
+    editor = new FakeEditor();
+    const { fixture, root } = await render(OnBlur);
+    type(root.querySelector<HTMLInputElement>("#title")!, "unsaved");
+    expect(editor.written).toEqual([]);
+    fixture.destroy();
+    expect(editor.written).toEqual(["unsaved"]);
+  });
+});
+
 class Reactive {
   readonly editor = viewOf(editor);
   readonly title = injectField(this.editor, Fields.title);

@@ -254,7 +254,7 @@ function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
     if (!features.has(presentedFeature)) return;
     const current = connection;
     flushNotifications();
-    // Drafts that wait, such as commit: "pause" ones, are written before the close is acknowledged (C2).
+    // Drafts that wait, such as commit: "pause" and "change" ones, are written before the close is acknowledged (C2).
     const drafts = commitDrafts(slots);
     if (drafts !== undefined) {
       await firstOf(drafts, closingFlushLimit);

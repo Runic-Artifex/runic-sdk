@@ -11,6 +11,8 @@ export type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectEl
 
 function wire<TValue>(element: FieldElement, field: FieldController<unknown, unknown, TValue>): { show(): void; detach(): void } {
   const checkbox = element.tagName === "INPUT" && (element as HTMLInputElement).type === "checkbox";
+  // With `commit: "change"` a choice is written at once; typed text waits for the blur.
+  const commitsChoice = (checkbox || element.tagName === "SELECT") && field.field.commitMode === "change";
   let composing = false;
   const show = () => {
     const { value, text, errors, error } = field.current;
@@ -23,6 +25,7 @@ function wire<TValue>(element: FieldElement, field: FieldController<unknown, unk
   const changed = () => {
     if (checkbox) field.input((element as HTMLInputElement).checked as TValue);
     else field.inputText(element.value);
+    if (commitsChoice) void field.commit();
   };
   const compositionStart = () => { composing = true; field.compositionStart(); };
   const compositionEnd = () => { composing = false; field.compositionEnd(element.value); };
@@ -50,7 +53,8 @@ function wire<TValue>(element: FieldElement, field: FieldController<unknown, unk
 /**
  * Wires an `<input>`, `<textarea>` or `<select>` to a field controller until the returned function is called: it
  * writes the text typed (`input` events; `change` of a `<select>` or a checkbox, whose `checked` is the value),
- * writes nothing during IME composition, commits on blur, keeps the element's text (a checkbox's `checked`) equal to
+ * writes nothing during IME composition, commits on blur (and, with `commit: "change"`, after each choice of a
+ * checkbox or `<select>`), keeps the element's text (a checkbox's `checked`) equal to
  * the field's without moving the caret while it already shows it, and sets `aria-invalid` while the field has
  * `errors` or an `error`. The caller feeds the controller its View with `setSource`; {@link bindField} does both.
  */

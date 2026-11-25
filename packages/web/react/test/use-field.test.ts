@@ -144,6 +144,40 @@ describe("useField", () => {
     expect(new Set(handlers).size).toBe(1);
   });
 
+  test("commit: change writes typed text on blur only, and a checkbox's or select's choice at once (#1316)", async () => {
+    const client = fakeClient({ title: "saved" });
+    let title: FieldHandle<string> | undefined;
+    let done: FieldHandle<boolean> | undefined;
+    let step: FieldHandle<number> | undefined;
+    function Editor(): ReactNode {
+      const view = useView(client);
+      title = useField(view, Fields.title, { commit: "change" });
+      done = useField(view, Fields.done, { commit: "change" });
+      step = useField(view, Fields.step, { commit: "change" });
+      return createElement("div", null,
+        createElement("input", { id: "title", ...title.inputProps }),
+        createElement("input", { id: "done", type: "checkbox", ...done.inputProps }),
+        createElement("select", { id: "step", ...step.inputProps },
+          createElement("option", { value: "0" }, "0"), createElement("option", { value: "2" }, "2")));
+    }
+    await mount(createElement(Editor));
+    await act(async () => { title!.inputProps.onChange(change("saved!")); });
+    await act(async () => { title!.inputProps.onChange(change("saved!!")); });
+    await settle();
+    expect(client.calls).toEqual([]);
+    expect(title!).toMatchObject({ value: "saved!!", editing: true });
+    await act(async () => { document.querySelector<HTMLInputElement>("#title")!.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!"]);
+    await act(async () => { client.calls[0]!.resolve(); });
+
+    await act(async () => { document.querySelector<HTMLInputElement>("#done")!.click(); });
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!", true]);
+    const select = document.querySelector<HTMLSelectElement>("#step")!;
+    select.value = "2";
+    await act(async () => { step!.inputProps.onChange({ currentTarget: select } as never); });
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!", true, 2]);
+  });
+
   test("blur commits through inputProps.onBlur", async () => {
     const client = fakeClient();
     let field: FieldHandle<string> | undefined;

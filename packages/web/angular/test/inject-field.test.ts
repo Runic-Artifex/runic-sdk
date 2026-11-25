@@ -161,6 +161,27 @@ describe("injectField", () => {
     expect(() => injectField(viewOf(editor), Fields.title, { injector: TestBed.inject(Injector) })).not.toThrow();
   });
 
+  test("commit: \"change\" keeps the draft until commit(), and injectForm's submit and commit write it (#1316)", async () => {
+    const editor = new FakeEditor({ title: "Old" });
+    const view = viewOf(editor);
+    const title = TestBed.runInInjectionContext(() => injectField(view, Fields.title, { commit: "change" }));
+    const form = TestBed.runInInjectionContext(() => injectForm({ title }));
+    TestBed.tick();
+    expect(title.field.commitMode).toBe("change");
+    title.inputText("New");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    TestBed.tick();
+    expect(editor.written).toEqual([]);
+    expect(title.editing()).toBe(true);
+    expect(form.pending()).toBe(true);
+    await form.commit();
+    expect(editor.written).toEqual(["New"]);
+    title.inputText("Newer");
+    const result = await form.submit(() => editor.snapshot.title);
+    expect(editor.written).toEqual(["New", "Newer"]);
+    expect(result).toEqual({ status: "submitted", result: "Newer" });
+  });
+
   test("injectForm: a pause draft makes the form dirty, and submit writes it before the command", async () => {
     const editor = new FakeEditor({ title: "Old", count: 1 });
     const view = viewOf(editor);

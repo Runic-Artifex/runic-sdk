@@ -60,19 +60,23 @@ export type FieldDefinition<TClient, TState, TValue> =
   & Partial<Omit<BridgeField<TClient, TState, TValue>, "read" | "write" | "kind">>
   & { readonly kind?: BridgeFieldKind };
 
-/** When a field writes what the user typed. */
-export type FieldCommit = "input" | "pause";
+/** When a field writes what the user typed: on each input, after a pause, or when the user is done with the field. */
+export type FieldCommit = "input" | "pause" | "change";
 
 // `any` by default, so options written without a value type, as before 0.16, fit every field.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface FieldOptions<TValue = any> {
   /**
    * `input` (the default) writes each input, in order. `pause` writes the draft `delay` milliseconds after the last
-   * input and at once on `commit()`, which the framework bindings call when the element loses focus; text that was
-   * not written yet is written when the field is disposed.
+   * input and at once on `commit()`, which the framework bindings call when the element loses focus. `change` writes
+   * the draft only on `commit()`, so on blur, as the DOM `change` event of a text input and WPF's
+   * `UpdateSourceTrigger=LostFocus` do; a form's `submit()` and `commit()`, `commitAllFields()` and the runtime's
+   * flush before a window close or a departure write it too. A choice is still written at once: the bindings commit
+   * after the `change` of a checkbox or select they wire (and of a radio, with `[runicField]`). With `pause` and `change`, text that was not written yet is written when the
+   * field is disposed.
    */
   readonly commit?: FieldCommit;
-  /** The pause of `commit: "pause"`, in milliseconds. Defaults to 700. */
+  /** The pause of `commit: "pause"`, in milliseconds. Defaults to 700. Not used by the other modes. */
   readonly delay?: number;
   /**
    * Writes with the member's checked write instead of its setter: the write is checked against the value and version
@@ -141,6 +145,11 @@ export interface FieldController<TState, TClient, TValue> {
     readonly offset: boolean;
     /** The member's DataAnnotations, for an element's `required`, `maxlength`, `min`, `max` and `pattern`. */
     readonly constraints: BridgeFieldConstraints | undefined;
+    /**
+     * The `commit` option (`"input"` without one). With `"change"`, a binding commits after the `change` of a
+     * checkbox, radio or select, so a choice is written at once while typed text waits for the blur.
+     */
+    readonly commitMode: FieldCommit;
   };
   /** The text the field shows for `value` when no draft exists: the `format` option, or the kind's form. */
   format(value: TValue): string;
@@ -163,7 +172,8 @@ export interface FieldController<TState, TClient, TValue> {
   /** The IME composition ended with `text`, which is then written like `inputText`. */
   compositionEnd(text: string): void;
   /**
-   * The user is done with the field, such as when it loses focus: with `commit: "pause"` the draft is written now.
+   * The user is done with the field, such as when it loses focus: with `commit: "pause"` or `"change"` the draft is
+   * written now.
    * The text typed is shown formatted again. Resolves with `current` once no write of the field is in flight or
    * waiting, so a command that depends on the field, such as Save, can run after it and skip a failed write:
    * `if ((await title.commit()).error === undefined) await editor.save()`. It never rejects; a failed write is the
@@ -248,7 +258,7 @@ export function liveFieldCount(): number {
 }
 
 /**
- * Commits every field of the current instance (the page's, outside `RunicInstance.run`) that holds a draft, such as a `commit: "pause"` draft not written yet, and resolves
+ * Commits every field of the current instance (the page's, outside `RunicInstance.run`) that holds a draft, such as a `commit: "pause"` or `"change"` draft not written yet, and resolves
  * once their writes settled. The runtime calls it when the application closes the window (`presented/1`), before it
  * acknowledges the close; call it before a departure that the page does not start itself, such as before a host
  * command that navigates. It never rejects.
@@ -284,8 +294,11 @@ export function createFieldController<TState, TClient, TValue>(
   const checked = options.checked === true || definition.checkedOnly === true;
   if (checked && (typeof definition.checked !== "function" || typeof definition.baseline !== "function"))
     throw new TypeError("A checked field needs the member's checked write and baseline; use a generated field descriptor.");
-  const pause = options.commit === "pause";
-  if (options.commit !== undefined && options.commit !== "input" && !pause) throw new RangeError("commit must be \"input\" or \"pause\".");
+  const commitMode: FieldCommit = options.commit ?? "input";
+  if (commitMode !== "input" && commitMode !== "pause" && commitMode !== "change")
+    throw new RangeError("commit must be \"input\", \"pause\" or \"change\".");
+  // `pause` and `change` keep the draft until a pause ends (only `pause`) or `commit()`.
+  const holds = commitMode !== "input";
   const delay = options.delay ?? 700;
   if (!Number.isFinite(delay) || delay < 0) throw new RangeError("delay must be a non-negative number of milliseconds.");
   const coalesce = checked || options.coalesce !== false;
@@ -310,7 +323,7 @@ export function createFieldController<TState, TClient, TValue>(
   };
   const format: (value: TValue) => string = options.format ?? kindFormatter<TValue>(traits);
   const field = Object.freeze({ kind, nullable, integer: traits.integer, choices: definition.choices, offset: traits.offset,
-    constraints: definition.constraints });
+    constraints: definition.constraints, commitMode });
   const listeners = new Set<() => void>();
   let source: FieldSource<TState, TClient> | undefined;
   let draft: { readonly value: TValue } | undefined;
@@ -325,7 +338,7 @@ export function createFieldController<TState, TClient, TValue>(
   let lastWrite: Promise<unknown> = Promise.resolve();
   // The value to write next: typed while a write was in flight (coalescing) or while no client was connected.
   let queued: { readonly value: TValue } | undefined;
-  // commit: "pause": the draft has not been handed to a write yet.
+  // commit: "pause" or "change": the draft has not been handed to a write yet.
   let unsent = false;
   let timer: unknown;
   // checked: the field's value and version that the next write is checked against.
@@ -336,8 +349,8 @@ export function createFieldController<TState, TClient, TValue>(
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
   const live: LiveField = {
-    // A draft not sent yet: a pause that has not ended, or a value that waits for the write in flight. A write in
-    // flight is on its way already, and a text that does not parse has nothing to write.
+    // A draft not sent yet: a pause that has not ended, a `change` draft before its commit, or a value that waits for
+    // the write in flight. A write in flight is on its way already, and a text that does not parse has nothing to write.
     hasDraft: () => !composing && (unsent || queued !== undefined),
     commit: () => controller.commit(),
   };
@@ -516,7 +529,10 @@ export function createFieldController<TState, TClient, TValue>(
     if (conflict === undefined) error = undefined;
     // During IME composition the value is only shown; compositionEnd writes it.
     if (composing) return;
-    if (pause) { unsent = true; schedule(); }
+    if (holds) {
+      unsent = true;
+      if (commitMode === "pause") schedule();
+    }
     else request(value);
   }
 

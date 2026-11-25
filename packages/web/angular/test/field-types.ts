@@ -14,6 +14,11 @@ declare const page: ViewHandle<EditorClient>;
 declare const root: ViewHandle<EditorClient & Disposable>;
 export const title: FieldHandle<string> = injectField(page, EditorFields.title, { injector });
 export const step: FieldHandle<number> = injectField(root, EditorFields.step, { injector, commit: "pause", checked: true });
+// commit: "change" (#1316) writes on blur; the handle reports the mode.
+export const onBlur: FieldHandle<string> = injectField(page, EditorFields.title, { injector, commit: "change" });
+export const mode: "input" | "pause" | "change" = onBlur.field.commitMode;
+// @ts-expect-error Only the three modes exist.
+injectField(page, EditorFields.title, { injector, commit: "blur" });
 // `[runicField]` takes any field.
 export const any: FieldHandle<unknown> = title;
 // @ts-expect-error A field of another View's client does not fit.

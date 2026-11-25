@@ -245,6 +245,53 @@ test("commit: pause keeps the draft until the written value settled", async () =
   assert.equal(controller.current.editing, false);
 });
 
+test("commit: change keeps the draft without a timer and writes it on commit, a flush and dispose (#1316)", async () => {
+  const { client, controller } = setup(title, { commit: "change", delay: 50 });
+  assert.equal(controller.field.commitMode, "change");
+  controller.inputText("D");
+  controller.inputText("Dr");
+  assert.equal(timers.size, 0, "no pause timer");
+  advance(10_000_000);
+  assert.equal(client.calls.length, 0, "nothing is written while the field has focus");
+  assert.equal(controller.current.value, "Dr");
+  assert.equal(controller.current.editing, true);
+  // A push of the View keeps the draft.
+  client.set({ title: "Other" });
+  controller.setSource({ state: client.snapshot, client });
+  assert.equal(controller.current.value, "Dr");
+  const committed = controller.commit();
+  assert.deepEqual(client.calls.map(call => call.value), ["Dr"], "commit writes at once");
+  client.set({ title: "Dr" });
+  client.calls[0]!.resolve();
+  assert.equal((await committed).editing, false);
+  // IME composition: nothing is written when it ends, only on commit.
+  controller.compositionStart();
+  controller.inputText("Dr日");
+  controller.compositionEnd("Dr日本");
+  assert.equal(client.calls.length, 1);
+  assert.equal(controller.current.text, "Dr日本");
+  const { commitAllFields } = await import("../dist/index.js");
+  const flushed = commitAllFields();
+  assert.deepEqual(client.calls.map(call => call.value), ["Dr", "Dr日本"], "commitAllFields writes the draft");
+  client.calls[1]!.resolve();
+  await flushed;
+  controller.inputText("Last");
+  controller.dispose();
+  assert.deepEqual(client.calls.map(call => call.value), ["Dr", "Dr日本", "Last"], "dispose writes the draft");
+});
+
+test("commit: change writes nothing for text that does not parse, and the next commit writes once it does", async () => {
+  const { client, controller } = setup(step, { commit: "change" });
+  controller.inputText("4");
+  controller.inputText("4x");
+  await controller.commit();
+  assert.equal(client.calls.length, 0);
+  assert.equal((controller.current.error as FieldError).kind, "invalid-text");
+  controller.inputText("5");
+  void controller.commit();
+  assert.deepEqual(client.calls.map(call => call.value), [5]);
+});
+
 test("a number field parses its text, keeps text that does not parse, and shows what was typed", async () => {
   const { client, controller } = setup(step);
   controller.inputText("-");

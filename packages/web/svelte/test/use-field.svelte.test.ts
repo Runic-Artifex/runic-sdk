@@ -5,6 +5,7 @@ import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
 import { FieldError, useField, useForm, type BridgeField, type FieldHandle, type FormHandle } from "../src/views/index.js";
 import FieldOwner from "./fixtures/FieldOwner.svelte";
+import OnBlurOwner from "./fixtures/OnBlurOwner.svelte";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean; readonly titleErrors: readonly string[] };
 type Call = { readonly member: string; readonly value: unknown; readonly checked: boolean; resolve(result?: unknown): void };
@@ -101,6 +102,33 @@ describe("useField", () => {
     expect(committed).toBe(true);
     expect(title).toMatchObject({ value: "saved! 漢", editing: false });
     destroy();
+  });
+
+  test("commit: change: the attachment writes typed text on blur only, and each choice of a checkbox or select at once (#1316)", async () => {
+    const client = fakeClient({ title: "saved" });
+    const target = document.createElement("div");
+    document.body.append(target);
+    const owner = mount(OnBlurOwner<Client>, { target, props: { source: client, fields: Fields } });
+    flushSync();
+    const element = <T extends HTMLElement>(id: string) => target.querySelector<T>(`#${id}`)!;
+    const input = element<HTMLInputElement>("title");
+    type(input, "saved!");
+    type(input, "saved!!");
+    await settle();
+    expect(client.calls).toEqual([]);
+    expect(owner.title).toMatchObject({ value: "saved!!", editing: true });
+    input.dispatchEvent(new Event("blur"));
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!"]);
+    const checkbox = element<HTMLInputElement>("done");
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!", true]);
+    const select = element<HTMLSelectElement>("step");
+    select.value = "2";
+    select.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!", true, 2]);
+    unmount(owner);
+    target.remove();
   });
 
   test("the attachment keeps the element's text without setting it while it already shows it", async () => {

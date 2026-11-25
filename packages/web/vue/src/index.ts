@@ -515,7 +515,7 @@ export interface FieldHandle<TValue> {
   /** The user changed the value. */
   input(value: TValue): void;
   /**
-   * The user is done with the field (`@blur="title.commit"`): with `commit: "pause"` the draft is written now.
+   * The user is done with the field (`@blur="title.commit"`): with `commit: "pause"` or `"change"` the draft is written now.
    * Resolves with the field's state once its writes settled, so a command that depends on the field can run after it
    * and skip a failed write: `if ((await title.commit()).error === undefined) await editor.save()`. Never rejects; a
    * failure is `error`.
@@ -531,7 +531,8 @@ export interface FieldHandle<TValue> {
  * Binds an element to one View member while the current effect scope is active, through `createFieldController`:
  * pass a generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. The handle is
  * `reactive`; bind `v-model` to its `value` (`text` for number inputs) and call `commit` on blur. `v-model` already
- * writes nothing while an IME composition is in progress. `options` are read once, when the field is created. Call
+ * writes nothing while an IME composition is in progress. With `commit: "change"`, a value set on a boolean field or
+ * a field with `choices` is written at once; a `<select>` or radios of another field call `commit` on `@change`. `options` are read once, when the field is created. Call
  * it in `setup()` or `effectScope().run()`: outside an effect scope it is never released (development builds warn).
  *
  * ```vue
@@ -562,12 +563,16 @@ export function useField<TClient extends ViewClient, TValue>(
   const kind = controller.field.kind;
   // `v-model` on `<input type="number">` sets a string while its text is not a number.
   const textual = kind === undefined || kind === "text";
+  // With `commit: "change"`, a boolean field (a checkbox) and a field with choices (a select or radios) write each
+  // value `v-model` sets at once; typed text waits for `commit` on blur.
+  const commitsChoice = controller.field.commitMode === "change" && (kind === "boolean" || controller.field.choices !== undefined);
   return reactive({
     value: computed({
       get: () => current.value.value,
       set: (value: TValue) => {
         if (typeof value === "string" && !textual) controller.inputText(value);
         else controller.input(value);
+        if (commitsChoice) void controller.commit();
       },
     }),
     // `v-model` on `<input type="number">` sets a number once its text is one.

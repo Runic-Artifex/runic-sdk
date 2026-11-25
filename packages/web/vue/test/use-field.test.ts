@@ -120,6 +120,39 @@ describe("useField", () => {
     app.unmount();
   });
 
+  test("commit: change: v-model on text writes on blur only; a checkbox and a field with choices write at once (#1316)", async () => {
+    const client = fakeClient({ title: "saved" });
+    const { field, target, app } = mountField(() => useField(useView(client), Fields.title, { commit: "change" }),
+      title => withDirectives(h("input", {
+        "onUpdate:modelValue": ($event: string) => { title.value = $event; }, onBlur: title.commit,
+      }), [[vModelText, title.value]]));
+    const input = target.querySelector("input")!;
+    type(input, "saved!");
+    type(input, "saved!!");
+    await settle();
+    expect(client.calls).toEqual([]);
+    expect(field).toMatchObject({ value: "saved!!", editing: true });
+    input.dispatchEvent(new Event("blur"));
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!"]);
+    app.unmount();
+
+    const checks = mountField(() => useField(useView(client), Fields.done, { commit: "change" }),
+      done => withDirectives(h("input", { type: "checkbox", "onUpdate:modelValue": ($event: boolean) => { done.value = $event; } }),
+        [[vModelCheckbox, done.value]]));
+    const checkbox = checks.target.querySelector("input")!;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!", true]);
+    checks.app.unmount();
+
+    // A select or radios of an enum: the descriptor has choices.
+    const sizes = descriptor<"step", number>("step", "number", { choices: [1, 2, 3] });
+    const choice = mountField(() => useField(useView(client), sizes, { commit: "change" }), () => h("select"));
+    choice.field.value = 2;
+    expect(client.calls.map(call => call.value)).toEqual(["saved!!", true, 2]);
+    choice.app.unmount();
+  });
+
   test("a number field bound with v-model on text keeps `-` and `1.` and writes numbers", async () => {
     const client = fakeClient({ step: 3 });
     // <input type="number" v-model="step.text" @blur="step.commit">
