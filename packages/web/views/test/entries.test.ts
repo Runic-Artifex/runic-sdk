@@ -73,3 +73,10 @@ test("no example or test script bundles the source of this package, which only s
   const offenders = scripts.filter(name => /packages\/web\/views\/src\/[\w-]+\.ts/.test(readFileSync(new URL(name, repository), "utf8")));
   assert.deepEqual(offenders, []);
 });
+
+test("no shipped JavaScript has a source map comment other than its own trailing one", async () => {
+  // eng/verify-packages.mjs runs the same check on the packed package (#1050); the emitter's templates are the risk here.
+  const { packageSourceMapProblems } = await import(new URL("../../../../eng/source-map-comments.mjs", import.meta.url).href) as
+    { packageSourceMapProblems: (directory: string) => string[] };
+  assert.deepEqual(packageSourceMapProblems(new URL("../dist", import.meta.url).pathname), []);
+});

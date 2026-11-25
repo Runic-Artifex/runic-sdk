@@ -8,6 +8,10 @@ export const CONTRACT_SUFFIX = ".contract.d.ts";
 
 const MARK = /\u0006(\d+)\u0006/g;
 
+// The comment that names a contract's map, built from parts: a debugger takes such a comment anywhere in a shipped file
+// as that file's own source map (#1050), so the emitter's JavaScript must not contain it literally.
+const SOURCE_MAP_COMMENT = ["//#", "sourceMappingURL="].join(" ");
+
 /** The members marked in the contracts of one generation: a source id and the declared name the mark follows. */
 export class DeclarationMarks {
   private readonly targets: { id: string; name: string }[] = [];
@@ -44,7 +48,7 @@ export class DeclarationMarks {
     if (names.length === 0) return { text: body, map: null };
     if (!body.endsWith("\n")) body += "\n";
     const file = path.split("/").pop()!;
-    body += `//# sourceMappingURL=${file}.map\n`;
+    body += `${SOURCE_MAP_COMMENT}${file}.map\n`;
     return { text: body, map: render(file, body, names) };
   }
 }
