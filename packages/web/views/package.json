@@ -56,6 +56,12 @@
       "import": "./dist/experimental.js",
       "default": "./dist/experimental.js"
     },
+    "./codegen": {
+      "types": "./dist/codegen/index.d.ts",
+      "development": "./dist/development/codegen/index.js",
+      "import": "./dist/codegen/index.js",
+      "default": "./dist/codegen/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

@@ -8,9 +8,9 @@ checked against the same descriptions.
 
 The IR is a **build intermediate**. A producer writes one document per unit and build; it is never committed or
 published, and nothing reads it at run time. The .NET generator writes `contract.ir.json` beside the generated C# in
-`obj/<configuration>/<framework>/runic-bridge/`, after a generation without errors. The TypeScript emitter that will
-read it is not part of this version; until it is, the generated TypeScript comes from the .NET generator itself and the
-IR is checked against it through the [corpus](#corpus).
+`obj/<configuration>/<framework>/runic-bridge/`, after a generation without errors. The TypeScript emitter that reads
+it, `generate` of `@runic-artifex/views/codegen`, is internal: the build does not run it yet, so the generated
+TypeScript still comes from the .NET generator, and the emitter is checked against it through the [corpus](#corpus).
 
 | File | Content |
 | --- | --- |
@@ -225,5 +225,7 @@ relative to the corpus directory.
 The engineering test `eng/views-contract-ir.test.mjs` (`bun run test eng/views-contract-ir.test.mjs`, and in the
 engineering job) checks every corpus document against the schema, and that the contract of each of its Views is the
 one the example's committed clients carry, so a change to an example's contract that leaves the corpus behind fails.
+`packages/web/views/test/codegen.test.ts` checks that the emitter writes, from each corpus document, the example's
+committed clients byte for byte.
 To update the corpus, build the examples (`bun run build` builds those of `RunicSdk.Core.slnx`), then run the test with
 `RUNIC_UPDATE_CONTRACT_IR_CORPUS=1`, which copies each example's `contract.ir.json` from its `obj` directory.

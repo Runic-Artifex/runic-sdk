@@ -20,7 +20,7 @@ test("every entry resolves for types, the development build, import and require-
     assert.equal(conditions["types"], conditions["default"]!.replace(/\.js$/, ".d.ts"), `${entry}: types`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
-    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./package.json"]);
+    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./codegen", "./package.json"]);
 });
 
 test("binding and generator APIs are not in the application entries; graduated APIs are", async () => {
@@ -72,4 +72,11 @@ test("no example or test script bundles the source of this package, which only s
     .filter(name => /\.(?:mjs|js|ts)$/.test(name) && !name.includes("node_modules") && !/\/(?:dist|bin|obj)\//.test(name));
   const offenders = scripts.filter(name => /packages\/web\/views\/src\/[\w-]+\.ts/.test(readFileSync(new URL(name, repository), "utf8")));
   assert.deepEqual(offenders, []);
+});
+
+test("no shipped JavaScript has a source map comment other than its own trailing one", async () => {
+  // eng/verify-packages.mjs runs the same check on the packed package (#1050); the emitter's templates are the risk here.
+  const { packageSourceMapProblems } = await import(new URL("../../../../eng/source-map-comments.mjs", import.meta.url).href) as
+    { packageSourceMapProblems: (directory: string) => string[] };
+  assert.deepEqual(packageSourceMapProblems(new URL("../dist", import.meta.url).pathname), []);
 });
