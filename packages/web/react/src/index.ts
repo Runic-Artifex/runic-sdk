@@ -20,6 +20,7 @@ import {
   type InteractionInput,
   type InteractionName,
   type InteractionOutput,
+  type InteractionRequest,
   createLatestOperationController,
   createOperationController,
   createFieldController,
@@ -760,33 +761,34 @@ export interface InteractionView<TClient extends ViewClient> {
   readonly client: TClient | undefined;
 }
 
-/** An interaction answered from the render: its open request, and `respond`. */
+/** An interaction answered from the render: its oldest open request. */
 export interface InteractionHandle<TInput, TOutput> {
-  /** The input of the oldest open request, or `undefined` while none is open. */
-  readonly request: TInput | undefined;
-  /** How many requests are open; for an interaction without an input (`Unit`), `pending > 0` tells that one is. */
-  readonly pending: number;
-  /** Answers the oldest open request, and shows the next one. Ignored when no request is open. The same on every render. */
-  readonly respond: (answer: TOutput) => void;
+  /**
+   * The oldest open request, `{ input, respond(answer) }`, or `undefined` while none is open: the same object while the
+   * request is open, so it can be a key. Its `respond` answers that request only, and is ignored once it has ended.
+   */
+  readonly request: InteractionRequest<TInput, TOutput> | undefined;
 }
 
 /**
  * Handles one interaction of a View while the component is mounted, through `createInteractionController`: render
- * the dialog from `request` and answer it with `respond`. Pass the name of a generated interaction, such as
+ * the dialog from `request` and answer it with the request's `respond`. Pass the name of a generated interaction, such as
  * `"confirmDiscard"` for `Interaction<DiscardInput, bool> ConfirmDiscard`; the input and the answer are typed from it.
  *
  * ```tsx
  * const editor = useView(page);
  * const discard = useInteraction(editor, "confirmDiscard");
- * {discard.request && <Confirm text={discard.request.title} onYes={() => discard.respond(true)} onNo={() => discard.respond(false)} />}
+ * const request = discard.request;
+ * {request && <Confirm key={request.input.id} text={request.input.title} onYes={() => request.respond(true)} onNo={() => request.respond(false)} />}
  * ```
  *
  * The handler is registered while the View's client is connected, and removed when the client changes or the
- * component unmounts. A request ends when `respond` answers it, or when .NET stops waiting for it: the command that
- * asked was cancelled, the deadline passed, the window closed or the client changed. `request` then is the next open
- * request, oldest first, or `undefined`; an answer with no open request is ignored.
+ * component unmounts. A request ends when its `respond` answers it, or when .NET stops waiting for it: the command
+ * that asked was cancelled, the deadline passed, the window closed or the client changed. `request` then is the next
+ * open request, oldest first, or `undefined`. A request's `respond` is ignored once it has ended, so a double click or
+ * a late answer never answers another request.
  */
-export function useInteraction<TClient extends ViewClient, TName extends InteractionName<TClient>>(
+export function useInteraction<TClient extends ViewClient & { readonly interactions: object }, TName extends InteractionName<TClient>>(
   view: InteractionView<TClient>,
   name: TName,
 ): InteractionHandle<InteractionInput<TClient, TName>, InteractionOutput<TClient, TName>> {
@@ -799,11 +801,8 @@ export function useInteraction<TClient extends ViewClient, TName extends Interac
     return () => controller.setSurface(undefined);
   }, [controller, client, name]);
   const readRequest = useCallback(() => controller.request, [controller]);
-  const readPending = useCallback(() => controller.pending, [controller]);
   const request = useSyncExternalStore(controller.subscribe, readRequest, readRequest);
-  const pending = useSyncExternalStore(controller.subscribe, readPending, readPending);
-  const respond = useCallback((answer: TOutput) => controller.respond(answer), [controller]);
-  return { request, pending, respond };
+  return { request };
 }
 
 export interface BridgeConnectionHandle {
@@ -955,7 +954,7 @@ export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstan
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
-export type { InteractionInput, InteractionName, InteractionOutput } from "@runic-artifex/views";
+export type { InteractionInput, InteractionName, InteractionOutput, InteractionRequest } from "@runic-artifex/views";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";

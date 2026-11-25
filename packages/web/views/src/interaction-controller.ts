@@ -9,9 +9,11 @@ export interface InteractionHandlerSurface<TInput, TOutput> {
   handle(handler: (input: TInput, context: BridgeInteractionContext) => TOutput | Promise<TOutput>): () => void;
 }
 
-/** The names of a generated client's interactions, such as `"confirmDiscard"`. */
-export type InteractionName<TClient> = TClient extends { readonly interactions: infer TInteractions }
-  ? keyof TInteractions & string : never;
+/**
+ * The names of a generated client's interactions, such as `"confirmDiscard"`. As a type parameter's constraint it keeps
+ * a literal argument (`name: TName`), where a constraint computed by a conditional type would widen it to every name.
+ */
+export type InteractionName<TClient extends { readonly interactions: object }> = keyof TClient["interactions"] & string;
 
 // The `handle` handler of an interaction of a generated client.
 type InteractionHandlerOf<TClient, TName> = TClient extends { readonly interactions: infer TInteractions }
@@ -22,36 +24,46 @@ type InteractionHandlerOf<TClient, TName> = TClient extends { readonly interacti
   : never;
 
 /** The input of an interaction of a generated client: the C# `Interaction<TInput, TOutput>`'s or `ViewQuestion`'s `TInput`. */
-export type InteractionInput<TClient, TName extends InteractionName<TClient>> = Parameters<InteractionHandlerOf<TClient, TName>>[0];
+export type InteractionInput<TClient, TName extends string> = Parameters<InteractionHandlerOf<TClient, TName>>[0];
 
 /** The answer of an interaction of a generated client: the C# `Interaction<TInput, TOutput>`'s or `ViewQuestion`'s `TOutput`. */
-export type InteractionOutput<TClient, TName extends InteractionName<TClient>> = Awaited<ReturnType<InteractionHandlerOf<TClient, TName>>>;
+export type InteractionOutput<TClient, TName extends string> = Awaited<ReturnType<InteractionHandlerOf<TClient, TName>>>;
+
+/**
+ * One open request of an interaction: its input, and `respond`, which answers this request only. The same object
+ * while the request is open, so a template can key on it.
+ */
+export interface InteractionRequest<TInput, TOutput> {
+  /** The request's input, from the C# interaction's `TInput`. */
+  readonly input: TInput;
+  /**
+   * Answers this request. Ignored once it has ended: answered already (a double click), or ended by .NET (the
+   * command that asked was cancelled, the deadline passed, the window closed) or by a client change or disposal.
+   */
+  respond(answer: TOutput): void;
+}
 
 /**
  * A framework-neutral handler of one interaction whose requests are state (`@runic-artifex/angular`, `react`, `vue`
  * and `svelte` wrap it as `injectInteraction` / `useInteraction`). While it has a surface it handles the interaction:
- * each request waits, oldest first, until `respond` answers it or .NET stops waiting for it.
+ * each request waits, oldest first, until its `respond` answers it or .NET stops waiting for it.
  */
 export interface InteractionController<TInput, TOutput> {
-  /** The input of the oldest open request, or `undefined` while none is open. */
-  readonly request: TInput | undefined;
-  /** How many requests are open: also tells an interaction whose input is empty (`Unit`) that one is. */
-  readonly pending: number;
-  /** Calls `listener` after each change of `request` or `pending`, until the returned function is called. */
+  /** The oldest open request, or `undefined` while none is open. */
+  readonly request: InteractionRequest<TInput, TOutput> | undefined;
+  /** Calls `listener` after each change of `request`, until the returned function is called. */
   subscribe(listener: () => void): () => void;
   /**
    * Handles the interaction of `surface`, such as `client.interactions.confirmDiscard`, or none for `undefined`. The
    * previous surface's handler is removed, and its open requests end: .NET receives them as cancelled.
    */
   setSurface(surface: InteractionHandlerSurface<TInput, TOutput> | undefined): void;
-  /** Answers the oldest open request, and shows the next one. Ignored when no request is open. */
-  respond(answer: TOutput): void;
   /** Removes the handler; open requests end as cancelled. */
   dispose(): void;
 }
 
 interface OpenRequest<TInput, TOutput> {
-  readonly input: TInput;
+  readonly request: InteractionRequest<TInput, TOutput>;
   readonly resolve: (answer: TOutput | undefined) => void;
   readonly signal: AbortSignal;
   readonly aborted: () => void;
@@ -72,13 +84,16 @@ export function interactionSurface<TInput, TOutput>(client: unknown, name: strin
  * ```ts
  * const discard = createInteractionController<DiscardNoteRequest, boolean>();
  * discard.setSurface(editor.interactions.confirmDiscard);
- * discard.subscribe(() => dialog.open = discard.request !== undefined);
- * yes.onclick = () => discard.respond(true);
+ * discard.subscribe(() => {
+ *   const request = discard.request;
+ *   dialog.hidden = request === undefined;
+ *   yes.onclick = () => request?.respond(true);
+ * });
  * ```
  *
- * A request ends when `respond` answers it, or when .NET stops waiting for it: the command that asked was cancelled,
- * the deadline passed, the window closed, the client disconnected, or the surface changed. An answer after that goes
- * to the next open request, if any, so render the dialog from `request` and answer only while it shows one.
+ * A request ends when its `respond` answers it, or when .NET stops waiting for it: the command that asked was
+ * cancelled, the deadline passed, the window closed, the client disconnected, or the surface changed. Its `respond`
+ * is ignored after that, and never answers another request.
  */
 export function createInteractionController<TInput, TOutput>(): InteractionController<TInput, TOutput> & Disposable {
   const listeners = new Set<() => void>();
@@ -86,19 +101,18 @@ export function createInteractionController<TInput, TOutput>(): InteractionContr
   let surface: InteractionHandlerSurface<TInput, TOutput> | undefined;
   let remove: (() => void) | undefined;
   let disposed = false;
-  let request: TInput | undefined;
-  let pending = 0;
+  let request: InteractionRequest<TInput, TOutput> | undefined;
 
   function notify(): void {
-    const head = open[0];
-    const nextRequest = head?.input;
-    if (Object.is(nextRequest, request) && open.length === pending) return;
-    request = nextRequest;
-    pending = open.length;
+    const head = open[0]?.request;
+    if (head === request) return;
+    request = head;
     for (const listener of [...listeners]) listener();
   }
 
+  // Ends `entry` once: an answer, an abort or the end of the handler, whichever comes first.
   function close(entry: OpenRequest<TInput, TOutput>, answer: TOutput | undefined): void {
+    if (!open.includes(entry)) return;
     entry.signal.removeEventListener("abort", entry.aborted);
     open = open.filter(item => item !== entry);
     entry.resolve(answer);
@@ -109,7 +123,15 @@ export function createInteractionController<TInput, TOutput>(): InteractionContr
     if (signal.aborted) return Promise.resolve(undefined as TOutput);
     return new Promise<TOutput>(resolve => {
       const entry: OpenRequest<TInput, TOutput> = {
-        input, signal, resolve: resolve as (answer: TOutput | undefined) => void,
+        request: Object.freeze({
+          input,
+          respond: (answer: TOutput) => {
+            if (disposed) return;
+            close(entry, answer);
+            notify();
+          },
+        }),
+        signal, resolve: resolve as (answer: TOutput | undefined) => void,
         aborted: () => { close(entry, undefined); notify(); },
       };
       signal.addEventListener("abort", entry.aborted, { once: true });
@@ -119,17 +141,11 @@ export function createInteractionController<TInput, TOutput>(): InteractionContr
   }
 
   function endAll(): void {
-    const ended = open;
-    open = [];
-    for (const entry of ended) {
-      entry.signal.removeEventListener("abort", entry.aborted);
-      entry.resolve(undefined);
-    }
+    for (const entry of open) close(entry, undefined);
   }
 
   const controller: InteractionController<TInput, TOutput> & Disposable = disposable({
     get request() { return request; },
-    get pending() { return pending; },
     subscribe(listener: () => void) {
       if (disposed) return () => {};
       listeners.add(listener);
@@ -150,12 +166,6 @@ export function createInteractionController<TInput, TOutput>(): InteractionContr
         surface = undefined;
         throw failure;
       }
-    },
-    respond(answer: TOutput) {
-      const head = open[0];
-      if (disposed || head === undefined) return;
-      close(head, answer);
-      notify();
     },
     dispose() {
       if (disposed) return;

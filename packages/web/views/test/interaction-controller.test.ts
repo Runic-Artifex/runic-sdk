@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  createInteractionController, interactionSurface, type InteractionInput, type InteractionName, type InteractionOutput, type ViewClient,
+  createInteractionController, interactionSurface, type InteractionInput, type InteractionName, type InteractionOutput,
+  type InteractionRequest, type ViewClient,
 } from "../dist/index.js";
 import { connectView, defineInteractions } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
@@ -19,10 +20,17 @@ interface EditorClient extends ViewClient<State> {
     readonly confirmDiscard: {
       handle(handler: (input: Discard, context: BridgeInteractionContext) => boolean | Promise<boolean>): () => void;
     };
+    // `Interaction<Unit, bool> ConfirmQuit`: an input without content.
+    readonly confirmQuit: {
+      handle(handler: (input: void, context: BridgeInteractionContext) => boolean | Promise<boolean>): () => void;
+    };
   };
 }
 interface EditorMock extends MockTypedView<State, EditorClient> {
-  readonly interactions: { readonly confirmDiscard: MockTypedInteraction<Discard, boolean> };
+  readonly interactions: {
+    readonly confirmDiscard: MockTypedInteraction<Discard, boolean>;
+    readonly confirmQuit: MockTypedInteraction<void, boolean>;
+  };
 }
 const contract = "Tests.EditorViewModel:I1";
 
@@ -31,7 +39,10 @@ function mockEditor(): EditorMock {
   return mockTypedView(bridge, {
     kind: "editor", route: "editor", contract, defaults: {},
     fields: { title: { encode: value => value, decode: wire => bridgeWire.string(wire) } },
-    interactions: { confirmDiscard: { encodeInput: value => value, decodeOutput: wire => bridgeWire.boolean(wire) } },
+    interactions: {
+      confirmDiscard: { encodeInput: value => value, decodeOutput: wire => bridgeWire.boolean(wire) },
+      confirmQuit: { encodeInput: () => null, decodeOutput: wire => bridgeWire.boolean(wire) },
+    },
   }, { state: { title: "a" } }) as EditorMock;
 }
 const connect = () => connectView<State>({
@@ -42,6 +53,7 @@ const connect = () => connectView<State>({
       decodeInput: value => bridgeWire.object(value, input => ({ title: bridgeWire.string(input["title"]) })),
       encodeOutput: value => value,
     },
+    confirmQuit: { contract: `${contract}:interaction:ConfirmQuit`, decodeInput: () => undefined, encodeOutput: value => value },
   }),
 }) as Promise<unknown> as Promise<EditorClient>;
 
@@ -57,46 +69,73 @@ const typed: [InteractionName<EditorClient>, InteractionInput<EditorClient, "con
   = ["confirmDiscard", { title: "x" }, true];
 void typed;
 
+type Request = InteractionRequest<Discard, boolean>;
+
 async function setup() {
   const mock = mockEditor();
   const client = await connect();
   const discard = createInteractionController<Discard, boolean>();
-  const changes: (Discard | undefined)[] = [];
+  const changes: (Request | undefined)[] = [];
   discard.subscribe(() => changes.push(discard.request));
   discard.setSurface(interactionSurface(client, "confirmDiscard"));
   await until(() => mock.interactions.confirmDiscard.handled, "The handler was not registered.");
   return { mock, client, discard, changes };
 }
 
-test("a request is the state until it is answered (#1319)", async () => {
+test("the open request is a handle with its input, until its respond answers it (#1319)", async () => {
   const { mock, client, discard, changes } = await setup();
   assert.equal(discard.request, undefined);
   const reply = mock.interactions.confirmDiscard.request({ title: "Draft" });
   await until(() => discard.request !== undefined, "The request was not shown.");
-  assert.deepEqual(discard.request, { title: "Draft" });
-  assert.equal(discard.pending, 1);
-  discard.respond(true);
+  const request = discard.request!;
+  assert.deepEqual(request.input, { title: "Draft" });
+  assert.equal(discard.request, request, "the same handle while the request is open");
+  request.respond(true);
   assert.equal(discard.request, undefined);
-  assert.equal(discard.pending, 0);
   assert.deepEqual(await reply, { kind: "answered", output: true });
-  assert.deepEqual(changes, [{ title: "Draft" }, undefined]);
-  discard.respond(false);
-  assert.equal(changes.length, 2, "an answer without an open request is ignored");
+  assert.deepEqual(changes, [request, undefined]);
   discard.dispose();
   client.dispose();
 });
 
-test("an aborted request clears, and a late answer is ignored", async () => {
+test("a double click answers one request; the next one stays open", async () => {
+  const { mock, client, discard } = await setup();
+  const first = mock.interactions.confirmDiscard.request({ title: "First" });
+  const second = mock.interactions.confirmDiscard.request({ title: "Second" });
+  await until(() => discard.request !== undefined, "The request was not shown.");
+  const shown = discard.request!;
+  assert.deepEqual(shown.input, { title: "First" });
+  shown.respond(true);
+  shown.respond(true);
+  assert.deepEqual(await first, { kind: "answered", output: true });
+  await until(() => discard.request?.input.title === "Second", "The second request was not shown.");
+  shown.respond(true);
+  let settled = false;
+  void second.then(() => { settled = true; });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(settled, false, "the second click did not answer the second request");
+  discard.request!.respond(false);
+  assert.deepEqual(await second, { kind: "answered", output: false });
+  discard.dispose();
+  client.dispose();
+});
+
+test("a handle taken before an abort is ignored after it, and does not answer the next request", async () => {
   const { mock, client, discard } = await setup();
   const cancel = new AbortController();
-  const reply = mock.interactions.confirmDiscard.request({ title: "Superseded" }, { signal: cancel.signal });
+  const superseded = mock.interactions.confirmDiscard.request({ title: "Superseded" }, { signal: cancel.signal });
+  const next = mock.interactions.confirmDiscard.request({ title: "Next" });
   await until(() => discard.request !== undefined, "The request was not shown.");
+  const stale = discard.request!;
+  assert.deepEqual(stale.input, { title: "Superseded" });
   cancel.abort();
-  await until(() => discard.request === undefined, "The aborted request stayed.");
-  discard.respond(true);
-  assert.deepEqual(await reply, { kind: "cancelled" });
+  await until(() => discard.request?.input.title === "Next", "The next request was not shown.");
+  stale.respond(true);
+  assert.deepEqual(discard.request?.input, { title: "Next" }, "a late answer does not reach the next request");
+  assert.deepEqual(await superseded, { kind: "cancelled" });
+  discard.request!.respond(false);
+  assert.deepEqual(await next, { kind: "answered", output: false });
 
-  // The deadline ends a request too.
   // The deadline ends a request too: the page's clock passes it.
   const saved = { set: clock.set, clear: clock.clear, now: clock.now };
   const timers = new Set<{ readonly at: number; readonly callback: () => void }>();
@@ -115,14 +154,15 @@ test("an aborted request clears, and a late answer is ignored", async () => {
   try {
     const expired = mock.interactions.confirmDiscard.request({ title: "Too late" }, { timeout: 600_000 });
     await until(() => discard.request !== undefined, "The request was not shown.");
+    const late = discard.request!;
     offset += 601_000;
     for (const timer of [...timers]) if (timer.at <= clock.now() && timers.delete(timer)) timer.callback();
     assert.equal(discard.request, undefined);
+    late.respond(true);
     assert.deepEqual(await expired, { kind: "cancelled" });
   } finally {
     Object.assign(clock, saved);
   }
-  assert.equal(discard.request, undefined);
   discard.dispose();
   client.dispose();
 });
@@ -131,11 +171,11 @@ test("open requests are answered in order", async () => {
   const { mock, client, discard } = await setup();
   const first = mock.interactions.confirmDiscard.request({ title: "First" });
   const second = mock.interactions.confirmDiscard.request({ title: "Second" });
-  await until(() => discard.pending === 2, "The requests were not shown.");
-  assert.deepEqual(discard.request, { title: "First" });
-  discard.respond(false);
-  assert.deepEqual(discard.request, { title: "Second" });
-  discard.respond(true);
+  await until(() => discard.request !== undefined, "The request was not shown.");
+  assert.deepEqual(discard.request?.input, { title: "First" });
+  discard.request!.respond(false);
+  await until(() => discard.request?.input.title === "Second", "The second request was not shown.");
+  discard.request!.respond(true);
   assert.equal(discard.request, undefined);
   assert.deepEqual(await first, { kind: "answered", output: false });
   assert.deepEqual(await second, { kind: "answered", output: true });
@@ -143,18 +183,38 @@ test("open requests are answered in order", async () => {
   client.dispose();
 });
 
+test("an interaction whose input is empty (Unit) has a handle while its request is open", async () => {
+  const mock = mockEditor();
+  const client = await connect();
+  const quit = createInteractionController<void, boolean>();
+  quit.setSurface(interactionSurface(client, "confirmQuit"));
+  await until(() => mock.interactions.confirmQuit.handled, "The handler was not registered.");
+  const reply = mock.interactions.confirmQuit.request();
+  await until(() => quit.request !== undefined, "The request was not shown.");
+  assert.equal(quit.request!.input, undefined);
+  quit.request!.respond(true);
+  assert.equal(quit.request, undefined);
+  assert.deepEqual(await reply, { kind: "answered", output: true });
+  quit.dispose();
+  client.dispose();
+});
+
 test("a new client ends the previous client's requests and handles the interaction instead", async () => {
   const { mock, client, discard } = await setup();
   const open = mock.interactions.confirmDiscard.request({ title: "Old client" });
   await until(() => discard.request !== undefined, "The request was not shown.");
+  const old = discard.request!;
   const next = await connect();
   discard.setSurface(interactionSurface(next, "confirmDiscard"));
   assert.equal(discard.request, undefined, "the request clears at once");
   assert.deepEqual(await open, { kind: "cancelled" });
-  discard.respond(true);
   const reply = mock.interactions.confirmDiscard.request({ title: "New client" });
   await until(() => discard.request !== undefined, "The new client's request was not shown.");
-  discard.respond(true);
+  old.respond(false);
+  // `assert.equal` above narrowed `discard.request` to `undefined`.
+  const current = discard.request as Request | undefined;
+  assert.deepEqual(current?.input, { title: "New client" }, "the old client's handle answers nothing");
+  current!.respond(true);
   assert.deepEqual(await reply, { kind: "answered", output: true });
   // No client: nothing handles it.
   discard.setSurface(interactionSurface(undefined, "confirmDiscard"));
@@ -168,11 +228,12 @@ test("dispose removes the handler and ends the open request", async () => {
   const { mock, client, discard } = await setup();
   const open = mock.interactions.confirmDiscard.request({ title: "Leaving" });
   await until(() => discard.request !== undefined, "The request was not shown.");
+  const request = discard.request!;
   discard.dispose();
   assert.equal(discard.request, undefined);
   assert.deepEqual(await open, { kind: "cancelled" });
   await until(() => !mock.interactions.confirmDiscard.handled, "The handler stayed registered.");
-  discard.respond(true);
+  request.respond(true);
   assert.throws(() => interactionSurface(client, "missing"), TypeError);
   client.dispose();
 });

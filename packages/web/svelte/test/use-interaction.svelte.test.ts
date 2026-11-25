@@ -2,9 +2,9 @@
 
 import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import type { InteractionHandle } from "../src/views/index.js";
+import type { InteractionHandle, InteractionRequest } from "../src/views/index.js";
 import InteractionOwner from "./fixtures/InteractionOwner.svelte";
-import { connectDiscard, mockDiscard, until, type DiscardClient, type DiscardInput } from "./interactions.js";
+import { connectDiscard, mockDiscard, requestShown, until, type DiscardClient, type DiscardInput } from "./interactions.js";
 
 async function setup() {
   const mock = mockDiscard();
@@ -15,55 +15,93 @@ async function setup() {
   const owner = mount(InteractionOwner, { target, props });
   flushSync();
   const discard = owner.discard as InteractionHandle<DiscardInput, boolean>;
-  await until(() => mock.interactions.confirmDiscard.handled, "The handler was not registered.");
+  const quit = owner.quit as InteractionHandle<void, boolean>;
+  await until(() => mock.interactions.confirmDiscard.handled && mock.interactions.confirmQuit.handled, "The handlers were not registered.");
   return {
-    mock, first, props, discard, target,
+    mock, first, props, discard, quit, target,
     destroy() { void unmount(owner); target.remove(); },
   };
 }
 
 describe("useInteraction (#1319)", () => {
-  test("request is the open request's input until respond answers it", async () => {
+  test("request is the open request's handle until its respond answers it", async () => {
     const { mock, first, discard, target, destroy } = await setup();
-    expectTypeOf(discard.request).toEqualTypeOf<DiscardInput | undefined>();
+    expectTypeOf(discard.request).toEqualTypeOf<InteractionRequest<DiscardInput, boolean> | undefined>();
     const reply = mock.interactions.confirmDiscard.request({ title: "Draft" });
     await until(() => discard.request !== undefined, "The request was not shown.");
     flushSync();
-    expect(target.querySelector("#prompt")?.textContent).toBe("Draft");
-    expect(discard.pending).toBe(1);
-    discard.respond(true);
+    const button = target.querySelector<HTMLButtonElement>("#yes")!;
+    expect(button.textContent).toBe("Draft");
+    button.click();
     flushSync();
     expect(discard.request).toBeUndefined();
-    expect(target.querySelector("#prompt")).toBeNull();
+    expect(target.querySelector("#yes")).toBeNull();
     expect(await reply).toEqual({ kind: "answered", output: true });
     destroy();
     first.dispose();
   });
 
-  test("an aborted request clears, and a late answer is ignored", async () => {
+  test("a double click answers one request, and the next stays open", async () => {
     const { mock, first, discard, destroy } = await setup();
-    const cancel = new AbortController();
-    const reply = mock.interactions.confirmDiscard.request({ title: "Superseded" }, { signal: cancel.signal });
+    const one = mock.interactions.confirmDiscard.request({ title: "First" });
+    const two = mock.interactions.confirmDiscard.request({ title: "Second" });
     await until(() => discard.request !== undefined, "The request was not shown.");
-    cancel.abort();
-    await until(() => discard.request === undefined, "The aborted request stayed.");
-    discard.respond(true);
-    expect(await reply).toEqual({ kind: "cancelled" });
+    const shown = discard.request!;
+    expect(shown.input).toEqual({ title: "First" });
+    shown.respond(true);
+    shown.respond(true);
+    expect(await one).toEqual({ kind: "answered", output: true });
+    await until(() => discard.request?.input.title === "Second", "The second request was not shown.");
+    shown.respond(true);
+    expect(discard.request?.input).toEqual({ title: "Second" });
+    discard.request!.respond(false);
+    expect(await two).toEqual({ kind: "answered", output: false });
     destroy();
     first.dispose();
   });
 
-  test("two open requests are answered in order", async () => {
+  test("a handle taken before an abort is ignored, and does not answer the next request", async () => {
+    const { mock, first, discard, destroy } = await setup();
+    const cancel = new AbortController();
+    const superseded = mock.interactions.confirmDiscard.request({ title: "Superseded" }, { signal: cancel.signal });
+    const next = mock.interactions.confirmDiscard.request({ title: "Next" });
+    await until(() => discard.request !== undefined, "The request was not shown.");
+    const stale = discard.request!;
+    expect(stale.input).toEqual({ title: "Superseded" });
+    cancel.abort();
+    await until(() => discard.request?.input.title === "Next", "The next request was not shown.");
+    stale.respond(true);
+    expect(discard.request?.input).toEqual({ title: "Next" });
+    expect(await superseded).toEqual({ kind: "cancelled" });
+    discard.request!.respond(false);
+    expect(await next).toEqual({ kind: "answered", output: false });
+    destroy();
+    first.dispose();
+  });
+
+  test("open requests are answered in order", async () => {
     const { mock, first, discard, destroy } = await setup();
     const one = mock.interactions.confirmDiscard.request({ title: "First" });
     const two = mock.interactions.confirmDiscard.request({ title: "Second" });
-    await until(() => discard.pending === 2, "The requests were not shown.");
-    expect(discard.request).toEqual({ title: "First" });
-    discard.respond(false);
-    expect(discard.request).toEqual({ title: "Second" });
-    discard.respond(true);
+    await until(() => discard.request !== undefined, "The request was not shown.");
+    expect(discard.request!.input).toEqual({ title: "First" });
+    discard.request!.respond(false);
+    await until(() => discard.request?.input.title === "Second", "The second request was not shown.");
+    discard.request!.respond(true);
     expect(await one).toEqual({ kind: "answered", output: false });
     expect(await two).toEqual({ kind: "answered", output: true });
+    destroy();
+    first.dispose();
+  });
+
+  test("an interaction whose input is empty (Unit) has a handle while its request is open", async () => {
+    const { mock, first, quit, destroy } = await setup();
+    const reply = mock.interactions.confirmQuit.request();
+    await until(() => quit.request !== undefined, "The request was not shown.");
+    expect(quit.request!.input).toBeUndefined();
+    quit.request!.respond(true);
+    expect(quit.request).toBeUndefined();
+    expect(await reply).toEqual({ kind: "answered", output: true });
     destroy();
     first.dispose();
   });
@@ -77,10 +115,9 @@ describe("useInteraction (#1319)", () => {
     flushSync();
     expect(discard.request).toBeUndefined();
     expect(await open).toEqual({ kind: "cancelled" });
-    const pending = mock.interactions.confirmDiscard.request({ title: "Leaving" });
-    await until(() => discard.request !== undefined, "The new client's request was not shown.");
+    const { reply } = await requestShown(mock.interactions.confirmDiscard, { title: "Leaving" }, () => discard.request !== undefined);
     destroy();
-    expect(await pending).toEqual({ kind: "cancelled" });
+    expect(await reply).toEqual({ kind: "cancelled" });
     await until(() => !mock.interactions.confirmDiscard.handled, "The handler stayed registered.");
     next.dispose();
     first.dispose();

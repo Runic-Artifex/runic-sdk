@@ -129,6 +129,7 @@ export {
   type InteractionInput,
   type InteractionName,
   type InteractionOutput,
+  type InteractionRequest,
 } from "./interaction-controller.js";
 export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {

@@ -3,6 +3,10 @@
   import type { DiscardClient } from "../interactions.js";
   let { client }: { client: DiscardClient | undefined } = $props();
   export const discard = useInteraction(() => ({ client }), "confirmDiscard");
+  export const quit = useInteraction(() => ({ client }), "confirmQuit");
 </script>
 
-{#if discard.request}<p id="prompt">{discard.request.title}</p>{/if}
+{#if discard.request}
+  {@const request = discard.request}
+  <button id="yes" onclick={() => request.respond(true)}>{request.input.title}</button>
+{/if}

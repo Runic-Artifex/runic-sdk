@@ -1,4 +1,5 @@
-// A generated View with one interaction, `Interaction<DiscardInput, bool> ConfirmDiscard`, and its typed mock (#1319).
+// A generated View with two interactions, `Interaction<DiscardInput, bool> ConfirmDiscard` and
+// `Interaction<Unit, bool> ConfirmQuit`, and its typed mock (#1319).
 import type { BridgeInteractionContext, ViewClient } from "@runic-artifex/views";
 import { connectView, defineInteractions } from "@runic-artifex/views/generated";
 import { mockTypedView } from "@runic-artifex/views/generated/mock";
@@ -13,10 +14,16 @@ export interface DiscardClient extends ViewClient<DiscardState> {
     readonly confirmDiscard: {
       handle(handler: (input: DiscardInput, context: BridgeInteractionContext) => boolean | Promise<boolean>): () => void;
     };
+    readonly confirmQuit: {
+      handle(handler: (input: void, context: BridgeInteractionContext) => boolean | Promise<boolean>): () => void;
+    };
   };
 }
 export interface DiscardMock extends MockTypedView<DiscardState, DiscardClient> {
-  readonly interactions: { readonly confirmDiscard: MockTypedInteraction<DiscardInput, boolean> };
+  readonly interactions: {
+    readonly confirmDiscard: MockTypedInteraction<DiscardInput, boolean>;
+    readonly confirmQuit: MockTypedInteraction<void, boolean>;
+  };
 }
 const contract = "Tests.DiscardViewModel:I1";
 
@@ -26,7 +33,10 @@ export function mockDiscard(): DiscardMock {
   return mockTypedView(bridge, {
     kind: "discard", route: "discard", contract, defaults: {},
     fields: { title: { encode: value => value, decode: value => wire.string(value) } },
-    interactions: { confirmDiscard: { encodeInput: value => value, decodeOutput: value => wire.boolean(value) } },
+    interactions: {
+      confirmDiscard: { encodeInput: value => value, decodeOutput: value => wire.boolean(value) },
+      confirmQuit: { encodeInput: () => null, decodeOutput: value => wire.boolean(value) },
+    },
   }, { state: { title: "a" } }) as DiscardMock;
 }
 
@@ -40,6 +50,7 @@ export function connectDiscard(): Promise<DiscardClient> {
         decodeInput: value => wire.object(value, input => ({ title: wire.string(input["title"]) })),
         encodeOutput: value => value,
       },
+      confirmQuit: { contract: `${contract}:interaction:ConfirmQuit`, decodeInput: () => undefined, encodeOutput: value => value },
     }),
   }) as Promise<unknown> as Promise<DiscardClient>;
 }
@@ -51,3 +62,26 @@ export async function until(condition: () => boolean, message: string): Promise<
     await new Promise(resolve => setTimeout(resolve, 2));
   }
 }
+
+/**
+ * Sends a request once the client's handler is registered: after a client change the mock may still answer
+ * `unhandled`, or reach the old client's presentation, which answers `cancelled`, until the registrations arrived, so it
+ * asks again until `shown()` holds. Resolves with the
+ * pending reply, wrapped so that awaiting this does not wait for the answer.
+ */
+export async function requestShown<TInput, TOutput>(interaction: MockTypedInteraction<TInput, TOutput>, input: TInput, shown: () => boolean):
+  Promise<{ readonly reply: ReturnType<MockTypedInteraction<TInput, TOutput>["request"]> }> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    let settled = false;
+    const reply = interaction.request(input);
+    void reply.then(() => { settled = true; });
+    await until(() => shown() || settled, "The request was neither shown nor answered.");
+    if (shown()) return { reply };
+    const { kind } = await reply;
+    if (kind !== "unhandled" && kind !== "cancelled") return { reply };
+  }
+  throw new Error("The client never handled the request.");
+}
+
+/** Lets the mock's requests reach the page's handler. */
+export const delivered = () => new Promise<void>(resolve => setTimeout(resolve, 10));

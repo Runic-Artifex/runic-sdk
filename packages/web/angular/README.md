@@ -822,15 +822,15 @@ application's own dialog.
 ### A dialog in the template
 
 A page that renders its dialog in its own template, rather than awaiting a
-dialog service in `handle`, uses `injectInteraction`: the oldest open request's
-input as the signal `request()`, and `respond(answer)`:
+dialog service in `handle`, uses `injectInteraction`: the oldest open request as
+the signal `request()`, which the dialog answers with the request's `respond`:
 
 ```ts
 @Component({
   selector: "edit-page",
   template: `
-    @if (discard.request(); as input) {
-      <app-confirm [text]="input.itemName" (yes)="discard.respond(true)" (no)="discard.respond(false)" />
+    @if (discard.request(); as request) {
+      <app-confirm [text]="request.input.itemName" (yes)="request.respond(true)" (no)="request.respond(false)" />
     }`,
 })
 export class EditPage {
@@ -840,14 +840,16 @@ export class EditPage {
 }
 ```
 
-The handler is registered while the client is connected and removed when the
-client changes or the injection context is destroyed. `request()` clears when the request is answered or
-when .NET stops waiting for it (the departure was superseded, the deadline
-passed, the window closed, the client changed); an answer after that is
-ignored. Several open requests are answered in order: `request()` is the oldest
-one, and answering it shows the next. `pending()` counts the open requests, for
-an interaction whose input is empty (`Unit`). The input and the answer are
-typed from the generated interaction.
+Each open request is one object, `{ input, respond(answer) }`, the same while the
+request is open. Its `respond` answers that request only, and is ignored once
+the request has ended: answered already, as by a double click, or ended by .NET
+(the departure was superseded, the deadline passed, the window closed) or by a
+client change. A late answer therefore never reaches another request. The
+handler is registered while the client is connected and removed when the
+client changes or the injection context is destroyed. Several open requests are answered in order:
+`request()` is the oldest one, and answering it shows the next. An interaction
+whose input is empty (`Unit`) still has a request object while one is open. The
+input and the answer are typed from the generated interaction.
 
 The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
 has the .NET side and which View answers which departure. In a frontend test,
