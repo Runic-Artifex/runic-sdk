@@ -12,6 +12,7 @@ import {
   type BridgeField,
   type FieldCheckboxProps,
   type FieldHandle,
+  type FieldRadioProps,
   type FieldTextProps,
 } from "../dist/index.js";
 
@@ -176,6 +177,41 @@ describe("useField", () => {
     select.value = "2";
     await act(async () => { step!.inputProps.onChange({ currentTarget: select } as never); });
     expect(client.calls.map(call => call.value)).toEqual(["saved!!", true, 2]);
+  });
+
+  test("radioProps bind a radio group to one field: the checked radio follows the field, a choice writes its value (#1327)", async () => {
+    const client = fakeClient({ step: 2 });
+    let step: FieldHandle<number> | undefined;
+    function Editor({ commit }: { readonly commit?: "change" }): ReactNode {
+      step = useField(useView(client), Fields.step, commit === undefined ? {} : { commit });
+      return createElement("div", null, ...[1, 2, 3].map(option =>
+        createElement("input", { key: option, name: "step", ...step!.radioProps(option) })));
+    }
+    await mount(createElement(Editor));
+    expectTypeOf(step!.radioProps).returns.toEqualTypeOf<FieldRadioProps>();
+    const radios = () => [...document.querySelectorAll<HTMLInputElement>("input[type=radio]")];
+    expect(radios().map(radio => radio.value)).toEqual(["1", "2", "3"]);
+    expect(radios().map(radio => radio.checked)).toEqual([false, true, false]);
+    await act(async () => { radios()[2]!.click(); });
+    expect(client.calls.map(call => call.value)).toEqual([3]);
+    // A radio that was not checked by its change writes nothing.
+    await act(async () => { step!.radioProps(1).onChange({ currentTarget: { checked: false, value: "1" } }); });
+    expect(client.calls.map(call => call.value)).toEqual([3]);
+    await act(async () => { client.calls[0]!.resolve(); });
+    await settle();
+    expect(radios().map(radio => radio.checked)).toEqual([false, false, true]);
+    // A value from .NET moves the checked radio and leaves each radio's option.
+    await act(async () => { client.apply("step", 1); });
+    expect(radios().map(radio => radio.checked)).toEqual([true, false, false]);
+    expect(radios().map(radio => radio.value)).toEqual(["1", "2", "3"]);
+    await act(async () => { root?.unmount(); });
+    root = undefined;
+    document.body.innerHTML = "";
+
+    // With commit: "change" a radio's choice is written at once, without waiting for the blur.
+    await mount(createElement(Editor, { commit: "change" }));
+    await act(async () => { radios()[1]!.click(); });
+    expect(client.calls.map(call => call.value)).toEqual([3, 2]);
   });
 
   test("blur commits through inputProps.onBlur", async () => {

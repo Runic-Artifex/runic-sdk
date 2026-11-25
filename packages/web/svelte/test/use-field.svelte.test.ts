@@ -6,6 +6,7 @@ import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-ar
 import { FieldError, useField, useForm, type BridgeField, type FieldHandle, type FormHandle } from "../src/views/index.js";
 import FieldOwner from "./fixtures/FieldOwner.svelte";
 import OnBlurOwner from "./fixtures/OnBlurOwner.svelte";
+import RadioOwner from "./fixtures/RadioOwner.svelte";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean; readonly titleErrors: readonly string[] };
 type Call = { readonly member: string; readonly value: unknown; readonly checked: boolean; resolve(result?: unknown): void };
@@ -128,6 +129,45 @@ describe("useField", () => {
     select.dispatchEvent(new Event("change"));
     expect(client.calls.map(call => call.value)).toEqual(["saved!!", true, 2]);
     unmount(owner);
+    target.remove();
+  });
+
+  test("the attachment binds a radio group to one field: the checked radio follows the field, a choice writes its value (#1327)", async () => {
+    const client = fakeClient({ step: 2 });
+    const target = document.createElement("div");
+    document.body.append(target);
+    const owner = mount(RadioOwner<Client>, { target, props: { source: client, field: Fields.step } });
+    flushSync();
+    const radios = [...target.querySelectorAll<HTMLInputElement>("input[type=radio]")];
+    const choose = (chosen: HTMLInputElement) => {
+      for (const radio of radios) radio.checked = radio === chosen;
+      chosen.dispatchEvent(new Event("change"));
+      flushSync();
+    };
+    expect(radios.map(radio => radio.value)).toEqual(["1", "2", "3"]);
+    expect(radios.map(radio => radio.checked)).toEqual([false, true, false]);
+    choose(radios[2]!);
+    expect(client.calls.map(call => call.value)).toEqual([3]);
+    // A radio that was not checked by its change writes nothing.
+    radios[0]!.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual([3]);
+    client.calls[0]!.resolve();
+    await settle();
+    // A value from .NET moves the checked radio and leaves each radio's option.
+    client.apply("step", 1);
+    await settle();
+    expect(radios.map(radio => radio.checked)).toEqual([true, false, false]);
+    expect(radios.map(radio => radio.value)).toEqual(["1", "2", "3"]);
+    unmount(owner);
+
+    // With commit: "change" a radio's choice is written at once, without waiting for the blur.
+    const changed = mount(RadioOwner<Client>, { target, props: { source: client, field: Fields.step, options: { commit: "change" } } });
+    flushSync();
+    const group = [...target.querySelectorAll<HTMLInputElement>("input[type=radio]")];
+    for (const radio of group) radio.checked = radio === group[1];
+    group[1]!.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual([3, 2]);
+    unmount(changed);
     target.remove();
   });
 

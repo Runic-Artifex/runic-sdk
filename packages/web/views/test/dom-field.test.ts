@@ -141,6 +141,55 @@ test("bindField with commit: change writes typed text on blur, and each choice o
   for (const field of [title, done, size]) field.dispose();
 });
 
+test("bindField binds a radio group to one field: the checked radio follows the field, a choice writes its value (#1327)", async () => {
+  const client = fakeClient({ title: "", done: false, size: 2 });
+  const radios = ["1", "2", "3"].map(value => Object.assign(fakeElement("INPUT", "radio"), { value }));
+  // The browser unchecks the other radios of a group when one is chosen.
+  const choose = (chosen: FakeElement) => {
+    for (const radio of radios) radio.checked = radio === chosen;
+    chosen.fire("change");
+  };
+  const definition = {
+    kind: "number" as const, integer: true, read: (state: State) => state.size,
+    write: (target: FakeClient, value: number) => target.set({ size: value }),
+  };
+  const size = bindField(radios.map(asElement), client, definition);
+  assert.deepEqual(radios.map(radio => radio.value), ["1", "2", "3"], "each radio keeps its option");
+  assert.deepEqual(radios.map(radio => radio.checked), [false, true, false]);
+
+  choose(radios[2]!);
+  await size.commit();
+  assert.deepEqual(client.writes, [{ size: 3 }]);
+  // A radio that was not checked by its change writes nothing.
+  radios[0]!.fire("change");
+  await size.commit();
+  assert.deepEqual(client.writes, [{ size: 3 }]);
+
+  // A value from .NET moves the checked radio.
+  await client.set({ size: 1 });
+  assert.deepEqual(radios.map(radio => radio.checked), [true, false, false]);
+  assert.deepEqual(radios.map(radio => radio.value), ["1", "2", "3"]);
+  size.dispose();
+
+  // With commit: "change" a radio's choice is written at once, without waiting for the blur.
+  client.writes.length = 0;
+  const changed = bindField(radios.map(asElement), client, definition, { commit: "change" });
+  choose(radios[1]!);
+  await tick();
+  assert.deepEqual(client.writes, [{ size: 2 }]);
+  assert.deepEqual(radios.map(radio => radio.checked), [false, true, false]);
+  changed.dispose();
+
+  // One radio bound on its own takes part in its group too.
+  const single = bindField(asElement(radios[0]!), client, definition);
+  assert.equal(radios[0]!.checked, false);
+  assert.equal(radios[0]!.value, "1");
+  choose(radios[0]!);
+  await single.commit();
+  assert.equal(client.snapshot.size, 1);
+  single.dispose();
+});
+
 test("attachField wires a controller that the caller feeds, and commitFields rejects with a failed field's error", async () => {
   const client = fakeClient({ title: "A", done: false, size: 1 });
   const controller = createFieldController<State, FakeClient, number>({

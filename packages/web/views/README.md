@@ -717,9 +717,10 @@ input.addEventListener("blur", () => title.commit());
 ```
 
 Without a framework, `bindField(element, client, field, options?)` does that wiring for an `<input>`, `<textarea>` or
-`<select>` (a checkbox for a boolean field): it creates the controller, follows the client's state, writes on `input`
-(`change` for a `<select>` or checkbox), nothing during IME composition, commits on blur and sets `aria-invalid`. It
-returns the controller; `dispose()` unwires it. `attachField(element, controller)` wires an element to a controller
+`<select>` (a checkbox for a boolean field), or for the radios of a group passed together: it creates the controller,
+follows the client's state, writes on `input` (`change` for a `<select>`, a checkbox or the radio that became
+checked), nothing during IME composition, commits on blur and sets `aria-invalid`. Each radio keeps its own `value`,
+its option, and is checked while that is the field's text. It returns the controller; `dispose()` unwires it. `attachField(element, controller)` wires an element to a controller
 that the page feeds itself, and `commitFields(...fields)` commits fields and rejects with the first failed field's
 error, so Save can follow:
 
@@ -727,6 +728,8 @@ error, so Save can follow:
 const title = bindField(document.querySelector("#title")!, editor, EditorFields.title, { commit: "pause" });
 const body = bindField(document.querySelector("#body")!, editor, EditorFields.body, { commit: "pause" });
 save.onclick = async () => { await commitFields(title, body); await editor.save(); };
+// <input type="radio" name="size" value="Small"> <input type="radio" name="size" value="Large">
+const size = bindField(document.querySelectorAll<HTMLInputElement>("input[name=size]"), editor, EditorFields.size);
 ```
 
 `current` has:
@@ -771,7 +774,7 @@ Options:
 - `commit: "change"` writes the draft only on `commit()`, which blur calls, so the ViewModel's setter runs once, when
   the user leaves the field. It is the mode a WPF port wants: WPF binds `TextBox.Text` with
   `UpdateSourceTrigger=LostFocus`, and its setters often validate, normalize or start work. There is no timer, so
-  pass no `delay`; `bindField` and the framework bindings still write each choice of a checkbox or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
+  pass no `delay`; `bindField` and the framework bindings still write each choice of a checkbox, radio or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
   window close or a departure (`field-flush/1`) write the draft too, and so does disposing the field.
 - `checked: true` writes with the member's checked write instead of its setter. The write is checked against the
   value and version the field showed when the draft started and then against each receipt, so a change by another
