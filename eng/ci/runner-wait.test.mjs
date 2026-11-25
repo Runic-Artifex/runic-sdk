@@ -8,8 +8,14 @@ import { join, resolve } from 'node:path';
 import { root } from '../run.mjs';
 
 // runic-sdk has one queued run with `$STUB_DIR/macos` macOS jobs (a count that the stub lowers by one after each run
-// listing, when `$STUB_DIR/drain` exists) and one Linux job; the other repositories have nothing.
+// listing, when `$STUB_DIR/drain` exists) and one Linux job; the other repositories have nothing. While
+// `$STUB_DIR/fail` holds a count above 0, a request fails as GitHub's API does now and then, and lowers it by one.
 const STUB = `#!/usr/bin/env bash
+if [ -f "$STUB_DIR/fail" ] && [ "$(cat "$STUB_DIR/fail")" -gt 0 ]; then
+  echo $(( $(cat "$STUB_DIR/fail") - 1 )) > "$STUB_DIR/fail"
+  echo "gh: HTTP 502: Server Error" >&2
+  exit 1
+fi
 case "$2" in
   repos/Runic-Artifex/runic-sdk/actions/runs\\?status=queued*) echo '{"workflow_runs":[{"id":1,"head_branch":"pr"}]}' ;;
   */actions/runs/1/jobs*)
@@ -23,15 +29,16 @@ case "$2" in
 esac
 `;
 
-function runnerWait(args, { macos = 2, drain = false } = {}) {
+function runnerWait(args, { macos = 2, drain = false, fail = 0 } = {}) {
   const stub = mkdtempSync(join(tmpdir(), 'runner-wait-'));
   try {
     writeFileSync(join(stub, 'gh'), STUB);
     chmodSync(join(stub, 'gh'), 0o755);
     writeFileSync(join(stub, 'macos'), String(macos));
     if (drain) writeFileSync(join(stub, 'drain'), '');
+    if (fail) writeFileSync(join(stub, 'fail'), String(fail));
     const result = spawnSync('python3', ['-I', resolve(root, 'eng/ci/runner-wait.py'), ...args], {
-      encoding: 'utf8', env: { ...process.env, PATH: `${stub}:${process.env.PATH}`, STUB_DIR: stub } });
+      encoding: 'utf8', env: { ...process.env, PATH: `${stub}:${process.env.PATH}`, STUB_DIR: stub, RUNNER_WAIT_GH_PAUSE: '0' } });
     return { ...result, alarmChecked: spawnSync('test', ['-f', join(stub, 'alarm')]).status === 0 };
   } finally {
     rmSync(stub, { recursive: true, force: true });
@@ -62,4 +69,15 @@ test('--cap-only checks the cap alone, and --wait-minutes polls until the jobs f
   const timeout = runnerWait(['--cap-only', '--macos-jobs', '3', '--wait-minutes', '0.001', '--interval', '0.05'], { macos: 4 });
   assert.equal(timeout.status, 1);
   assert.match(timeout.stdout, /macOS cap: 4 \+ 3 would exceed 5 after waiting 0\.001 min; wait before opening this PR\./);
+});
+
+test('a failed GitHub request is tried again, and three failures exit with 2, not the hold code 1', () => {
+  const recovered = runnerWait(['--cap-only', '--macos-jobs', '3'], { fail: 2 });
+  assert.equal(recovered.status, 0, recovered.stderr);
+  assert.equal(recovered.stdout, 'macOS jobs queued or running: 2 of 5 (runic-sdk:pr (2))\nRoom for 3 more macOS job(s).\n');
+  assert.equal(recovered.stderr.match(/failed \(gh: HTTP 502: Server Error\); trying again in 0 s\./g)?.length, 2);
+  const failed = runnerWait(['--cap-only', '--macos-jobs', '3'], { fail: 3 });
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /gh api repos\/Runic-Artifex\/runic-sdk\/actions\/runs\?status=queued&per_page=100 failed 3 times \(gh: HTTP 502: Server Error\); the runner check could not run\.\n$/);
+  assert.equal(failed.stdout, '');
 });

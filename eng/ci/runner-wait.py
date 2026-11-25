@@ -15,19 +15,33 @@ osx-arm64 and Packaging / macos count one each per shard); exit 1 when they woul
 --wait-minutes: with --macos-jobs, poll every --interval seconds (default 120) until they fit, for up to M minutes.
 A run's macOS jobs appear only once their `needs` are met, so a run still in its plan or build phase is not counted
 yet: when one was just opened, leave room for it.
-Uses `gh api` (the user's GitHub login, or GH_TOKEN in a workflow); read-only.
+Uses `gh api` (the user's GitHub login, or GH_TOKEN in a workflow); read-only. A failed request is tried again twice,
+10 seconds apart; when all three fail, the script exits with code 2 (not 1, which means "hold new PRs").
 """
-import argparse, datetime as dt, json, subprocess, sys, time
+import argparse, datetime as dt, json, os, subprocess, sys, time
 
 ORG = "Runic-Artifex"
 REPOS = ["runic-sdk", "runic-translations-sdk", "runic-cli-sdk", "runic-editors"]
 MACOS_JOB_CAP = 5
 ALARM = {"macos": 10.0, "linux": 5.0, "windows": 5.0}
+GH_ATTEMPTS = 3
+# The pause between attempts; the tests set it to 0.
+GH_PAUSE = float(os.environ.get("RUNNER_WAIT_GH_PAUSE", "10"))
 
 
 def gh(path):
-    out = subprocess.run(["gh", "api", path], check=True, capture_output=True, text=True).stdout
-    return json.loads(out)
+    # GitHub's API fails a request now and then (a 502, a timeout). One of them must not end train-feed-exit.yml's
+    # hour of waiting for room under the cap, or the coordinator's check with a traceback.
+    for attempt in range(1, GH_ATTEMPTS + 1):
+        result = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        reason = (result.stderr.strip().splitlines() or [f"exit code {result.returncode}"])[-1]
+        if attempt == GH_ATTEMPTS:
+            print(f"gh api {path} failed {GH_ATTEMPTS} times ({reason}); the runner check could not run.", file=sys.stderr)
+            sys.exit(2)
+        print(f"gh api {path} failed ({reason}); trying again in {GH_PAUSE:g} s.", file=sys.stderr)
+        time.sleep(GH_PAUSE)
 
 
 def os_of(labels):
