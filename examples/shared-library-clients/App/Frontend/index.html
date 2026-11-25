@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'">
+    <title>Acme Workbench</title>
+    <script src="webui.js"></script>
+    <script src="runic-views.js"></script>
+    <style>
+      :root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+      body { max-width: 34rem; margin: 2rem auto; padding: 0 1.5rem; }
+      section { border: 1px solid #8884; border-radius: .5rem; padding: 0 1rem 1rem; margin-block: 1rem; }
+      button, select { padding: .4rem .8rem; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">…</h1>
+    <!-- Rendered by mountAboutPanel from the shared-ui package. -->
+    <section id="about" aria-label="About"></section>
+    <!-- Rendered by this application, with the support client's types from the same package. -->
+    <section id="support" aria-label="Support">
+      <h2>Support</h2>
+      <button id="report">Report a problem</button>
+      <p id="reports"></p>
+    </section>
+    <p id="status" role="status">Connecting…</p>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

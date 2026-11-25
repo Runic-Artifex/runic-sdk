@@ -276,6 +276,20 @@ The framework packages `@runic-artifex/react`, `@runic-artifex/vue`,
 clients with the component lifecycle. They are thin bindings over the
 controllers in [Framework bindings](#framework-bindings).
 
+### Clients from a ViewModel library
+
+A .NET library built with `RunicApplicationFrontendClientLibrary` generates its
+ViewModels' clients once, into a frontend package, with `runic-clients.ts`
+(every client, shared client and named type) and `runic-mocks.ts` (the mocks)
+as entries the package exports, such as `@acme/shared-ui/generated` (since
+0.24). An application that maps the library with
+`RunicApplicationFrontendClientModule` imports their page functions and types
+from that specifier instead of generating copies, and the package lists
+`@runic-artifex/views` as a peer dependency so the page loads one runtime.
+[Share ViewModels and their clients through a library](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#share-viewmodels-and-their-clients-through-a-library)
+covers the package, the application and the type check that catches a stale
+package.
+
 ### Package entries
 
 | Entry | For |

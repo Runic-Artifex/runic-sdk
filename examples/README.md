@@ -14,6 +14,7 @@ TypeScript clients. To start a new application, use the
 - [Hosted windows](hosted-windows/README.md) is a shell that shows another Runic application's windows as its own: the counter it hosts gets its menu bar and dialogs through the shell, follows the shell's language and theme, and is limited by the shell's policy.
 - [Hosted region](hosted-region/README.md) is an installer that shows a separate check tool as a step of its wizard, in a region of its own page: Back and Next ask the check first, the page shows content for each state of the region, and the two can run as an elevated pair.
 - [Hosted components](hosted-components/README.md) is a dashboard that shows two widget processes as components in its own page (trusted component mode), built with the Vite `component` target and admitted by the page's Content-Security-Policy.
+- [Shared library clients](shared-library-clients/README.md) generates a ViewModel library's TypeScript clients once, into a frontend package with a shared component, and an application imports them from the package instead of generating copies.
 - [Invoice grid](invoice-grid/README.md) edits an address and the cells of an invoice's lines as fields, with drafts, validation messages and conflicts.
 - [CommunityToolkit Notes](notes-view-first/README.md) shows nested content, View scopes, and typed writes.
 - [Reactive Notes](notes-reactive-views/README.md) navigates ReactiveUI ViewModels with RunicNavigator: master/detail with a result, a leave guard asked through an `Interaction`, and multiple Views over a model.
