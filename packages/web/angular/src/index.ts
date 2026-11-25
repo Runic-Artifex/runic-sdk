@@ -10,6 +10,7 @@ export {
 export { injectView, type InjectViewOptions, type ViewHandle } from "./inject-view.js";
 export { injectViewResource, type InjectViewResourceOptions, type ViewResource } from "./inject-view-resource.js";
 export { injectCommand, type CommandHandle, type InjectCommandOptions } from "./inject-command.js";
+export { injectCommands, type CommandHandles, type CommandsView } from "./inject-commands.js";
 export { injectOperation, type InjectOperationOptions, type OperationHandle } from "./inject-operation.js";
 export { injectField, type FieldHandle, type FieldView, type InjectFieldOptions } from "./inject-field.js";
 // The field types that injectField's and injectForm's signatures use, as the React, Vue and Svelte adapters export them.

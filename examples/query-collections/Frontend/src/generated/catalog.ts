@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineQueryCollection, decodeQueryCollectionState, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { CatalogState, CatalogClient, CatalogPageReference } from "./catalog.contract.js";
-export type { CatalogState, CatalogRestockOperation, CatalogAddOperation, CatalogClient, CatalogPageReference } from "./catalog.contract.js";
+export type { CatalogState, CatalogRestockOperation, CatalogAddOperation, CatalogCommandName, CatalogClient, CatalogPageReference } from "./catalog.contract.js";
 import type { Product } from "./types.js";
 export type { Product } from "./types.js";
 

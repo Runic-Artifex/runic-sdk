@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { SidebarState, SidebarClient, SidebarPageReference } from "./sidebar.contract.js";
-export type { SidebarState, SidebarOpenHomeOperation, SidebarOpenNotesOperation, SidebarClient, SidebarPageReference } from "./sidebar.contract.js";
+export type { SidebarState, SidebarOpenHomeOperation, SidebarOpenNotesOperation, SidebarCommandName, SidebarClient, SidebarPageReference } from "./sidebar.contract.js";
 
 const pageSidebarReferences = viewReferences<SidebarPageReference>(id => ({ kind: "sidebar", connect: () => connectSidebarAt(`content${id}`) }));
 export function pageSidebar(id: string): SidebarPageReference { return pageSidebarReferences(id); }

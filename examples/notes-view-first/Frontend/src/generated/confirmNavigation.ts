@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ConfirmNavigationState, ConfirmNavigationClient, ConfirmNavigationPageReference } from "./confirmNavigation.contract.js";
-export type { ConfirmNavigationState, ConfirmNavigationConfirmOperation, ConfirmNavigationCancelOperation, ConfirmNavigationClient, ConfirmNavigationPageReference } from "./confirmNavigation.contract.js";
+export type { ConfirmNavigationState, ConfirmNavigationConfirmOperation, ConfirmNavigationCancelOperation, ConfirmNavigationCommandName, ConfirmNavigationClient, ConfirmNavigationPageReference } from "./confirmNavigation.contract.js";
 
 const pageConfirmNavigationReferences = viewReferences<ConfirmNavigationPageReference>(id => ({ kind: "confirmNavigation", connect: () => connectConfirmNavigationAt(`content${id}`) }));
 export function pageConfirmNavigation(id: string): ConfirmNavigationPageReference { return pageConfirmNavigationReferences(id); }

@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { MainState, MainClient, MainPageReference } from "./main.contract.js";
-export type { MainState, MainToggleDebugOperation, MainMoveDebugOperation, MainCloseDebugOperation, MainClient, MainPageReference } from "./main.contract.js";
+export type { MainState, MainToggleDebugOperation, MainMoveDebugOperation, MainCloseDebugOperation, MainCommandName, MainClient, MainPageReference } from "./main.contract.js";
 
 const pageMainReferences = viewReferences<MainPageReference>(id => ({ kind: "main", connect: () => connectMainAt(`content${id}`) }));
 export function pageMain(id: string): MainPageReference { return pageMainReferences(id); }

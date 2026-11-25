@@ -419,6 +419,8 @@ const navigate = useCommand((name: "showWelcome" | "showCounter") => client?.[na
 <button onClick={() => void navigate.run("showWelcome")}>Welcome</button>
 ```
 
+Those buttons share the handle's one `pending` and `error`.
+
 `pending` covers only this component's run. Whether .NET can run the command is
 the View's state: a command without an argument publishes `can<Name>`, so a
 button combines both, as in `disabled={!state?.canSave || save.pending}`, and is
@@ -430,6 +432,29 @@ For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves
 from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
+
+## `useCommands(view)`
+
+Makes a `useCommand` handle for each command of a View, so a component needs no
+`useCommand` per command:
+
+```tsx
+const orders = useView(page);
+const commands = useCommands(orders);
+<button disabled={!orders.state?.canRefresh || commands.refresh.pending} onClick={() => void commands.refresh.run()}>Refresh</button>
+<button onClick={() => void commands.archive.run(row.id)}>Archive</button>
+```
+
+`commands.<name>` has the same `run`, `pending`, `error`, `failure` and `reset` as
+`useCommand`, and each handle has its own `pending` and `error`. A handle is made when
+the component first reads its name. It is the same object across renders until its
+own state changes, and its `run` and `reset` stay the same while the component is
+mounted, so pass `commands.refresh` (not `commands`) to a memoized child. The names
+and arguments come from the generated client's commands (`{View}CommandName`), so
+setters, `canX(input)`, `startX`, `recoverX`, `upload` and `dispose` are not offered,
+and in explicit publication neither is a command that is not published. `run()`
+calls the latest client; before the client connected it resolves to `undefined`.
+Unmounting stops the handles' state; a run in flight still resolves.
 
 ## `useOperation(start, options?)`
 

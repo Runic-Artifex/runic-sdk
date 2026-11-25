@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ToolkitCancelState, ToolkitCancelClient, ToolkitCancelPageReference } from "./toolkitCancel.contract.js";
-export type { ToolkitCancelState, ToolkitCancelSaveOperation, ToolkitCancelExportOperation, ToolkitCancelBackgroundOperation, ToolkitCancelClient, ToolkitCancelPageReference } from "./toolkitCancel.contract.js";
+export type { ToolkitCancelState, ToolkitCancelSaveOperation, ToolkitCancelExportOperation, ToolkitCancelBackgroundOperation, ToolkitCancelCommandName, ToolkitCancelClient, ToolkitCancelPageReference } from "./toolkitCancel.contract.js";
 
 const pageToolkitCancelReferences = viewReferences<ToolkitCancelPageReference>(id => ({ kind: "toolkitCancel", connect: () => connectToolkitCancelAt(`content${id}`) }));
 export function pageToolkitCancel(id: string): ToolkitCancelPageReference { return pageToolkitCancelReferences(id); }

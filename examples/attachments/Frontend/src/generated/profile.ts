@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations, upload } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ProfileState, ProfileClient, ProfilePageReference } from "./profile.contract.js";
-export type { ProfileState, ProfileAttachOperation, ProfileClient, ProfilePageReference } from "./profile.contract.js";
+export type { ProfileState, ProfileAttachOperation, ProfileCommandName, ProfileClient, ProfilePageReference } from "./profile.contract.js";
 import type { Attachment } from "./types.js";
 export type { Attachment } from "./types.js";
 

@@ -257,7 +257,7 @@ describe("useView options", () => {
       "configureTranslatedText", "createRunicInstance", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
       "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "regionEntries", "resolveText", "retrySuspenseView",
       "selectedRegion", "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection",
-      "useCollectionViewport", "useCommand", "useField", "useForm", "useInteraction", "useLatestOperation", "useMenuBar", "useOperation",
+      "useCollectionViewport", "useCommand", "useCommands", "useField", "useForm", "useInteraction", "useLatestOperation", "useMenuBar", "useOperation",
       "useQueryCollection", "useRunicInstance", "useSuspenseView", "useText", "useTextField", "useTextLocale", "useView", "useViewState",
       "useWindowLocale", "windowLocale",
     ]);

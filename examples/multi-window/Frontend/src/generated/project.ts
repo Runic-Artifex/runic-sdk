@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, FieldBaseline, BridgeField, BridgeOperationS
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations, decodeBridgeValidation, fieldErrors, fieldValidating } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { ProjectState, ProjectCheckedFields, ProjectClient, ProjectPageReference } from "./project.contract.js";
-export type { ProjectState, ProjectCheckedFields, ProjectRenameOperation, ProjectNewWindowOperation, ProjectChooseThemeOperation, ProjectChooseLanguageOperation, ProjectOpenDocumentOperation, ProjectChooseAccountOperation, ProjectClient, ProjectPageReference } from "./project.contract.js";
+export type { ProjectState, ProjectCheckedFields, ProjectRenameOperation, ProjectNewWindowOperation, ProjectChooseThemeOperation, ProjectChooseLanguageOperation, ProjectOpenDocumentOperation, ProjectChooseAccountOperation, ProjectCommandName, ProjectClient, ProjectPageReference } from "./project.contract.js";
 
 const pageProjectReferences = viewReferences<ProjectPageReference>(id => ({ kind: "project", connect: () => connectProjectAt(`content${id}`) }));
 export function pageProject(id: string): ProjectPageReference { return pageProjectReferences(id); }

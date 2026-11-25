@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, FieldBaseline, BridgeField, BridgeRowFields 
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, defineCollection, defineCollections, decodeBridgeValidation, fieldErrors, fieldValidating, fieldPath, type BridgeFieldWriteRequest, rowFields } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { InvoiceState, InvoiceCheckedFields, InvoiceClient, InvoicePageReference } from "./invoice.contract.js";
-export type { InvoiceState, InvoiceCheckedFields, InvoiceClient, InvoicePageReference } from "./invoice.contract.js";
+export type { InvoiceState, InvoiceCheckedFields, InvoiceCommandName, InvoiceClient, InvoicePageReference } from "./invoice.contract.js";
 import type { InvoiceAddress, InvoiceLine } from "./types.js";
 export type { InvoiceAddress, InvoiceLine } from "./types.js";
 

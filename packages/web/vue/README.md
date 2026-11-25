@@ -387,6 +387,8 @@ const { run: navigate } = useCommand((name: "showWelcome" | "showCounter") => cl
 // <button @click="navigate('showWelcome')">Welcome</button>
 ```
 
+Those buttons share the handle's one `pending` and `error`.
+
 `pending` covers only this component's run. Whether .NET can run the command is
 the View's state: a command without an argument publishes `can<Name>` (such as
 `state.canSave`), so disable a button while either says no. A command with an
@@ -398,6 +400,29 @@ from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
 
+
+## `useCommands(view)`
+
+Makes a command handle for each command of a View, so a component needs no
+`useCommand` per command. Call it in `setup()` or `effectScope().run()`:
+
+```ts
+const { state, client } = useView(() => props.page);
+const commands = useCommands({ client });
+// <button :disabled="!state?.canRefresh || commands.refresh.pending" @click="commands.refresh.run()">Refresh</button>
+// <button @click="commands.archive.run(row.id)">Archive</button>
+```
+
+`commands.<name>` has `run`, `pending`, `error`, `failure` and `reset`, and each
+handle has its own `pending` and `error`. Unlike `useCommand`'s refs, `pending`,
+`error` and `failure` are getters that templates and effects track, so a template
+reads `commands.refresh.pending` without `.value`. A handle is made when the
+component first reads its name and kept while the scope is active. The names and
+arguments come from the generated client's commands (`{View}CommandName`), so setters,
+`canX(input)`, `startX`, `recoverX`, `upload` and `dispose` are not offered, and in
+explicit publication neither is a command that is not published. `run()` calls the
+client connected when it starts; before the client connected it resolves to
+`undefined`. Scope disposal stops the handles' state; a run in flight still resolves.
 ## `useOperation(start, options?)`
 
 Observes a generated `start<Command>()` operation through the framework-neutral

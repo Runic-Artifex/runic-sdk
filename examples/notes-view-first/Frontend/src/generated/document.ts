@@ -5,7 +5,7 @@ import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { pageEditor } from "./editor.js";
 import { pagePreview } from "./preview.js";
 import type { DocumentState, DocumentClient, DocumentPageReference } from "./document.contract.js";
-export type { DocumentState, DocumentShowEditorOperation, DocumentShowPreviewOperation, DocumentClient, DocumentPageReference } from "./document.contract.js";
+export type { DocumentState, DocumentShowEditorOperation, DocumentShowPreviewOperation, DocumentCommandName, DocumentClient, DocumentPageReference } from "./document.contract.js";
 import type { DocumentPane } from "./types.js";
 export type { DocumentPane } from "./types.js";
 export { DocumentPaneValues } from "./types.js";

@@ -371,7 +371,8 @@ and `failure`.
 failure, which `error` then holds until the next run. It never rejects, so
 handlers need no `try`/`catch`. One command can serve several buttons:
 `useCommand((name: "showWelcome" | "showCounter") => workspace.client?.[name]())`
-and `navigate.run("showWelcome")`. Called during component initialization, it
+and `navigate.run("showWelcome")`; those buttons share the handle's one `pending`
+and `error`. Called during component initialization, it
 stops publishing state when the component is destroyed, even before its first
 effect flush; a run in flight is not cancelled and its promise still settles.
 
@@ -386,6 +387,28 @@ from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
 
+
+## `useCommands(view)`
+
+Makes a `useCommand` handle for each command of a View, so a component needs no
+`useCommand` per command. Call it during component initialization:
+
+```svelte
+const orders = useView(() => page);
+const commands = useCommands(() => orders);
+<button disabled={!orders.state?.canRefresh || commands.refresh.pending} onclick={() => commands.refresh.run()}>Refresh</button>
+<button onclick={() => commands.archive.run(row.id)}>Archive</button>
+```
+
+`commands.<name>` has the same `run` and reactive `pending`, `error`, `failure` and
+`reset` as `useCommand`, and each handle has its own `pending` and `error`. A handle
+is made when the component first reads its name and kept until the component is
+destroyed. The names and arguments come from the generated client's commands
+(`{View}CommandName`), so setters, `canX(input)`, `startX`, `recoverX`, `upload` and
+`dispose` are not offered, and in explicit publication neither is a command that is
+not published. `run()` calls the client connected when it starts; before the client
+connected it resolves to `undefined`. Destroying the component stops the handles'
+state; a run in flight still resolves.
 ## `useOperation(start, options?)`
 
 Call during component initialization to observe a generated operation's admission,

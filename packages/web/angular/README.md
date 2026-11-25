@@ -524,6 +524,27 @@ readonly navigate = injectCommand((name: "showWelcome" | "showCounter") => this.
 // <button (click)="navigate.run('showWelcome')">Welcome</button>
 ```
 
+Those buttons share the handle's one `pending` and `error`.
+
+`injectCommands(view)` makes a handle for each command of a View, so a component
+needs no `injectCommand` per command:
+
+```ts
+readonly orders = injectView(this.page);
+readonly commands = injectCommands(this.orders);
+// <button (click)="commands.refresh.run()" [disabled]="!orders.state()?.canRefresh || commands.refresh.pending()">Refresh</button>
+// <button (click)="commands.archive.run(row.id)">Archive</button>
+```
+
+`commands.<name>` has the same `run`, `pending`, `error`, `failure` and `reset` as
+`injectCommand`, and each handle has its own `pending` and `error`. A handle is made
+when the component first reads its name and kept for the injection context. The
+names and arguments come from the generated client's commands (`{View}CommandName`),
+so setters, `canX(input)`, `startX`, `recoverX`, `upload` and `dispose` are not
+offered, and in explicit publication neither is a command that is not published.
+`run()` calls the client connected when it starts; before the client connected it
+resolves to `undefined`.
+
 For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
 `BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed
 from the outcome, while `error` keeps unexpected failures. Starting a run and

@@ -5,7 +5,7 @@ import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { pageEditor, pageEditorCompact } from "./editor.js";
 import { pagePreview } from "./preview.js";
 import type { DocumentState, DocumentInteractionContext, DocumentInteractions, DocumentClient, DocumentPageReference } from "./document.contract.js";
-export type { DocumentState, DocumentInteractionContext, DocumentInteractions, DocumentShowEditorOperation, DocumentShowPreviewOperation, DocumentSaveAndCloseOperation, DocumentCloseOperation, DocumentClient, DocumentPageReference } from "./document.contract.js";
+export type { DocumentState, DocumentInteractionContext, DocumentInteractions, DocumentShowEditorOperation, DocumentShowPreviewOperation, DocumentSaveAndCloseOperation, DocumentCloseOperation, DocumentCommandName, DocumentClient, DocumentPageReference } from "./document.contract.js";
 import type { DiscardNoteRequest, DocumentPane, NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection, SaveFailure } from "./types.js";
 export type { DiscardNoteRequest, DocumentPane, NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection, SaveFailure } from "./types.js";
 export { DocumentPaneValues, NavigationArrivalStateValues, NavigationOutcomeKindValues, NavigationRejectionValues } from "./types.js";

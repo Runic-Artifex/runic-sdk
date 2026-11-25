@@ -3,7 +3,7 @@ import type { BridgeConnectOptions, BridgeOperationStartOptions } from "@runic-a
 import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, bridgeOperations } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { KeyedToolkitState, KeyedToolkitClient, KeyedToolkitPageReference } from "./keyedToolkit.contract.js";
-export type { KeyedToolkitState, KeyedToolkitOpenOperation, KeyedToolkitClient, KeyedToolkitPageReference } from "./keyedToolkit.contract.js";
+export type { KeyedToolkitState, KeyedToolkitOpenOperation, KeyedToolkitCommandName, KeyedToolkitClient, KeyedToolkitPageReference } from "./keyedToolkit.contract.js";
 
 const pageKeyedToolkitReferences = viewReferences<KeyedToolkitPageReference>(id => ({ kind: "keyedToolkit", connect: () => connectKeyedToolkitAt(`content${id}`) }));
 export function pageKeyedToolkit(id: string): KeyedToolkitPageReference { return pageKeyedToolkitReferences(id); }
