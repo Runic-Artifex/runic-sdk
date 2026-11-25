@@ -36,7 +36,11 @@ const unbuiltExamples = new Set(["examples/dynamicdata"]);
 const skippedDirectories = new Set(["node_modules", "bin", "dist", ".git", ".cache", "artifacts", "Frontend", "golden"]);
 
 const slash = path => path.split(sep).join("/");
-const rel = path => slash(relative(root, path)) || ".";
+// A path below the checkout relative to it, any other (a template lane's project) absolute.
+const rel = path => {
+  const relativePath = slash(relative(root, path)) || ".";
+  return relativePath.startsWith("../") ? slash(path) : relativePath;
+};
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex").toUpperCase();
 
 /** The IRs a build wrote below a project directory: obj/<configuration>/<framework>/runic-bridge/contract.ir.json. */
@@ -110,7 +114,7 @@ function discover(sets, projects, configuration, projectConfiguration) {
     const irs = projectIrs(dirname(project), projectConfiguration)
       .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
     if (irs.length === 0) problems.push(`${path}: no contract.ir.json below obj; build the project first`);
-    else units.push({ ...unit("projects", project, irs[0]), name: slash(relative(process.cwd(), dirname(project))) || "." });
+    else units.push(unit("projects", project, irs[0]));
   }
   return { units, problems };
 }
