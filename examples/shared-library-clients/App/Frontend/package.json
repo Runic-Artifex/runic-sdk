@@ -1,0 +1,10 @@
+{
+  "name": "@acme/workbench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json",
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

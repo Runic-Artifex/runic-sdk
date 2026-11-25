@@ -589,6 +589,10 @@ jobs:
           xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
       - name: Exercise blobs and uploads on Runic Desktop
         run: node examples/attachments/browser-smoke.mjs
+      # #1318: a ViewModel library's clients, generated once into a frontend package; the application maps the library,
+      # imports them instead of generating copies, and renders the package's component.
+      - name: Exercise a shared ViewModel library's clients
+        run: node examples/shared-library-clients/browser-smoke.mjs
       # sdk#864: a browser cannot grow, so the side panel example falls back to its overlay; #/debug renders the panel's page.
       - name: Exercise the side panel example's fallback and panel route
         run: |

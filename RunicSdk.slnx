@@ -14,6 +14,8 @@
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
     <Project Path="examples/document-tabs/DocumentTabs.csproj" />
     <Project Path="examples/document-tabs/Tests/DocumentTabs.Tests.csproj" />
+    <Project Path="examples/shared-library-clients/SharedUi/SharedUi.csproj" />
+    <Project Path="examples/shared-library-clients/App/SharedLibraryApp.csproj" />
     <Project Path="examples/hosted-windows/Counter/CounterTool.csproj" />
     <Project Path="examples/hosted-windows/Counter/Tests/CounterTool.Tests.csproj" />
     <Project Path="examples/hosted-windows/Shell/HostedShell.csproj" />

@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    // Inside this repository nothing installs the example's frontends, so the shared-ui package is resolved from its
+    // folder, as vite.config.ts does. A workspace that installs it (`"@acme/shared-ui": "workspace:*"`) resolves the
+    // package's `exports` instead and deletes these lines.
+    "paths": {
+      "@acme/shared-ui": ["../../shared-ui/src/index.ts"],
+      "@acme/shared-ui/generated": ["../../shared-ui/src/generated/runic-clients.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}
