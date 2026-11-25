@@ -633,6 +633,21 @@ export interface FieldTextProps {
   readonly "aria-invalid": boolean;
 }
 
+/**
+ * What {@link FieldHandle.radioProps} spreads on one radio (`<input type="radio">`) of a group bound to a field: the
+ * option's text as `value`, and `checked` while it is the field's text. `onChange` writes the radio that became checked.
+ */
+export interface FieldRadioProps {
+  readonly type: "radio";
+  readonly value: string;
+  readonly checked: boolean;
+  readonly onChange: (event: { readonly currentTarget: { readonly checked: boolean; readonly value: string } }) => void;
+  /** Commits the field (see `FieldHandle.commit`). */
+  readonly onBlur: () => void;
+  /** True while the field has validation messages (`errors`) or an `error`. */
+  readonly "aria-invalid": boolean;
+}
+
 /** The props of a field's element: {@link FieldCheckboxProps} for a boolean field, otherwise {@link FieldTextProps}. */
 export type FieldInputProps<TValue> = [TValue] extends [boolean | null] ? FieldCheckboxProps : FieldTextProps;
 
@@ -640,6 +655,12 @@ export type FieldInputProps<TValue> = [TValue] extends [boolean | null] ? FieldC
 export type FieldHandle<TValue> = FieldState<TValue> & {
   /** Spread on the field's `<input>`, `<textarea>` or `<select>`. The handlers are the same on every render. */
   readonly inputProps: FieldInputProps<TValue>;
+  /**
+   * The props of the radio of one option, for a radio group bound to the field:
+   * `<input {...size.radioProps("Large")} />`. Its `value` is the option formatted as the field shows it; it is
+   * checked while that is the field's text. Choosing it writes the option, at once with `commit: "change"`.
+   */
+  radioProps(option: TValue): FieldRadioProps;
   /** The user changed the value, such as from a custom control. */
   input(value: TValue): void;
   /**
@@ -665,7 +686,8 @@ function isSelect(element: unknown): boolean {
 /**
  * Binds an element to one View member while the component is mounted, through `createFieldController`: pass a
  * generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. Spread `inputProps` on
- * an `<input>`, `<textarea>` or `<select>` (a checkbox for a boolean field). Typing never loses characters: the field
+ * an `<input>`, `<textarea>` or `<select>` (a checkbox for a boolean field), or `radioProps(option)` on each radio of
+ * a group. Typing never loses characters: the field
  * shows a draft while its writes are in flight, writes nothing during IME composition, keeps text that does not
  * parse (such as `1.` in a number field) as the draft, and once the last write settled shows the View's value.
  * `options` are read when the component mounts; the descriptor's `read`, `write` and `errors` may close over render
@@ -712,7 +734,7 @@ export function useField<TClient extends ViewClient, TValue>(
   }, [controller, state, client]);
   const readCurrent = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, readCurrent, readCurrent);
-  // With `commit: "change"` a choice (a checkbox or a select) is written at once; typed text waits for the blur.
+  // With `commit: "change"` a choice (a checkbox, a radio or a select) is written at once; typed text waits for the blur.
   const actions = useMemo(() => ({
     input: (value: TValue) => controller.input(value),
     commit: () => controller.commit(),
@@ -725,6 +747,12 @@ export function useField<TClient extends ViewClient, TValue>(
     },
     onCheck: (event: { readonly currentTarget: { readonly checked: boolean } }) => {
       controller.input(event.currentTarget.checked as TValue);
+      if (controller.field.commitMode === "change") void controller.commit();
+    },
+    // Only the radio that became checked reports the choice; its `value` is the option's text.
+    onRadio: (event: { readonly currentTarget: { readonly checked: boolean; readonly value: string } }) => {
+      if (!event.currentTarget.checked) return;
+      controller.inputText(event.currentTarget.value);
       if (controller.field.commitMode === "change") void controller.commit();
     },
     onCompositionStart: () => controller.compositionStart(),
@@ -746,9 +774,16 @@ export function useField<TClient extends ViewClient, TValue>(
       value: text, onChange: actions.onChange, onCompositionStart: actions.onCompositionStart,
       onCompositionEnd: actions.onCompositionEnd, onBlur: actions.onBlur, "aria-invalid": invalid,
     };
+  const radioProps = (option: TValue): FieldRadioProps => {
+    const optionText = controller.format(option);
+    return {
+      type: "radio", value: optionText, checked: optionText === text, onChange: actions.onRadio, onBlur: actions.onBlur,
+      "aria-invalid": invalid,
+    };
+  };
   const handle: FieldHandle<TValue> = {
     value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict, validating,
-    inputProps: inputProps as FieldInputProps<TValue>,
+    inputProps: inputProps as FieldInputProps<TValue>, radioProps,
     input: actions.input, commit: actions.commit, retry: actions.retry, reset: actions.reset,
   };
   // React DevTools shows the field's state: `title = "Draft" · editing · 1 error`.

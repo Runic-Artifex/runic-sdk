@@ -145,6 +145,7 @@ knows the member's kind, setter, checked write and validation. `{@attach field.a
   const title = useField(() => editor, EditorFields.title, { commit: "pause", checked: true });
   const step = useField(() => editor, EditorFields.step);
   const done = useField(() => editor, EditorFields.done);
+  const size = useField(() => editor, EditorFields.size);
 </script>
 
 <input {@attach title.attach}>
@@ -157,11 +158,15 @@ knows the member's kind, setter, checked write and validation. `{@attach field.a
 {/if}
 <input type="number" {@attach step.attach}>
 <input type="checkbox" {@attach done.attach}>
+{#each ["Small", "Large"] as option (option)}
+  <input type="radio" name="size" value={option} {@attach size.attach}>
+{/each}
 ```
 
-The attachment writes what the user types (`input`; `change` of a `<select>` or checkbox), writes nothing during IME
-composition, commits on blur, keeps the element's text (a checkbox's `checked`) equal to the field's without moving
-the caret, and sets `aria-invalid` while the field has `errors` or an `error`. Number inputs keep `-` and `1.` while
+The attachment writes what the user types (`input`; `change` of a `<select>`, a checkbox or the radio that became
+checked), writes nothing during IME composition, commits on blur, keeps the element's text (a checkbox's `checked`; a
+radio of a group, which keeps its own `value`, is checked while that is the field's text) equal to the field's without
+moving the caret, and sets `aria-invalid` while the field has `errors` or an `error`. Number inputs keep `-` and `1.` while
 the user types: a text that does not parse stays the draft with an `invalid-text` error and nothing is written. The
 handle also has `value` and `text`, which `bind:value={title.value}` reads and sets, the reactive `editing`, `error`,
 `errors` and `conflict`, and `input(value)`, `commit()`, `retry()` and `reset()`.
@@ -176,7 +181,7 @@ handle also has `value` and `text`, which `bind:value={title.value}` reads and s
 - `commit: "change"` writes the draft only on `commit()`, which blur calls, so the ViewModel's setter runs once, when
   the user leaves the field. It is the mode a WPF port wants: WPF binds `TextBox.Text` with
   `UpdateSourceTrigger=LostFocus`, and its setters often validate, normalize or start work. There is no timer, so
-  pass no `delay`; `attach` still writes each choice of a checkbox or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls, and so does a value `bind:value` or `bind:checked` sets on a boolean field or a field with `choices`. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
+  pass no `delay`; `attach` still writes each choice of a checkbox, radio or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls, and so does a value `bind:value` or `bind:checked` sets on a boolean field or a field with `choices`. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
   window close or a departure (`field-flush/1`) write the draft too, and so does unmounting.
 - `checked: true` writes with the member's checked write, so a change by another writer while the user edits is a
   conflict instead of being overwritten. A `rejected` receipt keeps the draft and sets `error` to a `FieldError` with

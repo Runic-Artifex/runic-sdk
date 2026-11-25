@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { createApp, defineComponent, effectScope, h, nextTick, vModelCheckbox, vModelText, withDirectives } from "vue";
+import { createApp, defineComponent, effectScope, h, nextTick, vModelCheckbox, vModelRadio, vModelText, withDirectives } from "vue";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
 import { FieldError, useField, useForm, useView, type BridgeField, type FieldHandle, type FieldState, type FormHandle } from "../dist/index.js";
@@ -151,6 +151,41 @@ describe("useField", () => {
     choice.field.value = 2;
     expect(client.calls.map(call => call.value)).toEqual(["saved!!", true, 2]);
     choice.app.unmount();
+  });
+
+  test("v-model binds a radio group to one field: the checked radio follows the field, a choice writes its value (#1327)", async () => {
+    const client = fakeClient({ step: 2 });
+    // <input type="radio" :value="option" v-model="step.value"> for each option: Vue's own radio wiring.
+    const radios = (step: FieldHandle<number>) => h("div", [1, 2, 3].map(option =>
+      withDirectives(h("input", { type: "radio", name: "step", value: option, "onUpdate:modelValue": ($event: number) => { step.value = $event; } }),
+        [[vModelRadio, step.value]])));
+    const { target, app } = mountField(() => useField(useView(client), Fields.step), radios);
+    await nextTick();
+    const inputs = [...target.querySelectorAll("input")];
+    expect(inputs.map(input => input.checked)).toEqual([false, true, false]);
+    inputs[2]!.checked = true;
+    inputs[2]!.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual([3]);
+    client.calls[0]!.resolve();
+    await settle();
+    // A value from .NET moves the checked radio.
+    client.apply("step", 1);
+    await nextTick();
+    expect(inputs.map(input => input.checked)).toEqual([true, false, false]);
+    app.unmount();
+
+    // With commit: "change" a field without choices keeps the radio's value as the draft until `commit`, which the
+    // radio's `@change` calls (see the README).
+    const changed = mountField(() => useField(useView(client), Fields.step, { commit: "change" }), radios);
+    await nextTick();
+    const group = [...changed.target.querySelectorAll("input")];
+    group[1]!.checked = true;
+    group[1]!.dispatchEvent(new Event("change"));
+    expect(client.calls.map(call => call.value)).toEqual([3]);
+    expect(changed.field).toMatchObject({ value: 2, editing: true });
+    void changed.field.commit();
+    expect(client.calls.map(call => call.value)).toEqual([3, 2]);
+    changed.app.unmount();
   });
 
   test("a number field bound with v-model on text keeps `-` and `1.` and writes numbers", async () => {

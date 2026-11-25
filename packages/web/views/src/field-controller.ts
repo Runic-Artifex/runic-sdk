@@ -72,7 +72,7 @@ export interface FieldOptions<TValue = any> {
    * the draft only on `commit()`, so on blur, as the DOM `change` event of a text input and WPF's
    * `UpdateSourceTrigger=LostFocus` do; a form's `submit()` and `commit()`, `commitAllFields()` and the runtime's
    * flush before a window close or a departure write it too. A choice is still written at once: the bindings commit
-   * after the `change` of a checkbox or select they wire (and of a radio, with `[runicField]`). With `pause` and `change`, text that was not written yet is written when the
+   * after the `change` of a checkbox, radio or select they wire. With `pause` and `change`, text that was not written yet is written when the
    * field is disposed.
    */
   readonly commit?: FieldCommit;

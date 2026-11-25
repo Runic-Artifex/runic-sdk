@@ -57,10 +57,12 @@ export interface FieldHandle<TValue> {
   reset(): void;
   /**
    * Wires an `<input>`, `<textarea>` or `<select>` to the field: `<input {@attach title.attach}>`. It writes the text
-   * typed (`input` events; `change` of a `<select>` or checkbox, whose `checked` is the value), writes nothing during
-   * IME composition, commits on blur (and, with `commit: "change"`, after each choice of a checkbox or
-   * `<select>`), keeps the element's text (a checkbox's `checked`) equal to the field's without
-   * moving the caret while it already shows it, and sets `aria-invalid` while the field has `errors` or an `error`.
+   * typed (`input` events; `change` of a `<select>` or checkbox, whose `checked` is the value, and of a radio that
+   * became checked, whose `value` is the text), writes nothing during IME composition, commits on blur (and, with
+   * `commit: "change"`, after each choice of a checkbox, radio or `<select>`), keeps the element's text (a checkbox's
+   * `checked`; a radio is checked while its `value` is the field's text) equal to the field's without moving the caret
+   * while it already shows it, and sets `aria-invalid` while the field has `errors` or an `error`. Attach it to each
+   * radio of a group: `<input type="radio" value="Large" {@attach size.attach}>`.
    */
   readonly attach: Attachment<FieldElement>;
 }
@@ -104,18 +106,22 @@ export function useField<TClient extends ViewClient, TValue>(
   const commitsChoices = controller.field.commitMode === "change";
   const attach: Attachment<FieldElement> = element => {
     const checkbox = element instanceof HTMLInputElement && element.type === "checkbox";
-    const choice = checkbox || element instanceof HTMLSelectElement;
+    // A radio of a group attached to one field: its own `value` is its option, checked while the field's text is.
+    const radio = element instanceof HTMLInputElement && element.type === "radio";
+    const choice = checkbox || radio || element instanceof HTMLSelectElement;
     let composing = false;
     const changed = () => {
       if (checkbox) controller.input((element as HTMLInputElement).checked as TValue);
+      // Only the radio that became checked reports the choice.
+      else if (radio && !(element as HTMLInputElement).checked) return;
       else controller.inputText(element.value);
       if (commitsChoices && choice) void controller.commit();
     };
     const compositionStart = () => { composing = true; controller.compositionStart(); };
     const compositionEnd = () => { composing = false; controller.compositionEnd(element.value); };
     const blur = () => { void controller.commit(); };
-    // A `<select>` and a checkbox report a choice with `change`; text inputs report each edit with `input`.
-    const event = checkbox || element instanceof HTMLSelectElement ? "change" : "input";
+    // A `<select>`, a checkbox and a radio report a choice with `change`; text inputs report each edit with `input`.
+    const event = choice ? "change" : "input";
     element.addEventListener(event, changed);
     element.addEventListener("compositionstart", compositionStart);
     element.addEventListener("compositionend", compositionEnd);
@@ -124,8 +130,8 @@ export function useField<TClient extends ViewClient, TValue>(
     $effect(() => {
       const { value, text, errors, error } = current;
       element.setAttribute("aria-invalid", String(errors.length > 0 || error !== undefined));
-      if (checkbox) {
-        const checked = value === true;
+      if (checkbox || radio) {
+        const checked = checkbox ? value === true : element.value === text;
         if ((element as HTMLInputElement).checked !== checked) (element as HTMLInputElement).checked = checked;
       } else if (!composing && element.value !== text) element.value = text;
     });

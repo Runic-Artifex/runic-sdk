@@ -162,6 +162,7 @@ export function EditorPage({ page }: { page: EditorPageReference }) {
   const title = useField(editor, EditorFields.title, { commit: "pause", checked: true });
   const step = useField(editor, EditorFields.step);
   const done = useField(editor, EditorFields.done);
+  const size = useField(editor, EditorFields.size);
   return <>
     <input {...title.inputProps} />
     {title.errors.map(message => <p key={message} role="alert">{message}</p>)}
@@ -171,14 +172,17 @@ export function EditorPage({ page }: { page: EditorPageReference }) {
     </p>}
     <input inputMode="decimal" {...step.inputProps} />
     <input type="checkbox" {...done.inputProps} />
+    {["Small", "Large"].map(option => <input key={option} name="size" {...size.radioProps(option)} />)}
   </>;
 }
 ```
 
 It returns the field's state (`value`, `text`, `editing`, `error`, `errors`, `conflict`), `input(value)`,
-`commit()`, `retry()`, `reset()` and `inputProps`. For a boolean field `inputProps` is `checked`, `onChange`,
-`onBlur` and `aria-invalid` for a checkbox; otherwise it is the field's `text` as `value`, `onChange`, the
-composition handlers, `onBlur` and `aria-invalid`. Text inputs of numbers keep `-` and `1.` while the user types: a
+`commit()`, `retry()`, `reset()`, `inputProps` and `radioProps(option)`. For a boolean field `inputProps` is `checked`,
+`onChange`, `onBlur` and `aria-invalid` for a checkbox; otherwise it is the field's `text` as `value`, `onChange`, the
+composition handlers, `onBlur` and `aria-invalid`. For a radio group, spread `radioProps(option)` on each radio: it is
+`type="radio"`, the option's text as `value`, `checked` while that is the field's text, `onChange` (which writes the
+radio that became checked), `onBlur` and `aria-invalid`. Text inputs of numbers keep `-` and `1.` while the user types: a
 text that does not parse stays the draft with an `invalid-text` error and nothing is written. The handlers are the
 same on every render. `aria-invalid` is true while the field has `errors` or an `error`.
 
@@ -193,7 +197,7 @@ same on every render. `aria-invalid` is true while the field has `errors` or an 
 - `commit: "change"` writes the draft only on `commit()`, which blur calls, so the ViewModel's setter runs once, when
   the user leaves the field. It is the mode a WPF port wants: WPF binds `TextBox.Text` with
   `UpdateSourceTrigger=LostFocus`, and its setters often validate, normalize or start work. There is no timer, so
-  pass no `delay`; `inputProps` still write each choice of a checkbox or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
+  pass no `delay`; `inputProps` and `radioProps` still write each choice of a checkbox, radio or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
   window close or a departure (`field-flush/1`) write the draft too, and so does unmounting.
 - `checked: true` writes with the member's checked write, so a change by another writer while the user edits is a
   conflict instead of being overwritten. A `rejected` receipt keeps the draft and sets `error` to a `FieldError` with
