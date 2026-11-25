@@ -10,13 +10,14 @@ import { currentSlots, type Slots } from "./scope.js";
  * than this `@runic-artifex/views` (no other producer is compared), `revision-timeout` for a reply
  * whose revision the route did not reach within 5 seconds (a producer bug: the client then
  * reads a snapshot), `stale-input` for script that wrote an older value into a focused input
- * while a request was in flight (`@runic-artifex/vite-plugin-runic` in development), or `reported`
- * for an application error the runtime caught. Open: a minor release may add a code, so handle
+ * while a request was in flight (`@runic-artifex/vite-plugin-runic` in development), `contract` for a page whose
+ * generated client comes from another build of its ViewModel than the application's Bridge (the development build,
+ * since 0.24), or `reported` for an application error the runtime caught. Open: a minor release may add a code, so handle
  * unknown codes.
  */
 export type BridgeDiagnosticCode =
   | Exclude<BridgeErrorKind, "released"> | "uncertain" | "timed-out" | "protocol" | "version" | "revision-timeout"
-  | "stale-input" | "reported";
+  | "stale-input" | "contract" | "reported";
 
 /** A failure or terminal event the Views runtime observed. */
 export interface BridgeDiagnostic {

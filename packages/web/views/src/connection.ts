@@ -244,6 +244,23 @@ const revisionTimeout = 5_000;
 const reopenAttempts = 20;
 const reopenDelay = 250;
 
+/**
+ * view-contract/1, in the development build: the failure for an `open` reply whose Bridge contract is not the page's,
+ * reported once, with the View and both fingerprints, as a `contract` diagnostic, which also reaches the Runic DevTools
+ * dock. Only development code calls it, so the production build drops it.
+ */
+function contractMismatch(slots: Slots, route: string, contract: string, bridgeContract: string): BridgeError {
+  const fingerprint = (value: string) => value.slice(value.lastIndexOf(":") + 1);
+  const error = new BridgeError("failed",
+    `The page and the application were generated from different builds of the View ${viewName(contract, route)}: the ` +
+    `page's generated client has the contract fingerprint ${fingerprint(contract)}, the application's Bridge ` +
+    `${fingerprint(bridgeContract)}. Rebuild the application and its frontend together.`, { route });
+  emitBridgeDiagnostic(slots, {
+    kind: "error", code: "contract", route, error, message: `${error.message} (page: ${contract}; application: ${bridgeContract})`,
+  });
+  return error;
+}
+
 /** The shared state of one open route: its producer state, revision, overlay and presentations. */
 class RouteEntry {
   readonly presentations = new Set<Lease>();
@@ -519,6 +536,13 @@ class RouteEntry {
           return false;
         }
         if (!reply.ok || !this.live()) return false;
+        // view-contract/1: the development build compares the page's generated contract with the Bridge's before it
+        // decodes the state with the page's codecs. A Bridge before 0.24 sends no `contract`.
+        if (__RUNIC_DEVELOPMENT__ && typeof reply["contract"] === "string" && reply["contract"] !== this.contract) {
+          if (reply["presentation"] === "ok" && this.runtime.connected)
+            void this.runtime.request({ kind: "close", route: this.route, presentation: lease.id }, this.route).catch(() => undefined);
+          throw contractMismatch(this.slots, this.route, this.contract, reply["contract"]);
+        }
         try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"], epochOf(reply)); }
         catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route: this.route }); }
         return true;

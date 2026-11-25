@@ -70,6 +70,9 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
     // open-ended-interactions/1: an interaction push without expiresAt has no deadline (sdk#1146). A connection without
     // the feature receives an instant for such a request (BridgeInteractionRouter.PushPending).
     internal const string OpenEndedInteractionsFeature = "open-ended-interactions/1";
+    // view-contract/1: an open reply names the route's generated contract, which a page's development build compares
+    // with its own (sdk#1324).
+    internal const string ViewContractFeature = "view-contract/1";
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -988,6 +991,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         var usesHostedRegions = ListsFeature(root, BridgeHostedRegions.Feature);
         var usesTraceContext = ListsFeature(root, TraceContextFeature);
         var usesOpenEndedInteractions = ListsFeature(root, OpenEndedInteractionsFeature);
+        var usesViewContract = ListsFeature(root, ViewContractFeature);
         var handlerTiming = HandlerTiming;
         var usesHandlerTiming = handlerTiming && ListsFeature(root, HandlerTimingFeature);
         if (!TryReadLanguages(root, usesClientLanguages, out var languages))
@@ -1023,6 +1027,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTraceContext = usesTraceContext;
             connection.UsesHandlerTiming = usesHandlerTiming;
             connection.UsesOpenEndedInteractions = usesOpenEndedInteractions;
+            connection.UsesViewContract = usesViewContract;
             connection.Languages = languages;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
@@ -1287,6 +1292,8 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     internal bool UsesHandlerTiming { get; set; }
     // open-ended-interactions/1: an interaction request without a deadline is pushed without expiresAt.
     internal bool UsesOpenEndedInteractions { get; set; }
+    // view-contract/1: an open reply carries the route's contract.
+    internal bool UsesViewContract { get; set; }
     // Whether the connection uses view-requests/1.
     internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.

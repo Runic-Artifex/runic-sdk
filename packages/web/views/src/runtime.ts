@@ -8,7 +8,7 @@ import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js"
 import { BridgeError } from "./errors.js";
 import {
   clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, invalidResponse, openEndedInteractionsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush,
-  viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+  viewContractFeature, viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { onInstanceDisposed, type Slots } from "./scope.js";
@@ -83,6 +83,9 @@ export const clientFeatures: readonly string[] = [
   // Development tools (calls.ts): only the development build lists them, and a request carries their members only while
   // a reader of the Bridge-call channel follows its call. The production build's hello is the same as without them.
   ...__RUNIC_DEVELOPMENT__ ? [traceContextFeature, handlerTimingFeature] : [],
+  // view-contract/1 (connection.ts): the development build checks that an opened route's Bridge comes from the build
+  // of the page's generated client.
+  ...__RUNIC_DEVELOPMENT__ ? [viewContractFeature] : [],
 ];
 
 /** A push handler, registered per push kind and route. */
