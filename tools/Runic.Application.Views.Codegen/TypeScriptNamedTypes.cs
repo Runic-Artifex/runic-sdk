@@ -42,6 +42,8 @@ internal static partial class TypeScriptNamedTypes
     /// Uses of one C# type share a declaration unless their member
     /// nullability differs, as for <c>Box&lt;string&gt;</c> and
     /// <c>Box&lt;string?&gt;</c> when the box has a member of type <c>T</c>.
+    /// A use in a module that a mapped client library owns (<see cref="ClientModules.Discarding"/>) declares nothing:
+    /// the type is declared only if one of the written modules uses it too, as that use declares it.
     /// </remarks>
     internal static string Reference(BridgeTypeNode node)
     {
@@ -52,9 +54,18 @@ internal static partial class TypeScriptNamedTypes
             ByShape.Add(key, entry);
             Entries.Add(entry);
         }
+        if (ClientModules.Discarding) return $"{Marker}{entry.Index}{Marker}";
+        if (!entry.Kept)
+        {
+            entry.Kept = true;
+            entry.Node = node;
+        }
         if (node.Direction.HasFlag(BridgeValueDirection.ToPage)) entry.ToPage = true;
         return $"{Marker}{entry.Index}{Marker}";
     }
+
+    // The named types the written modules use, in registration order.
+    private static IEnumerable<Entry> Kept => Entries.Where(entry => entry.Kept);
 
     // A named node's included members and their nullability, down to the named
     // types they contain. The same DTO can have different exclusions when
@@ -72,7 +83,7 @@ internal static partial class TypeScriptNamedTypes
         + (IsNamed(node) ? "(" + Shape(node) + ")" : "");
 
     /// <summary>True when at least one module referenced a named type.</summary>
-    internal static bool Any => Entries.Count > 0;
+    internal static bool Any => Entries.Any(entry => entry.Kept);
 
     /// <summary>
     /// Builds every definition and assigns final names. <paramref name="modules"/>
@@ -81,9 +92,19 @@ internal static partial class TypeScriptNamedTypes
     internal static void Complete(IEnumerable<string> modules)
     {
         // A definition can reference further named types, which register
-        // themselves while it is built.
-        for (var index = 0; index < Entries.Count; index++)
-            Entries[index].Definition = BridgeTypeGraph.TypeScriptDeclaration(Entries[index].Node, Reference(Entries[index].Node));
+        // themselves while it is built, and a type that only a discarded module
+        // used until then is kept once a kept definition contains it.
+        for (var built = true; built;)
+        {
+            built = false;
+            for (var index = 0; index < Entries.Count; index++)
+                if (Entries[index].Kept && Entries[index].Definition is null)
+                {
+                    Entries[index].Definition = BridgeTypeGraph.TypeScriptDeclaration(Entries[index].Node, Reference(Entries[index].Node));
+                    built = true;
+                }
+        }
+        var entries = Kept.ToArray();
 
         // A type that a value sent to the page contains reaches the page too,
         // whichever use registered it first. Only a type that never does
@@ -91,21 +112,21 @@ internal static partial class TypeScriptNamedTypes
         for (var changed = true; changed;)
         {
             changed = false;
-            foreach (var entry in Entries.Where(entry => entry.ToPage))
+            foreach (var entry in entries.Where(entry => entry.ToPage))
                 foreach (Match match in Placeholder().Matches(entry.Definition!))
                 {
                     var contained = Entries[int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)];
                     if (!contained.ToPage) { contained.ToPage = true; changed = true; }
                 }
         }
-        foreach (var entry in Entries.Where(entry => !entry.ToPage))
+        foreach (var entry in entries.Where(entry => !entry.ToPage))
             entry.Definition = BridgeTypeGraph.TypeScriptDeclaration(entry.Node, Reference(entry.Node), fromPageOnly: true);
 
         // Uses of one C# type with different shapes are told apart by the
         // nullable annotations of their type arguments: Box<string> keeps
         // BoxOfString and Box<string?> becomes BoxOfNullableOfString.
-        foreach (var entry in Entries)
-            entry.BaseName = Entries.Count(other => other.Type == entry.Type) > 1
+        foreach (var entry in entries)
+            entry.BaseName = entries.Count(other => other.Type == entry.Type) > 1
                 ? BaseName(entry.Type, entry.Node.Nullability) : BaseName(entry.Type, null);
 
         var reserved = new HashSet<string>(Globals, StringComparer.Ordinal);
@@ -113,10 +134,10 @@ internal static partial class TypeScriptNamedTypes
 
         // Qualify colliding names with their declaring types and namespace
         // segments, innermost first, until every name is distinct.
-        var levels = Entries.ToDictionary(entry => entry, _ => 0);
+        var levels = entries.ToDictionary(entry => entry, _ => 0);
         for (var round = 0; round < 64; round++)
         {
-            var conflicts = Entries.GroupBy(entry => Candidate(entry, levels[entry]), StringComparer.Ordinal)
+            var conflicts = entries.GroupBy(entry => Candidate(entry, levels[entry]), StringComparer.Ordinal)
                 .Where(group => group.Count() > 1 || reserved.Contains(group.Key))
                 .SelectMany(group => group)
                 .Where(entry => levels[entry] < Qualifiers(entry.Type).Count)
@@ -125,7 +146,7 @@ internal static partial class TypeScriptNamedTypes
             foreach (var entry in conflicts) levels[entry]++;
         }
         var taken = new HashSet<string>(reserved, StringComparer.Ordinal);
-        foreach (var entry in Entries.OrderBy(entry => levels[entry])
+        foreach (var entry in entries.OrderBy(entry => levels[entry])
                      .ThenBy(entry => entry.Type.FullName ?? entry.Type.Name, StringComparer.Ordinal))
         {
             var name = Candidate(entry, levels[entry]);
@@ -152,7 +173,7 @@ internal static partial class TypeScriptNamedTypes
     internal static string Module()
     {
         var source = new StringBuilder();
-        foreach (var entry in Entries.OrderBy(entry => entry.Name, StringComparer.Ordinal))
+        foreach (var entry in Kept.OrderBy(entry => entry.Name, StringComparer.Ordinal))
         {
             source.Append(Resolve(entry.Definition!));
             if (ValuesName(entry) is { } values)
@@ -276,7 +297,9 @@ internal static partial class TypeScriptNamedTypes
     {
         internal int Index { get; } = index;
         internal Type Type { get; } = type;
-        internal BridgeTypeNode Node { get; } = node;
+        internal BridgeTypeNode Node { get; set; } = node;
+        /// <summary>A written module, or the definition of a kept type, uses this type, so <c>types.ts</c> declares it.</summary>
+        internal bool Kept { get; set; }
         internal string? Definition { get; set; }
         /// <summary>Some value that reaches the page contains this type.</summary>
         internal bool ToPage { get; set; }

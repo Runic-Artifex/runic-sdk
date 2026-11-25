@@ -1615,3 +1615,94 @@ test("a client library compiles the library-mode marker", () => {
   assert.deepEqual(compile([]), generated.filter(file => file !== "RunicClientLibrary.g.cs").sort(),
     "Only a client library compiles the marker, which the generator deletes without library mode.");
 });
+
+// #1318: RunicApplicationFrontendClientModule maps a referenced client library's assembly to the specifier of its
+// generated runic-clients.ts, which the application's generated modules import instead of generating copies.
+test("each RunicApplicationFrontendClientModule becomes a --client-module argument", () => {
+  const project = join(directory, "client-module-arguments");
+  const fake = join(project, "fake-dotnet");
+  mkdirSync(fake, { recursive: true });
+  writeFileSync(join(fake, "dotnet"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${join(project, "generator.log")}"\n`, { mode: 0o755 });
+  const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
+  const generate = items => {
+    writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <AssemblyName>App</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+${items}
+  </ItemGroup>
+  <Target Name="ResolveProjectReferences" />
+  <Target Name="InitializeSourceRootMappedPaths" />
+  <Target Name="Build" />
+  <Import Project="${targets}" />
+</Project>
+`);
+    rmSync(join(project, "generator.log"), { force: true });
+    const result = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-t:RunicViewsDetectBridgeUse;RunicViewsGenerateBridge",
+      `-p:Configuration=${configuration}`, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"],
+      { cwd: project, encoding: "utf8", env: { ...process.env, PATH: `${fake}:${process.env.PATH}` } });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const lines = readFileSync(join(project, "generator.log"), "utf8").split("\n");
+    return lines.flatMap((line, index) => line === "--client-module" ? [lines[index + 1]] : []);
+  };
+  assert.deepEqual(generate(`    <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/shared-ui/generated" />
+    <RunicApplicationFrontendClientModule Include="Acme.Forms" Specifier=" @acme/forms/generated " />`),
+  ["SharedUi=@acme/shared-ui/generated", "Acme.Forms=@acme/forms/generated"]);
+  assert.deepEqual(generate(""), [], "Without the item, the generator gets no --client-module.");
+});
+
+test("RUNICBRIDGE082: a RunicApplicationFrontendClientModule without a Specifier, with a relative one, or twice", () => {
+  const project = join(directory, "client-module-items");
+  mkdirSync(project, { recursive: true });
+  const check = items => {
+    writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+${items}
+  </ItemGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+    const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsCheckClientModules",
+      "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+    return { status: result.status, errors: errors(`${result.stdout}${result.stderr}`) };
+  };
+  const failed = check(`    <RunicApplicationFrontendClientModule Include="NoSpecifier" />
+    <RunicApplicationFrontendClientModule Include="Blank" Specifier="  " />
+    <RunicApplicationFrontendClientModule Include="Relative" Specifier="../shared-ui/src/generated/runic-clients.js" />
+    <RunicApplicationFrontendClientModule Include="Twice" Specifier="@acme/twice/generated" />
+    <RunicApplicationFrontendClientModule Include="Twice" Specifier="@acme/other/generated" />
+    <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/shared-ui/generated" />`);
+  assert.notEqual(failed.status, 0);
+  const file = join(project, "App.proj");
+  assert.deepEqual(failed.errors, [
+    `${file} : error RUNICBRIDGE082: The RunicApplicationFrontendClientModule NoSpecifier has no Specifier. Set it to the module specifier of the library's generated runic-clients.ts, as the frontend imports it, such as Specifier="@acme/shared-ui/generated".`,
+    `${file} : error RUNICBRIDGE082: The RunicApplicationFrontendClientModule Blank has no Specifier. Set it to the module specifier of the library's generated runic-clients.ts, as the frontend imports it, such as Specifier="@acme/shared-ui/generated".`,
+    `${file} : error RUNICBRIDGE082: The RunicApplicationFrontendClientModule Relative has the relative Specifier '../shared-ui/src/generated/runic-clients.js', which every generated module would resolve from its own folder. Use a package specifier, such as @acme/shared-ui/generated, or a tsconfig paths alias.`,
+    `${file} : error RUNICBRIDGE082: The assembly Twice has more than one RunicApplicationFrontendClientModule. Keep one item per assembly.`,
+  ]);
+  assert.deepEqual(check(`    <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/shared-ui/generated" />`),
+    { status: 0, errors: [] });
+});
+
+// The generator rewrites runic-client-modules.ts when a library's contracts change (a cache miss through the library's
+// assembly), and the generated directory is a frontend input, so the frontend type-checks against them again.
+test("a changed runic-client-modules.ts rebuilds the frontend", () => {
+  const app = fixture("client-module-check", { name: "app", private: true });
+  writeFileSync(join(app.frontend, "emits-dist"), "");
+  mkdirSync(join(app.frontend, "generated"), { recursive: true });
+  const check = join(app.frontend, "generated/runic-client-modules.ts");
+  writeFileSync(check, "// <auto-generated />\nexport type RunicClientModuleCheck = [\"SharedUi.AboutDialogViewModel:1\"];\n");
+  age(check, 3600);
+  assert.equal(builds(build(app)), 1);
+  assert.equal(builds(build(app)), 0);
+  writeFileSync(check, "// <auto-generated />\nexport type RunicClientModuleCheck = [\"SharedUi.AboutDialogViewModel:2\"];\n");
+  const result = build(app);
+  assert.equal(result.status, 0, result.output);
+  assert.equal(builds(result), 1, "A changed library contract does not rebuild the frontend.");
+});

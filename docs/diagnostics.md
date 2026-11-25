@@ -106,6 +106,11 @@ and severities are open.
 | [`RUNICBRIDGE076`](#runicbridge076) | Warning | Generator | A generated client loses its declaration map or comments because an assembly has no PDB |
 | [`RUNICBRIDGE077`](#runicbridge077) | Error | Generator | A ViewModel property is marked both [RunicInclude] and [RunicIgnore] |
 | [`RUNICBRIDGE078`](#runicbridge078) | Warning | Generator | A [RunicInclude] declaration on a ViewModel member that the Bridge cannot publish has no effect |
+| [`RUNICBRIDGE079`](#runicbridge079) | Error | Generator | A RunicApplicationFrontendClientModule names an assembly that is not referenced or not built as a client library |
+| [`RUNICBRIDGE080`](#runicbridge080) | Error | Generator | A mapped client library's ViewModel also has Views in another assembly |
+| [`RUNICBRIDGE081`](#runicbridge081) | Error | Generator | A mapped client library's ViewModel presents content of another owner, or a shared client's implementers have different owners |
+| [`RUNICBRIDGE082`](#runicbridge082) | Error | Build targets; generator | A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include |
+| [`RUNICBRIDGE083`](#runicbridge083) | Warning | Generator | A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing |
 
 ### Errors and warnings while you type
 
@@ -1067,6 +1072,79 @@ class declares. For a CommunityToolkit `[ObservableProperty]` field or a
 puts on the generated property. Override an inherited property in the
 ViewModel, or remove the attribute. See
 [Which members are published](../packages/dotnet/Runic.Application.Views/README.md#which-members-are-published).
+
+### RUNICBRIDGE079
+
+An error from the Bridge generator (since 0.24). A
+`RunicApplicationFrontendClientModule` item names an assembly that the
+application cannot use as a client library: the assembly is not beside the
+application's inspected assembly, so the application does not reference it (the
+item's `Include` is the assembly's simple name, such as `SharedUi`, not a project
+path), it is the application itself, or it was not built with
+`RunicApplicationFrontendClientLibrary=true` and so does not carry the metadata
+`Runic.Application.Views.ClientLibrary`. Such an assembly generates no module for
+the application to import.
+
+**Fix:** add a `ProjectReference` or `PackageReference` to the library, correct
+the item's `Include`, or set `RunicApplicationFrontendClientLibrary` to `true` in
+the library's project and build it again. See
+[MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE080
+
+An error from the Bridge generator (since 0.24). A ViewModel whose Views a client
+library declares, and that a `RunicApplicationFrontendClientModule` item maps,
+also has Views in the application, or in a second mapped library. The assembly
+that declares a ViewModel's Views owns its generated TypeScript, so all of its
+Views must be in one assembly. This is typical after mapping a library: the
+application still declares the Views that the library now declares, such as
+`public sealed partial class AboutDialogView : RunicView<AboutDialogViewModel>;`.
+
+**Fix:** delete the application's View declarations of the library's
+ViewModels, or remove the item and keep generating the application's own
+clients. See [MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE081
+
+An error from the Bridge generator (since 0.24). The client of a ViewModel that a
+mapped client library owns comes from the library's generated module, which types
+only the pages the library generates. The error names the case:
+
+- a content slot, content collection or region collection of a library
+  ViewModel admits a ViewModel whose client the application or another library
+  owns, such as an application ViewModel that implements an interface the slot
+  names;
+- the ViewModels that implement a `[RunicSharedClient]` interface have clients of
+  different owners, such as an application ViewModel that implements a library's
+  shared client interface. A shared client's module is generated once.
+
+**Fix:** declare the Views of the presented ViewModel, or of every implementer, in
+the library, or present the ViewModel from one of the application's own
+ViewModels instead. See [MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE082
+
+An error from the `Runic.Application.Views` build targets, and from the generator
+when it is run without them (since 0.24). A `RunicApplicationFrontendClientModule`
+item has no `Specifier` or a blank one, a relative one such as
+`../shared-ui/src/generated/runic-clients.js`, which each generated module would
+resolve from its own folder, or the same `Include` as another item.
+
+**Fix:** set `Specifier` to the module specifier through which the frontend
+imports the library's `runic-clients.ts`: a package export such as
+`@acme/shared-ui/generated`, or an alias of the frontend's tsconfig `paths` and
+bundler. Keep one item per assembly. See
+[MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE083
+
+A warning from the Bridge generator (since 0.24). A client library that a
+`RunicApplicationFrontendClientModule` item maps declares no Runic Window or
+View, so the application imports nothing from it and generates as without the
+item. The warning repeats on builds that reuse the cached generation.
+
+**Fix:** declare the Views of the library's ViewModels in the library, or remove
+the item. See [MSBuild properties](msbuild.md#runicapplicationviews).
 
 ## dotnet runic
 

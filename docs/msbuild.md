@@ -74,6 +74,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicBridgeBlobs` | property | `auto` | `auto` turns Bridge blobs and uploads (`blobs/1`) off in a trimmed or NativeAOT publish when no assembly's generated Bridges hold a `RunicBlob` or take a `RunicUpload` and no referenced assembly names either type, so the executable leaves the blob store and the hosts' blob endpoints out (since 0.23); `true` keeps them in every publish. Builds, `dotnet run` and untrimmed publishes always keep them. Another value, such as `false`, is warning [`RUNICBRIDGE075`](diagnostics.md#runicbridge075) and builds as `auto` (since 0.23). |
 | `RunicApplicationFrontendInput` | item | none | An input outside the frontend directory that rebuilds it. |
 | `RunicApplicationFrontendBuildEnvironment` | item | none | An environment variable that changes the built frontend. |
+| `RunicApplicationFrontendClientModule` | item | none | On an application: `Include` is the simple name of a referenced assembly built with `RunicApplicationFrontendClientLibrary=true`, and `Specifier` (required) the module specifier of its generated `runic-clients.ts`, such as `@acme/shared-ui/generated`. The application generates the Bridges of the library's Views and imports their clients from the specifier instead of generating copies, and `runic-client-modules.ts` makes a package generated from another build of the library a TypeScript error (since 0.24). A malformed item is [`RUNICBRIDGE082`](diagnostics.md#runicbridge082). |
 
 ## dotnet runic
 
