@@ -143,7 +143,7 @@ export interface FormController {
   readonly current: FormState;
   /** Calls `listener` after a field's state changed or a `submit` started or ended, until the returned function is called. */
   subscribe(listener: () => void): () => void;
-  /** Commits every field (a `commit: "pause"` draft is written now) and resolves once their writes settled. */
+  /** Commits every field (a `commit: "pause"` or `"change"` draft is written now) and resolves once their writes settled. */
   commit(): Promise<FormState>;
   /**
    * Commits every field, waits for their writes and runs `command` unless a field's write or text failed:

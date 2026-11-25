@@ -768,6 +768,11 @@ Options:
   written yet is written when the field is disposed. Use it where each write is an undo step or starts work in .NET.
   `commit()` resolves with the field's state once its writes settled, so a command that depends on the field can
   follow them and skip a failed write: `if ((await title.commit()).error === undefined) await editor.save()`.
+- `commit: "change"` writes the draft only on `commit()`, which blur calls, so the ViewModel's setter runs once, when
+  the user leaves the field. It is the mode a WPF port wants: WPF binds `TextBox.Text` with
+  `UpdateSourceTrigger=LostFocus`, and its setters often validate, normalize or start work. There is no timer, so
+  pass no `delay`; `bindField` and the framework bindings still write each choice of a checkbox or `<select>` at once, as WPF's default `PropertyChanged` trigger does for those controls. A form's `submit()` and `commit()`, `commitAllFields()` and the runtime's flush before a
+  window close or a departure (`field-flush/1`) write the draft too, and so does disposing the field.
 - `checked: true` writes with the member's checked write instead of its setter. The write is checked against the
   value and version the field showed when the draft started and then against each receipt, so a change by another
   writer meanwhile is a conflict instead of being overwritten. Checked writes are one at a time.

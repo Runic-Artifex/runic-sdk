@@ -127,6 +127,29 @@ test("submit writes every field first, then runs the command; a failed field ski
   step.dispose();
 });
 
+test("submit and commit write a commit: change draft first (#1316)", async () => {
+  const client = fakeClient();
+  const host = createFieldController<State, Client, string>({
+    kind: "text", read: state => state.title, write: (target, value) => target.write("title", value),
+  }, { commit: "change" });
+  host.setSource({ state: client.snapshot, client });
+  const form = createFormController({ host });
+  host.inputText("example.org");
+  assert.equal(client.writes.length, 0, "the draft waits for the blur");
+  assert.equal(form.current.pending, true);
+  const committed = form.commit();
+  assert.deepEqual(client.writes.map(write => write.value), ["example.org"]);
+  client.writes[0]!.resolve();
+  await committed;
+  host.inputText("example.com");
+  const submitted = form.submit(() => client.writes.length);
+  assert.deepEqual(client.writes.map(write => write.value), ["example.org", "example.com"], "submit writes the draft before the command");
+  client.writes[1]!.resolve();
+  assert.deepEqual(await submitted, { status: "submitted", result: 2 });
+  form.dispose();
+  host.dispose();
+});
+
 test("formStateOf combines the states of framework field handles", () => {
   const base: Pick<FieldState<unknown>, "editing" | "validating" | "errors" | "error"> = { editing: false, validating: false, errors: [], error: undefined };
   assert.deepEqual(formStateOf([base, { ...base, validating: true }], false, false),
@@ -288,6 +311,11 @@ test("field-flush/1: the page writes its pause drafts and answers flush; a keybo
       { commit: "pause", delay: 60_000 });
     editor.subscribe(state => field.setSource({ state, client: editor }));
     field.inputText("Typed before a menu command");
+    // A commit: "change" draft (#1316) is written by the flush too.
+    const onBlur = createFieldController({ kind: "text", read: (state: { readonly title: string }) => state.title, write: (target: typeof editor, value: string) => target.set("title", value) },
+      { commit: "change" });
+    editor.subscribe(state => onBlur.setSource({ state, client: editor }));
+    onBlur.inputText("Typed before a departure");
     await settle();
     assert.equal(bridge.calls.some(call => call.kind === "set"), false);
     // Other tests' fields may hold drafts that never settle: the page answers within its limit in any case.
@@ -295,6 +323,9 @@ test("field-flush/1: the page writes its pause drafts and answers flush; a keybo
     const kinds = bridge.calls.map(call => call.kind);
     assert.ok(kinds.indexOf("set") >= 0 && kinds.indexOf("set") < kinds.indexOf("flush-reply"), `the draft is written before flush-reply: ${kinds.join(", ")}`);
     assert.equal(field.current.editing, false);
+    assert.equal(onBlur.current.editing, false);
+    assert.equal(bridge.calls.filter(call => call.kind === "set").length, 2);
+    onBlur.dispose();
 
     const page = globalThis as unknown as { dispatchEvent(event: Event): boolean };
     const sets = () => bridge.calls.filter(call => call.kind === "set").length;
@@ -307,20 +338,20 @@ test("field-flush/1: the page writes its pause drafts and answers flush; a keybo
     };
     field.inputText("Typed before Ctrl+W");
     await press({ key: "w", ctrlKey: true });
-    assert.equal(sets(), 2, "a shortcut writes the draft");
+    assert.equal(sets(), 3, "a shortcut writes the draft");
     // Typing with AltGr (Windows reports Ctrl and Alt) or macOS Option writes nothing early.
     field.inputText("name@");
     await press({ key: "@", ctrlKey: true, altKey: true, altGraph: true });
     await press({ key: "€", ctrlKey: true, altKey: true });
     await press({ key: "{", altKey: true });
     await press({ key: "|", altKey: true, altGraph: false });
-    assert.equal(sets(), 2, "AltGr and Option characters are typing, not shortcuts");
+    assert.equal(sets(), 3, "AltGr and Option characters are typing, not shortcuts");
     // Alt alone (a Windows menu bar) and Cmd+S are shortcuts.
     await press({ key: "Alt", altKey: true });
-    assert.equal(sets(), 3, "Alt alone writes the draft");
+    assert.equal(sets(), 4, "Alt alone writes the draft");
     field.inputText("name@example");
     await press({ key: "s", metaKey: true });
-    assert.equal(sets(), 4, "Cmd+S writes the draft");
+    assert.equal(sets(), 5, "Cmd+S writes the draft");
     field.dispose();
     editor.dispose();
   } finally {

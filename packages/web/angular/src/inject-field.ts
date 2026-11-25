@@ -43,7 +43,7 @@ export interface FieldHandle<TValue> {
   readonly conflict: Signal<FieldBaseline<TValue> | undefined>;
   /** The member's validation is in progress, such as an asynchronous rule that is still checking: show "checking…". */
   readonly validating: Signal<boolean>;
-  /** The definition's `kind`, `nullable`, `integer` and `choices`. */
+  /** The definition's `kind`, `nullable`, `integer` and `choices`, and the `commit` option as `commitMode`. */
   readonly field: FieldController<unknown, unknown, TValue>["field"];
   /** The user changed the value, such as a checkbox's `checked`. */
   input(value: TValue): void;
@@ -54,7 +54,7 @@ export interface FieldHandle<TValue> {
   /** The IME composition ended: pass the `compositionend` event, or the text, which is then written. */
   compositionEnd(event: Event | string): void;
   /**
-   * The user is done with the field (bind it to `blur`): with `commit: "pause"` the draft is written now. Resolves
+   * The user is done with the field (bind it to `blur`): with `commit: "pause"` or `"change"` the draft is written now. Resolves
    * with the field's state once its writes settled, so a command that depends on the field can follow it.
    */
   commit(): Promise<FieldState<TValue>>;

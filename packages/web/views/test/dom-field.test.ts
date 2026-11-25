@@ -102,6 +102,45 @@ test("bindField writes nothing during composition, commits on blur, and wires ch
   for (const field of [title, done, size]) field.dispose();
 });
 
+test("bindField with commit: change writes typed text on blur, and each choice of a checkbox or select at once (#1316)", async () => {
+  const client = fakeClient({ title: "", done: false, size: 1 });
+  const input = fakeElement("INPUT");
+  const title = bindField(asElement(input), client, {
+    kind: "text", read: state => state.title, write: (target: FakeClient, value: string) => target.set({ title: value }),
+  }, { commit: "change" });
+  input.value = "Host";
+  input.fire("input");
+  input.value = "Host name";
+  input.fire("input");
+  // A text input's own `change` comes with its blur.
+  await tick();
+  assert.deepEqual(client.writes, [], "typing writes nothing");
+  assert.equal(title.current.editing, true);
+  input.fire("blur");
+  await title.commit();
+  assert.deepEqual(client.writes, [{ title: "Host name" }]);
+
+  const checkbox = fakeElement("INPUT", "checkbox");
+  const done = bindField(asElement(checkbox), client, {
+    kind: "boolean", read: state => state.done, write: (target: FakeClient, value: boolean) => target.set({ done: value }),
+  }, { commit: "change" });
+  checkbox.checked = true;
+  checkbox.fire("change");
+  await tick();
+  assert.equal(client.snapshot.done, true, "a checkbox writes each change");
+
+  const select = fakeElement("SELECT");
+  const size = bindField(asElement(select), client, {
+    kind: "number", integer: true, read: state => state.size, write: (target: FakeClient, value: number) => target.set({ size: value }),
+  }, { commit: "change" });
+  select.value = "5";
+  select.fire("change");
+  await tick();
+  assert.equal(client.snapshot.size, 5, "a select writes each change");
+
+  for (const field of [title, done, size]) field.dispose();
+});
+
 test("attachField wires a controller that the caller feeds, and commitFields rejects with a failed field's error", async () => {
   const client = fakeClient({ title: "A", done: false, size: 1 });
   const controller = createFieldController<State, FakeClient, number>({

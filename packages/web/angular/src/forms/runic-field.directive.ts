@@ -19,7 +19,7 @@ const unsynced: unique symbol = Symbol("unsynced");
  * Wires an `<input>`, `<textarea>` or `<select>` to an {@link injectField} handle: `<input [runicField]="title">`.
  *
  * Alone, it writes what the user types (`input`; `change` for checkboxes, radios and selects), holds writes during IME
- * composition, commits on blur, keeps the element's `value` (or `checked`) equal to the field without moving the
+ * composition, commits on blur (and, with `commit: "change"`, after each choice of a checkbox, radio or select), keeps the element's `value` (or `checked`) equal to the field without moving the
  * caret, and sets `aria-invalid` while the field has an `error` or `errors`.
  *
  * It is also the `ControlValueAccessor` and `Validator` of a `formControl` or `formControlName` on the same element:
@@ -142,6 +142,8 @@ export class RunicFieldDirective implements ControlValueAccessor, Validator {
       default: return;
     }
     this.changedByUser();
+    // With `commit: "change"` a choice is written at once; typed text waits for the blur.
+    if (field.field.commitMode === "change") void field.commit();
   }
 
   protected onCompositionStart(): void {

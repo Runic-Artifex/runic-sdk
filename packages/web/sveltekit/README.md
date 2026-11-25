@@ -141,7 +141,8 @@ Pages bind inputs with `useField` from `@runic-artifex/svelte` and the generated
 <input {@attach title.attach}>
 ```
 
-`commit: "pause"` writes on blur or after a pause, `checked: true` keeps a rejected
+`commit: "pause"` writes on blur or after a pause, `commit: "change"` only on blur
+(WPF's `UpdateSourceTrigger=LostFocus`), `checked: true` keeps a rejected
 or conflicting draft with its `FieldError` until `retry()` or `reset()`, and `errors`
 holds the member's validation messages; see the
 [`@runic-artifex/svelte` README](https://www.npmjs.com/package/@runic-artifex/svelte).

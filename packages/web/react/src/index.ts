@@ -637,7 +637,7 @@ export type FieldHandle<TValue> = FieldState<TValue> & {
   /** The user changed the value, such as from a custom control. */
   input(value: TValue): void;
   /**
-   * The user is done with the field (`onBlur` calls it): with `commit: "pause"` the draft is written now. Resolves with
+   * The user is done with the field (`onBlur` calls it): with `commit: "pause"` or `"change"` the draft is written now. Resolves with
    * the field's state once its writes settled, so a command that depends on the field can run after it and skip a
    * failed write: `if ((await title.commit()).error === undefined) await editor.save()`. The handle is the state of
    * the render that created it, so read the error from the resolved state. Never rejects.
@@ -650,6 +650,11 @@ export type FieldHandle<TValue> = FieldState<TValue> & {
 };
 
 const noFieldErrors: readonly string[] = Object.freeze([]);
+
+// A `<select>` reports a choice with its change, which `commit: "change"` writes at once.
+function isSelect(element: unknown): boolean {
+  return (element as { readonly tagName?: unknown }).tagName === "SELECT";
+}
 
 /**
  * Binds an element to one View member while the component is mounted, through `createFieldController`: pass a
@@ -701,14 +706,21 @@ export function useField<TClient extends ViewClient, TValue>(
   }, [controller, state, client]);
   const readCurrent = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, readCurrent, readCurrent);
+  // With `commit: "change"` a choice (a checkbox or a select) is written at once; typed text waits for the blur.
   const actions = useMemo(() => ({
     input: (value: TValue) => controller.input(value),
     commit: () => controller.commit(),
     retry: () => controller.retry(),
     reset: () => controller.reset(),
     onBlur: () => { void controller.commit(); },
-    onChange: (event: { readonly currentTarget: { readonly value: string } }) => controller.inputText(event.currentTarget.value),
-    onCheck: (event: { readonly currentTarget: { readonly checked: boolean } }) => controller.input(event.currentTarget.checked as TValue),
+    onChange: (event: { readonly currentTarget: { readonly value: string } }) => {
+      controller.inputText(event.currentTarget.value);
+      if (controller.field.commitMode === "change" && isSelect(event.currentTarget)) void controller.commit();
+    },
+    onCheck: (event: { readonly currentTarget: { readonly checked: boolean } }) => {
+      controller.input(event.currentTarget.checked as TValue);
+      if (controller.field.commitMode === "change") void controller.commit();
+    },
     onCompositionStart: () => controller.compositionStart(),
     onCompositionEnd: (event: { readonly currentTarget: { readonly value: string } }) => controller.compositionEnd(event.currentTarget.value),
   }), [controller]);
