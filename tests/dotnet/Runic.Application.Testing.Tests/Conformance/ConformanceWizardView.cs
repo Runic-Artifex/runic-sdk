@@ -79,4 +79,4 @@ internal sealed class WizardBridge(IBridgeTransport transport, WizardViewModel v
             new CommandDescriptor("Back", model => ((WizardViewModel)model).BackCommand),
             new CommandDescriptor("Ping", model => ((WizardViewModel)model).PingCommand),
         ],
-        "conformance-wizard", content);
+        ConformanceContracts.Fingerprint(typeof(WizardViewModel)), content);

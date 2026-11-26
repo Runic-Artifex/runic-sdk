@@ -93,8 +93,13 @@ test("the schema rejects malformed documents", () => {
 });
 
 test("the corpus documents' references resolve", () => {
-  for (const { entry, ir } of documents) {
-    const at = path => `${entry.ir}: ${path}`;
+  for (const { entry, ir } of documents) checkReferences(entry.ir, ir, corpus);
+});
+
+// That a document's Views, types, pages, keys, shared clients and sources resolve; sources relative to `directory`.
+function checkReferences(name, ir, directory) {
+  {
+    const at = path => `${name}: ${path}`;
     const views = new Map(ir.views.map(view => [view.id, view]));
     const units = new Set((ir.clientModules ?? []).map(module => module.unit));
     const shared = new Map((ir.sharedClients ?? []).map(client => [client.id, client]));
@@ -143,10 +148,10 @@ test("the corpus documents' references resolve", () => {
     }
     for (const [id, location] of Object.entries(ir.sources)) {
       assert.ok(!location.file.startsWith("/") && !/^[A-Za-z]:/.test(location.file), at(`sources/${id} is absolute`));
-      assert.ok(existsSync(resolve(corpus, location.file)), at(`sources/${id}: ${location.file} does not exist`));
+      assert.ok(existsSync(resolve(directory, location.file)), at(`sources/${id}: ${location.file} does not exist`));
     }
   }
-});
+}
 
 test("each corpus View has the contract its example's committed clients carry", () => {
   for (const { entry, ir } of documents) {
@@ -274,4 +279,38 @@ test("the worked example of the fingerprint specification holds", () => {
   assert.equal(view.fingerprint, example.fingerprint);
   assert.equal(`${view.id}:${view.fingerprint}`, example.contracts.operation);
   assert.equal(view.interactions[0].contract, example.contracts.interaction);
+});
+
+// The contract IR of the conformance test Views (specs/application/conformance/README.md, "Test Views"), which the
+// .NET adapter derives its contract ids from. RUNIC_UPDATE_CONFORMANCE_VIEWS_IR=1 first writes each View's fingerprint
+// and its interaction and view request contracts into the document, after an edit of its Views or types.
+const conformanceIrPath = resolve(root, "specs/application/conformance/views.ir.json");
+if (process.env.RUNIC_UPDATE_CONFORMANCE_VIEWS_IR === "1") {
+  const ir = readJson(conformanceIrPath);
+  for (const view of ir.views) {
+    for (const item of [...(view.interactions ?? []), ...(view.requests ?? [])]) item.contract = "";
+    view.fingerprint = fingerprint(ir, view);
+    for (const [section, kind] of [["interactions", "interaction"], ["requests", "request"]])
+      for (const item of view[section] ?? []) item.contract = `${view.fingerprint}:${kind}:${item.name}`;
+  }
+  writeFileSync(conformanceIrPath, JSON.stringify(ir, null, 2) + "\n");
+}
+const conformanceIr = readJson(conformanceIrPath);
+
+test("the conformance test Views' IR matches the schema, resolves, and carries its fingerprints", () => {
+  assert.deepEqual(validate(schema, conformanceIr).slice(0, 20), []);
+  checkReferences("conformance/views.ir.json", conformanceIr, dirname(conformanceIrPath));
+  for (const view of conformanceIr.views) {
+    assert.equal(view.fingerprint, fingerprint(conformanceIr, view), `${view.id}: run with RUNIC_UPDATE_CONFORMANCE_VIEWS_IR=1`);
+    for (const [section, kind] of [["interactions", "interaction"], ["requests", "request"]])
+      for (const item of view[section] ?? [])
+        assert.equal(item.contract, `${view.fingerprint}:${kind}:${item.name}`, `${view.id} ${kind} ${item.name}`);
+  }
+});
+
+test("the conformance test Views' IR describes the Views of the corpus's README, each on its route", () => {
+  const readme = readFileSync(resolve(root, "specs/application/conformance/README.md"), "utf8");
+  const described = [...readme.slice(readme.indexOf("## Test Views")).matchAll(/^### `([a-z]+)`$/gm)].map(match => match[1]);
+  assert.deepEqual(conformanceIr.views.map(view => view.route), described);
+  for (const view of conformanceIr.views) assert.deepEqual(view.kinds, [view.route], `${view.id}: one kind, its route`);
 });

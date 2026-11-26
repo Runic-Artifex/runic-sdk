@@ -168,6 +168,6 @@ internal sealed class FormBridge(IBridgeTransport transport, FormViewModel vm, W
             new("Name", "name", model => ((FormViewModel)model).Name, (model, value) => ((FormViewModel)model).Name = ConformanceWire.String(value))
                 { TextMember = true, TextSetter = static (model, value) => ((FormViewModel)model).Name = value },
         ],
-        [], [], "conformance-form", content,
+        [], [], ConformanceContracts.Fingerprint(typeof(FormViewModel)), content,
         dataSubscriptions: FormViewModel.Metadata,
         validationReader: FormViewModel.Reader);

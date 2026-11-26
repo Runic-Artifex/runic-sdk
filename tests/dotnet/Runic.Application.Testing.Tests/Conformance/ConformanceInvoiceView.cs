@@ -130,7 +130,7 @@ internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel
                 ],
             },
         ],
-        [], "conformance-invoice", content,
+        [], ConformanceContracts.Fingerprint(typeof(InvoiceViewModel)), content,
         collections:
         [
             new("lines", model => ((InvoiceViewModel)model).Lines, (writer, row) => InvoiceLine.Write(writer, (InvoiceLine)row!), InvoiceLine.KeyOf)
