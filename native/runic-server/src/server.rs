@@ -125,6 +125,8 @@ impl Default for ServerConfig {
 pub enum Body {
     /// No body; the headers say what a HEAD request would have received.
     Empty,
+    /// This whole body, held in memory. The server sends it as is, so the headers should not name another length.
+    Bytes(Bytes),
     /// Chunks follow through [`Server::write`] and end with [`Server::end`].
     Stream,
     /// The file at this path, which the host resolved and admitted. The server answers a single byte range.
@@ -170,6 +172,7 @@ impl std::error::Error for ServerError {}
 
 pub(crate) enum Payload {
     Empty,
+    Bytes(Bytes),
     Stream(mpsc::Receiver<Result<Bytes, io::Error>>),
     File(PathBuf),
 }
@@ -572,6 +575,7 @@ impl Inner {
         let decision = self.pending.lock().unwrap().remove(&id).ok_or(ServerError::UnknownId)?;
         let payload = match body {
             Body::Empty => Payload::Empty,
+            Body::Bytes(bytes) => Payload::Bytes(bytes),
             Body::File(path) => Payload::File(path),
             Body::Stream => {
                 // Registered before the decision is sent, so the first write never misses the body.
@@ -678,6 +682,10 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
         return status_only(StatusCode::SERVICE_UNAVAILABLE);
     }
     let (mut parts, body) = request.into_parts();
+    // RFC 9112 §3.2: more than one Host field line is a bad request, on any listener, before the Host check reads one.
+    if parts.headers.get_all(header::HOST).iter().nth(1).is_some() {
+        return status_only(StatusCode::BAD_REQUEST);
+    }
     if !inner.config.all_interfaces
         && !host::admits(parts.headers.get(header::HOST).map(HeaderValue::as_bytes), inner.port)
     {
@@ -718,6 +726,13 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
                 Payload::Empty => {
                     guard.disarm();
                     let mut response = Response::new(AxumBody::empty());
+                    *response.status_mut() = status;
+                    *response.headers_mut() = headers;
+                    response
+                }
+                Payload::Bytes(bytes) => {
+                    guard.disarm();
+                    let mut response = Response::new(AxumBody::from(bytes));
                     *response.status_mut() = status;
                     *response.headers_mut() = headers;
                     response

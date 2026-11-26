@@ -16,6 +16,7 @@ on:
       - 'native/rustfmt.toml'
       - 'eng/native/build-runic-server.sh'
       - 'eng/native/crates.mjs'
+      - 'eng/native/symbols.mjs'
       - 'eng/native/verify-native-server-package.mjs'
       - 'packages/dotnet/Runic.Desktop.NativeServer/**'
       - 'packages/dotnet/Runic.Desktop.NativeServer.Static/**'
@@ -40,6 +41,7 @@ on:
       - 'native/rustfmt.toml'
       - 'eng/native/build-runic-server.sh'
       - 'eng/native/crates.mjs'
+      - 'eng/native/symbols.mjs'
       - 'eng/native/verify-native-server-package.mjs'
       - 'packages/dotnet/Runic.Desktop.NativeServer/**'
       - 'packages/dotnet/Runic.Desktop.NativeServer.Static/**'
@@ -150,6 +152,10 @@ jobs:
         with:
           key: ${{ needs.libraries.outputs.key }}
           built: ${{ needs.libraries.outputs.built }}
+      # Every runtime identifier's library, from this run or the cache, against the committed symbol list; each library
+      # job checked its own when it built it.
+      - name: Check the exported symbols
+        run: node eng/native/symbols.mjs check artifacts/native/runic-server
       # The main package carries the shared libraries of every runtime identifier and a runtime.json; each static
       # library, which NativeAOT links, is a package of its own that NuGet restores only for its runtime identifier.
       - name: Pack with every runtime identifier
@@ -164,14 +170,14 @@ jobs:
           package=$(ls Runic.Desktop.NativeServer.[0-9]*.nupkg)
           unzip -l "$package" | tee contents.txt
           for rid in linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64 osx-arm64; do
-            grep -q "runtimes/$rid/native/librunic_server" contents.txt
-            unzip -l Runic.Desktop.NativeServer.Static.$rid.*.nupkg | grep -q "runtimes/$rid/native/librunic_server.a"
+            grep -q "runtimes/$rid/native/librax_server" contents.txt
+            unzip -l Runic.Desktop.NativeServer.Static.$rid.*.nupkg | grep -q "runtimes/$rid/native/librax_server.a"
           done
           for rid in win-x64 win-arm64; do
-            grep -q "runtimes/$rid/native/runic_server.dll" contents.txt
-            unzip -l Runic.Desktop.NativeServer.Static.$rid.*.nupkg | grep -q "runtimes/$rid/native/runic_server.lib"
+            grep -q "runtimes/$rid/native/rax_server.dll" contents.txt
+            unzip -l Runic.Desktop.NativeServer.Static.$rid.*.nupkg | grep -q "runtimes/$rid/native/rax_server.lib"
           done
-          if grep -Eq 'librunic_server\.a|runic_server\.lib' contents.txt; then echo "the main package carries a static library"; exit 1; fi
+          if grep -Eq 'librax_server\.a|rax_server\.lib' contents.txt; then echo "the main package carries a static library"; exit 1; fi
           grep -q "buildTransitive/Runic.Desktop.NativeServer.targets" contents.txt
           grep -q "THIRD-PARTY-NOTICES.md" contents.txt
           unzip -p "$package" runtime.json | node -e '

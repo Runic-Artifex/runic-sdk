@@ -8,21 +8,21 @@
          - Static (the default): the static library of Runic.Desktop.NativeServer.Static.<rid>, which NuGet restores
            for a runtime-specific restore through this package's runtime.json, linked into the executable.
          - Shared: the shared library beside the executable, which loads it at the first window, as under the JIT.
-         - Application: the application links the runic-server crate into a static library of its own, so the
+         - Application: the application links the runic-artifex-server crate into a static library of its own, so the
            program has one copy of Rust's standard library; the executable binds the crate's C functions from it.
        - RunicDesktopNativeServerLibraryDirectory replaces the package's libraries with a directory's
-         librunic_server.so/.dylib/.a or runic_server.dll/.lib, such as the source-built library of
+         librax_server.so/.dylib/.a or rax_server.dll/.lib, such as the source-built library of
          buildRunicApplication (nix/README.md). -->
   <PropertyGroup>
     <RunicDesktopNativeServerLinkage Condition="'$(RunicDesktopNativeServerLinkage)' == ''">Static</RunicDesktopNativeServerLinkage>
     <_RunicDesktopNativeServerOverride Condition="'$(RunicDesktopNativeServerLibraryDirectory)' != ''">$([MSBuild]::EnsureTrailingSlash('$(RunicDesktopNativeServerLibraryDirectory)'))</_RunicDesktopNativeServerOverride>
     <_RunicDesktopNativeServerRid>$(RuntimeIdentifier)</_RunicDesktopNativeServerRid>
     <_RunicDesktopNativeServerRid Condition="'$(_RunicDesktopNativeServerRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</_RunicDesktopNativeServerRid>
-    <_RunicDesktopNativeServerSharedName Condition="$(_RunicDesktopNativeServerRid.StartsWith('win-'))">runic_server.dll</_RunicDesktopNativeServerSharedName>
-    <_RunicDesktopNativeServerSharedName Condition="$(_RunicDesktopNativeServerRid.StartsWith('osx-'))">librunic_server.dylib</_RunicDesktopNativeServerSharedName>
-    <_RunicDesktopNativeServerSharedName Condition="'$(_RunicDesktopNativeServerSharedName)' == ''">librunic_server.so</_RunicDesktopNativeServerSharedName>
-    <_RunicDesktopNativeServerStaticName Condition="$(_RunicDesktopNativeServerRid.StartsWith('win-'))">runic_server.lib</_RunicDesktopNativeServerStaticName>
-    <_RunicDesktopNativeServerStaticName Condition="'$(_RunicDesktopNativeServerStaticName)' == ''">librunic_server.a</_RunicDesktopNativeServerStaticName>
+    <_RunicDesktopNativeServerSharedName Condition="$(_RunicDesktopNativeServerRid.StartsWith('win-'))">rax_server.dll</_RunicDesktopNativeServerSharedName>
+    <_RunicDesktopNativeServerSharedName Condition="$(_RunicDesktopNativeServerRid.StartsWith('osx-'))">librax_server.dylib</_RunicDesktopNativeServerSharedName>
+    <_RunicDesktopNativeServerSharedName Condition="'$(_RunicDesktopNativeServerSharedName)' == ''">librax_server.so</_RunicDesktopNativeServerSharedName>
+    <_RunicDesktopNativeServerStaticName Condition="$(_RunicDesktopNativeServerRid.StartsWith('win-'))">rax_server.lib</_RunicDesktopNativeServerStaticName>
+    <_RunicDesktopNativeServerStaticName Condition="'$(_RunicDesktopNativeServerStaticName)' == ''">librax_server.a</_RunicDesktopNativeServerStaticName>
   </PropertyGroup>
   <!-- Like the package's shared library, in every build and publish output; a NativeAOT publish that links the server
        removes it (_RunicDesktopRemoveLinkedNativeServer). -->
@@ -50,8 +50,8 @@
           Condition="'$(_RunicDesktopNativeServer)' == 'true' and '$(_RunicDesktopNativeServerOverride)' != '' and '%(NativeCopyLocalItems.NuGetPackageId)' == 'Runic.Desktop.NativeServer'" />
     </ItemGroup>
   </Target>
-  <!-- NativeAOT links the server into the executable, one file with no librunic_server next to it: the static library
-       (Static), or the application's own library with the runic-server crate in it (Application), whose C functions the
+  <!-- NativeAOT links the server into the executable, one file with no librax_server next to it: the static library
+       (Static), or the application's own library with the runic-artifex-server crate in it (Application), whose C functions the
        executable binds at link time all the same. Shared leaves the shared library beside the executable. -->
   <Target Name="_RunicDesktopLinkNativeServer" AfterTargets="_RunicDesktopResolveNativeServer"
           Condition="'$(_RunicDesktopNativeServer)' == 'true' and '$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != '' and '$(RunicDesktopNativeServerLinkage)' != 'Shared'">
@@ -64,7 +64,7 @@
            Condition="'$(RunicDesktopNativeServerLinkage)' == 'Static' and ('$(_RunicDesktopNativeServerStatic)' == '' or !Exists('$(_RunicDesktopNativeServerStatic)'))"
            Text="A NativeAOT publish for $(RuntimeIdentifier) links the native Desktop server statically, but no $(_RunicDesktopNativeServerStaticName) was restored (Runic.Desktop.NativeServer.Static.$(RuntimeIdentifier)). Restore for the runtime identifier (dotnet publish -r $(RuntimeIdentifier) restores it), or check that the runtime identifier is supported." />
     <ItemGroup>
-      <DirectPInvoke Include="runic_server" />
+      <DirectPInvoke Include="rax_server" />
       <NativeLibrary Include="$(_RunicDesktopNativeServerStatic)" Condition="'$(_RunicDesktopNativeServerStatic)' != ''" />
       <!-- Rust's standard library on Windows. -->
       <NativeLibrary Include="ntdll.lib;ws2_32.lib;userenv.lib;bcrypt.lib" Condition="$(RuntimeIdentifier.StartsWith('win-'))" />
@@ -74,7 +74,7 @@
           Condition="'$(_RunicDesktopNativeServerLinked)' == 'true'">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-          Condition="'%(ResolvedFileToPublish.Filename)' == 'librunic_server' or '%(ResolvedFileToPublish.Filename)' == 'runic_server'" />
+          Condition="'%(ResolvedFileToPublish.Filename)' == 'librax_server' or '%(ResolvedFileToPublish.Filename)' == 'rax_server'" />
     </ItemGroup>
   </Target>
 </Project>

@@ -44,7 +44,7 @@
   <Target Name="RunicNativeServerPackNativeAssets" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
       <_RunicNativeServerRuntime Include="$(RunicNativeServerRuntimes)" />
-      <_RunicNativeServerShared Include="$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.so;$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.dylib;$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/runic_server.dll"
+      <_RunicNativeServerShared Include="$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librax_server.so;$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librax_server.dylib;$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/rax_server.dll"
           Runtime="%(_RunicNativeServerRuntime.Identity)" />
       <_RunicNativeServerShared Remove="@(_RunicNativeServerShared)" Condition="!Exists('%(Identity)')" />
       <None Include="@(_RunicNativeServerShared)" Pack="true" PackagePath="runtimes/%(_RunicNativeServerShared.Runtime)/native/" />

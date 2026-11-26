@@ -935,7 +935,7 @@ test('the Rust, C++, conformance and NativeAOT tool components plan Linux only, 
   assert.deepEqual(desktop.skip, ['wpf', 'screen-readers', 'webkit-cdp']);
   assert.deepEqual(desktop.native.include, nativeLegs.filter(leg => !leg.platform));
   for (const file of ['native/runic-server/src/lib.rs', 'native/runic-server/Cargo.toml', 'native/runic-server/THIRD-PARTY-NOTICES.md',
-    'native/runic-server/include/runic_server.h', 'nix/runic-server.nix']) {
+    'native/runic-server/include/rax_server.h', 'nix/runic-server.nix']) {
     const result = plan([file]);
     // The notices file is Markdown, which ci.yml's jobs do not read (native-server.yml's filters run its check).
     if (file.endsWith('.md')) assert.deepEqual(result.components, [], file);

@@ -1,7 +1,7 @@
 # The application's own Rust static library in the package-consumer test (eng/native/verify-native-server-package.mjs),
 # built the way an application such as Artificer's Storyline builds its one: fat LTO and unwinding panics. A NativeAOT
-# publish that links it beside Runic's librunic_server.a fails on two copies of Rust's standard library (#859); with
-# the runic-server feature it links the crate itself and re-exports its C ABI
+# publish that links it beside Runic's librax_server.a fails on two copies of Rust's standard library (#859); with
+# the runic-artifex-server feature it links the crate itself and re-exports its C ABI
 # (RunicDesktopNativeServerLinkage=Application).
 #
 # The test copies this directory, points the path dependency at the checkout's native/runic-server and seeds the
@@ -18,7 +18,7 @@ publish = false
 crate-type = ["staticlib"]
 
 [dependencies]
-runic-server = { path = "../../../../../native/runic-server", optional = true }
+runic-artifex-server = { path = "../../../../../native/runic-server", optional = true }
 
 [profile.release]
 lto = "fat"

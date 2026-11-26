@@ -243,9 +243,9 @@ test("a server whose package is missing fails with RUNICDESK004, an unknown one 
 
 // RunicDesktopNativeServerLinkage (#859): how a NativeAOT publish gets the native server. Static links the package's (or
 // RunicDesktopNativeServerLibraryDirectory's) static library, Shared leaves the shared library beside the executable,
-// Application binds the C functions from the application's own library with the runic-server crate in it.
+// Application binds the C functions from the application's own library with the runic-artifex-server crate in it.
 // eng/native/verify-native-server-package.mjs publishes and runs each.
-function nativeLinkage(name, properties, { rid = "linux-x64", libraries = ["librunic_server.a", "librunic_server.so"] } = {}) {
+function nativeLinkage(name, properties, { rid = "linux-x64", libraries = ["librax_server.a", "librax_server.so"] } = {}) {
   const library = join(directory, `${name}-library`);
   mkdirSync(library, { recursive: true });
   for (const file of libraries) writeFileSync(join(library, file), "");
@@ -266,27 +266,27 @@ ${properties}`, ["native"]), "-t:_RunicDesktopValidateNativeServer;_RunicDesktop
 }
 
 test("RunicDesktopNativeServerLinkage Static, the default, links the static library", () => {
-  const expected = { linked: true, directPInvoke: ["runic_server"], nativeLibrary: ["librunic_server.a"], none: ["librunic_server.so"] };
+  const expected = { linked: true, directPInvoke: ["rax_server"], nativeLibrary: ["librax_server.a"], none: ["librax_server.so"] };
   assert.deepEqual(nativeLinkage("linkage-default", ""), expected);
   assert.deepEqual(nativeLinkage("linkage-static", "<RunicDesktopNativeServerLinkage>Static</RunicDesktopNativeServerLinkage>"), expected);
-  const missing = nativeLinkage("linkage-static-missing", "", { libraries: ["librunic_server.so"] });
+  const missing = nativeLinkage("linkage-static-missing", "", { libraries: ["librax_server.so"] });
   assert.match(missing.error, /error RUNICDESK005: A NativeAOT publish for linux-x64 links the native Desktop server statically/);
 });
 
 test("RunicDesktopNativeServerLinkage Shared links nothing and keeps the shared library", () => {
   assert.deepEqual(nativeLinkage("linkage-shared", "<RunicDesktopNativeServerLinkage>Shared</RunicDesktopNativeServerLinkage>",
-    { libraries: ["librunic_server.so"] }),
-  { linked: false, directPInvoke: [], nativeLibrary: [], none: ["librunic_server.so"] });
+    { libraries: ["librax_server.so"] }),
+  { linked: false, directPInvoke: [], nativeLibrary: [], none: ["librax_server.so"] });
 });
 
 test("RunicDesktopNativeServerLinkage Application binds the C functions without a library of Runic's", () => {
   assert.deepEqual(nativeLinkage("linkage-application", "<RunicDesktopNativeServerLinkage>Application</RunicDesktopNativeServerLinkage>",
-    { libraries: ["librunic_server.so"] }),
-  { linked: true, directPInvoke: ["runic_server"], nativeLibrary: [], none: ["librunic_server.so"] });
+    { libraries: ["librax_server.so"] }),
+  { linked: true, directPInvoke: ["rax_server"], nativeLibrary: [], none: ["librax_server.so"] });
   // Rust's standard library needs the same system libraries on Windows wherever the crate is linked.
   assert.deepEqual(nativeLinkage("linkage-application-win", "<RunicDesktopNativeServerLinkage>application</RunicDesktopNativeServerLinkage>",
-    { rid: "win-x64", libraries: ["runic_server.dll"] }),
-  { linked: true, directPInvoke: ["runic_server"], nativeLibrary: ["ntdll.lib", "ws2_32.lib", "userenv.lib", "bcrypt.lib"], none: ["runic_server.dll"] });
+    { rid: "win-x64", libraries: ["rax_server.dll"] }),
+  { linked: true, directPInvoke: ["rax_server"], nativeLibrary: ["ntdll.lib", "ws2_32.lib", "userenv.lib", "bcrypt.lib"], none: ["rax_server.dll"] });
 });
 
 test("an unknown RunicDesktopNativeServerLinkage fails with RUNICDESK006", () => {

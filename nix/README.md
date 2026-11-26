@@ -543,10 +543,10 @@ the link fails on duplicate symbols. The project's
 and `buildRunicApplication` follows it with the library it builds from source
 (`nativeServer`):
 
-- `Shared`: the source-built `librunic_server.so` is installed beside the
+- `Shared`: the source-built `librax_server.so` is installed beside the
   executable in `lib/<pname>`, where the executable loads it.
 - `Application`: the application's own Rust derivation builds the
-  `runic-server` crate into its static library, and the NativeAOT executable
+  `runic-artifex-server` crate into its static library, and the NativeAOT executable
   takes the server from there. The source-built library still serves the JIT
   builds, such as `testProjectFile`'s tests. The crate is a git dependency of
   the application's `Cargo.lock`, so `rustPlatform.buildRustPackage` needs its
@@ -555,7 +555,7 @@ and `buildRunicApplication` follows it with the library it builds from source
   ```nix
   cargoLock = {
     lockFile = ./native/Cargo.lock;
-    outputHashes."runic-server-0.17.1" = "sha256-…";
+    outputHashes."runic-artifex-server-0.24.0" = "sha256-…";
   };
   ```
 

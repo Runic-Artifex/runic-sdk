@@ -272,6 +272,7 @@
         "eng/native/README.md",
         "eng/native/at-spi2-core-release-embedded-message.patch",
         "eng/native/build-runic-server.sh",
+        "eng/native/symbols.mjs",
         "eng/native/collect-libraries.mjs",
         "eng/native/plan-library-jobs.mjs",
         "eng/native/verify-native-server-package.mjs",
