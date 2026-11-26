@@ -29,6 +29,9 @@ public static class AssetArchive
 
     private const string ManifestEntryName = "runic-assets.json";
     private const string ContentPrefix = "assets/";
+
+    // One asset's length is bounded by the largest .NET array, whatever AssetArchiveReadOptions allows.
+    internal const long MaxAssetBytes = int.MaxValue;
     private static readonly DateTimeOffset StableTimestamp = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
     private static readonly System.Buffers.SearchValues<char> HexCharacters =
         System.Buffers.SearchValues.Create("0123456789abcdefABCDEF");
@@ -226,7 +229,7 @@ public static class AssetArchive
         CancellationToken cancellationToken)
     {
         using var archive = new ZipArchive(copy, ZipArchiveMode.Read, leaveOpen: true);
-        (AssetManifest manifest, AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, string?[] contentPaths) = ReadDirectory(archive, options, cancellationToken);
+        (AssetManifest manifest, AssetDescriptor[] descriptors, ArchiveEntryData?[] entries, string?[] contentPaths) = ReadDirectory(archive, copy, options, cancellationToken);
         // Inflate every asset now, through the slots that ReadEmbedded inflates lazily, so shared content is inflated
         // and its CRC-32 checked once, and each path is checked against its own digest.
         var content = new AssetArchiveContent(descriptors, entries, contentPaths);
@@ -242,70 +245,70 @@ public static class AssetArchive
     }
 
     // Reads the manifest and the ZIP directory of an archive without inflating any asset (specs/assets/archive-v1.md,
-    // "Reader rules"). No entry may be encrypted. The manifest must be JSON of the manifest profile (no duplicate member
-    // names) with a matching CRC-32. Every declared asset must have an entry of its declared length, or (schema 2) a
-    // contentPath and no entry, and the archive may hold no other file. AssetArchiveContent checks that a contentPath
-    // names an asset with an entry and the same length; an asset's CRC-32 and digest are checked with its content.
-    private static (AssetManifest Manifest, AssetDescriptor[] Descriptors, ZipArchiveEntry?[] Entries, string?[] ContentPaths) ReadDirectory(
+    // "Reader rules"). No entry may be encrypted, and every entry must have a matching local header, bytes of its own
+    // and compression method 0 or 8 (ArchiveZipLayout). The manifest must inflate to its size with a matching CRC-32
+    // and be JSON of the manifest profile (UTF-8, no duplicate member names, no lone surrogates). Every declared asset
+    // must have an entry of its declared length, or (schema 2) a contentPath and no entry, and the archive may hold no
+    // other file. AssetArchiveContent checks that a contentPath names an asset with an entry and the same length; an
+    // asset's inflated length, CRC-32 and digest are checked with its content.
+    private static (AssetManifest Manifest, AssetDescriptor[] Descriptors, ArchiveEntryData?[] Entries, string?[] ContentPaths) ReadDirectory(
         ZipArchive archive,
+        Stream stream,
         AssetArchiveReadOptions options,
         CancellationToken cancellationToken)
     {
-        var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.Ordinal);
+        // The general-purpose flag's bit 0. An archive's entries are never encrypted, even when the data that follows
+        // is plain, so the flag is invalid on every entry, directory entries included.
         foreach (ZipArchiveEntry entry in archive.Entries)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            // The general-purpose flag's bit 0. An archive's entries are never encrypted, even when the data that
-            // follows is plain, so the flag is invalid on every entry, directory entries included.
             if (entry.IsEncrypted)
             {
                 throw new InvalidDataException($"The asset archive entry '{entry.FullName}' is marked encrypted.");
             }
+        }
 
+        ArchiveEntryData[] located = ArchiveZipLayout.Locate(stream, archive.Entries);
+        var entries = new Dictionary<string, (ZipArchiveEntry Entry, ArchiveEntryData Data)>(StringComparer.Ordinal);
+        for (int index = 0; index < located.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ZipArchiveEntry entry = archive.Entries[index];
             if (entry.FullName.EndsWith('/'))
             {
                 continue;
             }
 
-            if (!entries.TryAdd(entry.FullName, entry))
+            if (!entries.TryAdd(entry.FullName, (entry, located[index])))
             {
                 throw new InvalidDataException($"The asset archive contains duplicate entry '{entry.FullName}'.");
             }
         }
 
-        if (!entries.Remove(ManifestEntryName, out ZipArchiveEntry? manifestEntry))
+        if (!entries.Remove(ManifestEntryName, out (ZipArchiveEntry Entry, ArchiveEntryData Data) manifestEntry))
         {
             throw new InvalidDataException("The asset archive does not contain runic-assets.json.");
         }
 
+        long manifestLimit = Math.Min(options.MaxManifestBytes, MaxAssetBytes);
+        if (manifestEntry.Entry.Length > manifestLimit)
+        {
+            throw new InvalidDataException($"The asset archive manifest exceeds the {manifestLimit} byte limit.");
+        }
+
+        byte[] manifestBytes = Inflate(manifestEntry.Data, manifestEntry.Entry.Length, "The asset archive manifest");
+
+        // JsonDocument checks the UTF-8 of a string only when it is read, so a member the reader ignores could carry
+        // bytes that are not UTF-8.
+        if (!System.Text.Unicode.Utf8.IsValid(manifestBytes))
+        {
+            throw new InvalidDataException("The asset archive manifest is not valid JSON: it is not UTF-8.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
         AssetDescriptor[] descriptors;
         string?[] contentPaths;
-        using (Stream manifestStream = manifestEntry.Open())
-        using (var manifestCopy = new MemoryStream())
+        using (JsonDocument document = ParseManifest(manifestBytes))
         {
-            if (manifestEntry.Length > options.MaxManifestBytes)
-            {
-                throw new InvalidDataException(
-                    $"The asset archive manifest exceeds the {options.MaxManifestBytes} byte limit.");
-            }
-
-            CopyBounded(manifestStream, manifestCopy, options.MaxManifestBytes, cancellationToken);
-            ReadOnlySpan<byte> manifestBytes = manifestCopy.GetBuffer().AsSpan(0, checked((int)manifestCopy.Length));
-            if (AssetHashing.Crc32(manifestBytes) != manifestEntry.Crc32)
-            {
-                throw new InvalidDataException("The asset archive manifest does not match its CRC-32.");
-            }
-
-            // JsonDocument checks the UTF-8 of a string only when it is read, so a member the reader ignores could
-            // carry bytes that are not UTF-8.
-            if (!System.Text.Unicode.Utf8.IsValid(manifestBytes))
-            {
-                throw new InvalidDataException("The asset archive manifest is not valid JSON: it is not UTF-8.");
-            }
-
-            manifestCopy.Position = 0;
-            cancellationToken.ThrowIfCancellationRequested();
-            using JsonDocument document = ParseManifest(manifestCopy);
             cancellationToken.ThrowIfCancellationRequested();
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
@@ -343,6 +346,12 @@ public static class AssetArchive
                         asset.GetProperty("sha256").GetString()!,
                         asset.GetProperty("entryPoint").GetBoolean(),
                         ParseCacheMode(asset.GetProperty("cacheMode").GetString()!));
+                    if (descriptor.Length > MaxAssetBytes)
+                    {
+                        throw new InvalidDataException(
+                            $"Asset '{descriptor.RelativePath}' exceeds the {MaxAssetBytes} byte asset-size limit.");
+                    }
+
                     if (descriptor.Length > options.MaxTotalUncompressedBytes - totalLength)
                     {
                         throw new InvalidDataException(
@@ -387,7 +396,7 @@ public static class AssetArchive
             throw new InvalidDataException("The asset archive manifest is invalid: " + exception.Message, exception);
         }
 
-        var contentEntries = new ZipArchiveEntry?[descriptors.Length];
+        var contentEntries = new ArchiveEntryData?[descriptors.Length];
         for (int index = 0; index < descriptors.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -398,17 +407,18 @@ public static class AssetArchive
 
             AssetDescriptor descriptor = descriptors[index];
             string entryName = ContentPrefix + descriptor.RelativePath;
-            if (!entries.Remove(entryName, out ZipArchiveEntry? entry))
+            if (!entries.Remove(entryName, out (ZipArchiveEntry Entry, ArchiveEntryData Data) entry))
             {
                 throw new InvalidDataException($"The asset archive is missing '{descriptor.RelativePath}'.");
             }
 
-            if (entry.Length != descriptor.Length || entry.Length > int.MaxValue)
+            if (entry.Entry.Length != descriptor.Length)
             {
-                throw new InvalidDataException($"Asset '{descriptor.RelativePath}' has an unexpected length.");
+                throw new InvalidDataException(
+                    $"Asset '{descriptor.RelativePath}' has a ZIP entry of {entry.Entry.Length} bytes, not its length {descriptor.Length}.");
             }
 
-            contentEntries[index] = entry;
+            contentEntries[index] = entry.Data;
         }
 
         // An asset with contentPath has no entry of its own: one would be left here.
@@ -451,11 +461,12 @@ public static class AssetArchive
         return contentPaths;
     }
 
-    // Inflates one entry whose directory length ReadDirectory checked. The entry must hold exactly that many bytes, with
-    // the CRC-32 that the central directory records, in eager and lazy reads alike: a damaged entry is never served.
-    internal static byte[] Inflate(ZipArchiveEntry entry, AssetDescriptor descriptor)
+    // Inflates one entry whose directory length ReadDirectory checked, at most MaxAssetBytes. The entry must hold
+    // exactly that many bytes, read on past them to find that its data ends there, with the CRC-32 that the central
+    // directory records, in eager and lazy reads alike: a damaged entry is never served.
+    internal static byte[] Inflate(ArchiveEntryData entry, long length, string subject)
     {
-        byte[] bytes = new byte[checked((int)descriptor.Length)];
+        byte[] bytes = new byte[checked((int)length)];
         using Stream input = entry.Open();
         int total = 0;
         int read;
@@ -464,14 +475,19 @@ public static class AssetArchive
             total += read;
         }
 
-        if (total != bytes.Length || input.ReadByte() != -1)
+        if (total != bytes.Length)
         {
-            throw new InvalidDataException($"Asset '{descriptor.RelativePath}' has an unexpected length.");
+            throw new InvalidDataException($"{subject} has {total} bytes in its ZIP entry, not its length {length}.");
+        }
+
+        if (input.ReadByte() != -1)
+        {
+            throw new InvalidDataException($"{subject} has more bytes in its ZIP entry than its length {length}.");
         }
 
         if (AssetHashing.Crc32(bytes) != entry.Crc32)
         {
-            throw new InvalidDataException($"Asset '{descriptor.RelativePath}' does not match its ZIP entry's CRC-32.");
+            throw new InvalidDataException($"{subject} does not match its ZIP entry's CRC-32.");
         }
 
         return bytes;
@@ -544,7 +560,7 @@ public static class AssetArchive
             }
 
             archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
-            (AssetManifest manifest, AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, string?[] contentPaths) = ReadDirectory(archive, options, CancellationToken.None);
+            (AssetManifest manifest, AssetDescriptor[] descriptors, ArchiveEntryData?[] entries, string?[] contentPaths) = ReadDirectory(archive, stream, options, CancellationToken.None);
             return new AssetArchiveSource(manifest, new AssetArchiveContent(descriptors, entries, contentPaths));
         }
         catch
@@ -701,18 +717,40 @@ public static class AssetArchive
             or ".webm" or ".webp" or ".woff" or ".woff2" or ".zip";
 
     // The manifest profile: one UTF-8 JSON text (RFC 8259), after at most one byte order mark, nested at most 64 deep,
-    // and no object with two members of the same name (compared after unescaping).
+    // no object with two members of the same name (compared after unescaping), and no string with a lone surrogate
+    // escape, in the members that the reader ignores too (I-JSON, RFC 7493).
     private static readonly JsonDocumentOptions ManifestJsonOptions = new() { AllowDuplicateProperties = false };
 
-    private static JsonDocument ParseManifest(Stream source)
+    private static JsonDocument ParseManifest(byte[] manifest)
     {
+        ReadOnlyMemory<byte> json = manifest;
+        if (json.Span.StartsWith("\uFEFF"u8))
+        {
+            json = json[3..];
+        }
+
         try
         {
-            return JsonDocument.Parse(source, ManifestJsonOptions);
+            // JsonDocument unescapes a string only when it is read, so one that the reader ignores is checked here.
+            var reader = new Utf8JsonReader(json.Span, new JsonReaderOptions { MaxDepth = ManifestJsonOptions.MaxDepth });
+            while (reader.Read())
+            {
+                if (reader.TokenType is JsonTokenType.PropertyName or JsonTokenType.String && reader.ValueIsEscaped)
+                {
+                    _ = reader.GetString();
+                }
+            }
+
+            return JsonDocument.Parse(json, ManifestJsonOptions);
         }
         catch (JsonException exception)
         {
             throw new InvalidDataException("The asset archive manifest is not valid JSON.", exception);
+        }
+        catch (InvalidOperationException exception)
+        {
+            // Utf8JsonReader.GetString's failure for an escape that is not a whole UTF-16 character.
+            throw new InvalidDataException("The asset archive manifest is not valid JSON: a string has a lone surrogate.", exception);
         }
     }
 
@@ -1060,6 +1098,11 @@ public sealed class AssetArchiveInspection
 }
 
 /// <summary>Bounds memory and file counts while reading an untrusted asset archive.</summary>
+/// <remarks>
+/// One asset is also bounded at 2,147,483,647 bytes (2³¹−1, <see cref="int.MaxValue"/>), the largest .NET array, a fixed
+/// limit that these options do not raise: an archive with a larger asset fails to read with
+/// <see cref="InvalidDataException"/>, as for these limits.
+/// </remarks>
 public sealed class AssetArchiveReadOptions
 {
     /// <summary>The maximum compressed archive size accepted in bytes.</summary>
@@ -1137,12 +1180,12 @@ internal sealed class AssetArchiveContent
 
     // Content inflated on first use from the archive's entries. An asset with contentPath shares the slot of the asset
     // it names, so shared content is inflated and kept once.
-    internal AssetArchiveContent(AssetDescriptor[] descriptors, ZipArchiveEntry?[] entries, string?[] contentPaths)
+    internal AssetArchiveContent(AssetDescriptor[] descriptors, ArchiveEntryData?[] entries, string?[] contentPaths)
     {
         _slots = new Dictionary<string, Slot>(descriptors.Length, StringComparer.Ordinal);
         for (int index = 0; index < descriptors.Length; index++)
         {
-            if (entries[index] is ZipArchiveEntry entry)
+            if (entries[index] is ArchiveEntryData entry)
             {
                 _slots.Add(descriptors[index].RelativePath, new Slot(descriptors[index], entry));
             }
@@ -1182,7 +1225,7 @@ internal sealed class AssetArchiveContent
                 content = slot.Content;
                 if (content is null)
                 {
-                    content = AssetArchive.Inflate(slot.Entry!, slot.Descriptor);
+                    content = AssetArchive.Inflate(slot.Entry!, slot.Descriptor.Length, $"Asset '{slot.Descriptor.RelativePath}'");
                     Volatile.Write(ref slot.Content, content);
                     slot.Entry = null;
                 }
@@ -1192,11 +1235,11 @@ internal sealed class AssetArchiveContent
         return true;
     }
 
-    private sealed class Slot(AssetDescriptor descriptor, ZipArchiveEntry? entry)
+    private sealed class Slot(AssetDescriptor descriptor, ArchiveEntryData? entry)
     {
         internal readonly AssetDescriptor Descriptor = descriptor;
         // Cleared once inflated, so the slot no longer keeps the archive's buffer alive.
-        internal ZipArchiveEntry? Entry = entry;
+        internal ArchiveEntryData? Entry = entry;
         internal byte[]? Content;
     }
 }
