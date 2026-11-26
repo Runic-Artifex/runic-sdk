@@ -10,7 +10,8 @@ internal static partial class DirectoryIdentity
 {
     private static volatile bool _unsupported;
 
-    // The device, inode and birth time on Unix, the volume serial number and file index on Windows; null when unknown.
+    // The device, inode and birth time on Unix (the change time on a Linux file system without a birth time), the volume
+    // serial number and file index on Windows; null when unknown.
     public static string? Read(string directory)
     {
         if (_unsupported) return null;
@@ -41,10 +42,46 @@ internal static partial class DirectoryIdentity
         var device = OperatingSystem.IsMacOS()
             ? BinaryPrimitives.ReadUInt32LittleEndian(span) : BinaryPrimitives.ReadUInt64LittleEndian(span);
         var inode = BinaryPrimitives.ReadUInt64LittleEndian(span[8..]);
-        // ext4 hands a freed inode to the next directory created, so a replacement can keep device and inode. The birth
-        // time (statx on Linux) tells them apart; where a file system lacks one, .NET falls back to the change time,
-        // which at worst restarts the watch after an entry changes.
+        // ext4 hands a freed inode to the next directory created, so a replacement can keep device and inode; the birth
+        // time tells them apart. macOS reports it as the creation time. On Linux, .NET reads the creation time through
+        // lstat, which has no birth time, so it is the change time there, which moves with every entry created, renamed
+        // or deleted in the directory (#1360): statx reads the birth time instead. A Linux file system that records none
+        // (or a kernel before 4.11, or a C library without statx) keeps the change time, which tells a replacement apart
+        // too but restarts a watch after each change of an entry.
+        if (OperatingSystem.IsLinux() && ReadBirthTime(directory) is { } birth) return $"{device}:{inode}:{birth}";
         return $"{device}:{inode}:{Directory.GetCreationTimeUtc(directory).Ticks}";
+    }
+
+    private static volatile bool _noStatx;
+
+    // The birth time from statx (Linux 4.11, glibc 2.28, musl 1.2.5) as "b{seconds}.{nanoseconds}", or null when the
+    // file system, the kernel or the C library has none. struct statx: stx_mask at 0 says which fields the file
+    // system filled in, and stx_btime (tv_sec, an int64, then tv_nsec, a uint32) is at 80.
+    private static unsafe string? ReadBirthTime(string path)
+    {
+        if (_noStatx) return null;
+        const int CurrentDirectory = -100; // AT_FDCWD
+        const uint BirthTime = 0x800; // STATX_BTIME
+        const int NotImplemented = 38; // ENOSYS
+        var buffer = stackalloc byte[256];
+        try
+        {
+            if (Statx(CurrentDirectory, path, 0, BirthTime, buffer) != 0)
+            {
+                if (Marshal.GetLastPInvokeError() == NotImplemented) _noStatx = true;
+                return null;
+            }
+        }
+        catch (EntryPointNotFoundException)
+        {
+            _noStatx = true;
+            return null;
+        }
+        var span = new ReadOnlySpan<byte>(buffer, 96);
+        if ((BinaryPrimitives.ReadUInt32LittleEndian(span) & BirthTime) == 0) return null;
+        var seconds = BinaryPrimitives.ReadInt64LittleEndian(span[80..]);
+        var nanoseconds = BinaryPrimitives.ReadUInt32LittleEndian(span[88..]);
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"b{seconds}.{nanoseconds:D9}");
     }
 
     private static volatile bool _xstat;
@@ -90,6 +127,9 @@ internal static partial class DirectoryIdentity
 
     [LibraryImport("libc", EntryPoint = "stat", StringMarshalling = StringMarshalling.Utf8)]
     private static unsafe partial int Stat(string path, byte* buffer);
+
+    [LibraryImport("libc", EntryPoint = "statx", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static unsafe partial int Statx(int directory, string path, int flags, uint mask, byte* buffer);
 
     [LibraryImport("libc", EntryPoint = "__xstat", StringMarshalling = StringMarshalling.Utf8)]
     private static unsafe partial int XStat(int version, string path, byte* buffer);

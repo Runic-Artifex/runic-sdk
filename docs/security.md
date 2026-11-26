@@ -368,8 +368,9 @@ back to the server for what its own origin cannot serve. Its origin serves only
 - **Redirects.** A path on the Window's listener outside every Window's own
   path, such as the Vite DevTools dock's `/__devtools/`, gets a redirect to
   the same path on the server instead. A CS-WebUI Window redirects whatever
-  its folder lacks; that redirect drops the query string, because WebUI's
-  native server does (cs-webui#33).
+  its folder lacks. WebUI's own redirect from `/` or a folder to its index
+  file keeps the query string since CsWebUi 2.5.0-beta.4.11 (cs-webui#33,
+  webui-dev/webui#729).
 - **When.** Only in the `Development` environment, only with the address that
   `dev` passes (`http://127.0.0.1:<port>/`, never `localhost`), and only when
   the Window serves its build folder, not the embedded frontend archive. A
