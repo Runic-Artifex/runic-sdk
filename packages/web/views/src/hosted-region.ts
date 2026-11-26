@@ -6,8 +6,15 @@
 //
 // One client per page runtime keeps the connected elements by name. The latest connected element of a name owns the
 // region; an earlier one shows its fallback until the owner disconnects. Requests for one name go out in order.
+//
+// With hosted-region-loading/1 (specs/application/README.md, "Loading and failure") the producer decides when a frame
+// shows the guest's page: the element stays loading, with its fallback over the hidden frame, until the producer says
+// the guest's page connected, since an engine also fires the frame's load for a navigation that failed and then shows
+// its own error page. Without the feature, as with a producer of an earlier release, the frame's load attaches it.
 import { BridgeError } from "./errors.js";
-import { hostedRegionsFeature, isHostedRegionName, maximumHostedRegions, type HostedRegionPush, type HostedRegionPushKind } from "./hosted-region-wire.js";
+import {
+  hostedRegionLoadingFeature, hostedRegionsFeature, isHostedRegionName, maximumHostedRegions, type HostedRegionPush, type HostedRegionPushKind,
+} from "./hosted-region-wire.js";
 import type { Push } from "./protocol.js";
 import { sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { pageInstance, slotsOf } from "./scope.js";
@@ -27,22 +34,31 @@ export const hostedRegionTag = "runic-hosted-region";
 /**
  * What a hosted region shows, reflected in its `state` attribute:
  * - `waiting`: no Window shows in the region yet, or the page is not connected to its host yet;
- * - `loading`: the region's frame loads the guest's page;
+ * - `loading`: the region's frame loads the guest's page; with `stalled` (`hosted-region-loading/1`), the frame has loaded
+ *   but the guest's page has not connected;
  * - `attached`: the frame shows the guest's page;
+ * - `failed`: the host application gave up loading the guest's page (`hosted-region-loading/1`); `retry()` asks it to try
+ *   again;
  * - `detached`: the guest's Window is detached from the region and may come back, as after a lost connection;
  * - `ended`: the guest's Window closed or its application went away;
  * - `unsupported`: the host does not implement hosted regions, the region's name is invalid, or the host pushed an
  *   embedding this page does not know.
  */
-export type HostedRegionState = "waiting" | "loading" | "attached" | "detached" | "ended" | "unsupported";
+export type HostedRegionState = "waiting" | "loading" | "attached" | "failed" | "detached" | "ended" | "unsupported";
 
 /** How the region's height is set: `fill`, by the page's own layout (the default), or `content-height`, by the guest. */
 export type HostedRegionSizing = "fill" | "content-height";
 
-/** The detail of `runicregionstatechange`. */
+/**
+ * The detail of `runicregionstatechange`, dispatched when the state, `stalled` or `reason` changed: `stalled` is true while
+ * the region is `loading` and its frame has loaded without the guest's page connecting; `reason` is the host
+ * application's reason for `failed`, or `null`.
+ */
 export interface HostedRegionStateChangeDetail {
   readonly state: HostedRegionState;
   readonly previous: HostedRegionState;
+  readonly stalled: boolean;
+  readonly reason: string | null;
 }
 
 /** The detail of `runicregiontitlechange`: the guest page's title, or `null` when it has none. */
@@ -53,10 +69,11 @@ export interface HostedRegionTitleChangeDetail {
 /**
  * `<runic-hosted-region name="check">`: a region where the host application shows a guest's Window. Attributes:
  * `name` (1 to 64 ASCII letters, digits, `.`, `_` or `-`), `sizing` (`fill` or `content-height`) and `label`, the
- * region's accessible name, which overrides the guest page's title. It reflects `state` and `focused`, and dispatches
- * `runicregionstatechange` and `runicregiontitlechange`. Light-DOM children with `slot="fallback"` show unless the region
- * is attached; a child with `slot` set to a state (`loading`, `ended`, …) shows instead in that state. `::part(frame)`
- * styles the frame. The element sets the CSS `color-scheme` of the frame, or of a component's element, to the colour
+ * region's accessible name, which overrides the guest page's title. It reflects `state`, `stalled` and `focused`, and
+ * dispatches `runicregionstatechange` and `runicregiontitlechange`. Light-DOM children with `slot="fallback"` show unless
+ * the region is attached; a child with `slot` set to a state (`loading`, `failed`, `ended`, …) shows instead in that
+ * state, and one with `slot="stalled"` while the region is loading and stalled, in place of the `loading` one.
+ * `::part(frame)` styles the frame. The element sets the CSS `color-scheme` of the frame, or of a component's element, to the colour
  * scheme the host decided for the region (`colorScheme` of the region's pushes), and clears it without one.
  */
 export interface RunicHostedRegionElement extends HTMLElement {
@@ -68,6 +85,15 @@ export interface RunicHostedRegionElement extends HTMLElement {
   label: string | null;
   /** What the region shows now. */
   readonly state: HostedRegionState;
+  /** Whether the region is `loading` and its frame has loaded without the guest's page connecting. */
+  readonly stalled: boolean;
+  /** The host application's reason for `failed`, or `null`. */
+  readonly failureReason: string | null;
+  /**
+   * Asks the host application to load a `failed` region again; it decides, and the region shows `loading` again when it
+   * does. Returns whether the request was sent: false unless the region is `failed`.
+   */
+  retry(): boolean;
   /** The guest page's title as the host passed it on, or `null`. */
   readonly guestTitle: string | null;
   /** Whether the keyboard focus is in the region. */
@@ -103,6 +129,9 @@ const tabWindow = 1_000;
 const ownInputWindow = 5_000;
 // A report waits for the next animation frame, or at most this long where frames do not run.
 const reportFallback = 100;
+// How long after its frame loaded a loading region waits for the producer's word that the guest's page connected before
+// it shows as stalled: a page usually connects around its load event.
+const stallDelay = 1_000;
 
 // The `colorScheme` of a content or update push: a value this version does not know reads as null.
 function readColorScheme(value: unknown): "light" | "dark" | null {
@@ -173,7 +202,27 @@ class HostedRegions {
   private runtime: SharedRuntime | undefined;
   private starting: Promise<void> | undefined;
   private supported: boolean | undefined;
+  // hosted-region-loading/1 is in use on the current connection.
+  private loading = false;
   private connection = 0;
+
+  /** Whether the producer says when a region's guest page connected (hosted-region-loading/1). */
+  get waitsForPage(): boolean {
+    return this.loading;
+  }
+
+  // The region's frame loaded while the region was loading (hosted-region-loaded).
+  loaded(region: Region): void {
+    if (this.loading && this.declared.has(region.regionName) && this.owner(region.regionName) === region)
+      void this.send(region.regionName, { kind: "hosted-region-loaded", name: region.regionName });
+  }
+
+  // The page asks for a failed region again (hosted-region-retry); false when it cannot ask.
+  retry(region: Region): boolean {
+    if (!this.loading || !this.declared.has(region.regionName) || this.owner(region.regionName) !== region) return false;
+    void this.send(region.regionName, { kind: "hosted-region-retry", name: region.regionName });
+    return true;
+  }
 
   add(region: Region): void {
     const list = this.regions.get(region.regionName) ?? [];
@@ -287,6 +336,7 @@ class HostedRegions {
     this.declared.clear();
     this.reported.clear();
     this.queues.clear();
+    this.loading = false;
     if (!connected) {
       for (const list of this.regions.values()) list.at(-1)?.clientState("detached");
       return;
@@ -296,6 +346,7 @@ class HostedRegions {
     if (connection !== this.connection) return;
     this.supported = runtime.features?.has(hostedRegionsFeature) === true;
     if (!this.supported) { this.unsupported(); return; }
+    this.loading = runtime.features?.has(hostedRegionLoadingFeature) === true;
     for (const list of this.regions.values()) {
       const owner = list.at(-1);
       if (owner) this.declare(owner);
@@ -357,6 +408,11 @@ function createElementClass(): CustomElementConstructor {
     readonly #content: HTMLDivElement;
     readonly #fallback: HTMLDivElement;
     #state: HostedRegionState = "waiting";
+    // hosted-region-loading/1: the frame loaded without the guest's page connecting, and the host application's reason
+    // for a failed region.
+    #stalled = false;
+    #reason: string | null = null;
+    #stallTimer: ReturnType<typeof setTimeout> | undefined;
     #registered: { readonly name: string; readonly sizing: HostedRegionSizing } | undefined;
     #frame: HTMLIFrameElement | undefined;
     // region-component/1: the guest's component element, and the content push it loads for, which a later push replaces.
@@ -388,6 +444,12 @@ function createElementClass(): CustomElementConstructor {
     }
 
     get state(): HostedRegionState { return this.#state; }
+    get stalled(): boolean { return this.#stalled; }
+    get failureReason(): string | null { return this.#reason; }
+
+    retry(): boolean {
+      return this.#state === "failed" && this.#registered !== undefined && client().retry(this);
+    }
     get guestTitle(): string | null { return this.#guestTitle; }
     get focused(): boolean { return this.#focused; }
     get regionName(): string { return this.#registered?.name ?? ""; }
@@ -548,10 +610,18 @@ function createElementClass(): CustomElementConstructor {
             this.#colorScheme = readColorScheme(push["colorScheme"]);
             this.#applyColorScheme();
           }
+          // hosted-region-loading/1: the guest's page in the frame connected, so the frame shows it.
+          if (push["connected"] === true && this.#frame && this.#state === "loading") this.#setState("attached");
           return;
         case "hosted-region-empty": {
           this.#removeFrame();
           const reason = push["reason"];
+          // hosted-region-loading/1: the host application gave up; its reason goes with the state.
+          if (reason === "failed") {
+            const failure = push["failure"];
+            this.#setState("failed", typeof failure === "string" ? failure : null);
+            return;
+          }
           this.#setState(reason === "waiting" || reason === "ended" ? reason : "detached");
           return;
         }
@@ -609,8 +679,22 @@ function createElementClass(): CustomElementConstructor {
       frame.setAttribute("allow", allow);
       frame.setAttribute("referrerpolicy", "no-referrer");
       frame.setAttribute("part", "frame");
+      // A frame's load does not tell whether the guest's page loaded: an engine fires it for a navigation that failed,
+      // too, and shows its error page. With hosted-region-loading/1 the element waits for the producer's word that the
+      // guest's page connected, reports the load, and shows as stalled after a while; without it, the load attaches.
+      // The initial about:blank of the frame, which the engine loads when the frame is inserted before its src is set,
+      // is no load of the guest's page.
+      const waits = client().waitsForPage;
+      let navigating = false;
       frame.addEventListener("load", () => {
-        if (this.#frame === frame && this.#state === "loading") this.#setState("attached");
+        if (!navigating || this.#frame !== frame || this.#state !== "loading") return;
+        if (!waits) { this.#setState("attached"); return; }
+        client().loaded(this);
+        if (this.#stalled || this.#stallTimer !== undefined) return;
+        this.#stallTimer = setTimeout(() => {
+          this.#stallTimer = undefined;
+          if (this.#frame === frame && this.#state === "loading") this.#setStalled(true);
+        }, stallDelay);
       });
       this.#frame = frame;
       this.#applyTitle();
@@ -620,6 +704,7 @@ function createElementClass(): CustomElementConstructor {
       this.#setState("loading");
       // Set last: the address loads once, in the frame as it is in the tree.
       frame.src = src;
+      navigating = true;
       this.#schedule();
     }
 
@@ -657,6 +742,8 @@ function createElementClass(): CustomElementConstructor {
     }
 
     #removeFrame(): void {
+      clearTimeout(this.#stallTimer);
+      this.#stallTimer = undefined;
       // A component's content ends too: removing its element disposes its instance and closes its connection.
       this.#componentLoad += 1;
       const component = this.#component;
@@ -687,16 +774,31 @@ function createElementClass(): CustomElementConstructor {
       this.#frame.style.height = this.regionSizing === "content-height" && this.#height !== undefined ? `${this.#height}px` : "";
     }
 
-    #setState(state: HostedRegionState): void {
+    // A state ends stalled, also loading for new content; reason goes with failed alone.
+    #setState(state: HostedRegionState, reason: string | null = null): void {
+      clearTimeout(this.#stallTimer);
+      this.#stallTimer = undefined;
+      this.#change(state, false, state === "failed" ? reason : null);
+    }
+
+    #setStalled(stalled: boolean): void {
+      this.#change(this.#state, stalled, this.#reason);
+    }
+
+    #change(state: HostedRegionState, stalled: boolean, reason: string | null): void {
       const previous = this.#state;
+      const changed = previous !== state || this.#stalled !== stalled || this.#reason !== reason;
       this.#state = state;
+      this.#stalled = stalled;
+      this.#reason = reason;
       this.#render();
-      if (previous === state) return;
-      this.dispatchEvent(new CustomEvent("runicregionstatechange", { detail: { state, previous } }));
+      if (!changed) return;
+      this.dispatchEvent(new CustomEvent("runicregionstatechange", { detail: { state, previous, stalled, reason } }));
     }
 
     #render(): void {
       this.setAttribute("state", this.#state);
+      this.toggleAttribute("stalled", this.#stalled);
       this.#renderShadow();
     }
 
@@ -704,15 +806,18 @@ function createElementClass(): CustomElementConstructor {
       this.#content.classList.toggle("loading", this.#state === "loading");
       this.#fallback.classList.toggle("over", this.#state === "loading");
       if (this.#state === "attached") { this.#fallback.replaceChildren(); return; }
-      // The slot of the state, with the fallback slot as its own fallback content.
+      // The slot of the state, with the fallback slot as its own fallback content; a stalled region's slot has the
+      // loading slot in between. A failed region without failed content shows its fallback content.
+      const names = this.#stalled ? ["stalled", this.#state, "fallback"] : [this.#state, "fallback"];
       const current = this.#fallback.firstElementChild as HTMLSlotElement | null;
-      if (current?.name !== this.#state) {
-        const stateSlot = document.createElement("slot");
-        stateSlot.name = this.#state;
-        const fallbackSlot = document.createElement("slot");
-        fallbackSlot.name = "fallback";
-        stateSlot.append(fallbackSlot);
-        this.#fallback.replaceChildren(stateSlot);
+      if (current?.name !== names[0]) {
+        const slots = names.map(name => {
+          const slot = document.createElement("slot");
+          slot.name = name;
+          return slot;
+        });
+        for (let index = 1; index < slots.length; index++) slots[index - 1]!.append(slots[index]!);
+        this.#fallback.replaceChildren(slots[0]!);
       }
     }
   };

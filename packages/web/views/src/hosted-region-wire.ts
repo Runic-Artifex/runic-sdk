@@ -1,8 +1,19 @@
-// hosted-regions/1 (specs/application/README.md, "Hosted regions"): the wire members of the feature. The element that
-// uses them is hosted-region.ts; the runtime only lists the feature and reads its pushes, which name no route.
+// hosted-regions/1 (specs/application/README.md, "Hosted regions") and hosted-region-loading/1 ("Loading and failure"):
+// the wire members of the features. The element that uses them is hosted-region.ts; the runtime only lists the features
+// and reads their pushes, which name no route.
 
 /** `hosted-regions/1`: the page declares regions where the host shows a guest application's Window. */
 export const hostedRegionsFeature = "hosted-regions/1";
+
+/**
+ * `hosted-region-loading/1`, with `hosted-regions/1`: the host tells the page when the guest's page in a region's frame
+ * has connected (`hosted-region-update` `connected`), and can declare a region failed (`hosted-region-empty` `failed`);
+ * the page reports its frames' loads (`hosted-region-loaded`) and asks for a failed region again (`hosted-region-retry`).
+ */
+export const hostedRegionLoadingFeature = "hosted-region-loading/1";
+
+/** The longest `failure` of a `hosted-region-empty` with the reason `failed`. */
+export const maximumHostedRegionFailure = 256;
 
 /** The kinds of the feature's pushes. */
 export const hostedRegionPushKinds = ["hosted-region-content", "hosted-region-update", "hosted-region-empty", "hosted-region-focus"] as const;
@@ -56,10 +67,16 @@ export function invalidHostedRegionPush(push: Readonly<Record<string, unknown>>)
       const height = push["height"];
       if (height !== undefined && !(Number.isInteger(height) && (height as number) >= 0 && (height as number) <= maximumSize))
         return "The hosted region update's height is invalid.";
+      if (Object.hasOwn(push, "connected") && typeof push["connected"] !== "boolean") return "The hosted region update's connected is invalid.";
       return undefined;
     }
-    case "hosted-region-empty":
-      return typeof push["reason"] === "string" ? undefined : "The hosted region empty push has no reason.";
+    case "hosted-region-empty": {
+      if (typeof push["reason"] !== "string") return "The hosted region empty push has no reason.";
+      const failure = push["failure"] ?? null;
+      if (failure !== null && !(typeof failure === "string" && failure.length <= maximumHostedRegionFailure))
+        return "The hosted region empty push's failure is invalid.";
+      return undefined;
+    }
     default:
       return undefined;
   }

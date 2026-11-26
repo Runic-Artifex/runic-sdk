@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type BrowserContext, type Frame, type Page } from "playwright-core";
+import type { RunicHostedRegionElement } from "../dist/experimental.js";
 
 // <runic-hosted-region> in Chromium (hosted-regions/1): a host page on http://localhost with a fake producer behind
 // its Bridge, and a guest page on another origin (http://127.0.0.1), so the frame is cross-origin as in a real host.
@@ -10,11 +11,12 @@ const dist = new URL("../dist/", import.meta.url);
 const hostOrigin = "http://localhost";
 const guestOrigin = "http://127.0.0.1";
 
-const hostPage = (features: string) => `<!doctype html><html><body style="margin:0">
+const hostPage = (features: string, slots: string) => `<!doctype html><html><body style="margin:0">
 <button id="before">Before</button>
 <runic-hosted-region id="region" name="check" style="height:200px">
   <p slot="fallback" id="fallback">The check is not running.</p>
   <p slot="ended" id="ended">The check ended.</p>
+  ${slots}
 </runic-hosted-region>
 <button id="after">After</button>
 <div style="height:3000px"></div>
@@ -35,12 +37,13 @@ globalThis.__runicBridge = {
   onConnectionChange(listener) { listener(true); return () => {}; },
 };
 const events = [];
+const details = [];
 const region = document.getElementById("region");
-region.addEventListener("runicregionstatechange", event => events.push(event.detail.state));
+region.addEventListener("runicregionstatechange", event => { events.push(event.detail.state); details.push(event.detail); });
 region.addEventListener("runicregiontitlechange", event => events.push("title:" + event.detail.title));
 defineHostedRegion();
 globalThis.regionTest = {
-  requests, events,
+  requests, events, details,
   push(message) { for (const listener of listeners) listener(JSON.stringify(message)); },
 };
 </script></body></html>`;
@@ -70,8 +73,9 @@ interface Opened {
 }
 
 // Serves the host page, `dist` and the guest's pages without a server; each guest address counts its loads. `policy` is
-// the host page's Content-Security-Policy.
-async function open(features = `["hosted-regions/1"]`, declares = true, policy?: string): Promise<Opened> {
+// the host page's Content-Security-Policy, and `slots` more children of the region. An address of another origin, such
+// as one that refuses the connection, goes to the network.
+async function open(features = `["hosted-regions/1"]`, declares = true, policy?: string, slots = ""): Promise<Opened> {
   const context = await browser!.newContext();
   const tab = await context.newPage();
   const errors: string[] = [];
@@ -80,7 +84,7 @@ async function open(features = `["hosted-regions/1"]`, declares = true, policy?:
   await context.route(`${hostOrigin}/**`, async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/")
-      return route.fulfill({ contentType: "text/html", body: hostPage(features), headers: policy ? { "content-security-policy": policy } : {} });
+      return route.fulfill({ contentType: "text/html", body: hostPage(features, slots), headers: policy ? { "content-security-policy": policy } : {} });
     if (path.startsWith("/dist/") && !path.includes(".."))
       return route.fulfill({ contentType: "text/javascript", body: await readFile(new URL(path.slice("/dist/".length), dist), "utf8") });
     return route.fulfill({ status: 404, body: "" });
@@ -95,7 +99,7 @@ async function open(features = `["hosted-regions/1"]`, declares = true, policy?:
 }
 
 interface Test {
-  regionTest: { requests: Record<string, unknown>[]; events: string[]; push(message: unknown): void };
+  regionTest: { requests: Record<string, unknown>[]; events: string[]; details: Record<string, unknown>[]; push(message: unknown): void };
 }
 
 const requests = (tab: Page) => tab.evaluate(() => (globalThis as unknown as Test).regionTest.requests.filter(request => request.kind !== "hello"));
@@ -339,5 +343,129 @@ test("Chromium: focus that the guest's script takes counts as script", { timeout
       assert.equal((await report(tab, value => value["focused"] === true, "The guest's focus was not reported")).focusSource, "script");
     else assert.equal(taken, "before");
     console.log(`Chromium: a cross-origin frame's script focus ${taken === "region" ? "takes" : "does not take"} the focus from the host page.`);
+  } finally { await context.close(); }
+});
+
+// hosted-region-loading/1 (specs/application/README.md, "Loading and failure").
+const loadingFeatures = `["hosted-regions/1","hosted-region-loading/1"]`;
+const loadingSlots = `<p slot="loading" id="loading">Starting the check.</p>
+  <p slot="stalled" id="stalled">The check is taking longer than usual.</p>
+  <p slot="failed" id="failed">The check could not start.</p>`;
+// An address that refuses the connection: Chromium fires the frame's load and shows its error page.
+const refused = "http://[::1]:9/";
+const shown = (tab: Page, id: string) => tab.evaluate(id => (document.getElementById(id) as HTMLElement).offsetHeight > 0, id);
+const loadedRequests = async (tab: Page) => (await requests(tab)).filter(request => request["kind"] === "hosted-region-loaded").length;
+
+test("Chromium: with hosted-region-loading/1, a failed frame load keeps the region loading behind its fallback, stalled, until the host says the page connected", { timeout: 60_000, skip }, async () => {
+  const { context, tab, errors } = await open(loadingFeatures, true, undefined, loadingSlots);
+  try {
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: refused, title: null, allow: "" });
+    // The frame fires load for the refused navigation: the element reports it and stays loading.
+    await tab.waitForFunction(() => (globalThis as unknown as Test).regionTest.requests.some(request => request.kind === "hosted-region-loaded"));
+    assert.equal(await state(tab), "loading");
+    assert.deepEqual([await shown(tab, "loading"), await shown(tab, "fallback"), await shown(tab, "stalled")], [true, false, false]);
+    // The engine's error page stays hidden under the fallback.
+    const frame = tab.frames().find(candidate => candidate !== tab.mainFrame());
+    assert.ok(frame, "The region has no frame.");
+    const element = (await frame.frameElement()) as import("playwright-core").ElementHandle<HTMLIFrameElement>;
+    assert.equal(await element.evaluate(frame => getComputedStyle(frame).visibility), "hidden", "The failed frame shows.");
+
+    // A second later without the host's word, the region is stalled: the stalled slot shows in place of the loading one.
+    await tab.waitForFunction(() => document.getElementById("region")!.hasAttribute("stalled"));
+    assert.equal(await state(tab), "loading");
+    assert.deepEqual([await shown(tab, "stalled"), await shown(tab, "loading")], [true, false]);
+    assert.equal(await tab.evaluate(() => (document.getElementById("region") as unknown as RunicHostedRegionElement).stalled), true);
+    const stalled = (await tab.evaluate(() => (globalThis as unknown as Test).regionTest.details)).at(-1);
+    assert.deepEqual(stalled, { state: "loading", previous: "loading", stalled: true, reason: null });
+
+    // New content loads the guest's page, which loads; without the host's word, the region still loads.
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: `${guestOrigin}/_runic_frame/code-1`, title: null, allow: "" });
+    assert.equal(await tab.evaluate(() => document.getElementById("region")!.hasAttribute("stalled")), false, "New content kept the region stalled.");
+    await guestFrame(tab);
+    await tab.waitForFunction(() => (globalThis as unknown as Test).regionTest.requests.filter(request => request.kind === "hosted-region-loaded").length === 2);
+    assert.equal(await state(tab), "loading");
+    assert.equal(await shown(tab, "loading"), true);
+
+    // The host says the guest's page connected: the frame shows, and the fallback goes.
+    await push(tab, { kind: "hosted-region-update", name: "check", connected: true });
+    assert.equal(await state(tab), "attached");
+    assert.deepEqual([await shown(tab, "loading"), await shown(tab, "fallback")], [false, false]);
+    const attached = (await (await guestFrame(tab)).frameElement()) as import("playwright-core").ElementHandle<HTMLIFrameElement>;
+    assert.equal(await attached.evaluate(frame => getComputedStyle(frame).visibility), "visible");
+    // An attached region reports no more loads, and the connected word again changes nothing.
+    await push(tab, { kind: "hosted-region-update", name: "check", connected: true });
+    assert.equal(await loadedRequests(tab), 2);
+    // loading, loading and stalled, loading for the new content, attached.
+    assert.deepEqual((await tab.evaluate(() => (globalThis as unknown as Test).regionTest.events)).filter(event => !event.startsWith("title:")),
+      ["loading", "loading", "loading", "attached"]);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test("Chromium: a failure the host declares shows the failed slot with its reason, and retry asks the host", { timeout: 60_000, skip }, async () => {
+  const { context, tab, errors } = await open(loadingFeatures, true, undefined, loadingSlots);
+  try {
+    const region = () => tab.evaluate(() => {
+      const element = document.getElementById("region") as unknown as RunicHostedRegionElement;
+      return { state: element.state, stalled: element.stalled, reason: element.failureReason };
+    });
+    // retry asks only for a failed region.
+    assert.equal(await tab.evaluate(() => (document.getElementById("region") as unknown as RunicHostedRegionElement).retry()), false);
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: refused, title: null, allow: "" });
+    await tab.waitForFunction(() => (document.getElementById("region") as unknown as RunicHostedRegionElement).state === "loading");
+    await push(tab, { kind: "hosted-region-empty", name: "check", reason: "failed", failure: "unreachable" });
+    assert.deepEqual(await region(), { state: "failed", stalled: false, reason: "unreachable" });
+    assert.equal(tab.frames().length, 1, "The failed frame stayed.");
+    assert.deepEqual([await shown(tab, "failed"), await shown(tab, "fallback"), await shown(tab, "loading")], [true, false, false]);
+    assert.deepEqual((await tab.evaluate(() => (globalThis as unknown as Test).regionTest.details)).at(-1),
+      { state: "failed", previous: "loading", stalled: false, reason: "unreachable" });
+
+    // The page asks again; the host decides, and its new content loads the region again.
+    assert.equal(await tab.evaluate(() => (document.getElementById("region") as unknown as RunicHostedRegionElement).retry()), true);
+    await tab.waitForFunction(() => (globalThis as unknown as Test).regionTest.requests.some(request => request.kind === "hosted-region-retry"));
+    const retry = (await requests(tab)).find(request => request["kind"] === "hosted-region-retry")!;
+    assert.deepEqual(retry, { kind: "hosted-region-retry", name: "check", session: retry["session"] });
+    // Still failed until the host answers with content: the page never picks an address.
+    assert.equal((await region()).state, "failed");
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: `${guestOrigin}/_runic_frame/code-2`, title: null, allow: "" });
+    assert.deepEqual(await region(), { state: "loading", stalled: false, reason: null });
+    await push(tab, { kind: "hosted-region-update", name: "check", connected: true });
+    assert.equal(await state(tab), "attached");
+    assert.equal(await tab.evaluate(() => (document.getElementById("region") as unknown as RunicHostedRegionElement).retry()), false, "An attached region asked again.");
+    // A failure without a reason.
+    await push(tab, { kind: "hosted-region-empty", name: "check", reason: "failed" });
+    assert.deepEqual(await region(), { state: "failed", stalled: false, reason: null });
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test("Chromium: a failed region without failed content shows its fallback", { timeout: 60_000, skip }, async () => {
+  const { context, tab, errors } = await open(loadingFeatures, true, undefined, `<p slot="loading" id="loading">Starting the check.</p>`);
+  try {
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: refused, title: null, allow: "" });
+    await tab.waitForFunction(() => (globalThis as unknown as Test).regionTest.requests.some(request => request.kind === "hosted-region-loaded"));
+    await push(tab, { kind: "hosted-region-empty", name: "check", reason: "failed", failure: "timeout" });
+    assert.equal(await state(tab), "failed");
+    assert.deepEqual([await shown(tab, "fallback"), await shown(tab, "loading")], [true, false]);
+    // A stalled region without stalled content shows its loading content.
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: refused, title: null, allow: "" });
+    await tab.waitForFunction(() => document.getElementById("region")!.hasAttribute("stalled"));
+    assert.deepEqual([await shown(tab, "loading"), await shown(tab, "fallback")], [true, false]);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test("Chromium: a host without hosted-region-loading/1 attaches the region on its frame's load, as before", { timeout: 60_000, skip }, async () => {
+  const { context, tab, errors } = await open(undefined, true, undefined, loadingSlots);
+  try {
+    // A producer of an earlier release says nothing of the guest's page: the frame's load attaches, also a failed one.
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: refused, title: null, allow: "" });
+    await tab.waitForFunction(() => document.getElementById("region")!.getAttribute("state") === "attached");
+    assert.equal(await loadedRequests(tab), 0, "The page reported a load to a producer without the feature.");
+    // Its failure reaches the page as detached; and a page cannot ask such a host again.
+    await push(tab, { kind: "hosted-region-empty", name: "check", reason: "detached" });
+    assert.equal(await state(tab), "detached");
+    assert.equal(await tab.evaluate(() => (document.getElementById("region") as unknown as RunicHostedRegionElement).retry()), false);
+    assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

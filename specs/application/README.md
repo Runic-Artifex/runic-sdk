@@ -327,6 +327,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `handler-timing/1` | A call's request asks for its handler's name and duration, which the reply carries; a producer offers it only in development: [handler timing](#handler-timing) | 0.20 |
 | `open-ended-interactions/1` | An interaction request without a deadline carries no `expiresAt`: [interaction deadlines](#interaction-deadlines) | 0.23 |
 | `view-contract/1` | An `open` reply names the route's generated contract, which the page compares with its own: [presentations](#presentations) | 0.24 |
+| `hosted-region-loading/1` | With `hosted-regions/1`: the producer tells the page when a region's guest page connected and when the host gave a region up; the page reports its frames' loads and asks for a failed region again: [loading and failure](#loading-and-failure) | 0.24 |
 
 ### Request sessions
 
@@ -1960,8 +1961,8 @@ Pushes (producer → the connection that declared the region):
 | --- | --- | --- |
 | `hosted-region-content` | `name`; `embedding`: `"frame"`; `src`: the frame launch address; `title`: the guest's title or `null`; `allow`: the frame's permissions policy, at most 1,024 characters; optional `colorScheme`: `"light"`, `"dark"` or `null` | Shows a new frame with that `src`, replacing the region's content |
 | `hosted-region-content` | `name`; `embedding`: `"component"` ([component mode](../desktop/host-protocol.md#component-mode-region-component1)); `module`: the address of the guest's component module, `http:` or `https:`, at most 2,048 characters; `url`: the WebSocket address of the guest's surface, `ws:` or `wss:`, at most 2,048 characters; `token`: the component token, 1 to 256 base64url characters; optional `colorScheme`: `"light"`, `"dark"` or `null` | Shows the guest's component, replacing the region's content |
-| `hosted-region-update` | `name`; optional `title`: a string or `null`; optional `height`: the region's height in CSS pixels, an integer from 0 to 32,767; optional `colorScheme`: `"light"`, `"dark"` or `null` | Applies the members it carries: the frame's accessible name, with `sizing: "content-height"` the region's height, and the content's colour scheme |
-| `hosted-region-empty` | `name`; `reason`: `"waiting"` (no Window shows in the region yet), `"detached"` (its Window is detached and may come back) or `"ended"` (its Window closed or its guest went away) | Removes the frame and shows the region's fallback content |
+| `hosted-region-update` | `name`; optional `title`: a string or `null`; optional `height`: the region's height in CSS pixels, an integer from 0 to 32,767; optional `colorScheme`: `"light"`, `"dark"` or `null`; optional `connected`: `true` ([loading and failure](#loading-and-failure)) | Applies the members it carries: the frame's accessible name, with `sizing: "content-height"` the region's height, and the content's colour scheme |
+| `hosted-region-empty` | `name`; `reason`: `"waiting"` (no Window shows in the region yet), `"detached"` (its Window is detached and may come back), `"ended"` (its Window closed or its guest went away) or, with [`hosted-region-loading/1`](#loading-and-failure), `"failed"`; with `"failed"`, `failure`: the host application's reason, a string of at most 256 characters, or `null` | Removes the frame and shows the region's fallback content |
 | `hosted-region-focus` | `name` | Moves the keyboard focus into the region, as the host decided ([focus in a region](../desktop/host-protocol.md#focus-in-a-region)) |
 
 - **Names.** `name` is 1 to 64 ASCII letters, digits, dots, underscores or hyphens. A connection declares a name once
@@ -1989,7 +1990,10 @@ Pushes (producer → the connection that declared the region):
 - **The frame.** A client shows `src` in an `<iframe>` with `sandbox="allow-scripts allow-same-origin allow-forms"`, the
   `allow` attribute exactly as pushed, `referrerpolicy="no-referrer"`, and `title` from the push unless the page names
   the region itself. It loads each `src` once: a frame launch address is one-time, and loading it again revokes the
-  guest page's access. It gives the page no reference to the frame, so a later embedding can replace it. A
+  guest page's access. It gives the page no reference to the frame, so a later embedding can replace it. While the
+  region loads, the frame is hidden and the region's fallback content shows over it; without
+  [`hosted-region-loading/1`](#loading-and-failure) the frame's `load` event ends the loading, with it the producer's
+  `connected`. A
   `hosted-region-content` with an `embedding` the client does not know removes the region's content and shows its
   fallback, and the client reports the region as unsupported.
 - **The component.** For `embedding: "component"`, a client imports `module` (a dynamic `import()`, so the page's
@@ -2014,6 +2018,70 @@ Pushes (producer → the connection that declared the region):
 
 A connection that does not use the feature never receives these pushes; its requests of these kinds are `rejected`
 with `invalid-request`. A guest's own page does not use the feature.
+
+### Loading and failure
+
+With the feature `hosted-region-loading/1`, which a connection uses only together with `hosted-regions/1`, the producer
+decides when a region's frame shows the guest's page, and the host application can give up a region. An engine fires an
+`<iframe>`'s `load` event also for a navigation that failed, such as to an address that refuses the connection, and
+then shows its own error page in the frame (Chromium and WebView2 show a grey page); the `load` event therefore does not
+tell whether the guest's page loaded. The producer knows: the guest reports its page's connection
+([`region-page`](../desktop/host-protocol.md#region-page)).
+
+```json
+{"kind":"hosted-region-content","name":"check","embedding":"frame","src":"http://[::1]:40117/_runic_frame/Xk2bT9…","title":null,"allow":""}
+{"kind":"hosted-region-loaded","name":"check"}
+{"ok":true}
+{"kind":"hosted-region-update","name":"check","connected":true}
+```
+
+Requests (page → producer), each answered `{"ok":true}` without other members:
+
+| `kind` | Members |
+| --- | --- |
+| `hosted-region-loaded` | `name`: the region's frame fired `load` while the region was loading |
+| `hosted-region-retry` | `name`: the page asks for a failed region again |
+
+The region's states, and who decides each change:
+
+| State | Shows | Entered when |
+| --- | --- | --- |
+| `loading` | The fallback content over the hidden frame | The producer pushes `hosted-region-content` (producer) |
+| `loading`, stalled | The same, with the page's content for a stalled region | The frame fired `load`, and the producer has not said `connected` within one second (page) |
+| `attached` | The frame | The producer pushes `hosted-region-update` with `connected: true` (producer) |
+| `failed` | The page's failure content, without a frame | The producer pushes `hosted-region-empty` with `reason: "failed"` (producer, for the host application) |
+
+- **Connected.** The producer pushes `hosted-region-update` with `connected: true` when the guest's page in the region's
+  frame connected (`region-page` `connected`), after the `hosted-region-content` of that frame, and again after the
+  page reconnected. The client shows the frame then, if it still loads that content; otherwise the member changes
+  nothing. A client that uses the feature never shows a frame without it. A page whose region never connects keeps
+  showing its fallback content, never the engine's error page. A guest page that loses its connection later stays in
+  the frame, which shows its own connection state. `connected` is sent only to a connection that uses the feature, and
+  only `true` is defined; a component ([component mode](../desktop/host-protocol.md#component-mode-region-component1))
+  shows once its element connected, as without the feature.
+- **Loads.** The client sends `hosted-region-loaded` for each `load` of the frame of the current content while the
+  region loads, not for the initial `about:blank` of a frame inserted before its `src` is set. The producer passes them
+  to the host application (in .NET, `RunicHostedRegion.FrameLoads` and `FrameLoaded`), which decides how long the region
+  may load. A guest page that works usually connects around its `load`; the frame of a failed navigation loads, and its
+  page never connects.
+- **Stalled.** A loading region whose frame fired `load` and whose producer has not said `connected` one second later is
+  stalled. The client decides it alone, and it ends with the next state or content. It only changes what the page
+  shows; the producer is not told.
+- **Failed.** The host application gives up a region (in .NET, `RunicHostedRegion.FailAsync`): the producer pushes
+  `hosted-region-empty` with `reason: "failed"` and `failure`, the application's reason or `null`, which the client
+  passes on to the page's own content. The client removes the frame. A connection that does not use the feature receives
+  `reason: "detached"` instead, and no `failure`.
+- **Retry.** The page asks for a failed region again with `hosted-region-retry`; it never names an address. The host
+  application decides: Runic's host loads the region again only when it failed, at most 3 times a minute, with a new
+  frame launch address that the guest gives under the same checks as any attach, and ignores other requests. The page
+  sees the outcome as the next `hosted-region-content`. The host application can also load a region again by itself
+  (in .NET, `RunicHostedRegion.RetryAsync`).
+- **Compatibility.** A client that uses the feature and a producer that does not list it, such as one of an earlier
+  release, keep the behaviour of `hosted-regions/1` alone: the frame's `load` attaches the region, and the page does not
+  send `hosted-region-loaded` or `hosted-region-retry`. A producer that lists it and a client that does not: the client
+  ignores `connected`, and a failure reaches it as `detached`. Requests of the feature's kinds on a connection that does
+  not use it are `rejected` with `invalid-request`, as are requests for a name the connection did not declare; those of
+  a declaration that another connection's superseded are answered `{"ok":true}` and change nothing.
 
 ## Window turns
 
@@ -2065,6 +2133,7 @@ Requests:
 | `hosted-region-declare` (`hosted-regions/1`) | `name`, `sizing?` | none |
 | `hosted-region-remove` (`hosted-regions/1`) | `name` | none |
 | `hosted-region-state` (`hosted-regions/1`) | `name`, `width`, `height`, `scale`, `x`, `y`, `visible`, `focused`, `focusSource` | none |
+| `hosted-region-loaded`, `hosted-region-retry` (`hosted-region-loading/1`) | `name` | none |
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and

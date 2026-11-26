@@ -1150,8 +1150,14 @@ sealed class CheckPolicy : IRunicHostedWindowPolicy
   the host's Window. Two host windows that declare the name when the window opens fail the guest's open with
   `region-ambiguous`. The window is open at once (`RunicHostedWindow.PresentationKind` is `Region`, and
   `DesktopWindow` throws), and `RunicHostedWindow.Region` follows it: `Waiting` until a page declares the region,
-  `Loading` while the guest's page loads, `Attached` once it connected, `Detached` and `Ended`. Its events, and
+  `Loading` while the guest's page loads, `Attached` once it connected, `Failed`, `Detached` and `Ended`. Its events, and
   `IRunicHostedApplications.RegionAttached` and `RegionDetached`, are raised in order with the window events.
+- **Loading and failure.** The host page keeps its own content over the frame until the guest's page connected: an
+  engine also finishes loading a frame whose navigation failed. By default the region keeps waiting. `FrameLoads`,
+  `FrameLoaded` and `LoadingTime` tell the application what happened since the region started loading;
+  `FailAsync(reason)` gives it up, and the page shows its failure content with the reason; `RetryAsync` loads the frame
+  again with a new frame launch address. The page may ask for a failed region again, at most 3 times a minute
+  ([hosted regions](../../../docs/hosted-regions.md)).
 - **Detach and attach again.** When the page removes the region, reloads or navigates, the window is detached and stays
   open; it attaches again with a new frame launch address when a region of the same name appears in the same host
   window (`RunicHostedRegionOptions.ReattachOnReload`, on by default). `DetachAsync` and `MoveToAsync(window, name)` let

@@ -1,1 +1,8 @@
 #nullable enable
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.FailAsync(string? reason = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.FailureReason.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.FrameLoaded -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.FrameLoads.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.LoadingTime.get -> System.TimeSpan?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.RetryAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState.Failed = 5 -> Runic.Application.Views.Desktop.RunicHostedRegionState

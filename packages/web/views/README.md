@@ -2184,15 +2184,28 @@ entries, which define the element themselves.
   loopback origin, inside the element's closed shadow root. The page never gets a
   reference to the frame and cannot read or script it; style its border with
   `::part(frame)`. Children with `slot="fallback"` show while no guest page shows; a
-  child whose `slot` names a state (`waiting`, `loading`, `detached`, `ended`,
-  `unsupported`) shows instead in that state.
+  child whose `slot` names a state (`waiting`, `loading`, `failed`, `detached`, `ended`,
+  `unsupported`) shows instead in that state, and one with `slot="stalled"` in place of
+  the `loading` one while the region is stalled. A `failed` region without
+  `slot="failed"` content shows its `slot="fallback"` content.
+- **Loading.** The element shows its fallback content over the hidden frame until the
+  host says the guest's page connected (`hosted-region-loading/1`), then the frame
+  (`attached`): an engine also fires the frame's `load` for a navigation that failed,
+  and would show its error page. One second after a `load` without that word the region
+  is `stalled` (an attribute and a property; still `loading`). The host application
+  may give the region up (`failed`, with its reason as `failureReason`); `retry()` asks
+  it to load the region again, which it decides, and returns whether it asked: only a
+  `failed` region asks. A host of an earlier release says nothing of the guest's page:
+  the frame's `load` attaches the region, as before
+  ([loading and failure](../../../specs/application/README.md#loading-and-failure)).
 - **Attributes.** `name` (required, 1 to 64 ASCII letters, digits, `.`, `_` or `-`),
   `sizing` (`fill`, the default, where the page's layout sets the height and the guest
   scrolls inside, or `content-height`, where the guest's content sets it) and `label`,
   the region's accessible name, which overrides the guest page's title. Give a `fill`
-  region a height. The element reflects `state` and `focused` as attributes, and
-  dispatches `runicregionstatechange` (`detail: {state, previous}`) and
-  `runicregiontitlechange` (`detail: {title}`).
+  region a height. The element reflects `state`, `stalled` and `focused` as attributes,
+  and dispatches `runicregionstatechange` (`detail: {state, previous, stalled, reason}`,
+  also when only `stalled` or `reason` changed) and `runicregiontitlechange`
+  (`detail: {title}`).
 - **What it tells the host.** Its size, device pixel ratio, place in the viewport,
   visibility and focus, over the page's own Bridge (`hosted-regions/1`), never to the
   guest. Its place stays with the host, which uses it for context menus.

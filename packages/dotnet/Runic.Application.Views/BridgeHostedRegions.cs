@@ -15,9 +15,15 @@ namespace Runic.Application.Views;
 // - A connection that closes removes its regions (Removed with ConnectionClosed): the producer cannot tell a reload
 //   from a crash.
 // - Observers get the events of the window one at a time, in order, outside the locks and off the request's thread.
+// - With hosted-region-loading/1 ("Loading and failure"), the host tells the page when the guest's page connected
+//   (Connected) and when it gave up (Empty with Failed); the page reports its frame's loads and asks for a failed region
+//   again. A declaration without the feature, as of a page of an earlier release, receives neither: a failure reaches it
+//   as detached.
 internal sealed class BridgeHostedRegions
 {
     internal const string Feature = "hosted-regions/1";
+    internal const string LoadingFeature = "hosted-region-loading/1";
+    internal const int MaximumFailureLength = 256;
     internal const int MaximumPerConnection = 64;
     internal const int MaximumNameLength = 64;
     internal const int MaximumSize = 32_767;
@@ -46,10 +52,12 @@ internal sealed class BridgeHostedRegions
         _logger = logger;
     }
 
-    private sealed class Owner(string connectionKey, HostedRegionSizing sizing)
+    private sealed class Owner(string connectionKey, HostedRegionSizing sizing, bool usesLoading)
     {
         internal string ConnectionKey { get; } = connectionKey;
         internal HostedRegionSizing Sizing { get; } = sizing;
+        // The declaring connection uses hosted-region-loading/1.
+        internal bool UsesLoading { get; } = usesLoading;
         internal HostedRegionReport? Report { get; set; }
     }
 
@@ -164,13 +172,43 @@ internal sealed class BridgeHostedRegions
         });
     }
 
-    // hosted-region-empty: the region removes its frame and shows its fallback. False when no connection declares the name.
-    internal bool Empty(string name, HostedRegionEmptyReason reason) => Push(name, writer =>
+    // hosted-region-empty: the region removes its frame and shows its fallback. Failed, with the host application's
+    // failure (hosted-region-loading/1), reaches a declaration without the feature as detached. False when no connection
+    // declares the name.
+    internal bool Empty(string name, HostedRegionEmptyReason reason, string? failure = null)
     {
-        writer.WriteString("kind", "hosted-region-empty");
+        if (reason != HostedRegionEmptyReason.Failed && failure is not null)
+            throw new ArgumentException("Only a failed region has a failure.", nameof(failure));
+        if (failure is not null && (failure.Length > MaximumFailureLength || failure.Contains('\0', StringComparison.Ordinal)))
+            throw new ArgumentException($"The failure is longer than {MaximumFailureLength} characters or contains NUL.", nameof(failure));
+        _ = ReasonToken(reason);
+        return Push(name, (writer, usesLoading) =>
+        {
+            writer.WriteString("kind", "hosted-region-empty");
+            writer.WriteString("name", name);
+            if (reason == HostedRegionEmptyReason.Failed && !usesLoading)
+            {
+                writer.WriteString("reason", "detached");
+                return;
+            }
+            writer.WriteString("reason", ReasonToken(reason));
+            if (reason == HostedRegionEmptyReason.Failed)
+            {
+                if (failure is null) writer.WriteNull("failure");
+                else writer.WriteString("failure", failure);
+            }
+        });
+    }
+
+    // hosted-region-update with connected (hosted-region-loading/1): the guest's page in the region's frame connected, so
+    // the page shows the frame. Sent only to a declaration that uses the feature; false when no connection declares the
+    // name or its declaration does not use the feature.
+    internal bool Connected(string name) => Push(name, (writer, _) =>
+    {
+        writer.WriteString("kind", "hosted-region-update");
         writer.WriteString("name", name);
-        writer.WriteString("reason", ReasonToken(reason));
-    });
+        writer.WriteBoolean("connected", true);
+    }, onlyWithLoading: true);
 
     // hosted-region-focus: the page moves the keyboard focus into the region. False when no connection declares the name.
     internal bool Focus(string name) => Push(name, writer =>
@@ -196,30 +234,38 @@ internal sealed class BridgeHostedRegions
         HostedRegionEmptyReason.Waiting => "waiting",
         HostedRegionEmptyReason.Detached => "detached",
         HostedRegionEmptyReason.Ended => "ended",
+        HostedRegionEmptyReason.Failed => "failed",
         _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "The reason is not a hosted region empty reason."),
     };
 
-    private bool Push(string name, Action<Utf8JsonWriter> write)
+    private bool Push(string name, Action<Utf8JsonWriter> write) => Push(name, (writer, _) => write(writer));
+
+    // write receives whether the declaration uses hosted-region-loading/1; with onlyWithLoading, a declaration without it
+    // receives nothing.
+    private bool Push(string name, Action<Utf8JsonWriter, bool> write, bool onlyWithLoading = false)
     {
         ArgumentNullException.ThrowIfNull(name);
         string target;
+        bool usesLoading;
         lock (_gate)
         {
             if (!_owners.TryGetValue(name, out var owner)) return false;
             target = owner.ConnectionKey;
+            usesLoading = owner.UsesLoading;
         }
+        if (onlyWithLoading && !usesLoading) return false;
         BridgeTargetedPushes.For(_transport).Send(target, BridgeMessages.Write(writer =>
         {
             writer.WriteStartObject();
-            write(writer);
+            write(writer, usesLoading);
             writer.WriteEndObject();
         }));
         return true;
     }
 
-    // Whether a request kind belongs to the feature.
+    // Whether a request kind belongs to the feature, or to hosted-region-loading/1.
     internal static bool IsKind(string kind) =>
-        kind is "hosted-region-declare" or "hosted-region-remove" or "hosted-region-state";
+        kind is "hosted-region-declare" or "hosted-region-remove" or "hosted-region-state" or "hosted-region-loaded" or "hosted-region-retry";
 
     // Answers a request of the feature's kinds.
     internal byte[] Handle(BridgeConnection connection, string kind, JsonElement root)
@@ -229,15 +275,40 @@ internal sealed class BridgeHostedRegions
         if (!TryReadName(root, out var name))
             return BridgeMessages.Rejected("invalid-request",
                 $"The region's name is not 1 to {MaximumNameLength} ASCII letters, digits, dots, underscores or hyphens.");
+        if (kind is "hosted-region-loaded" or "hosted-region-retry")
+        {
+            if (!connection.UsesHostedRegionLoading)
+                return BridgeMessages.Rejected("invalid-request", $"The connection does not use {LoadingFeature}.");
+            return Loading(connection.Key, name, retry: kind == "hosted-region-retry");
+        }
         return kind switch
         {
-            "hosted-region-declare" => Declare(connection.Key, name, root),
+            "hosted-region-declare" => Declare(connection.Key, name, root, connection.UsesHostedRegionLoading),
             "hosted-region-remove" => Remove(connection.Key, name),
             _ => State(connection.Key, name, root),
         };
     }
 
-    private byte[] Declare(string connectionKey, string name, JsonElement root)
+    // hosted-region-loaded and hosted-region-retry (hosted-region-loading/1): the region's frame loaded while it loaded,
+    // or the page asks for a failed region again. The host application decides what follows.
+    private byte[] Loading(string connectionKey, string name, bool retry)
+    {
+        lock (_gate)
+        {
+            if (!_declared.TryGetValue(connectionKey, out var names) || !names.Contains(name))
+                return BridgeMessages.Rejected("invalid-request", $"The connection did not declare the region '{name}'.");
+            // A superseded declaration's requests change nothing.
+            if (_owners.TryGetValue(name, out var owner) && owner.ConnectionKey == connectionKey)
+            {
+                var request = new HostedRegionRequest(name, connectionKey);
+                if (retry) Raise(observer => observer.RetryRequested(request));
+                else Raise(observer => observer.FrameLoaded(request));
+            }
+        }
+        return BridgeMessages.Ok.ToArray();
+    }
+
+    private byte[] Declare(string connectionKey, string name, JsonElement root, bool usesLoading)
     {
         var sizing = HostedRegionSizing.Fill;
         if (root.TryGetProperty("sizing", out var sizingElement))
@@ -261,7 +332,7 @@ internal sealed class BridgeHostedRegions
                 superseded = earlier.ConnectionKey;
                 Raise(observer => observer.Removed(new HostedRegionRemoval(name, earlier.ConnectionKey, ConnectionClosed: false, Superseded: true)));
             }
-            _owners[name] = new Owner(connectionKey, sizing);
+            _owners[name] = new Owner(connectionKey, sizing, usesLoading);
             var declaration = new HostedRegionDeclaration(name, sizing, connectionKey, null);
             Raise(observer => observer.Declared(declaration));
         }
@@ -453,6 +524,8 @@ internal enum HostedRegionEmptyReason
     Detached,
     // Its Window closed or its guest went away.
     Ended,
+    // The host application gave up loading the guest's page (hosted-region-loading/1).
+    Failed,
 }
 
 // A title member of hosted-region-update: absent (default), null or a string.
@@ -474,6 +547,9 @@ internal readonly record struct HostedRegionColorScheme(string? Value)
 // A region that a connection declared, with the last report of the declaration, if any.
 internal sealed record HostedRegionDeclaration(string Name, HostedRegionSizing Sizing, string ConnectionKey, HostedRegionReport? Report);
 
+// A request of hosted-region-loading/1 for a region: hosted-region-loaded or hosted-region-retry.
+internal sealed record HostedRegionRequest(string Name, string ConnectionKey);
+
 // A region's declaration ended: the page removed it (neither flag), its connection closed (ConnectionClosed), or another
 // connection's declaration of the name superseded it (Superseded).
 internal sealed record HostedRegionRemoval(string Name, string ConnectionKey, bool ConnectionClosed, bool Superseded);
@@ -491,4 +567,10 @@ internal interface IHostedRegionObserver
     void Removed(HostedRegionRemoval removal);
 
     void StateChanged(HostedRegionReport report);
+
+    // hosted-region-loading/1: the region's frame loaded while the region loaded (hosted-region-loaded).
+    void FrameLoaded(HostedRegionRequest request);
+
+    // hosted-region-loading/1: the page asks for a failed region again (hosted-region-retry).
+    void RetryRequested(HostedRegionRequest request);
 }

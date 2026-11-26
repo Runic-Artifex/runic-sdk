@@ -1052,7 +1052,10 @@ The guest reports the state of the page that the window's frame token admitted:
 | `revoked` | The guest revoked the token after a [launch conflict](#frame-admission). The host detaches the window and MAY attach it again. |
 
 The guest pushes it only while the window is attached, in order. The host shows the region as loading from its
-`region-attach` until `connected` (in .NET, `RunicHostedRegion.State`).
+`region-attach` until `connected` (in .NET, `RunicHostedRegion.State`), and tells its page with the Views protocol's
+[`hosted-region-loading/1`](../application/README.md#loading-and-failure), so the page keeps its own content over the
+frame until then: an engine also finishes loading a frame whose navigation failed. The host application decides how long
+a region may load, and can give it up or attach it again with a new code.
 
 #### `set-title`
 

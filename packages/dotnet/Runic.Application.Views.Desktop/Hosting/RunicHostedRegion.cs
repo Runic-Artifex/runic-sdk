@@ -19,6 +19,11 @@ namespace Runic.Application.Views.Desktop;
 /// <see cref="RunicHostedWindow"/>. The window is open from then on, whether or not a region shows it: it
 /// <see cref="State">waits</see> until a host page declares a region of its name, <see cref="RunicHostedRegionState.Loading">loads</see>
 /// the guest's page there, and is <see cref="RunicHostedRegionState.Attached">attached</see> once that page connected.
+/// The host page shows its own content until then (<c>hosted-region-loading/1</c>): an engine also finishes loading a frame
+/// whose navigation failed, and would show its error page. The application decides how long a region may load:
+/// <see cref="FrameLoads"/>, <see cref="FrameLoaded"/> and <see cref="LoadingTime"/> tell it what happened since the
+/// region started loading, <see cref="FailAsync"/> shows the host page's own failure content, and <see cref="RetryAsync"/>
+/// loads the frame again. By default the region keeps waiting.
 /// When the page removes the region, reloads or navigates, the window is <see cref="RunicHostedRegionState.Detached">detached</see>
 /// and stays open; it attaches again when a region of the same name appears in the same host window
 /// (<see cref="RunicHostedRegionOptions.ReattachOnReload"/>). When the guest closes its Window or goes away, the region is
@@ -41,6 +46,9 @@ public sealed class RunicHostedRegion
     internal static readonly TimeSpan ProgrammaticFocusWindow = TimeSpan.FromSeconds(1);
     // A guest that revokes its frame token this often within a minute stays detached (region-page revoked).
     private const int MaximumRevokesPerMinute = 3;
+    // A host page may ask for a failed region again this often within a minute (hosted-region-retry).
+    internal const int MaximumPageRetriesPerMinute = 3;
+    internal const int MaximumFailureLength = Bridge.BridgeHostedRegions.MaximumFailureLength;
 
     private readonly RunicHostedApplication _application;
     private readonly HostedRegionDirectory _directory;
@@ -85,6 +93,12 @@ public sealed class RunicHostedRegion
     private (bool Active, bool Visible, bool Minimized)? _sentActivity;
     private DesktopWindow? _observedWindow;
     private readonly Queue<long> _revokes = new();
+    private readonly Queue<long> _pageRetries = new();
+    // hosted-region-loading/1: when the region started loading its current content (0 while it does not load), the
+    // frame loads its page reported since, and the application's reason for a failed region.
+    private long _loadingSince;
+    private int _frameLoads;
+    private string? _failure;
     // region-appearance/1: the window's appearance override, the colour scheme the page shows for it with the current
     // content, and whether the host warned that the guest does not apply one.
     private RunicHostedAppearance? _appearance;
@@ -144,6 +158,43 @@ public sealed class RunicHostedRegion
     public RunicHostedRegionState State
     {
         get { lock (_stateGate) return _state; }
+    }
+
+    /// <summary>
+    /// How many times the region's frame finished loading, as its host page reported it, since the region last started
+    /// loading (<see cref="RunicHostedRegionState.Loading"/>) and while the guest's page had not connected; it starts at 0
+    /// with each load of the region, also after <see cref="RetryAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// An engine also finishes loading a frame whose navigation failed, such as when the guest's address refuses the
+    /// connection, and the guest's page then never connects. The page of a guest that works usually connects around its
+    /// load, so allow it a moment before counting a load as failed. A host page without <c>hosted-region-loading/1</c>,
+    /// such as one built with an earlier release, reports no loads.
+    /// </remarks>
+    public int FrameLoads
+    {
+        get { lock (_stateGate) return _frameLoads; }
+    }
+
+    /// <summary>
+    /// How long the region has been loading: since its attach, a <see cref="RetryAsync"/>, or the guest page's lost
+    /// connection; <see langword="null"/> unless <see cref="State"/> is <see cref="RunicHostedRegionState.Loading"/>.
+    /// </summary>
+    public TimeSpan? LoadingTime
+    {
+        get
+        {
+            lock (_stateGate) return _state == RunicHostedRegionState.Loading && _loadingSince != 0 ? Stopwatch.GetElapsedTime(_loadingSince) : null;
+        }
+    }
+
+    /// <summary>
+    /// The reason that <see cref="FailAsync"/> gave for a <see cref="RunicHostedRegionState.Failed"/> region, or
+    /// <see langword="null"/>.
+    /// </summary>
+    public string? FailureReason
+    {
+        get { lock (_stateGate) return _state == RunicHostedRegionState.Failed ? _failure : null; }
     }
 
     /// <summary>The region's size and scale as the host page reported it last, or <see langword="null"/> before its first report.</summary>
@@ -258,6 +309,12 @@ public sealed class RunicHostedRegion
     /// <summary>Raised when <see cref="State"/> changed.</summary>
     public event EventHandler<RunicHostedRegionEventArgs>? StateChanged;
 
+    /// <summary>
+    /// Raised when the host page reported that the region's frame finished loading while the region was loading: once for
+    /// each load that <see cref="FrameLoads"/> counts.
+    /// </summary>
+    public event EventHandler<RunicHostedRegionEventArgs>? FrameLoaded;
+
     /// <summary>Raised when <see cref="Title"/> changed.</summary>
     public event EventHandler<RunicHostedRegionEventArgs>? TitleChanged;
 
@@ -297,6 +354,70 @@ public sealed class RunicHostedRegion
             _ = _directory.Detach(this);
             await DetachGuestAsync("host").ConfigureAwait(false);
         }).WaitAsync(cancellationToken));
+
+    /// <summary>
+    /// Gives up loading the guest's page: the region is <see cref="RunicHostedRegionState.Failed"/>, the guest is told that
+    /// the region no longer shows its window, which stays open, and the host page removes the frame and shows its own
+    /// failure content with <paramref name="reason"/>. The region stays the window's: <see cref="RetryAsync"/>, or the host
+    /// page's own request to try again, loads it again.
+    /// </summary>
+    /// <param name="reason">
+    /// The application's reason, which the host page receives to show its own text, such as <c>"unreachable"</c>; at most
+    /// 256 characters without NUL, or <see langword="null"/>.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the wait; the failure still happens.</param>
+    /// <returns>
+    /// <see langword="true"/> once the region failed; <see langword="false"/> when no region of a host page shows the window
+    /// (it waits, is detached or ended).
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="reason"/> is longer than 256 characters or contains NUL.</exception>
+    /// <remarks>
+    /// <see cref="Detached"/> is raised with <see cref="RunicHostedRegionDetachReason.Host"/> when the guest's page was
+    /// shown. A host page without <c>hosted-region-loading/1</c>, such as one built with an earlier release, shows the
+    /// region as detached.
+    /// </remarks>
+    public ValueTask<bool> FailAsync(string? reason = null, CancellationToken cancellationToken = default)
+    {
+        if (reason is not null && (reason.Length > MaximumFailureLength || reason.Contains('\0', StringComparison.Ordinal)))
+            throw new ArgumentException($"The reason is longer than {MaximumFailureLength} characters or contains NUL.", nameof(reason));
+        return new(EnqueueResult(async () =>
+        {
+            if (IsEnded || CurrentSlot is not { } slot) return false;
+            lock (_stateGate) _failure = reason;
+            await DetachGuestAsync("host", RunicHostedRegionState.Failed).ConfigureAwait(false);
+            if (!IsCurrent(slot)) return false;
+            SetState(RunicHostedRegionState.Failed);
+            try { _ = slot.Page.Empty(slot.Name, Bridge.HostedRegionEmptyReason.Failed, reason); }
+            catch (ArgumentException error) { _application.LogRegionFailed(error); }
+            return true;
+        }).WaitAsync(cancellationToken));
+    }
+
+    /// <summary>
+    /// Loads the region's frame again: the guest is told that the region no longer shows the window's page, and the region
+    /// attaches it again with a new frame launch address that the guest gives, under the same checks as any attach. The
+    /// region is <see cref="RunicHostedRegionState.Loading"/> again, from a <see cref="FrameLoads"/> of 0.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the wait; the retry still happens.</param>
+    /// <returns>
+    /// <see langword="true"/> once the host page loads the new address; <see langword="false"/> when no region of a host page
+    /// shows the window (it waits, is detached or ended), or the guest refused the attach.
+    /// </returns>
+    /// <remarks>
+    /// A host page asks for a <see cref="RunicHostedRegionState.Failed"/> region again by itself, at most 3 times a minute
+    /// (<c>hosted-region-retry</c>); it never names an address.
+    /// </remarks>
+    public ValueTask<bool> RetryAsync(CancellationToken cancellationToken = default) =>
+        new(EnqueueResult(() => CurrentSlot is { } slot ? RetryCoreAsync(slot) : Task.FromResult(false)).WaitAsync(cancellationToken));
+
+    private async Task<bool> RetryCoreAsync(HostedRegionSlot slot)
+    {
+        if (IsEnded || !IsCurrent(slot)) return false;
+        // The guest learns of the detach first; its window stays loading in the region.
+        await DetachGuestAsync("host", RunicHostedRegionState.Loading).ConfigureAwait(false);
+        await AttachAsync(slot).ConfigureAwait(false);
+        lock (_stateGate) return ReferenceEquals(_attachedSlot, slot);
+    }
 
     /// <summary>
     /// Shows the window in the region <paramref name="region"/> of the page of <paramref name="window"/>, such as another
@@ -399,8 +520,12 @@ public sealed class RunicHostedRegion
         bool shown;
         lock (_stateGate) shown = ReferenceEquals(_attachedSlot, slot);
         if (shown) await DetachGuestAsync(reason).ConfigureAwait(false);
-        // A window that waited for the guest's reply when the page removed the region: loading no more.
-        else if (CurrentSlot is null) SetStateIf(RunicHostedRegionState.Loading, RunicHostedRegionState.Detached);
+        // A window that waited for the guest's reply, or failed, when the page removed the region: loading no more.
+        else if (CurrentSlot is null)
+        {
+            SetStateIf(RunicHostedRegionState.Loading, RunicHostedRegionState.Detached);
+            SetStateIf(RunicHostedRegionState.Failed, RunicHostedRegionState.Detached);
+        }
     });
 
     // The host window closed: the window closes too, after the guest learned of the detach (host-protocol.md, Lifecycle
@@ -449,6 +574,38 @@ public sealed class RunicHostedRegion
         PushActivity();
     }
 
+    // hosted-region-loaded: the host page's frame of the region loaded while the region loaded.
+    internal void OnFrameLoaded(HostedRegionSlot slot)
+    {
+        lock (_stateGate)
+        {
+            if (!ReferenceEquals(_attachedSlot, slot) || _state != RunicHostedRegionState.Loading) return;
+            _frameLoads++;
+        }
+        Raise(FrameLoaded, null);
+    }
+
+    // hosted-region-retry: the host page asks for a failed region again. The host decides: only a failed region that the
+    // page shows, at most MaximumPageRetriesPerMinute times a minute, and with a launch address the guest gives.
+    internal void OnPageRetry(HostedRegionSlot slot) => _ = Enqueue(async () =>
+    {
+        bool allowed;
+        lock (_stateGate)
+        {
+            if (_state != RunicHostedRegionState.Failed) return;
+            var now = Stopwatch.GetTimestamp();
+            while (_pageRetries.Count > 0 && Stopwatch.GetElapsedTime(_pageRetries.Peek(), now) > TimeSpan.FromMinutes(1)) _pageRetries.Dequeue();
+            allowed = _pageRetries.Count < MaximumPageRetriesPerMinute;
+            if (allowed) _pageRetries.Enqueue(now);
+        }
+        if (!allowed)
+        {
+            _application.LogRegionRetryRefused(Name);
+            return;
+        }
+        _ = await RetryCoreAsync(slot).ConfigureAwait(false);
+    });
+
     // region-page (guest → host): the guest's page in the frame connected, lost its connection, or the guest revoked its
     // token after a launch conflict.
     internal void OnPage(string page)
@@ -456,8 +613,15 @@ public sealed class RunicHostedRegion
         switch (page)
         {
             case "connected":
-                lock (_stateGate) if (_attachedSlot is null || _state != RunicHostedRegionState.Loading) return;
+                HostedRegionSlot? connected;
+                lock (_stateGate)
+                {
+                    connected = _attachedSlot;
+                    if (connected is null || _state != RunicHostedRegionState.Loading) return;
+                }
                 SetState(RunicHostedRegionState.Attached);
+                // hosted-region-loading/1: the host page shows the frame now.
+                _ = connected.Page.Connected(connected.Name);
                 break;
             case "disconnected":
                 lock (_stateGate) if (_attachedSlot is null || _state != RunicHostedRegionState.Attached) return;
@@ -543,6 +707,21 @@ public sealed class RunicHostedRegion
         }
     }
 
+    private Task<T> EnqueueResult<T>(Func<Task<T>> work)
+    {
+        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = Enqueue(async () =>
+        {
+            try { result.TrySetResult(await work().ConfigureAwait(false)); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                result.TrySetException(error);
+                throw;
+            }
+        });
+        return result.Task;
+    }
+
     // Waits for the window-open reply first: a region-attach for a window the guest does not know yet is refused.
     internal TaskCompletionSource Opened { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -555,7 +734,7 @@ public sealed class RunicHostedRegion
         if (ReferenceEquals(attached, slot)) return;
         // Shown in another region still: the guest is told first (host-protocol.md, region-attach, One at a time).
         if (attached is not null) await DetachGuestAsync("host").ConfigureAwait(false);
-        SetState(RunicHostedRegionState.Loading);
+        StartLoading();
         ObserveHostWindow(slot.Page.NativeWindow);
         var size = SizeOf(slot.Report);
         // The window's pushes so far, such as the activity of a detach, reach the guest before the attach.
@@ -631,7 +810,8 @@ public sealed class RunicHostedRegion
         if (Options.FocusOnAttach) RequestFocus();
     }
 
-    private async Task DetachGuestAsync(string reason)
+    // state: what the window is once the guest was told, Detached unless given; Ended for an ended region.
+    private async Task DetachGuestAsync(string reason, RunicHostedRegionState state = RunicHostedRegionState.Detached)
     {
         ReleaseFrameRoute();
         bool attached;
@@ -644,11 +824,11 @@ public sealed class RunicHostedRegion
         }
         if (!attached)
         {
-            SetStateIf(RunicHostedRegionState.Loading, RunicHostedRegionState.Detached);
+            SetStateIf(RunicHostedRegionState.Loading, state);
             return;
         }
         await _application.PushAsync(new JsonObject { ["kind"] = "region-detach", ["window"] = Window.Id, ["reason"] = reason }).ConfigureAwait(false);
-        SetState(IsEnded ? RunicHostedRegionState.Ended : RunicHostedRegionState.Detached);
+        SetState(IsEnded ? RunicHostedRegionState.Ended : state);
         Raise(Detached, reason);
         _application.RaiseRegionDetached(this, reason);
         PushActivity();
@@ -952,10 +1132,11 @@ public sealed class RunicHostedRegion
 
     private void SetStateIf(RunicHostedRegionState from, RunicHostedRegionState to)
     {
+        if (from == to) return;
         lock (_stateGate)
         {
             if (_state != from) return;
-            _state = to;
+            ChangeStateLocked(to);
         }
         Raise(StateChanged, null);
     }
@@ -965,9 +1146,36 @@ public sealed class RunicHostedRegion
         lock (_stateGate)
         {
             if (_state == state) return;
-            _state = state;
+            ChangeStateLocked(state);
         }
         Raise(StateChanged, null);
+    }
+
+    // The region loads new content, an attach or a retry: loading starts again from no frame loads, also when it loaded.
+    private void StartLoading()
+    {
+        bool changed;
+        lock (_stateGate)
+        {
+            changed = _state != RunicHostedRegionState.Loading;
+            ChangeStateLocked(RunicHostedRegionState.Loading);
+            _loadingSince = Stopwatch.GetTimestamp();
+            _frameLoads = 0;
+        }
+        if (changed) Raise(StateChanged, null);
+    }
+
+    // Under _stateGate. Loading counts from when it starts; a failure's reason lasts while it fails.
+    private void ChangeStateLocked(RunicHostedRegionState state)
+    {
+        if (state == RunicHostedRegionState.Loading && _state != RunicHostedRegionState.Loading)
+        {
+            _loadingSince = Stopwatch.GetTimestamp();
+            _frameLoads = 0;
+        }
+        else if (state != RunicHostedRegionState.Loading) _loadingSince = 0;
+        if (state != RunicHostedRegionState.Failed && _state == RunicHostedRegionState.Failed) _failure = null;
+        _state = state;
     }
 
     private void Raise(EventHandler<RunicHostedRegionEventArgs>? handler, string? reason)
@@ -1010,6 +1218,13 @@ public enum RunicHostedRegionState
 
     /// <summary>The window closed, or its guest went away; the region shows its page's own content.</summary>
     Ended,
+
+    /// <summary>
+    /// A region of a host page holds the window, but the application gave up loading the guest's page
+    /// (<see cref="RunicHostedRegion.FailAsync"/>); the page shows its own failure content, and
+    /// <see cref="RunicHostedRegion.RetryAsync"/> loads it again.
+    /// </summary>
+    Failed,
 }
 
 /// <summary>A region's size, in CSS pixels of the host page, and the page's device pixel ratio.</summary>

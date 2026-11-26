@@ -303,6 +303,8 @@ public sealed partial class RunicHostedApplication
 
     internal void LogRegionAttachFailed(string region, string reason) => DesktopLog.HostedRegionAttachFailed(_logger, Guest.Name, region, reason);
 
+    internal void LogRegionRetryRefused(string region) => DesktopLog.HostedRegionRetryRefused(_logger, region);
+
     internal void LogRegionSameSite(string region) => DesktopLog.HostedRegionSameSite(_logger, Guest.Name, region);
 
     internal void LogRegionAppearanceUnavailable(string region) => DesktopLog.HostedRegionAppearanceUnavailable(_logger, Guest.Name, region);

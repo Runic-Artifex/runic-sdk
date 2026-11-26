@@ -69,6 +69,8 @@ public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowReq
 ```html
 <runic-hosted-region name="check">
   <p slot="waiting">Starting the system check…</p>
+  <p slot="stalled">The system check is taking longer than usual…</p>
+  <p slot="failed">The system check could not start. <button type="button" id="check-retry">Try again</button></p>
   <p slot="detached">The system check is not shown right now.</p>
   <p slot="ended">The system check has ended.</p>
   <p slot="fallback">The system check is not shown.</p>
@@ -82,12 +84,52 @@ public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowReq
 React, Vue, Svelte and Angular wrap it as `RunicHostedRegion` in their `./experimental` entries.
 
 - **States and fallback content.** The element is `waiting` until a window is attached, `loading` while the guest's
-  page loads, `attached`, `detached`, `ended` or `unsupported` (no host feature, or an embedding the page does not
-  know). A child whose `slot` names the state shows in that state, `slot="fallback"` in any other; content that says
-  why, such as the reason a start failed, comes from the host's ViewModel. `RunicHostedRegion.State` follows the same
-  states in C# (`Waiting`, `Loading`, `Attached`, `Detached`, `Ended`), with `StateChanged`, `Attached`, `Detached` (with
-  the reason: `removed`, `reload`, `crashed`, `host`), `TitleChanged`, `DocumentEditedChanged` and
+  page loads, `attached` once it connected, `failed` when the host application gave it up, `detached`, `ended` or
+  `unsupported` (no host feature, or an embedding the page does not know). A child whose `slot` names the state shows
+  in that state, `slot="fallback"` in any other; `slot="stalled"` shows in place of `slot="loading"` while the region is
+  stalled, and a `failed` region without `slot="failed"` shows `slot="fallback"`. Content that says why, such as the
+  reason a start failed, comes from the host's ViewModel. `RunicHostedRegion.State` follows the same states in C#
+  (`Waiting`, `Loading`, `Attached`, `Failed`, `Detached`, `Ended`), with `StateChanged`, `Attached`, `Detached` (with
+  the reason: `removed`, `reload`, `crashed`, `host`), `FrameLoaded`, `TitleChanged`, `DocumentEditedChanged` and
   `PreferredSizeChanged`, and `IRunicHostedApplications.RegionAttached` and `RegionDetached` for every guest.
+- **Loading and failure.** The element shows its fallback content over the hidden frame until the host says that the
+  guest's page connected: an engine also finishes loading a frame whose navigation failed, such as while the guest
+  still starts, and WebView2 and Chromium then show a grey error page. Who decides each step
+  ([the protocol](../specs/application/README.md#loading-and-failure)):
+
+  | The element | Decided by | `runicregionstatechange` detail |
+  | --- | --- | --- |
+  | `loading` | The host, with each new frame launch address | `{state: "loading", stalled: false, reason: null}` |
+  | `loading` and `stalled` | The page: the frame loaded, and the host has not said the guest's page connected one second later | `{state: "loading", stalled: true, reason: null}` |
+  | `attached` | The host: the guest's page connected | `{state: "attached", stalled: false, reason: null}` |
+  | `failed` | The host application: `RunicHostedRegion.FailAsync(reason)` | `{state: "failed", stalled: false, reason}` |
+
+  The element reflects `stalled` as an attribute and has `stalled` and `failureReason` properties. By default the host
+  keeps waiting; the application picks its limits from `FrameLoads` (the frame's loads since the region started
+  loading, while the guest's page had not connected), `FrameLoaded` and `LoadingTime`, gives the region up with
+  `FailAsync`, and loads it again with a new frame launch address with `RetryAsync`. The failure content can offer to
+  try again: `element.retry()` asks the host, which loads the region again only when it failed, at most 3 times a
+  minute (event 2031 otherwise); the page never names an address. A host page built with an earlier release attaches
+  the region on the frame's load, as before, and shows a failed region as `detached`; a host of an earlier release
+  sends no word of the guest's page, so the element attaches on the frame's load.
+
+  ```csharp
+  #pragma warning disable RUNICDESK103
+  region.FrameLoaded += async (_, e) =>
+  {
+      // The application's own limit: two loads without a connected page. A timer of its own can bound LoadingTime too.
+      if (e.Region.FrameLoads >= 2 && e.Region.State == RunicHostedRegionState.Loading)
+          await e.Region.FailAsync("unreachable");
+  };
+  ```
+
+  ```js
+  const region = document.querySelector("runic-hosted-region");
+  region.addEventListener("runicregionstatechange", event => {
+    // event.detail.reason is the host's reason for failed, such as "unreachable", for the page's own text.
+  });
+  document.getElementById("check-retry").addEventListener("click", () => region.retry());
+  ```
 - **Size.** By default (`sizing="fill"`) the page's layout sets the region's size, and the guest's page scrolls inside.
   Give a filled region a height, such as a flex item in the space between header and footer. With
   `sizing="content-height"` the guest's height applies between `RunicHostedRegionOptions.MinimumHeight` and
@@ -379,6 +421,7 @@ The host logs these events (`Runic.Application.Views.Desktop`; the
 | 2028 `DesktopHostedRegionFailed` | Region handling failed with an exception. |
 | 2029 `DesktopHostedPeerRefused` | An elevated guest (of the elevated pair) refused a connection from a process that does not run elevated, or whose process it cannot look up. Logged by the guest, at most ten a minute. |
 | 2030 `DesktopHostedRegionAppearanceUnavailable` | The host gave a region window an appearance override, but the guest does not apply one (0.18 or older): the window shows the desktop's appearance. Once per window. |
+| 2031 `DesktopHostedRegionRetryRefused` | The host page asked for a failed region again more than 3 times within a minute; the region stays failed until the application calls `RetryAsync`. |
 | 2020 `DesktopHostedWindowPolicyFailed` | Also when a browser host's policy decided a window mode (`WindowModeUnavailable`) or an `Embed` that cannot apply (`EmbedUnavailable`). |
 
 | Reason of 2026 | Cause | Fix |
@@ -396,7 +439,7 @@ Other symptoms:
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | The guest's page does not change with the host's design, or only after a change. | It styles from `prefers-contrast` or `prefers-color-scheme`, which a frame cannot be given; it maps `onAppearance` without applying `appearance()` at the start; or the guest is 0.18 (event 2030). | Style from the appearance store ([design and appearance](#design-and-appearance)); update the guest. |
-| The region stays `loading`. | The host page's Content-Security-Policy blocks the frame; or the guest's page sets `frame-ancestors 'none'`. | `frame-src http:`; remove the guest's `frame-ancestors`. |
+| The region stays `loading`. | The host page's Content-Security-Policy blocks the frame; or the guest's page sets `frame-ancestors 'none'`; or the guest's address refused the frame's connection, and its page never connected (`FrameLoads` counts such loads). | `frame-src http:`; remove the guest's `frame-ancestors`; give the region up with `FailAsync` after the application's limit, and offer to try again. |
 | The frame is smaller than the region. | A `sizing="fill"` region without a height of its own, such as a block in a page without one. | Give the element a height, or make it a flex item that fills the space. |
 | The region stays `waiting`. | No window was decided for it: the guest did not start, its policy refused it, two host windows declared the name (`region-ambiguous`), or `CanEmbed` was `false`. | Check the start's exception, event 2019 and the decision. |
 | A component region is `unsupported`. | The page's policy does not admit `http://127.0.0.1:*` in `script-src` or `ws://127.0.0.1:*` in `connect-src`; the console names the blocked module. | Add both. |

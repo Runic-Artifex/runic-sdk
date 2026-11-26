@@ -132,6 +132,73 @@ public sealed class HostedRegionsTests
             && Ok(window.Transport.Request("""{"kind":"hosted-region-declare","name":"one-more"}""", "c1")), "A removal did not free a place.");
     }
 
+    // hosted-region-loading/1 ("Loading and failure"): a declaration that uses the feature receives the host's word that
+    // the guest's page connected and its failure; one without it receives neither, and a failure reaches it as detached.
+    [Test]
+    public async Task TheConnectedWordAndAFailureGoOnlyToADeclarationThatUsesLoadingAsync()
+    {
+        using var window = new Window();
+        window.Connect("c1", loading: true);
+        window.Connect("old");
+        var regions = window.Regions;
+        Require(Ok(window.Transport.Request("""{"kind":"hosted-region-declare","name":"check"}""", "c1"))
+            && Ok(window.Transport.Request("""{"kind":"hosted-region-declare","name":"other"}""", "old")), "A declaration failed.");
+        Require(!regions.Connected("missing"), "A connected word for an undeclared name was sent.");
+        Require(regions.Connected("check") && !regions.Connected("other"), "The connected word went to the wrong declarations.");
+        Require(regions.Empty("check", HostedRegionEmptyReason.Failed, "unreachable") && regions.Empty("check", HostedRegionEmptyReason.Failed)
+            && regions.Empty("other", HostedRegionEmptyReason.Failed, "unreachable"), "A failure was not sent.");
+        await window.SentAsync();
+        Require(window.Transport.TakeMessages().SequenceEqual([
+            new RunicBridgeMessage("""{"kind":"hosted-region-update","name":"check","connected":true}""", "c1"),
+            new RunicBridgeMessage("""{"kind":"hosted-region-empty","name":"check","reason":"failed","failure":"unreachable"}""", "c1"),
+            new RunicBridgeMessage("""{"kind":"hosted-region-empty","name":"check","reason":"failed","failure":null}""", "c1"),
+            new RunicBridgeMessage("""{"kind":"hosted-region-empty","name":"other","reason":"detached"}""", "old"),
+        ]), "The pushes were not as the declarations' features allow.");
+        Require(Throws<ArgumentException>(() => regions.Empty("check", HostedRegionEmptyReason.Failed, new string('r', 257)))
+            && Throws<ArgumentException>(() => regions.Empty("check", HostedRegionEmptyReason.Failed, "a\0b"))
+            && Throws<ArgumentException>(() => regions.Empty("check", HostedRegionEmptyReason.Detached, "unreachable")), "An invalid failure was accepted.");
+    }
+
+    // hosted-region-loaded and hosted-region-retry reach the observer for the declaration that owns the name; a connection
+    // without hosted-region-loading/1 cannot send them, nor one that did not declare the name.
+    [Test]
+    public async Task FrameLoadsAndRetriesReachTheObserverAsync()
+    {
+        using var window = new Window();
+        var observer = new Recorder();
+        using var lease = window.Regions.Observe(observer, out _);
+        var key = window.Connect("c1", loading: true);
+        var second = window.Connect("c2", loading: true);
+        window.Connect("old");
+        RequireError(window.Transport.Request("""{"kind":"hosted-region-loaded","name":"check"}""", "c1"), "invalid-request");
+        Require(Ok(window.Transport.Request("""{"kind":"hosted-region-declare","name":"check"}""", "c1"))
+            && Ok(window.Transport.Request("""{"kind":"hosted-region-loaded","name":"check"}""", "c1"))
+            && Ok(window.Transport.Request("""{"kind":"hosted-region-retry","name":"check"}""", "c1")), "A request failed.");
+        // A superseded declaration's requests are answered ok and change nothing.
+        Require(Ok(window.Transport.Request("""{"kind":"hosted-region-declare","name":"check"}""", "c2"))
+            && Ok(window.Transport.Request("""{"kind":"hosted-region-retry","name":"check"}""", "c1")), "A request failed.");
+        Require(Ok(window.Transport.Request("""{"kind":"hosted-region-declare","name":"check"}""", "old")), "The declaration failed.");
+        RequireError(window.Transport.Request("""{"kind":"hosted-region-loaded","name":"check"}""", "old"), "invalid-request");
+        RequireError(window.Transport.Request("""{"kind":"hosted-region-retry","name":"check"}""", "old"), "invalid-request");
+        RequireError(window.Transport.Request("""{"kind":"hosted-region-retry","name":"a b"}""", "c2"), "invalid-request");
+        await window.Regions.WhenRaised();
+        Require(observer.Events.SequenceEqual([
+            $"declared check Fill {key}",
+            $"loaded check {key}",
+            $"retry check {key}",
+            $"removed check {key} superseded",
+            $"declared check Fill {second}",
+            $"removed check {second} superseded",
+            $"declared check Fill {window.Dispatcher.ConnectionKeyOf("old")}",
+        ]), $"The observer saw [{string.Join(", ", observer.Events)}].");
+
+        // hosted-region-loading/1 is in use only with hosted-regions/1.
+        var reply = window.Transport.Request(Hello.Replace("SESSION", "s-alone", StringComparison.Ordinal)
+            .Replace("\"hosted-regions/1\"", "\"hosted-region-loading/1\"", StringComparison.Ordinal), "alone");
+        Require(reply.Contains("hosted-region-loading/1", StringComparison.Ordinal), $"The producer does not list the feature: {reply}");
+        RequireError(window.Transport.Request("""{"kind":"hosted-region-loaded","name":"check"}""", "alone"), "invalid-request");
+    }
+
     private static bool Ok(string reply) => reply == """{"ok":true}""";
 
     private static void RequireError(string json, string reason)
@@ -163,6 +230,10 @@ public sealed class HostedRegionsTests
         public void Removed(HostedRegionRemoval removal) =>
             Events.Enqueue($"removed {removal.Name} {removal.ConnectionKey} {(removal.ConnectionClosed ? "closed" : removal.Superseded ? "superseded" : "page")}");
 
+        public void FrameLoaded(HostedRegionRequest request) => Events.Enqueue($"loaded {request.Name} {request.ConnectionKey}");
+
+        public void RetryRequested(HostedRegionRequest request) => Events.Enqueue($"retry {request.Name} {request.ConnectionKey}");
+
         public void StateChanged(HostedRegionReport report) =>
             Events.Enqueue(FormattableString.Invariant(
                 $"state {report.Name} {report.ConnectionKey} {report.Width}x{report.Height}@{report.Scale} {report.X},{report.Y} {(report.Visible ? "visible" : "hidden")} {(report.Focused ? "focused" : "unfocused")} {report.FocusSource}"));
@@ -182,10 +253,13 @@ public sealed class HostedRegionsTests
         public BridgeDispatcher Dispatcher { get; }
         public BridgeHostedRegions Regions => Dispatcher.HostedRegions;
 
-        // Completes the hello of a connection that uses the feature and returns its connection key.
-        public string Connect(string transportKey)
+        // Completes the hello of a connection that uses the feature, and with loading hosted-region-loading/1, and returns
+        // its connection key.
+        public string Connect(string transportKey, bool loading = false)
         {
-            var reply = Transport.Request(Hello.Replace("SESSION", "s-" + transportKey, StringComparison.Ordinal), transportKey);
+            var hello = Hello.Replace("SESSION", "s-" + transportKey, StringComparison.Ordinal);
+            if (loading) hello = hello.Replace("\"hosted-regions/1\"", "\"hosted-regions/1\",\"hosted-region-loading/1\"", StringComparison.Ordinal);
+            var reply = Transport.Request(hello, transportKey);
             Require(reply.StartsWith("{\"ok\":true", StringComparison.Ordinal), $"The hello was answered {reply}.");
             return Dispatcher.ConnectionKeyOf(transportKey)!;
         }

@@ -989,6 +989,8 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         usesNavigationPath &= grantsNavigationPath;
         var usesAppearance = ListsAppearance(root);
         var usesHostedRegions = ListsFeature(root, BridgeHostedRegions.Feature);
+        // hosted-region-loading/1 extends hosted-regions/1, and is in use only with it.
+        var usesHostedRegionLoading = usesHostedRegions && ListsFeature(root, BridgeHostedRegions.LoadingFeature);
         var usesTraceContext = ListsFeature(root, TraceContextFeature);
         var usesOpenEndedInteractions = ListsFeature(root, OpenEndedInteractionsFeature);
         var usesViewContract = ListsFeature(root, ViewContractFeature);
@@ -1024,6 +1026,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesNavigationPath = usesNavigationPath;
             connection.UsesAppearance = usesAppearance;
             connection.UsesHostedRegions = usesHostedRegions;
+            connection.UsesHostedRegionLoading = usesHostedRegionLoading;
             connection.UsesTraceContext = usesTraceContext;
             connection.UsesHandlerTiming = usesHandlerTiming;
             connection.UsesOpenEndedInteractions = usesOpenEndedInteractions;
@@ -1287,6 +1290,9 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     internal bool UsesAppearance { get; set; }
     // Whether the connection uses hosted-regions/1.
     internal bool UsesHostedRegions { get; set; }
+
+    // Whether the connection uses hosted-region-loading/1 (with hosted-regions/1).
+    internal bool UsesHostedRegionLoading { get; set; }
     // trace-context/1 and handler-timing/1 (BridgeRequestTrace).
     internal bool UsesTraceContext { get; set; }
     internal bool UsesHandlerTiming { get; set; }
