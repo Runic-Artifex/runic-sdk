@@ -258,7 +258,8 @@ export function emitView(context: ViewContext, view: View): void {
     record(member, { key: "setter", section: "client", declaration: `set${member.name}(value: ${valueType(member)}): Promise<${OWNER}State>;` });
   }
   for (const member of checked) {
-    const documentation = member.doc ?? `Writes \`${simpleName}.${member.name}\` with an acknowledged field write, which reports whether .NET committed it.`;
+    // Neutral wording: the producer may be written in any language, so the text names no source type (G7).
+    const documentation = member.doc ?? `Writes \`${member.wire}\` with an acknowledged field write, which reports whether the app committed it.`;
     dts.doc("  ", developmentOnly(member) ? withNote(documentation, DEVELOPMENT_ONLY_CALL) : documentation);
     dts.line(`  write${member.name}(value: ${valueType(member)}, options: ${Ref("FieldWriteOptions")}<${valueType(member)}>): Promise<${Ref("FieldWriteReceipt")}<${valueType(member)}>>;${mapped("setter", member.wire, `write${member.name}`)}`);
   }

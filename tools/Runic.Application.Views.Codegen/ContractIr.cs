@@ -194,6 +194,198 @@ internal static class ContractIr
         return hints;
     }
 
+    internal const string FingerprintFormat = "runic.views.fingerprint/1";
+
+    /// <summary>
+    /// The View's fingerprint (<c>runic.views.fingerprint/1</c>, specs/application/contract-ir.md, "Fingerprint"): the
+    /// uppercase hexadecimal SHA-256 of the RFC 8785 canonical form of the View's wire projection, in which each named
+    /// type the View reaches is written in place of its reference. Call it once every type of the View is recorded.
+    /// </summary>
+    internal static string Fingerprint(JsonObject view)
+    {
+        var projection = new JsonObject { ["format"] = FingerprintFormat, ["view"] = ProjectView(view) };
+        var text = new System.Text.StringBuilder();
+        WriteCanonical(text, projection);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text.ToString())));
+    }
+
+    /// <summary>
+    /// Completes a View of the IR with its <paramref name="fingerprint"/> and the contracts derived from it: an
+    /// interaction's <c>{fingerprint}:interaction:{name}</c> and a view request's <c>{fingerprint}:request:{name}</c>.
+    /// </summary>
+    internal static void Seal(JsonObject view, string fingerprint)
+    {
+        view["fingerprint"] = fingerprint;
+        foreach (var (member, kind) in new[] { ("interactions", "interaction"), ("requests", "request") })
+            foreach (var item in view[member]?.AsArray() ?? [])
+                item!["contract"] = InteractionContract(fingerprint, kind, item["name"]!.GetValue<string>());
+    }
+
+    /// <summary>The contract of an interaction (<c>interaction</c>) or view request (<c>request</c>) of a View.</summary>
+    internal static string InteractionContract(string fingerprint, string kind, string name) => $"{fingerprint}:{kind}:{name}";
+
+    // The members of the projection's View, of its state members, commands, interactions and view requests, of named
+    // types and of their parts that are left out: identities, documentation, names that only the client uses, constraints
+    // and the contracts that contain the fingerprint.
+    private static readonly string[] ViewOmitted = ["id", "name", "fingerprint", "doc", "owner", "sharedClients"];
+    private static readonly string[] MemberOmitted = ["name", "doc", "declaringType", "constraints", "defaultKey"];
+    private static readonly string[] CommandOmitted = ["doc", "parameter"];
+    private static readonly string[] InteractionOmitted = ["doc", "contract"];
+    private static readonly string[] DefinitionOmitted = ["name", "doc"];
+    private static readonly string[] ValuePositions = ["value", "rows", "input", "result", "failure", "output"];
+
+    private static JsonObject ProjectView(JsonObject view)
+    {
+        var result = Without(view, ViewOmitted);
+        // The kinds are a set on the wire; their order only chooses the client's default, and a unit that imports a
+        // library's clients may list the library's kinds in another order than the library does.
+        result["kinds"] = new JsonArray([.. result["kinds"]!.AsArray().Select(kind => kind!.GetValue<string>())
+            .Order(StringComparer.Ordinal).Select(kind => (JsonNode)kind)]);
+        foreach (var item in result["members"]?.AsArray() ?? [])
+        {
+            var member = (JsonObject)item!;
+            foreach (var name in MemberOmitted) member.Remove(name);
+            foreach (var page in member["pages"]?.AsArray() ?? []) ((JsonObject)page!).Remove("name");
+            foreach (var path in member["fieldPaths"]?.AsArray() ?? []) ((JsonObject)path!).Remove("constraints");
+            ProjectPositions(member);
+        }
+        foreach (var item in result["commands"]?.AsArray() ?? [])
+        {
+            foreach (var name in CommandOmitted) ((JsonObject)item!).Remove(name);
+            ProjectPositions((JsonObject)item!);
+        }
+        foreach (var section in new[] { "interactions", "requests" })
+            foreach (var item in result[section]?.AsArray() ?? [])
+            {
+                foreach (var name in InteractionOmitted) ((JsonObject)item!).Remove(name);
+                ProjectPositions((JsonObject)item!);
+            }
+        return result;
+    }
+
+    // A value position {direction, type} keeps its direction; its type is projected.
+    private static void ProjectPositions(JsonObject owner)
+    {
+        foreach (var name in ValuePositions)
+            if (owner[name] is JsonObject position && position["type"] is JsonObject type)
+                position["type"] = ProjectType(type);
+    }
+
+    private static JsonObject ProjectType(JsonObject type)
+    {
+        var result = (JsonObject)type.DeepClone();
+        switch (result["kind"]!.GetValue<string>())
+        {
+            case "named":
+                var id = result["ref"]!.GetValue<string>();
+                result.Remove("ref");
+                result["definition"] = ProjectDefinition(id);
+                break;
+            case "list":
+                result["element"] = ProjectType((JsonObject)result["element"]!);
+                break;
+            case "map":
+                result["value"] = ProjectType((JsonObject)result["value"]!);
+                break;
+        }
+        return result;
+    }
+
+    // A named type, written in place of its reference. Producers reject recursive types, so the expansion ends.
+    private static JsonObject ProjectDefinition(string id)
+    {
+        var result = Without(Types[id], DefinitionOmitted);
+        switch (result["kind"]!.GetValue<string>())
+        {
+            case "enum":
+                foreach (var item in result["cases"]!.AsArray()) ((JsonObject)item!).Remove("doc");
+                break;
+            case "object":
+                foreach (var item in result["members"]!.AsArray())
+                {
+                    var member = (JsonObject)item!;
+                    member.Remove("doc");
+                    member["type"] = ProjectType((JsonObject)member["type"]!);
+                }
+                break;
+            case "union":
+                foreach (var item in result["cases"]!.AsArray())
+                    if (item!["object"] is JsonValue reference) item["object"] = ProjectDefinition(reference.GetValue<string>());
+                break;
+        }
+        return result;
+    }
+
+    private static JsonObject Without(JsonObject source, string[] omitted)
+    {
+        var result = (JsonObject)source.DeepClone();
+        foreach (var name in omitted) result.Remove(name);
+        return result;
+    }
+
+    // RFC 8785 for the projection, which holds objects, arrays, strings, booleans and null: members sorted by their
+    // names' UTF-16 code units, no whitespace, and strings escaped as ECMAScript's JSON.stringify escapes them.
+    private static void WriteCanonical(System.Text.StringBuilder text, JsonNode? node)
+    {
+        switch (node)
+        {
+            case null:
+                text.Append("null");
+                break;
+            case JsonObject value:
+                text.Append('{');
+                var first = true;
+                foreach (var (name, member) in value.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+                {
+                    if (!first) text.Append(',');
+                    first = false;
+                    WriteString(text, name);
+                    text.Append(':');
+                    WriteCanonical(text, member);
+                }
+                text.Append('}');
+                break;
+            case JsonArray value:
+                text.Append('[');
+                for (var index = 0; index < value.Count; index++)
+                {
+                    if (index > 0) text.Append(',');
+                    WriteCanonical(text, value[index]);
+                }
+                text.Append(']');
+                break;
+            case JsonValue value when value.TryGetValue<string>(out var stringValue):
+                WriteString(text, stringValue);
+                break;
+            case JsonValue value when value.TryGetValue<bool>(out var boolean):
+                text.Append(boolean ? "true" : "false");
+                break;
+            default:
+                throw new InvalidOperationException($"The {FingerprintFormat} projection holds a number: {node.ToJsonString()}.");
+        }
+    }
+
+    private static void WriteString(System.Text.StringBuilder text, string value)
+    {
+        text.Append('"');
+        foreach (var character in value)
+        {
+            switch (character)
+            {
+                case '"': text.Append("\\\""); break;
+                case '\\': text.Append("\\\\"); break;
+                case '\b': text.Append("\\b"); break;
+                case '\f': text.Append("\\f"); break;
+                case '\n': text.Append("\\n"); break;
+                case '\r': text.Append("\\r"); break;
+                case '\t': text.Append("\\t"); break;
+                case < ' ': text.Append("\\u").Append(((int)character).ToString("x4", CultureInfo.InvariantCulture)); break;
+                default: text.Append(character); break;
+            }
+        }
+        text.Append('"');
+    }
+
     /// <summary>
     /// The IR document of the generation so far. <paramref name="sourceMap"/> is the development source map's text,
     /// whose locations become <c>sources</c>.

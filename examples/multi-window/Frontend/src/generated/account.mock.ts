@@ -33,7 +33,7 @@ export interface AccountMock extends MockTypedView<AccountMockState, AccountClie
 const spec: MockTypedViewSpec = {
   kind: "account",
   route: "account",
-  contract: "MultiWindow.AccountViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A",
+  contract: "MultiWindow.AccountViewModel:83B16F0DEAEB6321DD543ABE914A54DA44FE9477523EFDD54C9163D5846664A6",
   fields: {
     accounts: { encode: (value: unknown) => { const typed = value as readonly string[]; return typed.map(item => item); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.string(item)) },
     current: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

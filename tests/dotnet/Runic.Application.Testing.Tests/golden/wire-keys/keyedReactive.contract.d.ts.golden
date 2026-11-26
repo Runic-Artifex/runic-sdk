@@ -28,7 +28,7 @@ export interface KeyedReactiveClient extends ViewClient<KeyedReactiveState> {
   readonly [viewCommands]?: KeyedReactiveCommandName;
   /** Calls the public C# setter of `KeyedReactiveViewModel.Enabled`. */
   setEnabled(value: boolean): Promise<KeyedReactiveState>;
-  /** Writes `KeyedReactiveViewModel.Enabled` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `enabled` with an acknowledged field write, which reports whether the app committed it. */
   writeEnabled(value: boolean, options: FieldWriteOptions<boolean>): Promise<FieldWriteReceipt<boolean>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof KeyedReactiveCheckedFields>(field: K): FieldBaseline<KeyedReactiveCheckedFields[K]>;

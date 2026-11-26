@@ -38,9 +38,9 @@ export interface DocumentClient extends ViewClient<DocumentState> {
   setTitle(value: string): Promise<DocumentState>;
   /** Calls the public C# setter of `DocumentViewModel.Body`. */
   setBody(value: string): Promise<DocumentState>;
-  /** Writes `DocumentViewModel.Title` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
-  /** Writes `DocumentViewModel.Body` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `body` with an acknowledged field write, which reports whether the app committed it. */
   writeBody(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof DocumentCheckedFields>(field: K): FieldBaseline<DocumentCheckedFields[K]>;

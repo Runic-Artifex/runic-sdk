@@ -34,8 +34,8 @@ internal sealed class PublicationTests
         Require(model.Retries == 1, "The included command did not run.");
 
         // The generator and the runtime select the same members.
-        Require(BridgeContractShape.Compute(typeof(ImportResultViewModel)) == ContractFingerprint(bridge!),
-            "The generated fingerprint differs from BridgeContractShape for an explicit ViewModel.");
+        Require(BridgeContractShape.Compute(typeof(ImportResultViewModel)) == BridgeRequests.GeneratedShape(bridge!),
+            "The generated contract shape differs from BridgeContractShape for an explicit ViewModel.");
         var members = BridgeContractShape.Parts(typeof(ImportResultViewModel))
             .Where(part => part.StartsWith($"member:{typeof(ImportResultViewModel).FullName}:", StringComparison.Ordinal))
             .Select(part => part.Split(':')[2]).Order(StringComparer.Ordinal).ToArray();
@@ -64,9 +64,6 @@ internal sealed class PublicationTests
             ("ImportResultViewModel.Bridge.g.cs", Path.Combine(bridges, typeof(ImportResultViewModel).FullName + ".Bridge.g.cs")),
         ]);
     }
-
-    private static string? ContractFingerprint(ViewModelBridge bridge) =>
-        typeof(ViewModelBridge).GetField("_contractFingerprint", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(bridge) as string;
 
     private static void Require(bool condition, string message)
     {

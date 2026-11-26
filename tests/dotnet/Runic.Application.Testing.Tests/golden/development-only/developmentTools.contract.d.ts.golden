@@ -47,7 +47,7 @@ export interface DevelopmentToolsClient extends ViewClient<DevelopmentToolsState
    * Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish leaves the member out and rejects the call.
    */
   setDebug(value: string): Promise<DevelopmentToolsState>;
-  /** Writes `DevelopmentToolsViewModel.Title` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   /**
    * A diagnostics note.

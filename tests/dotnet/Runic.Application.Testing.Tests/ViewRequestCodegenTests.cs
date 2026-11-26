@@ -36,19 +36,22 @@ internal sealed class ViewRequestCodegenTests
         DomainFailureCodegenTests.CompareGolden(project, "view-requests", [.. outputs]);
     }
 
-    // The generator's contract ids use BridgeContractShape's fingerprint, which classifies a ViewRequest as a request
-    // and a ViewQuestion as an interaction, never as state.
+    // The generator's contract ids derive from the View's fingerprint (runic.views.fingerprint/1), and Hot Reload's
+    // reflection shape hash (BridgeContractShape) classifies a ViewRequest as a request and a ViewQuestion as an
+    // interaction, never as state.
     [Test]
     public void ContractShapeClassifiesViewRequestsAndQuestions()
     {
         foreach (var (model, module) in Models)
         {
-            var fingerprint = BridgeContractShape.Compute(model);
             var client = GeneratedClientSource.Read(GeneratedDirectory(), module);
             var bridge = File.ReadAllText(Path.Combine(BridgeDirectory(), model.FullName + ".Bridge.g.cs"));
-            Require(client.Contains($"const bridgeContract = \"{model.FullName}:{fingerprint}\";", StringComparison.Ordinal)
-                && bridge.Contains($"\"{fingerprint}\", content,", StringComparison.Ordinal),
-                $"{model.Name}: the generated fingerprint differs from BridgeContractShape.Compute ({fingerprint}).");
+            var contract = System.Text.RegularExpressions.Regex.Match(client, $"const bridgeContract = \"{System.Text.RegularExpressions.Regex.Escape(model.FullName!)}:([0-9A-F]{{64}})\";");
+            Require(contract.Success, $"{model.Name}: the client has no contract of the View.\n{client}");
+            var fingerprint = contract.Groups[1].Value;
+            Require(bridge.Contains($"\"{fingerprint}\", content,", StringComparison.Ordinal)
+                && bridge.Contains($"ContractShape = \"{BridgeContractShape.Compute(model)}\";", StringComparison.Ordinal),
+                $"{model.Name}: the Bridge's fingerprint or contract shape is not the generated one ({fingerprint}).\n{bridge}");
             Require(client.Contains($"focus: {{ contract: \"{fingerprint}:request:Focus\", decodeInput: (value: unknown) => bridgeWire.object<ViewRequestFocusTarget>(", StringComparison.Ordinal)
                 && bridge.Contains($"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<global::Runic.Application.Testing.Tests.ViewRequestFocusTarget>(\"focus\", \"{fingerprint}:request:Focus\", static vm => ((global::{model.FullName})vm).Focus, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FocusRequestInputCodec.Write(writer, input))),", StringComparison.Ordinal),
                 $"{model.Name}: the Focus view request lost its contract or descriptor.\n{client}\n{bridge}");
@@ -103,7 +106,7 @@ internal sealed class ViewRequestCodegenTests
         const string presentation = "toolkit-question";
         const string client = "toolkit-client";
         const string connection = "toolkit-connection";
-        var contract = $"{BridgeContractShape.Compute(typeof(ToolkitViewRequestViewModel))}:interaction:ConfirmDiscard";
+        var contract = $"{BridgeRequests.GeneratedFingerprint(typeof(ToolkitViewRequestViewModel))}:interaction:ConfirmDiscard";
         using (var opened = JsonDocument.Parse(host.Transport.Open(route, presentation, connection, client,
             $$"""[{"name":"confirmDiscard","contract":{{JsonSerializer.Serialize(contract)}}}]""")))
             Require(opened.RootElement.GetProperty("presentation").GetString() == "ok"

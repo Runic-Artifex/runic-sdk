@@ -19,6 +19,7 @@ generator writes no TypeScript. The [corpus](#corpus) and the generator tests' g
 | This document | The document and its parts |
 | [`contract-ir/contract-ir.schema.json`](contract-ir/contract-ir.schema.json) | The JSON Schema (draft 2020-12) of format `runic.views.contract-ir/1` |
 | [`contract-ir/corpus/`](contract-ir/corpus/index.json) | The IR of every example that commits its generated clients |
+| [`contract-ir/fingerprint-example.json`](contract-ir/fingerprint-example.json) | A worked example of the [fingerprint](#fingerprint) |
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
@@ -66,7 +67,7 @@ Three kinds of names appear in the IR:
 | `id` | The View id |
 | `name` | The public name, such as `Counter` for `CounterViewModel`: letters and digits, starting with a letter. It prefixes the client's TypeScript names (`CounterState`, `CounterClient`). |
 | `route` | The route prefix and module name: `name` with a lowercase first letter (`counter`, `counter.ts`) |
-| `fingerprint` | The producer's contract fingerprint, 1 to 128 characters from U+0021 to U+007E without `:`. Opaque to the emitter, which writes it into the client's contract string. The .NET producer writes its `runic-bridge-contract-v6` hash, which covers every View of the assembly ([language mappings](language-mappings.md#net-producer)); a later revision derives a fingerprint per View from the IR. |
+| `fingerprint` | The View's [fingerprint](#fingerprint) (`runic.views.fingerprint/1`), a hash of the View's own contract. The emitter writes it into the client's contract string unread. |
 | `kinds` | The presentation kinds, one per View contract (`notes`, `notesCompact`); the first is the default |
 | `doc` | The View's documentation |
 | `developmentOnly` | A View that a trimmed or NativeAOT publish leaves out. Its client is the same in every configuration. |
@@ -129,9 +130,9 @@ query instead.
 
 ### Interactions and view requests
 
-An interaction has `name`, `wire`, `doc`, `contract` (`{fingerprint}:interaction:{Name}`), `input` and `output`. A view
-request has the same without `output`, and the contract `{fingerprint}:request:{Name}`
-([protocol](README.md#interactions)).
+An interaction has `name`, `wire`, `doc`, `contract` (`{fingerprint}:interaction:{name}`), `input` and `output`. A view
+request has the same without `output`, and the contract `{fingerprint}:request:{name}`
+([protocol](README.md#interactions), [derived contracts](#derived-contracts)).
 
 ## Values
 
@@ -216,6 +217,109 @@ generated client to the producer's source: `{file, line, column}` with 1-based l
 `{view}/{kind}/{member}` with `kind` one of `state`, `setter`, `command`, `commandState`, `interaction` and `request`,
 and `member` the client member name (`canIncrement` for a command state). `file` is absolute, or relative to the
 directory of the document. A location the producer does not know is left out.
+
+## Fingerprint
+
+A View's `fingerprint`, format `runic.views.fingerprint/1`, is the **uppercase hexadecimal SHA-256** of the UTF-8 bytes of
+the [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical form of the View's [projection](#projection). It
+identifies what the View exposes on the wire. A producer derives the View's contracts from it
+([below](#derived-contracts)). It computes the fingerprint from the descriptions it writes the IR from: at build time
+for the IR, and at run time for its own contracts if it does not embed the values. Every Runic producer writes this
+format since 0.24. Before that, the .NET producer wrote one hash over every View of the assembly
+(`runic-bridge-contract-v6`).
+
+The fingerprint depends only on the View's wire contract. Producer names (type ids, source names) and documentation do
+not change it, so:
+
+- one change to a View changes that View's fingerprint and no other;
+- a View has the same fingerprint in every document that describes it, such as a client library's and an application's
+  that imports it;
+- two producers, in any languages, that describe the same wire contract compute the same fingerprint.
+
+[`fingerprint-example.json`](contract-ir/fingerprint-example.json) is a worked example: a document, the canonical form
+of its View's projection, the fingerprint and the derived contracts. The engineering test
+`eng/views-contract-ir.test.mjs` computes the fingerprint of the example and of every [corpus](#corpus) View again
+from this section alone, without .NET.
+
+### Projection
+
+The projection is the object `{"format": "runic.views.fingerprint/1", "view": V}`. V is the View object of the IR with
+these changes; everything else stays as the IR has it, including the order of every array and the optional flags,
+which are present only when true:
+
+| Part | Left out | Changed |
+| --- | --- | --- |
+| The View | `id`, `name`, `fingerprint`, `doc`, `owner`, `sharedClients` | `kinds` sorted by UTF-16 code units: the kinds are a set on the wire, and their order only chooses the client's default |
+| A state member | `name`, `doc`, `declaringType`, `constraints`, `defaultKey` | `name` left out of each page reference in `pages`, and `constraints` left out of each entry of `fieldPaths` |
+| A command | `doc`, `parameter` | |
+| An interaction or view request | `doc`, `contract` | |
+| A value position (`value`, `rows`, `input`, `result`, `failure`, `output`) | | Its `type` projected |
+
+A type is projected as follows:
+
+- a `named` type loses `ref` and gets `definition`, the projection of the named type `types[ref]`;
+- a `list` gets its `element` projected, and a `map` its `value`;
+- every other type is unchanged, `custom` included.
+
+The projection of a named type is its definition without `name` and `doc`:
+
+- an `enum` case loses its `doc`;
+- an `object` member loses its `doc` and gets its `type` projected;
+- a `union` case gets, in place of the id in `object`, the projection of that named object (`null` stays `null`).
+
+Producers reject recursive types, so the expansion ends.
+
+What stays is the wire contract:
+
+- the route, the kinds, `memberErrors`, `validation`, `uploads` and the `developmentOnly` marks;
+- each state member's `wire`, `kind` and value position (direction, value kinds, nullability, and the wire names,
+  `optional` and `absent` flags and enum values of the named types it reaches);
+- `settable`, `checked`, `text`, `appendOnlyText`, `collectionKey`, `rowEditor` and the field paths;
+- the presented Views' ids and kinds, `nullable`, `region` and `pageCanClose`;
+- each command's `name` (on the wire in `can{Name}` and `is{Name}Executing`), `wire`, input, result, failure and flags;
+- each interaction's and view request's `name` (on the wire in its contract), `wire`, input and output.
+
+What is left out:
+
+- the names that only the client or the source uses: the View's `id`, which the operation contract carries beside the
+  fingerprint, the public name, the member names, parameter names, declaring types, and the named types' ids and name
+  hints;
+- documentation;
+- the constraints, which the producer checks anyway;
+- the mock's `defaultKey`;
+- how units share clients (`owner`, `sharedClients`);
+- the contracts, which contain the fingerprint.
+
+### Canonical form
+
+The canonical form is RFC 8785. The projection holds only objects, arrays, strings, booleans and `null`. It has no
+numbers, because enum values are decimal text. So the canonical form is the JSON text with:
+
+- no whitespace;
+- the members of each object sorted by name, comparing UTF-16 code units;
+- each string written as ECMAScript's `JSON.stringify` writes it: `"` and `\` escaped with a backslash; U+0008,
+  U+0009, U+000A, U+000C and U+000D as `\b`, `\t`, `\n`, `\f` and `\r`; other code points below U+0020 as `\u00xx`
+  with lowercase hexadecimal digits; every other character as itself.
+
+The IR's strings are valid Unicode. In JavaScript, the canonical form is `JSON.stringify` of the projection with each
+object's members sorted. In Rust or C++, any RFC 8785 writer writes it.
+
+### Derived contracts
+
+A producer derives these contracts from the View's `id`, the fingerprint and the IR `name`s:
+
+| Contract | Value | Used by |
+| --- | --- | --- |
+| The View's contract | `{id}:{fingerprint}` | Operation requests ([identity](README.md#identity)), the `open` reply with `view-contract/1`, the generated client's contract |
+| An interaction's | `{fingerprint}:interaction:{name}` | [Interactions](README.md#interactions) |
+| A view request's | `{fingerprint}:request:{name}` | [View requests](README.md#view-requests) |
+
+The .NET generator writes them into the generated Bridge. A Rust or C++ producer can compute them when it starts,
+from the same registry that writes its IR, with a JCS writer and SHA-256.
+
+A change to the projection is a new format version, `runic.views.fingerprint/2`. It changes every fingerprint once,
+and a page that recovers an operation started before the change gets `unknown`
+([start](README.md#start): the other requests find no operation under that contract).
 
 ## Corpus
 

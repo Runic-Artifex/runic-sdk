@@ -16,6 +16,7 @@ internal sealed class KeyedToolkitBridge : global::Runic.Application.Views.Gener
         null,
         dataSubscriptions: Table.Data, collections: Table.Collections)
     {
+        ContractShape = "<fingerprint>";
     }
 
     // This ViewModel's descriptors as data, one record per member (the format is in RunicShared.Tables.Bridge.g.cs).

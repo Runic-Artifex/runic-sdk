@@ -16,11 +16,20 @@ internal sealed class ViewPlan
     internal required string Prefix { get; init; }
     internal required (Type Model, string Name)[] KnownModels { get; init; }
     internal required IReadOnlyDictionary<Type, List<Type>>? ViewTypes { get; init; }
-    internal required string ContractFingerprint { get; init; }
+    /// <summary>
+    /// The View's fingerprint (<c>runic.views.fingerprint/1</c>), a hash of its contract IR, which <see cref="Seal"/>
+    /// sets once the IR is written.
+    /// </summary>
+    internal string ContractFingerprint { get; private set; } = "";
+    /// <summary>
+    /// The reflection shape hash of the model's assembly (<c>BridgeContractShape</c>), which the generated Bridge passes
+    /// on for Hot Reload to recompute.
+    /// </summary>
+    internal required string ContractShape { get; init; }
     internal required NullabilityInfoContext Nullability { get; init; }
 
-    internal required GeneratedInteractionPlan[] Interactions { get; init; }
-    internal required GeneratedViewRequestPlan[] Requests { get; init; }
+    internal required GeneratedInteractionPlan[] Interactions { get; set; }
+    internal required GeneratedViewRequestPlan[] Requests { get; set; }
     internal required PropertyInfo[] Commands { get; init; }
     /// <summary>The state properties in declaration order.</summary>
     internal required PropertyInfo[] Properties { get; init; }
@@ -55,6 +64,25 @@ internal sealed class ViewPlan
     internal required bool UsesUploads { get; init; }
     /// <summary>Interactions and view requests are attached to the presentations of a WindowContentSession.</summary>
     internal required bool Presented { get; init; }
+
+    /// <summary>
+    /// Sets the View's fingerprint and the contracts of its interactions and view requests, which contain it, with the
+    /// IR's UpperCamelCase name (ContractIr.Seal).
+    /// </summary>
+    internal void Seal(string fingerprint)
+    {
+        ContractFingerprint = fingerprint;
+        Interactions = [.. Interactions.Select(plan => plan with
+        {
+            ContractId = ContractIr.InteractionContract(fingerprint, "interaction", UpperFirst(plan.Property.Name)),
+        })];
+        Requests = [.. Requests.Select(plan => plan with
+        {
+            ContractId = ContractIr.InteractionContract(fingerprint, "request", UpperFirst(plan.Property.Name)),
+        })];
+    }
+
+    private static string UpperFirst(string text) => char.ToUpperInvariant(text[0]) + text[1..];
 
     /// <summary>Whether the page sets the property: a public setter, unless the property holds a RunicBlob (blobs/1).</summary>
     internal static bool IsPageSettable(PropertyInfo property, IReadOnlyDictionary<PropertyInfo, BridgeTypeGraph> valueProperties) =>

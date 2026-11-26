@@ -16,7 +16,7 @@ const members: BridgeMemberDecoders<CatalogState> = {
   canAdd: (wire: unknown) => bridgeWire.boolean(wire),
   isAddExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "QueryCollectionsExample.CatalogViewModel:997D7C5D156BE970A9106B043B6265CE1D6D3D843B8AC4AA42D41EC3D9B15DF8";
+const bridgeContract = "QueryCollectionsExample.CatalogViewModel:2B7A99767FCCE9AE5C4AC78515DA9C6A617675401817344D619FCA1C8DBE6D65";
 const restockOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const addOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

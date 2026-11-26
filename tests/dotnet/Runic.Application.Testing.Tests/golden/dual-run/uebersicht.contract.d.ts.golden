@@ -25,9 +25,9 @@ export interface ÜbersichtClient extends ViewClient<ÜbersichtState> {
   setÄrger(value: string): Promise<ÜbersichtState>;
   /** Calls the public C# setter of `ÜbersichtViewModel.Letzte`. */
   setLetzte(value: Änderung | null): Promise<ÜbersichtState>;
-  /** Writes `ÜbersichtViewModel.Ärger` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `ärger` with an acknowledged field write, which reports whether the app committed it. */
   writeÄrger(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
-  /** Writes `ÜbersichtViewModel.Letzte` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `letzte` with an acknowledged field write, which reports whether the app committed it. */
   writeLetzte(value: Änderung | null, options: FieldWriteOptions<Änderung | null>): Promise<FieldWriteReceipt<Änderung | null>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof ÜbersichtCheckedFields>(field: K): FieldBaseline<ÜbersichtCheckedFields[K]>;

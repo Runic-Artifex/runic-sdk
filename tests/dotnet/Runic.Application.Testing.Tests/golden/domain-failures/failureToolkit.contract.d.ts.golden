@@ -31,7 +31,7 @@ export interface FailureToolkitClient extends ViewClient<FailureToolkitState> {
   readonly [viewCommands]?: FailureToolkitCommandName;
   /** Calls the public C# setter of `FailureToolkitViewModel.Title`. */
   setTitle(value: string): Promise<FailureToolkitState>;
-  /** Writes `FailureToolkitViewModel.Title` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof FailureToolkitCheckedFields>(field: K): FieldBaseline<FailureToolkitCheckedFields[K]>;

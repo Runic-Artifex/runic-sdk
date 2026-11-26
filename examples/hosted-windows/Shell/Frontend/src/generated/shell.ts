@@ -19,7 +19,7 @@ const members: BridgeMemberDecoders<ShellState> = {
   canStopCounter: (wire: unknown) => bridgeWire.boolean(wire),
   isStopCounterExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "HostedShell.ShellViewModel:8665B66B00534C16F8C62A5ED364171B393FA9C85B6F06B29128C4911897AD36";
+const bridgeContract = "HostedShell.ShellViewModel:427060DB915C5747297AF2A095C102FA101A95AEB9A842E24173542678B7598E";
 const chooseLanguageOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const chooseThemeOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const openCounterOperation: BridgeOperationCodec<void> = { decode: value => undefined };

@@ -735,8 +735,14 @@ static bool GenerateOne(Type model, string csharpPath, string shortName,
     IReadOnlyDictionary<Type, List<Type>>? viewTypes = null)
 {
     var plan = PlanView(model, shortName, knownModels ?? [(model, shortName)], viewTypes);
-    // The View in the language-neutral contract IR (specs/application/contract-ir.md), written from the plan alone.
-    ContractIr.AddView(ContractIrView(plan));
+    // The View in the language-neutral contract IR (specs/application/contract-ir.md), written from the plan alone. Its
+    // fingerprint (runic.views.fingerprint/1) is a hash of the View's IR, so the contracts that contain it, the
+    // interactions' and view requests' and the operations' {view}:{fingerprint}, are known once the IR is.
+    var view = ContractIrView(plan);
+    var fingerprint = ContractIr.Fingerprint(view);
+    ContractIr.Seal(view, fingerprint);
+    plan.Seal(fingerprint);
+    ContractIr.AddView(view);
     return EmitView(plan, csharpPath);
 }
 
@@ -754,10 +760,12 @@ static ViewPlan PlanView(Type model, string shortName, (Type Model, string Name)
 
     PublicationChecks.Check(model, knownModels);
     var declared = BridgedProperties(model);
-    var contractFingerprint = BridgeContractShape.Compute(model);
+    // The reflection shape hash of the assembly's Views, which Hot Reload recomputes to see whether an edit changed the
+    // contract; clients and operations use the IR fingerprint (GenerateOne).
+    var contractShape = BridgeContractShape.Compute(model);
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
-    var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
-    var requests = InteractionCodeEmitter.DiscoverRequests(declared, model.Name, contractFingerprint, honorJsonIgnore);
+    var interactions = InteractionCodeEmitter.Discover(declared, model.Name, honorJsonIgnore);
+    var requests = InteractionCodeEmitter.DiscoverRequests(declared, model.Name, honorJsonIgnore);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
         || MvvmCodegenConventions.All.Any(convention => InspectCommand(model, property, () => convention.InspectCommand(property)) is not null)).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property))
@@ -1118,7 +1126,7 @@ static ViewPlan PlanView(Type model, string shortName, (Type Model, string Name)
         Prefix = prefix,
         KnownModels = knownModels,
         ViewTypes = viewTypes,
-        ContractFingerprint = contractFingerprint,
+        ContractShape = contractShape,
         Nullability = nullability,
         Interactions = interactions,
         Requests = requests,
@@ -1236,6 +1244,7 @@ static bool EmitView(ViewPlan view, string csharpPath)
         ? "        dataSubscriptions: Table.Data, collections: Table.Collections, validationReader: ValidationReader)"
         : "        dataSubscriptions: Table.Data, collections: Table.Collections)");
     cs.AppendLine("    {");
+    cs.AppendLine($"        ContractShape = \"{view.ContractShape}\";");
     if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
     if (presented)
     {
@@ -1748,7 +1757,8 @@ static JsonObject ContractIrView(ViewPlan view)
         ["id"] = model.FullName,
         ["name"] = view.ShortName,
         ["route"] = view.Prefix,
-        ["fingerprint"] = view.ContractFingerprint,
+        // Filled in once the View's IR is complete (ContractIr.Seal).
+        ["fingerprint"] = "",
         ["kinds"] = new JsonArray([.. (view.ViewTypes is not null && view.ViewTypes.TryGetValue(model, out var views)
             ? views.Select(ContractFor) : [null]).Select(contract => (JsonNode)PageKind(view.ShortName, contract))]),
     };
@@ -1772,7 +1782,7 @@ static JsonObject ContractIrView(ViewPlan view)
         ir["interactions"] = new JsonArray([.. view.Interactions.Select(plan =>
         {
             var item = Named(plan.Property.Name, LowerFirst(plan.Property.Name), XmlDocumentation.Summary(plan.Property));
-            item["contract"] = plan.ContractId;
+            item["contract"] = "";
             item["input"] = ContractIr.Value(plan.Input);
             item["output"] = ContractIr.Value(plan.Output);
             return (JsonNode)item;
@@ -1781,7 +1791,7 @@ static JsonObject ContractIrView(ViewPlan view)
         ir["requests"] = new JsonArray([.. view.Requests.Select(plan =>
         {
             var item = Named(plan.Property.Name, LowerFirst(plan.Property.Name), XmlDocumentation.Summary(plan.Property));
-            item["contract"] = plan.ContractId;
+            item["contract"] = "";
             item["input"] = ContractIr.Value(plan.Input);
             return (JsonNode)item;
         })]);

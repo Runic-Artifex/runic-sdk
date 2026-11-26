@@ -25,9 +25,9 @@ const members: BridgeMemberDecoders<EditorState> = {
   canDiscard: (wire: unknown) => bridgeWire.boolean(wire),
   isDiscardExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesReactiveViews.EditorViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
+const bridgeContract = "NotesReactiveViews.EditorViewModel:1A4F66EED25E319E609D11F39D02A83DC157F1E08643C17BF6F874A996290473";
 const interactionDefinitions = defineInteractions({
-  confirmDiscard: { contract: "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmDiscard: { contract: "1A4F66EED25E319E609D11F39D02A83DC157F1E08643C17BF6F874A996290473:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const checkedFieldNames = ["title", "body"];
 const saveOperation: BridgeOperationCodec<void, SaveFailure> = { decode: value => undefined, decodeFailure: value => ((): SaveFailure => { const bridgeDecodedUnion0: any = bridgeWire.union(value); switch (bridgeDecodedUnion0.$case) { case "titleRequired": return { $case: "titleRequired" }; case "titleTooLong": return { $case: "titleTooLong", maximumLength: bridgeWire.integer(bridgeDecodedUnion0["maximumLength"], -2147483648, 2147483647) }; default: throw new RangeError("Unknown union case."); } })() };

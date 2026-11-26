@@ -31,9 +31,9 @@ export interface EditorClient extends ViewClient<EditorState> {
   setTitle(value: string): Promise<EditorState>;
   /** Calls the public C# setter of `EditorViewModel.Body`. */
   setBody(value: string): Promise<EditorState>;
-  /** Writes `EditorViewModel.Title` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
-  /** Writes `EditorViewModel.Body` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `body` with an acknowledged field write, which reports whether the app committed it. */
   writeBody(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof EditorCheckedFields>(field: K): FieldBaseline<EditorCheckedFields[K]>;

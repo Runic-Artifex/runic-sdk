@@ -119,7 +119,7 @@ internal sealed partial class CodegenDiagnosticsTests
             // Hot Reload computes the same contract in a process without WPF.
             var fixture = Assembly.LoadFrom(Path.Combine(wpfDirectory, "FixtureWpfApplication.dll"));
             var fingerprint = BridgeContractShape.Compute(fixture.GetType("Fixture.EditorViewModel", throwOnError: true)!);
-            Require(editorBridge.Contains($"\"{fingerprint}\"", StringComparison.Ordinal),
+            Require(editorBridge.Contains($"ContractShape = \"{fingerprint}\";", StringComparison.Ordinal),
                 $"The contract computed without WPF differs from the generated one ({fingerprint}).\n{editorBridge}");
 
             // A ViewModel that does expose a WPF type is reported at that member,

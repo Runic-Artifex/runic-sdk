@@ -11,7 +11,7 @@ export function pagePinnedNote(id: string): PinnedNotePageReference { return pag
 const members: BridgeMemberDecoders<PinnedNoteState> = {
   label: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
+const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:EC2211058D9F966C59049A3CCBB2C855AEA26DFFC0A8166F154A135F1A6A171D";
 
 /**
  * Connects a PinnedNote client. It waits up to `options.timeout` milliseconds (default 5000) for the

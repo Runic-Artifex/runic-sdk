@@ -13,6 +13,7 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.Generated
         null,
         dataSubscriptions: Table.Data, collections: Table.Collections)
     {
+        ContractShape = "<fingerprint>";
         _content = content!; _owner = vm;
     }
 

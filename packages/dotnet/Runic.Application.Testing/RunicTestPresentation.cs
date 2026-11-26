@@ -136,7 +136,7 @@ public sealed class RunicTestPresentation<TModel> : IDisposable where TModel : c
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _contracts[name] = $"{RunicViewDriver<TModel>.ContractFingerprint}:interaction:{property.Name}";
+            _contracts[name] = $"{RunicViewDriver<TModel>.ContractFingerprint}:interaction:{RunicMembers.UpperFirst(property.Name)}";
             _handlers[name] = async (input, token) =>
             {
                 var output = await answer(input.Deserialize<TInput>(RunicTestPresentationJson.Options)!, token).ConfigureAwait(false);
@@ -222,7 +222,7 @@ public sealed class RunicTestPresentation<TModel> : IDisposable where TModel : c
             {
                 writer.WriteStartObject();
                 writer.WriteString("name", RunicMembers.LowerFirst(property.Name));
-                writer.WriteString("contract", $"{RunicViewDriver<TModel>.ContractFingerprint}:request:{property.Name}");
+                writer.WriteString("contract", $"{RunicViewDriver<TModel>.ContractFingerprint}:request:{RunicMembers.UpperFirst(property.Name)}");
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();

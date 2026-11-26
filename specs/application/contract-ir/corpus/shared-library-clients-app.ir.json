@@ -16,7 +16,7 @@
       "id": "SharedLibraryApp.ShellViewModel",
       "name": "Shell",
       "route": "shell",
-      "fingerprint": "9C425DF0F300FA29C4CC1E37D148B432E4D5680B355804720C21662C5CD282AB",
+      "fingerprint": "4D9CB7131831590BAA5AF3E8F4BBD330D223A636ECF9C600A8CC64DA0B81DDCD",
       "kinds": [
         "shell"
       ],
@@ -68,7 +68,7 @@
       "id": "SharedUi.AboutViewModel",
       "name": "About",
       "route": "about",
-      "fingerprint": "F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD",
+      "fingerprint": "59BD262627E77B57D380E9F40FFCFBAE605054B146F527F8551AD7D68AFAAF32",
       "kinds": [
         "about"
       ],
@@ -137,7 +137,7 @@
       "id": "SharedUi.SupportViewModel",
       "name": "Support",
       "route": "support",
-      "fingerprint": "F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD",
+      "fingerprint": "62C6585AA56B889E10B9B0D69FF89D4D62ECC940429BC3D488A9BD7B2A697503",
       "kinds": [
         "support"
       ],

@@ -15,7 +15,7 @@ const members: BridgeMemberDecoders<CounterState> = {
   canHide: (wire: unknown) => bridgeWire.boolean(wire),
   isHideExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "StatusIconSample.CounterViewModel:0C5139B243CE41368857833A409BBF0B4B357F0987010DE12C67036485AF437D";
+const bridgeContract = "StatusIconSample.CounterViewModel:152184C280701C29DF506FB648E3FC12C80481480B39D6AC76CD3176912B64F0";
 const incrementOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const hideOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

@@ -33,7 +33,7 @@ export interface EditorMock extends MockTypedView<EditorMockState, EditorClient,
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "HybridNotes.EditorViewModel:3EDB76E7F7CE7BD4599A185B07F1B1E659EAA667FDEAB34B0406CB64EDEE83D3",
+  contract: "HybridNotes.EditorViewModel:15D3738DB7E351E8964194F85EC4852712A11FB2F6D6F906BC21A90ED4F880D0",
   fields: {
     isDirty: { encode: (value: unknown) => { const typed = value as boolean; return typed; }, decode: (wire: unknown) => bridgeWire.boolean(wire) },
     validationMessage: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

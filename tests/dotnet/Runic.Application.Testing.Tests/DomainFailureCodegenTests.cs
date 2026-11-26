@@ -38,8 +38,8 @@ internal sealed class DomainFailureCodegenTests
         Require(model.Title == "reserved 2", "The plain command did not run.");
 
         // The generated contract fingerprint matches the runtime's reflection of the declarations.
-        Require(BridgeContractShape.Compute(typeof(FailureToolkitViewModel)) == ContractFingerprint(bridge!),
-            "The generated fingerprint differs from BridgeContractShape for declared failures.");
+        Require(BridgeContractShape.Compute(typeof(FailureToolkitViewModel)) == BridgeRequests.GeneratedShape(bridge!),
+            "The generated contract shape differs from BridgeContractShape for declared failures.");
     }
 
     // The AsyncRelayCommand as an operation.
@@ -204,9 +204,6 @@ internal sealed class DomainFailureCodegenTests
     }
 
     // The fingerprint the generated bridge was constructed with.
-    private static string? ContractFingerprint(ViewModelBridge bridge) =>
-        typeof(ViewModelBridge).GetField("_contractFingerprint", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            ?.GetValue(bridge) as string;
 
     private static void RequireFailure<T>(RunicCallReply<T> reply, string failure) where T : class =>
         Require(reply is { Succeeded: false, ErrorKind: "domain-failed", Revision: not null } && reply.Failure?.GetRawText() == failure,

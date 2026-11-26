@@ -10,7 +10,7 @@
       "id": "StatusIconSample.CounterViewModel",
       "name": "Counter",
       "route": "counter",
-      "fingerprint": "0C5139B243CE41368857833A409BBF0B4B357F0987010DE12C67036485AF437D",
+      "fingerprint": "152184C280701C29DF506FB648E3FC12C80481480B39D6AC76CD3176912B64F0",
       "kinds": [
         "counter"
       ],

@@ -38,7 +38,7 @@ export interface EditorMock extends MockTypedView<EditorMockState, EditorClient,
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "NotesReactiveViews.EditorViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+  contract: "NotesReactiveViews.EditorViewModel:1A4F66EED25E319E609D11F39D02A83DC157F1E08643C17BF6F874A996290473",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     body: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

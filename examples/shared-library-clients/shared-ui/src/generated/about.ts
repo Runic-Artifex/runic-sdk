@@ -18,7 +18,7 @@ const members: BridgeMemberDecoders<AboutState> = {
   status: (wire: unknown) => bridgeWire.string(wire),
   canCheckForUpdates: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "SharedUi.AboutViewModel:F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD";
+const bridgeContract = "SharedUi.AboutViewModel:59BD262627E77B57D380E9F40FFCFBAE605054B146F527F8551AD7D68AFAAF32";
 const checkedFieldNames = ["channel"];
 
 /**

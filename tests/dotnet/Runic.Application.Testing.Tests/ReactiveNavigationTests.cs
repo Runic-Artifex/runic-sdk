@@ -29,7 +29,7 @@ internal sealed class ReactiveNavigationTests
         using var host = new RunicWindowTestHost<ReactiveNavShellViewModel>(model,
             (transport, content, vm) => new ReactiveNavShellBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = new NavViewLocator() });
-        var contract = $"{BridgeContractShape.Compute(typeof(ReactiveNavEditorViewModel))}:interaction:ConfirmDiscard";
+        string Contract() => $"{BridgeRequests.GeneratedFingerprint(typeof(ReactiveNavEditorViewModel))}:interaction:ConfirmDiscard";
 
         // The browser's trusted identity; an interaction is delivered only to the connection whose command asked.
         const string client = "editor-client";
@@ -47,7 +47,7 @@ internal sealed class ReactiveNavigationTests
             var view = host.Root.View<ReactiveNavEditorViewModel>(vm => vm.Main);
             var presentation = $"editor{++opened}";
             var open = host.Transport.Open(view.Route, presentation, connection, client,
-                JsonSerializer.Serialize(new[] { new { name = "confirmDiscard", contract } }));
+                JsonSerializer.Serialize(new[] { new { name = "confirmDiscard", contract = Contract() } }));
             Require(open.Contains("\"presentation\":\"ok\"", StringComparison.Ordinal)
                 && open.Contains("\"registration\":\"ok\"", StringComparison.Ordinal), $"The editor did not open with its handler: {open}");
             return (request, view, presentation);
@@ -85,7 +85,7 @@ internal sealed class ReactiveNavigationTests
                     requestId = root.GetProperty("requestId").GetString(),
                     ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
                     name = "confirmDiscard",
-                    contract,
+                    contract = Contract(),
                     outcome = "answered",
                     output = answer,
                 });

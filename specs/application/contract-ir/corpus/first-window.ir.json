@@ -10,7 +10,7 @@
       "id": "FirstWindow.CounterViewModel",
       "name": "Counter",
       "route": "counter",
-      "fingerprint": "EE069E606CEB12AB893E2F2BA03D2E9AEA82E654B2A56498191DDB2F6649D735",
+      "fingerprint": "30290E998AE62616763B2E6C6BFBD3047E5432B62B7D7EF4391417129987F188",
       "kinds": [
         "counter"
       ],

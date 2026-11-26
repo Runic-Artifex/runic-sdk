@@ -33,7 +33,7 @@ export interface MainMock extends MockTypedView<MainMockState, MainClient, "main
 const spec: MockTypedViewSpec = {
   kind: "main",
   route: "main",
-  contract: "SidePanelSample.MainViewModel:5ED9DECD0167CA31B2D3923868C3212C91F5D54C8C5CE7E85A26BA62E72C69D0",
+  contract: "SidePanelSample.MainViewModel:BC864276B77E0AC4D63BE21D96DBB2D7D9EFEC85BA868F88BE649CB817D6A79F",
   fields: {
     quantity: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },
     log: { encode: (value: unknown) => { const typed = value as readonly string[]; return typed.map(item => item); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.string(item)) },

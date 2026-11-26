@@ -176,7 +176,17 @@ internal static class BridgeRequests
     }
 
     // The operation contract of a generated Bridge's ViewModel, as RunicViewDriver<TModel>.Start sends it.
-    internal static string OperationContract<TModel>() => $"{typeof(TModel).FullName}:{BridgeContractShape.Compute(typeof(TModel))}";
+    internal static string OperationContract<TModel>() => $"{typeof(TModel).FullName}:{GeneratedFingerprint(typeof(TModel))}";
+
+    // The generated contract fingerprint of a ViewModel (runic.views.fingerprint/1), which its Bridge carries; a Bridge of
+    // the type must have been created in this process.
+    internal static string GeneratedFingerprint(Type model) => BridgeContractFingerprints.Of(model)
+        ?? throw new InvalidOperationException($"{model.Name} has no generated Bridge in this process yet.");
+
+    // The reflection shape hash that a generated Bridge carries for Hot Reload (ViewModelBridge.ContractShape).
+    internal static string? GeneratedShape(ViewModelBridge bridge) =>
+        typeof(ViewModelBridge).GetProperty("ContractShape", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.GetValue(bridge) as string;
 
     // Waits for a push of the kind to one connection, such as an interaction, and returns it. Takes the transport's
     // messages while it waits: the other messages it takes are dropped.

@@ -33,7 +33,7 @@ export interface CheckMock extends MockTypedView<CheckMockState, CheckClient, "c
 const spec: MockTypedViewSpec = {
   kind: "check",
   route: "check",
-  contract: "CheckTool.CheckViewModel:C8865DDF87FCB3EBED9EC659AE1652163BF37BD3F3439A34013E0C4BC59AD941",
+  contract: "CheckTool.CheckViewModel:2589F8E1D2CF0497687996D644787484E26CD79D66C71E28341DFD30900A9360",
   fields: {
     space: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     spaceDetail: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

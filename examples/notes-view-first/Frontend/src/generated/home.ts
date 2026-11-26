@@ -14,7 +14,7 @@ const members: BridgeMemberDecoders<HomeState> = {
   greeting: (wire: unknown) => bridgeWire.string(wire),
   recentNotes: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<SavedNote>(item, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])}))),
 };
-const bridgeContract = "NotesWindowViews.HomeViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
+const bridgeContract = "NotesWindowViews.HomeViewModel:EEBA37723FB5418D70BEEB05FB9CB841A42F92C03D2221BF2B2C31E7680DC64E";
 
 const collectionDefinitions = defineCollections({
   recentNotes: defineCollection<SavedNote>(wire => bridgeWire.object<SavedNote>(wire, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])})), item => String(item.title)),

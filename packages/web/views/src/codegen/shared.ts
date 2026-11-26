@@ -135,7 +135,7 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
     body.line();
   }
   body.doc("", (client.doc === undefined ? "" : client.doc + "\n\n")
-    + `A connected ViewModel that implements \`${contract}\`: ${implementers.map(simpleName).join(", ")}. Their own clients have these members too.`);
+    + `A connected View that implements \`${contract}\`: ${implementers.map(view => view.name).join(", ")}. Their own clients have these members too.`);
   body.line(`export interface ${name}Client extends ${Ref("ViewClient")}<${name}State> {`);
   if (shared.some(entry => entry.part.section === "queries")) {
     body.line("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");

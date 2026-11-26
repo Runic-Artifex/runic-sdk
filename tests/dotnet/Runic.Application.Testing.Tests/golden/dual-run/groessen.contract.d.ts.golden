@@ -33,13 +33,13 @@ export interface GrößenClient extends ViewClient<GrößenState> {
   setFarbe(value: Grün | null): Promise<GrößenState>;
   /** Calls the public C# setter of `GrößenViewModel.Höhe`. */
   setHöhe(value: number): Promise<GrößenState>;
-  /** Writes `GrößenViewModel.Straße` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `straße` with an acknowledged field write, which reports whether the app committed it. */
   writeStraße(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
-  /** Writes `GrößenViewModel.Maße` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `maße` with an acknowledged field write, which reports whether the app committed it. */
   writeMaße(value: Größe, options: FieldWriteOptions<Größe>): Promise<FieldWriteReceipt<Größe>>;
-  /** Writes `GrößenViewModel.Farbe` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `farbe` with an acknowledged field write, which reports whether the app committed it. */
   writeFarbe(value: Grün | null, options: FieldWriteOptions<Grün | null>): Promise<FieldWriteReceipt<Grün | null>>;
-  /** Writes `GrößenViewModel.Höhe` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `höhe` with an acknowledged field write, which reports whether the app committed it. */
   writeHöhe(value: number, options: FieldWriteOptions<number>): Promise<FieldWriteReceipt<number>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof GrößenCheckedFields>(field: K): FieldBaseline<GrößenCheckedFields[K]>;

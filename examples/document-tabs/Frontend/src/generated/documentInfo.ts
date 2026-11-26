@@ -17,7 +17,7 @@ const members: BridgeMemberDecoders<DocumentInfoState> = {
   canBack: (wire: unknown) => bridgeWire.boolean(wire),
   isBackExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "DocumentTabs.DocumentInfoViewModel:FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5";
+const bridgeContract = "DocumentTabs.DocumentInfoViewModel:B6F21A043D03A798769DA1E8F8A764928E0F10A389D671552856FCDC44DA086E";
 const backOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

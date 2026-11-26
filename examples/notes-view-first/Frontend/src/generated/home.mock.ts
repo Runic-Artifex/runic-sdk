@@ -22,7 +22,7 @@ export interface HomeMock extends MockTypedView<HomeMockState, HomeClient, "home
 const spec: MockTypedViewSpec = {
   kind: "home",
   route: "home",
-  contract: "NotesWindowViews.HomeViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+  contract: "NotesWindowViews.HomeViewModel:EEBA37723FB5418D70BEEB05FB9CB841A42F92C03D2221BF2B2C31E7680DC64E",
   fields: {
     greeting: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     recentNotes: { encode: (value: unknown) => { const typed = value as readonly SavedNote[]; return typed.map(item => ({ ["title"]: item["title"], ["excerpt"]: item["excerpt"] })); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<SavedNote>(item, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])}))) },

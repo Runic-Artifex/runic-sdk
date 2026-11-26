@@ -20,7 +20,7 @@ const members: BridgeMemberDecoders<CheckState> = {
   isRunExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   isReportAppearanceExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "CheckTool.CheckViewModel:C8865DDF87FCB3EBED9EC659AE1652163BF37BD3F3439A34013E0C4BC59AD941";
+const bridgeContract = "CheckTool.CheckViewModel:2589F8E1D2CF0497687996D644787484E26CD79D66C71E28341DFD30900A9360";
 const runOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const reportAppearanceOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
