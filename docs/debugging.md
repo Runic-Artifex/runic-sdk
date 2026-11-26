@@ -210,7 +210,7 @@ applied by `dotnet run` or `dev`.
 | Surface | `StartArguments` | The profile's `commandLineArgs` | When both are set |
 | --- | --- | --- | --- |
 | `dotnet run` | ✓ | the first profile, or `--launch-profile <name>` | the profile's arguments are dropped |
-| `dotnet runic dev` | ✓, through `dotnet run` and `dotnet watch run` | only with `--launch-profile <name>`; by default no profile | as `dotnet run` |
+| `dotnet runic dev` | ✓, through `dotnet run` and `dotnet watch run` | the first profile, as `dotnet run` (since 0.24), `--launch-profile <name>`, or none with `--no-launch-profile` | both, the project's first, with a warning (`RAPPDEV1020`, since 0.24) |
 | `dotnet runic dev --no-window`, the Window from the IDE | — | — | the IDE's rule below |
 | Visual Studio, F5 | ✓ | the active profile (the toolbar) | both, the project's first |
 | Runic DevKit for Visual Studio, Debug the Window | ✓ | the active profile, from the release after runic-editors 0.23.1 ([runic-editors#79](https://github.com/Runic-Artifex/runic-editors/pull/79)); none before | both, the project's first |
@@ -221,14 +221,15 @@ In Runic DevKit for VS Code 0.23.1 and earlier, the `runic` launch passes only `
 configuration's `args`. The C# debugger then applies the first profile only while `RunArguments` is empty. So with
 those versions, too, `StartArguments` is the place for `/mock`.
 
-`dotnet run`, and `dev` through it, drops a profile's `commandLineArgs` whenever the project sets arguments; Visual
-Studio and Runic DevKit pass both. Keep each argument in one of the two places, so that every surface starts the
+`dotnet run` drops a profile's `commandLineArgs` whenever the project sets arguments; `dotnet runic dev`, Visual
+Studio and Runic DevKit pass both. `dev` warns with `RAPPDEV1020`, and `dotnet runic doctor`'s `launch-arguments`
+check lists what each surface passes. Keep each argument in one of the two places, so that every surface starts the
 Window the same way.
 
 ### Arguments on the command line
 
-- **After `--`.** `dotnet runic dev -- /verbose` appends `/verbose` to the project's arguments, as
-  `dotnet run -- /verbose` does. `dev` also takes a slash argument without `--` (`dotnet runic dev /verbose`), but an
+- **After `--`.** `dotnet runic dev -- /verbose` appends `/verbose` to the project's arguments and the profile's, as
+  `dotnet run -- /verbose` appends it to the project's. `dev` also takes a slash argument without `--` (`dotnet runic dev /verbose`), but an
   argument that starts with `-` needs it.
 - **Slash arguments with quoted values** stay one argument: `/config:"C:\Program Files\Acme\dev.json"` reaches the
   application as `/config:C:\Program Files\Acme\dev.json`. `dotnet run` splits `RunArguments` with .NET's

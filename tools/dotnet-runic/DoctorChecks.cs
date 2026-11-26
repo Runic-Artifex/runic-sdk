@@ -164,6 +164,7 @@ internal static class DoctorChecks
         CheckViewsPackageVersions(checks, project);
         CheckApplicationId(checks, project);
         CheckFrontendDevelopment(checks, project);
+        CheckLaunchArguments(checks, project.StartArguments, LaunchSettings.Read(project.ProjectDirectory), project.Configuration);
         CheckBrowser(checks, project, runtime);
         bool probeDesktop = project.Hosts.Contains(RunicViewsHost.Desktop) && ProbesHost(project, RunicViewsHost.Desktop, runtime, target);
         await CheckGtk4ProfileAsync(checks, project, runtime, checkNativeLibraries: target is null || probeDesktop, cancellationToken).ConfigureAwait(false);
@@ -1115,6 +1116,56 @@ internal static class DoctorChecks
         actualVersion.Major == baselineVersion.Major && actualVersion >= baselineVersion;
 
     private static string Compact(string text) => text.Length <= 300 ? text : text[..300] + "…";
+    internal const string LaunchArgumentsCheck = "launch-arguments";
+
+    /// <summary>
+    /// <c>launch-arguments</c> (design/ide-run-debug §3.3, D084.2): the Window's arguments for the evaluated configuration
+    /// on each surface. Warns when the project's <c>StartArguments</c> and a <c>Project</c> profile's
+    /// <c>commandLineArgs</c> are both set (dotnet run drops the profile's, the others pass both; RAPPDEV1020 in dev),
+    /// when <c>launchSettings.json</c> cannot be read, and when a profile's <c>rax</c> object has a wrong key or value.
+    /// </summary>
+    internal static void CheckLaunchArguments(List<DoctorCheck> checks, string startArguments, LaunchSettings? settings, string configuration)
+    {
+        const string Remediation = "Keep each argument in one place: Debug-only arguments in a configuration-conditioned StartArguments, " +
+            "per-run arguments in the launch profile. See docs/debugging.md, Arguments for Debug builds.";
+        string project = startArguments.Trim();
+        if (settings?.Error is { } error)
+        {
+            checks.Add(Warn(LaunchArgumentsCheck,
+                $"{LaunchSettings.RelativePath} could not be read ({error}), so dotnet run, dotnet runic dev and the IDEs start the Window without its profiles.",
+                $"Fix the file's JSON. {Remediation}"));
+            return;
+        }
+        LaunchProfile[] both = project.Length == 0 || settings is null
+            ? []
+            : [.. settings.Profiles.Where(static profile => profile.IsProject && profile.CommandLineArgs.Trim().Length != 0)];
+        string[] rax = settings is null
+            ? []
+            : [.. settings.Profiles.SelectMany(static profile => profile.RaxProblems.Select(problem => $"{profile.Name}: {problem}"))];
+        var problems = new List<string>();
+        foreach (LaunchProfile profile in both)
+        {
+            problems.Add($"{DevLaunch.BothArgumentsMessage(project, profile)} With profile '{profile.Name}' in {configuration}: " +
+                $"dotnet run passes {project}; dotnet runic dev, Visual Studio and Runic DevKit pass {project} {profile.CommandLineArgs.Trim()}.");
+        }
+        if (rax.Length != 0) problems.Add($"The rax object of {LaunchSettings.RelativePath} is wrong: {string.Join("; ", rax)}.");
+        if (problems.Count != 0)
+        {
+            checks.Add(Warn(LaunchArgumentsCheck, string.Join(" ", problems), both.Length != 0 ? Remediation
+                : "rax takes \"dev\": \"no-window\" or \"off\", \"page\": true or false, and \"devArguments\": an array of strings."));
+            return;
+        }
+        LaunchProfile? first = settings?.FirstProject;
+        string profileText = first is null
+            ? "no launch profile"
+            : first.CommandLineArgs.Trim() is { Length: > 0 } arguments
+                ? $"launch profile '{first.Name}' with {arguments}"
+                : $"launch profile '{first.Name}' without arguments";
+        checks.Add(Pass(LaunchArgumentsCheck, project.Length == 0
+            ? $"The project sets no StartArguments in {configuration}; the Window starts with {profileText} on every surface."
+            : $"Every surface starts the Window with the project's {project} in {configuration}, and {profileText}."));
+    }
+
     private static DoctorCheck Pass(string name, string message) => new(DoctorStatus.Pass, name, message);
     private static DoctorCheck Warn(string name, string message, string remediation) => new(DoctorStatus.Warning, name, message, remediation);
     private static DoctorCheck Fail(string name, string message, string? remediation = null) => new(DoctorStatus.Failure, name, message, remediation);

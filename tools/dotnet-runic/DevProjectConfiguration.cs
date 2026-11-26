@@ -59,6 +59,8 @@ internal sealed record DevProjectConfiguration(
         "BaseIntermediateOutputPath",
         "AssemblyName",
         "RunCommand",
+        // The project's arguments for the Window, which dev compares with the launch profile's (D084.2).
+        "StartArguments",
         // devtools-library-dx §3.4: 1 when the Views targets read RunicApplicationFrontendDevSessionProject.
         "_RunicViewsDevSessionProtocol",
         // The frontend's JavaScript workspace and package manager (devtools-library-dx M1), for the development server.
@@ -68,6 +70,9 @@ internal sealed record DevProjectConfiguration(
     ];
 
     internal bool IsViewsWindowProject { get; init; }
+
+    /// <summary>The evaluated <c>StartArguments</c>, the project's arguments for the Window; empty when it sets none.</summary>
+    internal string StartArguments { get; init; } = string.Empty;
 
     /// <summary>
     /// The dev session protocol of the project's Views targets (<c>_RunicViewsDevSessionProtocol</c>): 1 when they read
@@ -283,6 +288,7 @@ internal sealed record DevProjectConfiguration(
             TargetDirectory: targetDirectory)
         {
             IsViewsWindowProject = viewsWindow,
+            StartArguments = Value("StartArguments"),
             SessionDirectory = Path.Combine(
                 // MSBuild's default is "obj\", with a backslash on every OS.
                 Normalize(string.IsNullOrWhiteSpace(Value("BaseIntermediateOutputPath")) ? "obj"

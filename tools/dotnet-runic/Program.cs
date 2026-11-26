@@ -103,13 +103,14 @@ internal static partial class Program
         [Option("--debug-endpoint", Description = "CS-WebUI: open the DevTools Protocol endpoint of the Window's Chrome or Edge on a free loopback port, for an IDE's JavaScript debugger. For an IDE to pass when it starts dev; off by default. --no-window lists port 9225 for the IDE's Window instead. --no-debug-endpoint wins.")] bool debugEndpoint,
         [Option("--no-debug-endpoint", ConflictsWith = ["webkit-inspector"], Description = "Open no endpoint for debugging the Window's pages: on Linux neither Runic's CDP adapter for JavaScript debuggers (port 9222) nor WebKit's remote inspector, and for CS-WebUI no DevTools Protocol port of the Window's browser.")] bool noDebugEndpoint,
         [Option("--webkit-inspector", ConflictsWith = ["no-debug-endpoint", "browser"], Description = "Linux: open WebKit's own Web Inspector over HTTP, for a browser, instead of the CDP adapter that JavaScript debuggers attach to. Needs WebKitGTK 2.54.3 or later; older versions get the inspector:// server.")] bool webkitInspector,
+        [Option("--no-launch-profile", ConflictsWith = ["launch-profile"], Description = "Run the Window without a launch profile. By default dev uses the first Project profile of Properties/launchSettings.json, as dotnet run does.")] bool noLaunchProfile,
         [Option("--no-devtools-extension", Description = "Windows: do not load the Runic DevTools extension into the Window's WebView2. By default dev adds it to RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS in Development.")] bool noDevToolsExtension,
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug",
-        [Option("--launch-profile", ValueName = "NAME", Description = "Run the Window with this profile from Properties/launchSettings.json. By default dev uses no launch profile.")] string launchProfile = "",
+        [Option("--launch-profile", ValueName = "NAME", ConflictsWith = ["no-launch-profile"], Description = "Run the Window with this profile from Properties/launchSettings.json. By default dev uses the first Project profile, as dotnet run does.")] string launchProfile = "",
         [Option("--verbosity", "-v", ValueName = "LEVEL", Choices = ["q", "quiet", "m", "minimal", "n", "normal", "d", "detailed", "diag", "diagnostic"], Description = VerbosityDescription)] string verbosity = "")
     {
         DevCommandResult? result = null;
@@ -127,6 +128,7 @@ internal static partial class Program
                 {
                     Verbosity = string.IsNullOrEmpty(verbosity) ? null : verbosity,
                     LaunchProfile = string.IsNullOrWhiteSpace(launchProfile) ? null : launchProfile,
+                    UseLaunchProfile = !noLaunchProfile,
                     Build = !noBuild,
                     StartWindow = !noWindow,
                     Environment = ToolOptionValues.ParseEnvironment(environment),

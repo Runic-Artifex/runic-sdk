@@ -87,6 +87,12 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>The evaluated ApplicationId, the application's reverse-DNS identity; empty when the project sets none.</summary>
     internal string ApplicationId { get; init; } = string.Empty;
 
+    /// <summary>The evaluated <c>StartArguments</c> of the configuration doctor checks, for <c>launch-arguments</c>.</summary>
+    internal string StartArguments { get; init; } = string.Empty;
+
+    /// <summary>The build configuration doctor evaluated, such as Debug.</summary>
+    internal string Configuration { get; init; } = "Debug";
+
     /// <summary>The package and project references the project declares directly, by package identity.</summary>
     internal IReadOnlyList<string> DirectReferences { get; init; } = [];
 
@@ -195,6 +201,8 @@ internal sealed record DoctorProjectConfiguration(
             UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
             DirectReferences = references,
             ApplicationId = Value("ApplicationId"),
+            StartArguments = development.StartArguments,
+            Configuration = configuration,
             JavaScriptWorkspaceRoot = development.JavaScriptWorkspaceRoot,
             WorkspaceRootSetting = development.WorkspaceRootSetting,
             PackageManagerName = development.PackageManagerName,

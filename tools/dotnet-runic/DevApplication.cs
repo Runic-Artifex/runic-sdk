@@ -137,6 +137,8 @@ internal static class DevApplication
             .EvaluateAsync(dotnetHost, project, options.Configuration, cancellationToken)
             .ConfigureAwait(false);
         evaluation.Complete();
+        // The launch profile, as dotnet run chooses it, and the profile's arguments that dotnet run would drop (D084.2, D084.3).
+        options = DevLaunch.Resolve(configuration, options, Console.Error.WriteLine);
         WriteConfiguration(configuration, options);
         evaluated?.Invoke(configuration);
         RequireWindowFrontend(configuration, options);
@@ -739,6 +741,25 @@ internal static class DevApplication
     }
 
     /// <summary>
+    /// The Window's arguments and where each part comes from, for example
+    /// <c>[dev] Window arguments: /mock (StartArguments) /verbose (profile Acme.App)</c>; null when there are none or
+    /// dotnet run takes them from the profile alone.
+    /// </summary>
+    internal static string? WindowArguments(DevProjectConfiguration configuration, DevOptions options)
+    {
+        var parts = new List<string>();
+        if (configuration.StartArguments.Trim() is { Length: > 0 } project) parts.Add($"{project} (StartArguments)");
+        if (options.ProfileArguments.Count != 0) parts.Add($"{JoinArguments(options.ProfileArguments)} (profile {options.LaunchProfile})");
+        if (options.ApplicationArguments.Count != 0) parts.Add($"{JoinArguments(options.ApplicationArguments)} (after --)");
+        return parts.Count == 0 ? null : "[dev] Window arguments: " + string.Join(' ', parts);
+    }
+
+    private static string JoinArguments(IEnumerable<string> arguments) =>
+        string.Join(' ', arguments.Select(static argument => argument.Length == 0 || argument.Any(static c => c is ' ' or '\t' or '"')
+            ? "\"" + argument.Replace("\"", "\\\"", StringComparison.Ordinal) + "\""
+            : argument));
+
+    /// <summary>
     /// RAPPDEV1019: the project's Views targets are older than the tool (no <c>_RunicViewsDevSessionProtocol</c>), so dev
     /// falls back to turning the frontend build off for every project of the build, client libraries included.
     /// </summary>
@@ -1122,7 +1143,13 @@ internal static class DevApplication
         }
         if (options.LaunchProfile is not null)
         {
-            Console.WriteLine($"[dev] Launch profile: {options.LaunchProfile}");
+            Console.WriteLine(options.LaunchProfileIsDefault
+                ? $"[dev] Launch profile: {options.LaunchProfile} (the first Project profile; --no-launch-profile runs without one)"
+                : $"[dev] Launch profile: {options.LaunchProfile}");
+        }
+        if (options.StartWindow && WindowArguments(configuration, options) is { } windowArguments)
+        {
+            Console.WriteLine(windowArguments);
         }
         if (options.Environment.Count != 0)
         {

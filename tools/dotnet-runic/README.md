@@ -163,7 +163,8 @@ Since 0.11, `dev` takes these options of `dotnet run` and `dotnet build`:
 
 | Option | Effect |
 | --- | --- |
-| `--launch-profile <name>` | Runs the Window with that profile from `Properties/launchSettings.json`, so its `environmentVariables` and `commandLineArgs` apply, under `dotnet watch` too. Without it the Window runs with `--no-launch-profile`, as before. A profile's variables replace `dev`'s defaults and `-e` values of the same name. |
+| `--launch-profile <name>` | Runs the Window with that profile from `Properties/launchSettings.json`, so its `environmentVariables` and `commandLineArgs` apply, under `dotnet watch` too. Since 0.24 `dev` uses the first `Project` profile without it, as `dotnet run` does, and prints `[dev] Launch profile: <name> (the first Project profile; …)`. A profile's variables replace `dev`'s defaults; a `-e` value of a name the profile sets is passed to `dotnet run -e`, so it wins. |
+| `--no-launch-profile` | Runs the Window without a launch profile, as `dev` did before 0.24. Cannot be combined with `--launch-profile` or `--no-window`. Since 0.24. |
 | `--no-build` | Skips `dev`'s own .NET restore and build, as `dotnet run --no-build` does, and starts from the existing build output; build the project with the same `--configuration` first. The frontend packages are still installed unless you pass `--no-restore`. `dotnet watch` still builds after C# edits. |
 | `-e`, `--environment NAME=VALUE` | Sets an environment variable for the Window process, as `dotnet run -e` does; repeat it for several. It wins over the defaults in the table below, so `-e DOTNET_ENVIRONMENT=Staging` runs the Window in `Staging`. The variables `dev` uses to describe the development server (`RUNIC_APPLICATION_*` below) are refused with `RAPPDEV1012`, and a value without `=` with `RAPPDEV1011`. `--dry-run` prints the names, never the values. |
 | `-v`, `--verbosity <level>` | Passes the MSBuild verbosity (`q[uiet]`, `m[inimal]`, `n[ormal]`, `d[etailed]` or `diag[nostic]`) to the restore, the build and `dotnet watch`. |
@@ -414,11 +415,12 @@ complete list.
 Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `windows-targeting`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `frontend-workspace`, `package-manager-agreement`,
 `frontend-dependencies`, `client-modules`, `views-dedupe`, `web-bundle`, `compatibility-set`, `views-package-versions`,
+`launch-arguments`,
 `application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
 `browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
 `platform-services`; `views-package-versions` and `application-id` were added
 in 0.11, `dotnet-runtime` in 0.18, and `windows-targeting`, `frontend-workspace`,
-`package-manager-agreement`, `frontend-dependencies`, `client-modules`, `views-dedupe` and `web-bundle` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
+`package-manager-agreement`, `frontend-dependencies`, `client-modules`, `views-dedupe`, `web-bundle` and `launch-arguments` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
@@ -602,6 +604,21 @@ or for a tool that reports no version. The remediation is the
 `dotnet tool update` command. Passes when no extension is installed.
 Added in 0.24.
 
+#### `launch-arguments`
+
+Compares the Window's arguments of the evaluated configuration (`--configuration`,
+Debug by default) on each surface: the project's `StartArguments` and the
+`commandLineArgs` of the `Project` profiles in `Properties/launchSettings.json`.
+Warns when both are set, naming each such profile with what `dotnet run` passes
+(the project's only) and what `dotnet runic dev`, Visual Studio and Runic DevKit
+pass (both, the project's first), as `dev`'s `RAPPDEV1020` does. Also warns
+when `launchSettings.json` cannot be read, and when a profile's `rax` object
+has a key or value that Runic DevKit does not read: `dev` is `"no-window"` or
+`"off"`, `page` is `true` or `false`, and `devArguments` is an array of
+strings. Otherwise passes, with the arguments and the first profile. See
+[Arguments for Debug builds](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#arguments-for-debug-builds).
+Added in 0.24.
+
 #### `views-package-versions`
 
 Warns when the installed `@runic-artifex/views` and the restored
@@ -777,7 +794,12 @@ the options that describe how `dev` starts the Window (`RAPPDEV1014`).
    `DOTNET_ENVIRONMENT=Development`.
 
 The Window gets the project's arguments and those of its launch profile, which
-each IDE combines in its own way. Set an argument for Debug builds only, such as
+each IDE combines in its own way. `dev` passes both too, the project's first:
+when the project sets `StartArguments` and the profile `commandLineArgs`,
+`dotnet run` alone would drop the profile's, so `dev` passes them after `--`
+itself, before the arguments of `dev -- <args>`, and warns with `RAPPDEV1020`.
+`[dev] Window arguments:` lists each part, also with `--dry-run`, and doctor's
+[`launch-arguments`](#launch-arguments) check compares the surfaces. Set an argument for Debug builds only, such as
 `/mock`, in a Debug-conditioned `StartArguments`, which every IDE and `dev`
 read; [Arguments for Debug builds](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#arguments-for-debug-builds)
 shows how and lists which surface reads which.

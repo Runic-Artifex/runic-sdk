@@ -1681,12 +1681,15 @@ same problem in its `dotnet-runtime` check.
 
 `dev --no-window` was combined with an option that only describes how `dev`
 starts the Window or that stops the frontend from being served:
-`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`, `-e` or
+`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`,
+`--no-launch-profile` (since 0.24), `-e` or
 application arguments after `--`. With `--no-window` the IDE starts the Window.
 Exit code 2. Since 0.20.
 
-**Fix:** drop the option and set the Window's launch profile, environment and
-arguments in the IDE's launch configuration. See
+**Fix:** drop the option. The IDE starts the Window: put Debug-only arguments
+in the project's `StartArguments`, and the launch profile, its arguments and
+environment in `Properties/launchSettings.json`, which the IDEs and `dev` read
+([Arguments for Debug builds](debugging.md#arguments-for-debug-builds)). See
 [Debug the Window in your IDE](../tools/dotnet-runic/README.md#debug-the-window-in-your-ide).
 
 ### RAPPDEV1015
@@ -1755,6 +1758,20 @@ to resolve it.
 
 **Fix:** update the project's Runic packages to the tool's version. See
 [Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
+
+### RAPPDEV1020
+
+A warning from `dev` (since 0.24): the project sets `StartArguments` and the
+launch profile that `dev` uses sets `commandLineArgs`. `dotnet run` alone would
+drop the profile's arguments; `dev`, Visual Studio and Runic DevKit pass both,
+the project's first, so `dev` passes the profile's after `--` itself and goes
+on. The line names both values:
+`<project> : warning RAPPDEV1020: The project sets StartArguments (/mock) and launch profile 'Acme.App' sets commandLineArgs (/verbose). …`.
+`dotnet runic doctor`'s `launch-arguments` check reports the same.
+
+**Fix:** keep each argument in one place: an argument for Debug builds only in a
+configuration-conditioned `StartArguments`, a per-run argument in the profile.
+See [Arguments for Debug builds](debugging.md#arguments-for-debug-builds).
 
 ### RAPPPKG1001
 
