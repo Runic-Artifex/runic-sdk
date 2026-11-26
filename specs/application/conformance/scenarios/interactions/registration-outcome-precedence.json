@@ -1,0 +1,38 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "interactions.registration-outcome-precedence.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "interactions",
+  "roles": ["producer"],
+  "description": "When several registration outcomes apply, the first of ignored, unsupported and stale is the answer: an unknown presentation is ignored whatever its handlers, and an unsupported handler is unsupported also at a stale generation.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-notes": {"kind":"request"},
+    "register-2": {"kind":"request"},
+    "ignored": {"kind":"request"},
+    "unsupported": {"kind":"request"},
+    "stale": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "confirmContract": {"kind":"provided"},
+    "other": {"kind":"wire","value":"p-2"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"},"handlers":[{"name":"confirm","contract":{"$id":"confirmContract"}}]},"id":"open-notes"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok","registration":"ok"},"replyTo":"open-notes"},
+    {"send":{"kind":"interactions","route":"notes","presentation":{"$id":"presentation"},"generation":2,"handlers":[{"name":"confirm","contract":{"$id":"confirmContract"}}]},"id":"register-2"},
+    {"receive":{"ok":true,"registration":"ok"},"replyTo":"register-2"},
+    {"send":{"kind":"interactions","route":"notes","presentation":{"$id":"other"},"generation":1,"handlers":[{"name":"other","contract":"x"}]},"id":"ignored"},
+    {"receive":{"ok":true,"registration":"ignored"},"replyTo":"ignored"},
+    {"send":{"kind":"interactions","route":"notes","presentation":{"$id":"presentation"},"generation":1,"handlers":[{"name":"other","contract":"x"}]},"id":"unsupported"},
+    {"receive":{"ok":true,"registration":"unsupported"},"replyTo":"unsupported"},
+    {"send":{"kind":"interactions","route":"notes","presentation":{"$id":"presentation"},"generation":1,"handlers":[]},"id":"stale"},
+    {"receive":{"ok":true,"registration":"stale"},"replyTo":"stale"}
+  ]
+}

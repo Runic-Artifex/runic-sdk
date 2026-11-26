@@ -479,7 +479,10 @@ change of the field. States carry them beside the state as `fields: {<member>: {
 The reply to a request that changes state is sent after every push that the producer had to publish, before the reply
 was ready, on any route of the window. A command often changes another route as well, such as its shell, so a client
 cannot know which routes to wait for. The wait is bounded to 5 seconds; after that the producer sends the reply, and the
-pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
+pushes follow. The 5 seconds are real time: a producer measures them on the system clock, not on a clock it gives its
+window for timers and deadlines, so a conformance runner's virtual clock (`advance`) does not end the wait; a held
+delivery that resumes does. A reply that waits includes one waiting for pushes that the transport has not taken because
+delivery is held. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
 `interactions`, `interaction-reply`, `presented`, `closing-reply`, `query-rows`, `query-index` and `client-error` do not wait.
 
 A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
@@ -875,8 +878,11 @@ path.
 - A command that fails with its **declared failure** replies `domain-failed` with `failure` (the encoded value) and
   `revision`, and never `detail`. A declared failure that cannot be encoded, or whose encoding is larger than 4 KiB of
   UTF-8, is `failed` instead. Any other failure is `failed`, with `revision` when the command had already run.
-- An asynchronous command keeps the request open until it completes. A window runs at most 64 such calls at once;
-  another one is `rejected` with `capacity` and runs nothing.
+- An asynchronous command keeps the request open until it completes, also when the page invokes it with `command`
+  rather than as an [operation](#operations); its reply carries the revision of the frame of its end, which carries its
+  effects and its execution member. A window runs at most 64 such calls at once; another one is `rejected` with `capacity` and
+  runs nothing. The capacity is checked last, after availability ([order of checks](#presentation-epochs)), so a
+  command that is not available answers `unavailable` also when the window is at capacity.
 - **Key commands.** A command may take a key that the producer resolves to an object before it runs. A key that
   resolves to nothing is `rejected` with `unresolved-key` and runs nothing; `can` answers `false` for it; `start`
   rejects it with the reason `unresolved-key`. The operation identity uses the key as the input.
@@ -1688,6 +1694,16 @@ find again, for example after a reload.
   with `unavailable`.
 - A start reply with an `admission` always carries `revision`, the route's last published revision when nothing
   changed.
+- **Order of checks.** A producer checks a `start` in this order and answers the first that fails: the envelope and
+  the contract (`invalid-request`, below; also an `input` that the command does not take, or a missing one); an
+  input that is not valid JSON of the [profile](values.md#json-profile) (`rejected` admission, `invalid-input`); the
+  window's close (`owner-closing`, or `owner-disposed` once it is gone); the operation id (`duplicate`,
+  `identity-conflict`, `expired`); the window's operation capacity (`capacity`: it retains 64 operations); then the
+  input's decoding (`invalid-input`), the key (`unresolved-key`) and availability (`unavailable`). Unlike `command`'s,
+  a `start`'s capacity comes before availability.
+- A `start`, `status`, `watch`, `unwatch`, `cancel` or `stream` whose `member` is not an asynchronous command of the
+  route, such as a synchronous command, is `rejected` with `invalid-request`, without `admission` or `revision`, and
+  starts nothing.
 - A `start` whose `contract` is not the contract of the route's View comes from a generated client of another build. It
   is answered `{"ok":false,"error":{"kind":"rejected","reason":"invalid-request",…}}`, without `admission` or
   `revision`, and starts nothing; the other requests find no operation under that contract (`unknown`).
@@ -1733,7 +1749,11 @@ A status is an object with `kind`:
   have passed since the previous `operation` push of the watch, and otherwise pushes the latest progress 100 ms after
   the previous push. A terminal status is pushed at once and replaces a pending progress push.
 - A connection holds at most 64 watches; another is `rejected` with `capacity`. Watching an operation that the
-  connection already watches does not add a watch.
+  connection already watches does not add a watch. Only a running operation is watched: `watch` of an operation that
+  is terminal, expired or unknown answers its status and adds no watch, so the limit counts running operations.
+- `unwatch` answers the current status and ends the connection's watch, if it has one; the producer pushes nothing more
+  for it. `cancel` of an operation that is not running answers `not-running` (`expired` or `unknown` for those
+  statuses) and changes nothing.
 - A `stream` page is `{kind, cursor, completed, items:[{sequence, value}], delivery?}`: `kind` is the operation's
   status kind, `items` the values from `cursor` on, and `cursor` the cursor of the next page. A stream operation that
   fails as declared keeps the values it published; its pages have `kind: "domain-failed"` and `completed: true`.
@@ -1779,17 +1799,25 @@ confirmation.
   - `stale`: `generation` is lower than the registered one, or equal with other handlers;
   - `ignored`: the presentation is not open on this connection.
 
-  A higher `generation` replaces the registration. `open` registers its `handlers` as generation 0.
+  A higher `generation` replaces the registration. `open` registers its `handlers` as generation 0. When several
+  outcomes apply, the first of `ignored`, `unsupported` and `stale` is the answer. A registration that no longer lists a
+  handler keeps the requests already pushed for it: they end as any request does, and the page may still answer them.
+  A request not pushed yet whose handler the presentation no longer registers ends as cancelled.
 - **Requests.** The producer pushes `interaction` to the presentation's connection. `expiresAt` is an
   `offset-date-time` after which the request times out ([interaction deadlines](#interaction-deadlines)), and
-  `ownerEpoch` a number the producer assigns that the reply repeats. `input` is encoded as the interaction's input type.
+  `ownerEpoch` a number the producer assigns that the reply repeats. It is not the presentation epoch of
+  `presentation-epoch/1`, with or without the feature: the .NET producer numbers the requests it pushes to each
+  presentation 1, 2, 3 and so on. `input` is encoded as the interaction's input type.
 - **Cancellation.** When a request ends before the page answered, the producer pushes `interaction-cancelled` with a
   human-readable `message`. The page stops the handler.
 - **Replies.** `outcome` is `answered` (with `output`, encoded as the interaction's output type), `cancelled` or
   `failed`. The reply is `{ok:true, result}`: `ok`, `already-completed` for a repeat of the reply already received
   ([canonically equal](values.md#canonical-equality) `outcome` and `output`), `stale` for a request that is no longer
   pending or an identity that does not match, or `invalid-output` when `output` does not decode, in which case the
-  waiting interaction fails with an output error.
+  waiting interaction fails with an output error. The reply settles the request either way, so a repeat of it is
+  `already-completed`. A reply on a route the producer does not serve is `released`, as every request on such a route
+  is. A request that ends because its presentation closed fails the interaction as cancelled; one that times out
+  fails it with a timeout.
 
 **Scope.** Only work of the same window can reach the page, and an interaction never crosses to another window, client
 or connection. An interaction object (a ViewModel's member) can be presented on several routes of the window; the
@@ -1813,7 +1841,9 @@ two connections of a window one connection identity, also when its transport reu
 closed (CS-WebUI reuses WebUI's connection slots), so a command that runs on after its connection closed never reaches
 the connection that came next. A command invocation lasts until its command ends: until an asynchronous command's or
 operation's task completes, or until a synchronous command or an in-page menu item returns (an in-page menu item
-whose command reports a task, such as CommunityToolkit's `IAsyncRelayCommand`, lasts until that task completes). Work that the command
+whose command reports a task, such as CommunityToolkit's `IAsyncRelayCommand`, lasts until that task completes). A `set`
+or `write` is not a command invocation: its setter runs outside both scopes unless the application enters the window
+scope, so it asks no interaction, and a view request it raises is raised outside both scopes. Work that the command
 started and that runs on after it, such as a timer, is outside both scopes. A navigation that work in a scope starts
 runs its hooks, such as the departing page's leave guard, in that scope until the navigation ends. The window scope,
 which names no connection, does not end: work that it starts stays in it. A request ends
