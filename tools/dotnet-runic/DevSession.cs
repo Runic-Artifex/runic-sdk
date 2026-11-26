@@ -27,7 +27,8 @@ internal sealed partial class DevSession
     /// root this session serves. While its write time is less than <see cref="FrontendMarkerLifetime"/> old, a build of
     /// that output skips the production frontend build, and with <see cref="PagesDirectoryName"/> keeps the development
     /// pages in the web root. dev renews it every <see cref="FrontendHeartbeat"/> and deletes it when it ends, so a dev
-    /// that was killed stops affecting builds within the lifetime.
+    /// that was killed stops affecting builds within the lifetime, and the next dev removes it before its first build
+    /// (<see cref="RemoveStaleFrontendMarker(string)"/>, sdk#1405).
     /// </summary>
     internal const string FrontendMarkerName = "dev-frontend";
     internal const string PagesDirectoryName = "dev-pages";

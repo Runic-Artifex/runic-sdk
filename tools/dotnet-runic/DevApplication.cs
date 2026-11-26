@@ -225,6 +225,9 @@ internal static class DevApplication
                 debuggingHints.Add(WebKitDebugging.CdpUnavailableHint);
             }
         }
+        // sdk#1405: a killed dev's frontend marker would make this dev's first build skip the frontend build and install.
+        // Before this session's file replaces the one that names that dev's process.
+        if (DevSession.RemoveStaleFrontendMarker(configuration.SessionDirectory) is { } removed) Console.WriteLine(removed);
         // The session file says where the running session is, for IDEs; it is marked stopped when dev ends.
         var session = DevSession.Create(configuration, options, webKitEndpoints);
         foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints.Where(static endpoint => endpoint.UnavailableReason == DevSession.ElevatedReason))

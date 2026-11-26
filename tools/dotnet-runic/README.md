@@ -1324,7 +1324,10 @@ stays), deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
 exits with 130. The next build copies the frontend's pages back. A process
 killed by force does none of this: its development pages stay until the next
 build, a build within 30 seconds still keeps them, and the session file keeps
-its state.
+its state. The next `dev` checks the session file when it starts (see
+[Session file](#session-file)) and, before its first build, removes the
+`dev-frontend` and `dev-pages/` of a `dev` that no longer runs, so its own build
+installs and builds the frontend (since 0.24).
 On Windows, the frontend's development server or watcher runs in a Job object
 with everything it starts (the package manager, Node.js below it and the
 `runic-translations serve` that the Vite plugin starts), so the stop ends all of
