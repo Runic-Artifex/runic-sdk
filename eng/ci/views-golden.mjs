@@ -1,13 +1,13 @@
 // The golden check of the Views TypeScript clients (R7 G6, D080; R3 §5, slice 5). Since G6 the build writes the clients
 // with the TypeScript emitter (@runic-artifex/views/codegen) from each project's contract IR
 // (obj/<configuration>/<framework>/runic-bridge/contract.ir.json); the .NET generator writes none, so G5's dual run has no
-// second side. This check runs the workspace's emitter (packages/web/views/dist/codegen) on each built project's IR and
+// second side. This check runs the workspace's emitter (workspaceEmitter) on each built project's IR and
 // compares every file it writes with the committed outputs, byte for byte:
 //
 //   bun eng/ci/views-golden.mjs                      the built examples and the generator goldens
 //   bun eng/ci/views-golden.mjs --set examples       one set: examples or goldens (repeatable)
 //   bun eng/ci/views-golden.mjs --project <path>     a built project (its .csproj or directory), such as a template's
-//   --emitter <module|frontend>                   the emitter: by default packages/web/views/dist/codegen/index.js;
+//   --emitter <module|frontend>                   the emitter: by default the workspace's (workspaceEmitter);
 //                                                 `frontend` takes the one the project's frontend installed
 //   --configuration <name>                        the build's configuration (default $CONFIGURATION or Debug; for
 //                                                 --project, the project's latest build)
@@ -177,8 +177,27 @@ function builtOutputs(item, directory) {
   return files;
 }
 
-/** The emitter module: an explicit path, the workspace's build, or the one the project's frontend installed. */
-async function loadEmitter(option, generated) {
+/**
+ * The workspace's emitter, from packages/web/views/src/codegen: the npm package's build (packages/web/views/dist/codegen)
+ * when there is one; else the copy the generator's build bundles (tools/Runic.Application.Views.Codegen/bin/<configuration>/
+ * net10.0/codegen/index.js), which the source-tree targets run too, so that a job that only builds .NET, such as a
+ * template lane, compares with it; else, under Bun, the source itself.
+ */
+export function workspaceEmitter(configuration = defaultConfiguration) {
+  const dist = join(root, "packages/web/views/dist/codegen/index.js");
+  if (existsSync(dist)) return dist;
+  const bin = join(root, "tools/Runic.Application.Views.Codegen/bin");
+  const configurations = [configuration, ...(existsSync(bin) ? readdirSync(bin).filter(name => name !== configuration).sort() : [])];
+  for (const name of configurations) {
+    const bundle = join(bin, name, "net10.0", "codegen", "index.js");
+    if (existsSync(bundle)) return bundle;
+  }
+  if (process.versions.bun) return join(root, "packages/web/views/src/codegen/index.ts");
+  throw new Error("no workspace emitter: build @runic-artifex/views or tools/Runic.Application.Views.Codegen, or run this check with Bun");
+}
+
+/** The emitter module: an explicit path, the workspace's, or the one the project's frontend installed. */
+async function loadEmitter(option, generated, configuration) {
   let path = option;
   if (option === "frontend") {
     path = null;
@@ -192,7 +211,7 @@ async function loadEmitter(option, generated) {
     }
     if (path === null) throw new Error(`no @runic-artifex/views installed above ${rel(generated)}`);
   }
-  path = resolve(path ?? join(root, "packages/web/views/dist/codegen/index.js"));
+  path = resolve(path ?? workspaceEmitter(configuration));
   if (!existsSync(path)) throw new Error(`the emitter ${rel(path)} does not exist; build @runic-artifex/views first`);
   return import(pathToFileURL(path).href);
 }
@@ -334,7 +353,7 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
       generated = directories[index].path;
       // The goldens set compares the goldens below, and the build's files as a project's.
       expected = item.set === "examples" ? committedOutputs(generated) : builtOutputs(item, generated);
-      const emitter = await loadEmitter(options.emitter, generated);
+      const emitter = await loadEmitter(options.emitter, generated, item.configuration);
       const ir = JSON.parse(readFileSync(item.ir, "utf8"));
       files = emitter.generate(ir, { outputDirectory: generated, irDirectory: dirname(item.ir) });
     } catch (error) {

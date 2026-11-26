@@ -7,13 +7,17 @@
 //     [--frontend <frontend directory>] [--frontend-unbuilt] [--bundled <emitter module>] [--emitter <emitter module>]
 //     [--used-emitter <file>] [--symbols <file>] [--help-link-base <url>]
 //
-// The emitter is the one of the frontend's @runic-artifex/views, so that the clients match the runtime they import:
-// it is resolved like a package import from the frontend directory. The bundled copy, which the Runic.Application.Views
-// package carries, is used when there is no frontend (no package.json in the frontend directory), such as for a
-// library or a test project, and when the build does not build the frontend (--frontend-unbuilt,
-// RunicApplicationFrontendBuildEnabled=false) and the frontend has no @runic-artifex/views installed, as when a test
-// project builds the application. --emitter names a module explicitly. --used-emitter records the module it used, which
-// the build takes as an input.
+// The emitter (D080.5, as the coordinator refined it for R7 G6):
+// 1. the frontend's @runic-artifex/views when it is installed (resolved like an import from the frontend directory:
+//    node_modules there or in a directory above), so that the clients match the runtime they import;
+// 2. otherwise the copy that the Runic.Application.Views package bundles, which is version-locked to the generator: when
+//    there is no frontend (no package.json in the frontend directory), such as for a library or a test project, when
+//    the frontend's package.json declares no @runic-artifex/views in any dependency field, such as a page built without
+//    the runtime package, and when the build does not build the frontend (--frontend-unbuilt,
+//    RunicApplicationFrontendBuildEnabled=false), as when a test project builds the application;
+// 3. RUNICBRIDGE084 when the frontend declares @runic-artifex/views but it is not installed after the install step, as
+//    when the install is disabled or failed.
+// --emitter names a module explicitly. --used-emitter records the module it used, which the build takes as an input.
 //
 // The outputs list has a line `<SHA-256> <path>` for each file written, so that the build can tell a generated file
 // that was changed or removed since.
@@ -22,7 +26,7 @@
 // frontend build alone. Errors and warnings are printed in MSBuild's canonical form at the C# member that the IR's
 // `sources` locate; the exit code is 1 after an error.
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -72,6 +76,10 @@ function codegenEntry(manifest) {
 function resolveEmitter(options) {
   if (options.emitter) return { path: resolve(options.emitter), from: "RunicApplicationFrontendCodegenEmitter" };
   const frontend = options.frontend ? resolve(options.frontend) : null;
+  const bundled = reason => {
+    if (!options.bundled) throw new Failure(EMITTER, `${reason}, and there is no bundled TypeScript emitter; the Runic.Application.Views package may be incomplete.`);
+    return { path: resolve(options.bundled), from: `the copy bundled with Runic.Application.Views, since ${reason}` };
+  };
   if (frontend !== null && existsSync(join(frontend, "package.json"))) {
     // Node's package resolution from the frontend: node_modules in the frontend directory or any directory above it.
     for (let directory = frontend; ; directory = dirname(directory)) {
@@ -85,12 +93,14 @@ function resolveEmitter(options) {
       }
       if (dirname(directory) === directory) break;
     }
-    if (options.frontendUnbuilt && options.bundled)
-      return { path: resolve(options.bundled), from: "the copy bundled with Runic.Application.Views, since this build does not build the frontend, which has no @runic-artifex/views installed" };
-    throw new Failure(EMITTER, `the frontend ${frontend} has no @runic-artifex/views installed, whose TypeScript emitter (@runic-artifex/views/codegen) generates the clients. Add @runic-artifex/views to its dependencies and install them, or let the build install them (RunicApplicationFrontendInstallEnabled).`);
+    const manifest = JSON.parse(readFileSync(join(frontend, "package.json"), "utf8"));
+    const declared = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]
+      .some(field => manifest?.[field] && Object.hasOwn(manifest[field], "@runic-artifex/views"));
+    if (!declared) return bundled("the frontend declares no @runic-artifex/views");
+    if (options.frontendUnbuilt) return bundled("this build does not build the frontend, which has no @runic-artifex/views installed");
+    throw new Failure(EMITTER, `the frontend ${frontend} declares @runic-artifex/views, but it is not installed, and its TypeScript emitter (@runic-artifex/views/codegen) generates the clients. Install the frontend's dependencies, or let the build install them (RunicApplicationFrontendInstallEnabled).`);
   }
-  if (!options.bundled) throw new Failure(EMITTER, "there is no frontend and no bundled TypeScript emitter; the Runic.Application.Views package may be incomplete.");
-  return { path: resolve(options.bundled), from: "the copy bundled with Runic.Application.Views" };
+  return bundled("there is no frontend");
 }
 
 async function loadEmitter(emitter) {
@@ -314,5 +324,8 @@ function located(error, ir, irDirectory) {
   return new Failure(error.code, named, file);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+// Run as the main script. Compared by real path: the package's copy is often reached through a symbolic link (a Nix
+// store package, a linked NuGet cache), and Node gives import.meta.url the resolved path.
+const realPath = path => { try { return realpathSync(path); } catch { return resolve(path); } };
+if (process.argv[1] && realPath(process.argv[1]) === realPath(fileURLToPath(import.meta.url)))
   run(process.argv.slice(2)).then(code => { process.exitCode = code; });

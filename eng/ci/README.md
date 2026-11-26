@@ -928,7 +928,9 @@ Since R7 G6 the build writes the generated clients with the Views TypeScript emi
 from each project's contract IR (`obj/<configuration>/<framework>/runic-bridge/contract.ir.json`); the .NET generator
 writes the C# Bridges and the IR, and no TypeScript, so G5's dual-run gate, which compared the two generators, has no
 second side. `eng/ci/views-golden.mjs` keeps its comparison and diff output, and compares the workspace emitter's output
-(`packages/web/views/dist/codegen`) with committed outputs instead:
+with committed outputs instead. The workspace emitter is `packages/web/views/dist/codegen` when the npm package is built,
+else the copy that the generator's build bundles (`tools/Runic.Application.Views.Codegen/bin/<configuration>/net10.0/codegen`),
+as in a template lane, else the source under Bun:
 
 - **examples:** each built example's generated directory as committed at `HEAD` (the modules with the generated header
   and the declaration maps); an example of the IR corpus without an IR fails the run as unbuilt;

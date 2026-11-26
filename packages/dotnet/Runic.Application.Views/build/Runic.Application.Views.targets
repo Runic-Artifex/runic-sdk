@@ -1020,11 +1020,13 @@
 
   <!-- R7 G6 (D080.5): the TypeScript clients. After the generator has written the contract IR
        (obj/<configuration>/<framework>/runic-bridge/contract.ir.json), Node.js or Bun runs the Views TypeScript emitter,
-       @runic-artifex/views/codegen, through runic-views-codegen.mjs. The emitter is the frontend's, resolved from
-       RunicApplicationFrontendDirectory like an import, so the clients match the runtime they import; so the frontend is
-       installed first (RunicViewsInstallFrontend). The copy bundled with this package is used when there is no frontend
-       (no package.json there), as for a library or a test project, and when the build does not build the frontend
-       (RunicApplicationFrontendBuildEnabled=false) and the frontend has no @runic-artifex/views installed.
+       @runic-artifex/views/codegen, through runic-views-codegen.mjs. The emitter is the frontend's when it has
+       @runic-artifex/views installed, resolved from RunicApplicationFrontendDirectory like an import, so the clients
+       match the runtime they import; so the frontend is installed first (RunicViewsInstallFrontend). Otherwise it is the
+       copy bundled with this package, version-locked to the generator: without a frontend (no package.json there), as
+       for a library or a test project, when the frontend's package.json declares no @runic-artifex/views, and when the
+       build does not build the frontend (RunicApplicationFrontendBuildEnabled=false). A frontend that declares it without
+       having it installed is RUNICBRIDGE084.
 
        The runtime is RunicApplicationFrontendCodegenRuntime when set (a command or path, such as node or bun), else the
        first of node and bun on PATH, bun first when the frontend's package manager is bun. Neither is RUNICBRIDGE084.
@@ -1151,6 +1153,10 @@
         Lines="@(_RunicViewsEmitterOutputLine)" ExitCode="$(_RunicViewsEmitterExitCode)"
         FailureCode="RUNICBRIDGE024" FailureFile="$(MSBuildProjectFullPath)"
         FailureText="The Runic Views TypeScript emitter exited with code $(_RunicViewsEmitterExitCode) without reporting an error while generating the clients of $(AssemblyName), an internal error. Its output is above; include it when you report the problem." />
+    <!-- The launcher records what it wrote; a run that exits without the record wrote no clients. -->
+    <Error Code="RUNICBRIDGE024" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge024"
+           Condition="'$(_RunicViewsEmitterExitCode)' == '0' and !Exists('$(_RunicViewsClientsOutputs)')"
+           Text="The Runic Views TypeScript emitter exited without writing the clients of $(AssemblyName) or its record $(_RunicViewsClientsOutputs), an internal error. Its output is above; include it when you report the problem." />
     <Touch Files="$(_RunicViewsClientsStamp)" AlwaysCreate="true" Condition="'$(_RunicViewsEmitterExitCode)' == '0'" />
   </Target>
 

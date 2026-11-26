@@ -5454,12 +5454,14 @@ and the TypeScript emitter writes the clients from the IR: `@runic-artifex/views
 which Node.js or Bun runs after the generator (`RunicViewsGenerateClients`), so building a
 project that generates clients needs `node` or `bun` on `PATH`
 (`RunicApplicationFrontendCodegenRuntime` names another). The emitter is the one of the
-frontend's `@runic-artifex/views`, resolved from `RunicApplicationFrontendDirectory` like an
-import, so the clients match the runtime they import, and the build installs the frontend
-before it runs. A project without a frontend (no `package.json`), such as a library or a test
-project, uses the copy bundled with this package, as does a build with
-`RunicApplicationFrontendBuildEnabled=false` while the frontend has no `@runic-artifex/views`
-installed. Without either runtime the build fails with
+frontend's `@runic-artifex/views` when it is installed, resolved from
+`RunicApplicationFrontendDirectory` like an import, so the clients match the runtime they
+import, and the build installs the frontend before it runs. Otherwise the build uses the copy
+bundled with this package, which matches the generator's version: without a frontend (no
+`package.json`), such as a library or a test project, when the frontend's `package.json` declares
+no `@runic-artifex/views`, and with `RunicApplicationFrontendBuildEnabled=false`. A frontend that
+declares `@runic-artifex/views` without having it installed after the install step, and a build
+without either runtime, fail with
 [`RUNICBRIDGE084`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge084).
 The emitter runs when the IR, the emitter, the frontend's `package.json` or lock file, or the
 generation settings changed, or when a client it wrote was removed or edited since

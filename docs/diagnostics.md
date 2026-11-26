@@ -1157,18 +1157,20 @@ emitter:
 
 - neither `node` nor `bun` is on `PATH`, or the command that
   `RunicApplicationFrontendCodegenRuntime` names does not run;
-- the frontend (a `package.json` in `RunicApplicationFrontendDirectory`) has no
-  `@runic-artifex/views` installed, in its `node_modules` or one above it, while
-  the build builds the frontend;
+- the frontend (a `package.json` in `RunicApplicationFrontendDirectory`) declares
+  `@runic-artifex/views` in one of its dependency fields, but it is not installed,
+  in its `node_modules` or one above it, after the install step (the install is
+  disabled or failed), while the build builds the frontend;
 - the frontend's `@runic-artifex/views` is older than 0.24 and has no emitter, or
   cannot read the IR of this `Runic.Application.Views`.
 
-The emitter comes from the frontend's `@runic-artifex/views`, so the clients
-match the runtime they import. A project without a frontend, such as a library
-or a test project, uses the copy bundled with `Runic.Application.Views`, as does
-a build that does not build the frontend (`RunicApplicationFrontendBuildEnabled=false`,
-as the `runic-app` template's test project sets) while its dependencies are not
-installed.
+The emitter comes from the frontend's `@runic-artifex/views` when it is
+installed, so the clients match the runtime they import. Otherwise the build uses
+the copy bundled with `Runic.Application.Views`, which matches the generator's
+version: for a project without a frontend, such as a library or a test project, a
+frontend whose `package.json` does not declare `@runic-artifex/views`, and a build
+that does not build the frontend (`RunicApplicationFrontendBuildEnabled=false`,
+as the `runic-app` template's test project sets).
 
 **Fix:** install Node.js or Bun, or set `RunicApplicationFrontendCodegenRuntime`
 to a `node` or `bun` executable; add `@runic-artifex/views` of the same version
