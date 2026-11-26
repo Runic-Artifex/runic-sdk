@@ -507,3 +507,8 @@ export interface ViewRequestFocusTarget {
   readonly field: string;
   readonly selectAll: boolean;
 }
+
+export interface Änderung {
+  readonly text: string;
+  readonly zähler: number;
+}

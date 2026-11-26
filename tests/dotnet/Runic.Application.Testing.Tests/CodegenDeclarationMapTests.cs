@@ -254,8 +254,10 @@ internal sealed partial class CodegenDiagnosticsTests
             var map = Path.Combine(typescript, "link.contract.d.ts.map");
             var written = File.ReadAllText(map);
             File.Delete(map);
+            // The emitter writes it again from the IR, which the generator's cache keeps (R7 G6); the build runs the emitter
+            // when a file it wrote is missing (RunicViewsGenerateClients).
             var (exitCode, output) = await RunSourceMapGeneratorAsync(directory, cache: true).ConfigureAwait(false);
-            Require(exitCode == 0 && !output.Contains("up to date", StringComparison.Ordinal) && File.ReadAllText(map) == written,
+            Require(exitCode == 0 && File.ReadAllText(map) == written,
                 $"A deleted declaration map did not regenerate.\n{output}");
             // The contract and map of a ViewModel that no longer exists are removed; a hand-written map stays.
             File.WriteAllText(Path.Combine(typescript, "gone.contract.d.ts.map"), written.Replace("\"link.contract.d.ts\"", "\"gone.contract.d.ts\"", StringComparison.Ordinal));

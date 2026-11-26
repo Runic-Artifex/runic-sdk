@@ -92,7 +92,9 @@ export const packageLayouts = {
   // their code fixes ship under analyzers/ (#962).
   "Runic.Application.Views": {
     includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets",
-      "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.dll", "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.CodeFixes.dll"],
+      "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.dll", "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.CodeFixes.dll",
+      // R7 G6: the TypeScript emitter's launcher and the bundled emitter for projects without a frontend.
+      "buildTransitive/runic-views-codegen.mjs", "tools/codegen/index.js"],
     rollForwardMajor: ["tools/net10.0/BridgeCodegen.runtimeconfig.json"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],

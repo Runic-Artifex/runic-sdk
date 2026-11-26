@@ -922,34 +922,38 @@ sets `RunicFlakyTests`, run by a job that starts `.github/actions/flaky-tests`
 Scripted journey and native smoke steps (the "Exercise …" steps) cannot be listed yet;
 a step would need a `continue-on-error` condition from the plan job.
 
-## Views dual-run gate
+## Views golden check
 
-Until the build runs the Views TypeScript emitter (`@runic-artifex/views/codegen`, R7 G6), the .NET generator writes
-the generated clients, and `eng/ci/views-dual-run.mjs` checks that the emitter would write the same bytes. After a
-build it runs the emitter on each project's contract IR (`obj/<configuration>/<framework>/runic-bridge/contract.ir.json`)
-and compares every TypeScript file the .NET generator recorded in `.runic-bridge-generation-cache.json` beside it, by
-name and SHA-256, with the emitter's file. It covers:
+Since R7 G6 the build writes the generated clients with the Views TypeScript emitter (`@runic-artifex/views/codegen`)
+from each project's contract IR (`obj/<configuration>/<framework>/runic-bridge/contract.ir.json`); the .NET generator
+writes the C# Bridges and the IR, and no TypeScript, so G5's dual-run gate, which compared the two generators, has no
+second side. `eng/ci/views-golden.mjs` keeps its comparison and diff output, and compares the workspace emitter's output
+with committed outputs instead. The workspace emitter is `packages/web/views/dist/codegen` when the npm package is built,
+else the copy that the generator's build bundles (`tools/Runic.Application.Views.Codegen/bin/<configuration>/net10.0/codegen`),
+as in a template lane, else the source under Bun:
 
-- **examples:** every built example; an example of the IR corpus without an IR fails the run as unbuilt;
-- **tests:** the other test projects with Views;
-- **goldens:** the whole generator test assembly (`tests/dotnet/Runic.Application.Testing.Tests`), and each
-  `golden/*/*.ts.golden` with only the golden tests' fingerprint placeholder applied;
-- **templates:** each project the template lanes generate, with the emitter of the `@runic-artifex/views` its
-  frontend installed (`tests/templates/Test-Templates.sh`).
+- **examples:** each built example's generated directory as committed at `HEAD` (the modules with the generated header
+  and the declaration maps); an example of the IR corpus without an IR fails the run as unbuilt;
+- **goldens:** each `golden/*/*.ts.golden` of the generator tests (`tests/dotnet/Runic.Application.Testing.Tests`),
+  against the emitter's output for the whole test assembly, with only the golden tests' fingerprint placeholder applied;
+- **templates:** each project the template lanes generate: the files its build wrote with the emitter of the packed
+  `@runic-artifex/views` that its frontend installed (`runic-bridge/typescript.outputs`), against the workspace
+  emitter's (`tests/templates/Test-Templates.sh`).
 
 ```sh
-bun eng/ci/views-dual-run.mjs                       # examples, tests and goldens of the $CONFIGURATION build
-bun eng/ci/views-dual-run.mjs --set goldens         # one set
-bun eng/ci/views-dual-run.mjs --project <csproj> --emitter frontend
+bun eng/ci/views-golden.mjs                         # examples and goldens of the $CONFIGURATION build
+bun eng/ci/views-golden.mjs --set goldens           # one set
+bun eng/ci/views-golden.mjs --project <csproj>      # a built project's clients against the workspace emitter
 ```
 
 Each difference is printed as a short diff with its file and a cause (number formatting, string escaping, a non-ASCII
-name, a declaration map, a stale golden, a file only one side writes); the exit code is 1. The engineering job runs it
-through `eng/ci/views-dual-run.test.mjs` on the restored Linux build; the test skips without a build outside CI.
-`DualRunFixture.cs` holds what no example or golden had: double bounds that .NET writes in exponent form (`1E+20`,
-`1E-07`) and non-ASCII names. Both generators leave a name that starts with a non-ASCII letter (`ÜbersichtState`) out of
-a client's imports and re-exports, because their scans read names as `[A-Za-z_$][\w$]*`; the fixture's names start
-with an ASCII letter, and G6 fixes the scans with the switch-over.
+name, a declaration map, a stale golden, a file only one side has); the exit code is 1. The engineering job runs it
+through `eng/ci/views-golden.test.mjs` on the restored Linux build; the test skips without a build outside CI. The build
+job's check for changed tracked files covers the examples' clients as well, and the generator tests' golden tests
+compare each build's output with the goldens. The other test projects commit no clients and are not compared: G5
+compared their two generators' output, and G6 left one. `DualRunFixture.cs` keeps what no example or golden has: double
+bounds written in exponent form (`1E+20`, `1E-07`), non-ASCII names, and a View whose name starts with a non-ASCII
+letter (`ÜbersichtViewModel`, #1355), whose client the generator tests type-check.
 
 ## GitHub reruns
 

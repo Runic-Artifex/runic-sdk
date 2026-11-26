@@ -482,7 +482,7 @@ internal sealed partial class CodegenDiagnosticsTests
                     StartInfo = new ProcessStartInfo("dotnet")
                     {
                         RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
-                        ArgumentList = { generator, "--generate", assembly, Path.Combine(cached, "cs"), Path.Combine(cached, "ts"),
+                        ArgumentList = { generator, "--generate", assembly, Path.Combine(cached, "cs"),
                             "--client-module", $"FixtureSharedUi={specifier}" },
                     },
                 };
@@ -492,8 +492,10 @@ internal sealed partial class CodegenDiagnosticsTests
                 var standardError = process.StandardError.ReadToEndAsync();
                 using var timeout = TestTimeouts.Cancellation(GeneratorTimeout);
                 await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-                var text = await standardOutput.ConfigureAwait(false) + await standardError.ConfigureAwait(false);
-                Require(process.ExitCode == 0, $"The cached generation failed.\n{text}");
+                var (exitCode, text) = await TypeScriptEmitterProcess.AfterGeneratorAsync(
+                    (process.ExitCode, await standardOutput.ConfigureAwait(false) + await standardError.ConfigureAwait(false)),
+                    Path.Combine(cached, "cs"), Path.Combine(cached, "ts")).ConfigureAwait(false);
+                Require(exitCode == 0, $"The cached generation failed.\n{text}");
                 return text;
             }
             await GenerateCachedAsync(SharedUiSpecifier).ConfigureAwait(false);
@@ -651,7 +653,7 @@ internal sealed class ClientLibraryTypeCheckTests
             StartInfo = new System.Diagnostics.ProcessStartInfo("dotnet")
             {
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, WorkingDirectory = root,
-                ArgumentList = { generator, "--generate", typeof(ClientLibraryTypeCheckTests).Assembly.Location, csharp, typescript, "--client-library" },
+                ArgumentList = { generator, "--generate", typeof(ClientLibraryTypeCheckTests).Assembly.Location, csharp, "--client-library" },
             },
         };
         process.Start();
@@ -664,8 +666,9 @@ internal sealed class ClientLibraryTypeCheckTests
             process.Kill(entireProcessTree: true);
             throw new TimeoutException($"The bridge generator did not finish within 60 seconds.\n{await output.ConfigureAwait(false)}{await error.ConfigureAwait(false)}");
         }
-        var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
-        if (process.ExitCode != 0) throw new InvalidOperationException($"The bridge generator failed.\n{text}");
+        var (exitCode, text) = await TypeScriptEmitterProcess.AfterGeneratorAsync(
+            (process.ExitCode, await output.ConfigureAwait(false) + await error.ConfigureAwait(false)), csharp, typescript).ConfigureAwait(false);
+        if (exitCode != 0) throw new InvalidOperationException($"The bridge generator or the TypeScript emitter failed.\n{text}");
     }
 
     private static string FindWorkspaceRoot()

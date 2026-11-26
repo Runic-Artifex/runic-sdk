@@ -8,7 +8,6 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Windows.Input;
 using Runic.Application.Views;
-using static TypeScriptModuleBindings;
 
 try
 {
@@ -73,8 +72,10 @@ try
             }
         }
         var positional = values.ToArray();
-        if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--client-library] [--client-module <assembly>=<specifier>]... [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
+        // The TypeScript clients are the emitter's (@runic-artifex/views/codegen, R7 G6): it reads the contract IR that
+        // this generation writes beside the C#.
+        if (positional.Length != 3)
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> [--aot] [--optional] [--client-library] [--client-module <assembly>=<specifier>]... [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
         // A client library generates its Views' clients for other applications, so it must declare them.
         if (clientLibrary) optional = false;
         foreach (var group in clientModules.GroupBy(mapping => mapping.Assembly, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
@@ -88,7 +89,7 @@ try
             .. (clientModules.Count > 0
                 ? (string[])[$"client-modules={string.Join(";", clientModules.Select(mapping => $"{mapping.Assembly}={mapping.Specifier}").Order(StringComparer.Ordinal))}"]
                 : [])];
-        if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
+        if (BridgeGenerationCache.TryHit(positional[1], positional[2], cacheArguments, out var cachedWarnings))
         {
             foreach (var warning in cachedWarnings) Console.Error.WriteLine(warning);
             Console.WriteLine("Bridge generation is up to date.");
@@ -138,22 +139,17 @@ try
         {
             // Bridge generation was on by default, not requested: an assembly
             // without Windows or Views (for example one that only uses the
-            // navigator) builds without bridge output. Remove stale generated C# and
-            // TypeScript (never creating the TypeScript directory) and leave a marker
-            // so the build skips the frontend steps.
+            // navigator) builds without bridge output. Remove stale generated C#
+            // and the IR, and leave a marker so the build skips the TypeScript
+            // emitter and the frontend steps (the build removes the clients the
+            // emitter wrote before).
             Directory.CreateDirectory(positional[2]);
             foreach (var path in Directory.GetFiles(positional[2], "*.g.cs"))
                 if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
-            if (Directory.Exists(positional[3]))
-            {
-                foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
-                    if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
-                foreach (var path in Directory.GetFiles(positional[3], "*" + ClientDeclarationMap.Suffix + ".map"))
-                    if (ClientDeclarationMap.IsGeneratedMap(path)) File.Delete(path);
-            }
             File.WriteAllText(Path.Combine(positional[2], "RunicBridge.NoViews.marker"), "");
             BridgeSourceMap.Remove(positional[2]);
             ContractIr.Remove(positional[2]);
+            ClientSymbols.Remove(positional[2]);
             Console.WriteLine($"{assembly.GetName().Name}: no Runic Window/View classes found; skipping Bridge generation.");
             return;
         }
@@ -204,11 +200,11 @@ try
         if (Diagnostics.HasErrors) return;
 
         Directory.CreateDirectory(positional[2]);
-        Directory.CreateDirectory(positional[3]);
         // View partials and ViewModel bridges use distinct suffixes and full
         // type names: MainWindow and MainWindowViewModel, or two ItemViews in
         // different namespaces, must not overwrite each other's file.
-        // A mapped client library's own build writes its View partials.
+        // A mapped client library's own build writes its View partials. The
+        // emitter checks the TypeScript files the same way.
         var csharpOutputs = models.Select(entry => (Path: BridgeFileName(entry.Model), Owner: entry.Model.FullName!))
             .Concat(viewTypes.Values.SelectMany(variants => variants).Where(view => view.Assembly == assembly)
                 .Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
@@ -216,42 +212,17 @@ try
             .Concat(BridgeSupportFiles.All.Select(file => (Path: file, Owner: "the shared Bridge command helpers")))
             .Concat(clientLibrary ? [(Path: ClientModules.LibraryMarkerFile, Owner: "the client library marker")] : [])
             .ToArray();
-        var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
-            .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
-            .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}{ClientDeclarationMap.Suffix}", Owner: entry.Model.FullName!)))
-            .Concat(sharedClients.Select(shared => (Path: $"{shared.Module}.ts", Owner: shared.Interface.FullName!)))
-            .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types"))
-            .Concat(clientLibrary ? ClientModules.LibraryTypeScriptOutputs() : [])
-            .Concat(ClientModules.ApplicationTypeScriptOutputs()).ToArray();
-        foreach (var group in csharpOutputs.Concat(typescriptOutputs)
+        foreach (var group in csharpOutputs
             .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                 $"generated file '{group.Key}' would be written by {string.Join(" and ", group.Select(output => output.Owner))}. Rename one type.",
                 models.FirstOrDefault(entry => group.Any(output => output.Owner == entry.Model.FullName)).Model);
-        var namedTypesPath = Path.Combine(positional[3], $"{TypeScriptNamedTypes.ModuleName}.ts");
-        if (File.Exists(namedTypesPath) && !GeneratedOutput.IsGenerated(namedTypesPath))
-            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
-                $"{Path.GetFullPath(namedTypesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or set RunicApplicationFrontendGeneratedDirectory to a dedicated directory.");
         var expectedCsharp = csharpOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[2], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
-        // The modules of a mapped client library's ViewModels and shared clients are checked for collisions with the
-        // application's own above, but the library writes them; an application's earlier copies are stale output.
-        var ownedTypescript = models.Where(entry => ClientModules.OwnerOf(entry.Model) is not null)
-            .SelectMany(entry => (string[])[$"{LowerFirst(entry.Name)}.ts", $"{LowerFirst(entry.Name)}.mock.ts", $"{LowerFirst(entry.Name)}{ClientDeclarationMap.Suffix}"])
-            .Concat(sharedClients.Where(shared => ClientModules.IsOwned(shared.Module)).Select(shared => $"{shared.Module}.ts"))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var expectedTypescript = typescriptOutputs.Where(output => !ownedTypescript.Contains(output.Path))
-            .Select(output => Path.GetFullPath(Path.Combine(positional[3], output.Path)))
-            .ToHashSet(StringComparer.Ordinal);
-        // Remove only stale generator output. The TypeScript directory may be
-        // an application source directory with hand-written modules.
+        // Remove only stale generator output.
         foreach (var path in Directory.GetFiles(positional[2], "*.g.cs"))
             if (!Path.GetFileName(path).StartsWith("RunicBridgeComposition", StringComparison.Ordinal)
                 && !expectedCsharp.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
-        foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
-            if (!expectedTypescript.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
-        foreach (var path in Directory.GetFiles(positional[3], "*" + ClientDeclarationMap.Suffix + ".map"))
-            if (!expectedTypescript.Contains(Path.GetFullPath(path[..^".map".Length])) && ClientDeclarationMap.IsGeneratedMap(path)) File.Delete(path);
         var contentRequired = new HashSet<Type>();
         foreach (var entry in models)
         {
@@ -262,9 +233,7 @@ try
                 Diagnostics.InjectInternalErrorForTests(entry.Model);
                 // The Bridge of a ViewModel that a mapped client library owns is generated as any other, since this
                 // application's content switches construct it; its TypeScript is the library's.
-                ClientModules.Discarding = ClientModules.OwnerOf(entry.Model) is not null;
-                if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
-                    Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, models, viewTypes))
+                if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)), entry.Name, models, viewTypes))
                     contentRequired.Add(entry.Model);
                 if (viewTypes.TryGetValue(entry.Model, out var views))
                     foreach (var view in views.Where(view => view.Assembly == assembly))
@@ -274,22 +243,13 @@ try
             {
                 Diagnostics.Report(error, entry.Model);
             }
-            finally
-            {
-                ClientModules.Discarding = false;
-            }
         }
         // The Bridges generated so far, as before, even when another ViewModel failed.
         BridgeSharedCodecs.WriteAll(positional[2]);
         if (Diagnostics.HasErrors) return;
-        SharedClients.Generate(positional[3], sharedClients, viewTypes, PageKind, ContractFor);
+        SharedClients.Check(sharedClients);
         if (Diagnostics.HasErrors) return;
-        var namedTypes = TypeScriptModules.WriteAll(positional[3]);
-        if (clientLibrary)
-            ClientModules.WriteLibrary(positional[2], positional[3],
-                [.. models.Where(entry => ClientModules.OwnerOf(entry.Model) is null).Select(entry => (entry.Model, LowerFirst(entry.Name)))],
-                sharedClients.Select(shared => shared.Module).Where(module => !ClientModules.IsOwned(module)), namedTypes);
-        ClientModules.WriteCheck(positional[3], [.. models.Select(entry => (entry.Model, LowerFirst(entry.Name)))]);
+        if (clientLibrary) ClientModules.WriteLibraryMarker(positional[2]);
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
         if (compositionType is null)
         {
@@ -304,16 +264,13 @@ try
         ContractIr.Write(positional[2], ContractIr.Serialize(assembly.GetName().Name!, clientLibrary,
             [.. clientModules.Where(mapping => models.Any(entry => ClientModules.OwnerOf(entry.Model) == mapping))],
             SharedClients.ContractIr(ContractIr.PublishedAs), BridgeSourceMap.Serialize()));
-        BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments, Diagnostics.Warnings);
+        // The assemblies without a PDB, for the emitter's RUNICBRIDGE076.
+        ClientSymbols.Write(positional[2], models.Select(entry => entry.Model), sharedClients.Select(shared => shared.Interface));
+        BridgeGenerationCache.Save(positional[1], positional[2], cacheArguments, Diagnostics.Warnings);
     }
     else
     {
-        if (args.Length is not (4 or 5))
-            throw new ArgumentException("Usage: BridgeCodegen <model.dll> <ViewModel type> <output.cs> <output.ts> [public name]");
-        var model = Assembly.LoadFrom(Path.GetFullPath(args[0])).GetType(args[1], throwOnError: true)!;
-        GenerateOne(model, args[2], args[3], args.Length == 5 ? args[4] : PublicName(model));
-        BridgeSharedCodecs.WriteAll(Path.GetDirectoryName(Path.GetFullPath(args[2]))!);
-        TypeScriptModules.WriteAll(Path.GetDirectoryName(Path.GetFullPath(args[3]))!);
+        throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> [options], --composition-stub <type> <output.cs> [--references <file>] or --list-diagnostics [<file>]");
     }
 }
 catch (Exception error) when (Diagnostics.IsReportable(error))
@@ -324,21 +281,6 @@ finally
 {
     // An error stops the build before the compiler, so the analyzer will not report the warnings left to it.
     if (Diagnostics.HasErrors) Diagnostics.WriteAnalyzerWarnings();
-}
-
-// A set… member exists because its C# property has a public setter, which is
-// what any MVVM View may write; name the setter the call runs.
-// D072.13: the TSDoc of development-only members ([RunicDevelopmentOnly]), which a trimmed or NativeAOT publish leaves out.
-const string DevelopmentOnlyStateNote = "Development-only (`[RunicDevelopmentOnly]`): absent in a trimmed or NativeAOT publish, which leaves it out.";
-const string DevelopmentOnlyCallNote = "Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish leaves the member out and rejects the call.";
-const string DevelopmentOnlyCommandNote = "Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish rejects it with a `BridgeError` of kind `rejected` and reason `unavailable`.";
-
-static string WithNote(string? documentation, string note) => string.IsNullOrWhiteSpace(documentation) ? note : documentation + "\n\n" + note;
-
-static string SetterDocumentation(PropertyInfo property)
-{
-    var setter = $"Calls the public C# setter of `{property.DeclaringType!.Name.Split('`')[0]}.{property.Name}`.";
-    return XmlDocumentation.Summary(property) is { } summary ? summary + "\n\n" + setter : setter;
 }
 
 static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal)
@@ -788,18 +730,18 @@ static string[] CompositionParts(string compositionType)
 }
 
 // Returns true when the generated bridge requires a WindowContentSession.
-static bool GenerateOne(Type model, string csharpPath, string typescriptPath, string shortName,
+static bool GenerateOne(Type model, string csharpPath, string shortName,
     (Type Model, string Name)[]? knownModels = null,
     IReadOnlyDictionary<Type, List<Type>>? viewTypes = null)
 {
     var plan = PlanView(model, shortName, knownModels ?? [(model, shortName)], viewTypes);
     // The View in the language-neutral contract IR (specs/application/contract-ir.md), written from the plan alone.
     ContractIr.AddView(ContractIrView(plan));
-    return EmitView(plan, csharpPath, typescriptPath);
+    return EmitView(plan, csharpPath);
 }
 
-// Discovers and validates one ViewModel's Bridge contract (ViewPlan): what the C# and TypeScript emission and the
-// contract IR read. Reports problems by throwing; writes nothing.
+// Discovers and validates one ViewModel's Bridge contract (ViewPlan): what the C# emission and the contract IR, from
+// which the emitter writes the TypeScript, read. Reports problems by throwing; writes nothing.
 static ViewPlan PlanView(Type model, string shortName, (Type Model, string Name)[] knownModels,
     IReadOnlyDictionary<Type, List<Type>>? viewTypes)
 {
@@ -813,7 +755,6 @@ static ViewPlan PlanView(Type model, string shortName, (Type Model, string Name)
     PublicationChecks.Check(model, knownModels);
     var declared = BridgedProperties(model);
     var contractFingerprint = BridgeContractShape.Compute(model);
-    ClientModules.RecordContract(model, $"{model.FullName}:{contractFingerprint}");
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var requests = InteractionCodeEmitter.DiscoverRequests(declared, model.Name, contractFingerprint, honorJsonIgnore);
@@ -1212,9 +1153,9 @@ static ViewPlan PlanView(Type model, string shortName, (Type Model, string Name)
     };
 }
 
-// Emits one planned ViewModel's C# Bridge and its TypeScript client modules (through TypeScriptModules). Returns true
-// when the generated bridge requires a WindowContentSession.
-static bool EmitView(ViewPlan view, string csharpPath, string typescriptPath)
+// Emits one planned ViewModel's C# Bridge; the emitter writes its TypeScript from the contract IR. Returns true when the
+// generated bridge requires a WindowContentSession.
+static bool EmitView(ViewPlan view, string csharpPath)
 {
     var model = view.Model;
     var shortName = view.ShortName;
@@ -1259,7 +1200,6 @@ static bool EmitView(ViewPlan view, string csharpPath, string typescriptPath)
     // D072.13: a development-only member's table records and arms are marked, and the client describes it as possibly
     // absent or unavailable.
     bool DevelopmentOnly(PropertyInfo member) => view.DevelopmentOnly(member);
-    bool IsNullableContent(PropertyInfo property) => view.IsNullableContent(property);
     // A region slot presents its Current, whose nullability (always nullable)
     // is the slot's wire and TypeScript nullability.
     string ContentAccess(PropertyInfo property) =>
@@ -1267,35 +1207,6 @@ static bool EmitView(ViewPlan view, string csharpPath, string typescriptPath)
     // A selection slot's wire value: SelectedIndex, or null for -1 and for a null selection.
     static string SelectionIndex(PropertyInfo property) =>
         $"(vm.{property.Name} is {{ SelectedIndex: var index }} && index >= 0 ? index : (int?)null)";
-    // [RunicSharedClient] (#839): the client parts of each member, for the shared clients of the interfaces the
-    // ViewModel implements. The declaration names the ViewModel's own types with SharedClients.Owner.
-    void Shared(PropertyInfo owner, string key, string section, string declaration, string? documentation = null,
-        string? comparable = null, bool optional = false, IReadOnlyList<(string Module, string Type)>? imports = null, string? unsupported = null)
-    {
-        if (sharedClients.Count > 0)
-            SharedClients.Record(model, owner, new SharedClientPart(key, section, declaration, comparable ?? declaration, documentation,
-                optional, imports, unsupported));
-    }
-    foreach (var plan in interactions)
-        Shared(plan.Property, "unsupported", "", "", unsupported: "an interaction, which a shared client does not include. Remove it from the interface.");
-    foreach (var plan in requests)
-        Shared(plan.Property, "unsupported", "", "", unsupported: "a view request, which a shared client does not include. Remove it from the interface.");
-    var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
-    {
-        var plan = commandPlans[command];
-        return new OperationTypeScriptPlan(command.Name[..^"Command".Length],
-            plan.InputGraph?.TypeScriptType() ?? "never",
-            plan.ResultGraph?.TypeScriptType() ?? "void",
-            plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined",
-            plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
-            plan.HasArgument,
-            plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
-            plan.ParameterName,
-            plan.FailureGraph?.TypeScriptType(),
-            plan.FailureGraph?.EmitTypeScriptDecoder("value"));
-    }).ToArray();
-
-
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
     cs.AppendLine("#nullable enable");
@@ -1715,798 +1626,11 @@ static bool EmitView(ViewPlan view, string csharpPath, string typescriptPath)
     }
     cs.AppendLine("}");
 
-    // The transport, shared page runtime, codecs and error types live in
-    // @runic-artifex/views. A generated module holds only this ViewModel's
-    // types, decoders and connect functions, so every module and bundle on a
-    // page shares one BridgeError class and one route registry.
-    var ts = new StringBuilder();
-    // The page functions and page reference types of the content's modules.
-    var contentImports = new List<(string Module, string[] Functions, string[] References)>();
-    foreach (var (pageName, contracts) in contentBindings.SelectMany(entry => entry.Value.Select(page => (page.Name, Contract: ContractFor(entry.Key))))
-        .GroupBy(entry => entry.Name).Select(group => (group.Key, Contracts: group.Select(entry => entry.Contract).Distinct())))
-    {
-        var variants = contracts.Select(contract => char.ToUpperInvariant(PageKind(pageName, contract)[0]) + PageKind(pageName, contract)[1..]).ToArray();
-        contentImports.Add((LowerFirst(pageName), [.. variants.Select(variant => $"page{variant}")], [.. variants.Select(variant => $"{variant}PageReference")]));
-    }
-    // region-collections/1: select{Name}(key) and close{Name}(key) of each region collection. RUNICBRIDGE071 when one
-    // collides with another member of the generated client.
-    var clientMembers = new HashSet<string>(["snapshot", "subscribe", "dispose", "interactions", "fieldBaseline"], StringComparer.Ordinal);
-    foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true)) clientMembers.Add($"set{property.Name}");
-    foreach (var property in checkedProperties) clientMembers.Add($"write{property.Name}");
-    foreach (var command in commands)
-    {
-        var name = command.Name[..^"Command".Length];
-        clientMembers.Add(LowerFirst(name));
-        clientMembers.Add($"can{name}");
-        if (commandPlans[command].IsAsync) { clientMembers.Add($"start{name}"); clientMembers.Add($"recover{name}"); }
-    }
-    var regionMethods = new List<(PropertyInfo Property, string Method, string Action)>();
-    foreach (var property in regionCollections.Keys)
-    {
-        var actions = BridgeContractShape.RegionCollection(property)!.PageCanClose ? new[] { "select", "close" } : ["select"];
-        foreach (var action in actions)
-        {
-            var method = action + property.Name;
-            if (!clientMembers.Add(method))
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollectionName,
-                    $"{model.Name}.{property.Name}: the region collection's client method {method} collides with another member of the generated client. Rename the property or the other member.", property);
-            regionMethods.Add((property, method, action));
-        }
-    }
-    var clientName = $"{shortName}Client";
-    // The client's types go to <view>.contract.d.ts (#952), whose declaration map leads each member marked here to its
-    // C# declaration or handler in the development source map (#951).
-    var dts = new StringBuilder();
-    string Mapped(string? kind, string member, string token) =>
-        ClientDeclarationMap.Mark(kind is null ? model.FullName! : $"{model.FullName}/{kind}/{member}", token);
-    dts.AppendLine($"export interface {shortName}State {{{Mapped(null, "", $"{shortName}State")}");
-    if (hasValidation) dts.AppendLine($"  readonly validation: {Ref("BridgeValidationState")};");
-    foreach (var property in properties)
-    {
-        var propertyType = contentProperties.TryGetValue(property, out var pages)
-            ? string.Join(" | ", pages.Select(page =>
-                $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
-                + (IsNullableContent(property) ? " | null" : "")
-            : regionCollections.TryGetValue(property, out var regionPages)
-                ? $"{Ref("RegionCollection")}<" + string.Join(" | ", regionPages.Select(page =>
-                    $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference")) + ">"
-            : contentCollections.TryGetValue(property, out var collectionPages)
-                ? "readonly (" + string.Join(" | ", collectionPages.Select(page =>
-                    $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
-                    + ")[]" + (nullability.Create(property).ReadState == NullabilityState.Nullable ? " | null" : "")
-            : valueProperties.TryGetValue(property, out var valueGraph)
-                ? valueGraph.TypeScriptType()
-            : queryCollections.ContainsKey(property) ? Ref("QueryCollectionState")
-                : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
-        var stateDocumentation = XmlDocumentation.Summary(property);
-        if (valueProperties.TryGetValue(property, out var documentedGraph))
-            stateDocumentation = BridgeTypeGraph.WithTypeScriptNote(stateDocumentation, documentedGraph.Root);
-        // D072.13: a development-only member is optional in every configuration, because a publish may leave it out.
-        var optional = DevelopmentOnly(property) ? "?" : "";
-        if (DevelopmentOnly(property)) stateDocumentation = WithNote(stateDocumentation, DevelopmentOnlyStateNote);
-        XmlDocumentation.Append(dts, "  ", stateDocumentation);
-        dts.AppendLine($"  readonly {TsPropertyName(WireName(property))}{optional}: {propertyType};{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property)))}");
-        if (hasErrors) dts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}{optional}: readonly string[];{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property) + "Errors"))}");
-        var referencedPages = contentProperties.GetValueOrDefault(property) ?? regionCollections.GetValueOrDefault(property)
-            ?? contentCollections.GetValueOrDefault(property) ?? [];
-        Shared(property, "state", "state", $"readonly {TsPropertyName(WireName(property))}{optional}: {propertyType};", stateDocumentation,
-            imports: [.. referencedPages.Select(page => (LowerFirst(page.Name),
-                $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))]);
-        if (hasErrors)
-            Shared(property, "state-errors", "state", $"readonly {TsPropertyName(WireName(property) + "Errors")}{optional}: readonly string[];", optional: true);
-    }
-    foreach (var command in commands)
-    {
-        var plan = commandPlans[command];
-        var optional = DevelopmentOnly(command) ? "?" : "";
-        if (!plan.HasArgument)
-        {
-            var canState = $"can{command.Name[..^"Command".Length]}";
-            if (DevelopmentOnly(command)) XmlDocumentation.Append(dts, "  ", DevelopmentOnlyStateNote);
-            dts.AppendLine($"  readonly {canState}{optional}: boolean;{Mapped(BridgeSourceMap.CommandState, canState, canState)}");
-            Shared(command, "can-state", "state", $"readonly can{command.Name[..^"Command".Length]}{optional}: boolean;");
-        }
-        if (plan.HasExecutionState)
-        {
-            var executingState = $"is{command.Name[..^"Command".Length]}Executing";
-            if (DevelopmentOnly(command)) XmlDocumentation.Append(dts, "  ", DevelopmentOnlyStateNote);
-            dts.AppendLine($"  readonly {executingState}{optional}: boolean;{Mapped(BridgeSourceMap.CommandState, executingState, executingState)}");
-            Shared(command, "executing-state", "state", $"readonly is{command.Name[..^"Command".Length]}Executing{optional}: boolean;");
-        }
-    }
-    dts.AppendLine("}");
-    dts.AppendLine();
-    InteractionCodeEmitter.AppendTypeScriptSurface(dts, interactions, shortName,
-        member => Mapped(BridgeSourceMap.Interaction, member, member));
-    InteractionCodeEmitter.AppendTypeScriptRequestSurface(dts, requests, shortName,
-        member => Mapped(BridgeSourceMap.Request, member, member));
-    if (needsCheckedWriter)
-    {
-        dts.AppendLine($"export interface {shortName}CheckedFields {{");
-        foreach (var property in checkedProperties)
-            dts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {TsPropertyType(property)};{Mapped(BridgeSourceMap.Setter, WireName(property), TsPropertyName(WireName(property)))}");
-        dts.AppendLine("}");
-        dts.AppendLine();
-    }
-    OperationTypeScriptEmitter.AppendDefinitions(dts, operationPlans, shortName);
-    // #1317: the names of the published commands, which injectCommands and useCommands read from the client's type.
-    // Type-only, so a View pays nothing at run time for it; the handles call the client's own command methods.
-    if (commands.Length > 0)
-    {
-        XmlDocumentation.Append(dts, "", $"The names of the {shortName} ViewModel's commands, whose handles `injectCommands` and `useCommands` make.");
-        dts.AppendLine($"export type {shortName}CommandName = {string.Join(" | ", commands.Select(command => JsonSerializer.Serialize(LowerFirst(command.Name[..^"Command".Length]))))};");
-        dts.AppendLine();
-    }
-    var modelDocumentation = XmlDocumentation.Summary(model);
-    XmlDocumentation.Append(dts, "", $"A connected {shortName} ViewModel. Dispose it when its presentation ends."
-        + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
-    dts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{{Mapped(null, "", clientName)}");
-    if (commands.Length > 0)
-    {
-        dts.AppendLine($"  /** Type-only: the client's commands, `{shortName}CommandName`, which `injectCommands` and `useCommands` offer. */");
-        dts.AppendLine($"  readonly [{Ref("viewCommands")}]?: {shortName}CommandName;");
-    }
-    if (interactions.Length > 0) dts.AppendLine($"  readonly interactions: {shortName}Interactions;");
-    if (requests.Length > 0) dts.AppendLine($"  readonly requests: {shortName}ViewRequests;");
-    if (queryCollections.Count > 0)
-    {
-        dts.AppendLine("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");
-        dts.AppendLine("  readonly queries: {");
-        foreach (var (property, plan) in queryCollections)
-        {
-            XmlDocumentation.Append(dts, "    ", XmlDocumentation.Summary(property));
-            dts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property)))}");
-            Shared(property, "query", "queries", $"readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;",
-                XmlDocumentation.Summary(property));
-        }
-        dts.AppendLine("  };");
-    }
-    const string UploadDocumentation = "Uploads a file to the window's .NET host over HTTP (blobs/1) and resolves with the reference that a command's\n`RunicUpload` input takes. `options.onProgress` reports the bytes sent; `options.signal` aborts the upload.";
-    const string UploadDeclaration = "upload(content: Blob, options?: import(\"@runic-artifex/views\").UploadOptions): Promise<import(\"@runic-artifex/views\").BlobRef>;";
-    if (usesUploads)
-    {
-        XmlDocumentation.Append(dts, "  ", UploadDocumentation);
-        dts.AppendLine("  " + UploadDeclaration);
-    }
-    foreach (var command in commands.Where(command => commandPlans[command].InputGraph?.Nodes.Any(node => node.Kind == BridgeWireKind.Upload) == true))
-        Shared(command, "upload", "client", UploadDeclaration, UploadDocumentation);
-    foreach (var property in valueProperties.Where(entry => PageSettable(entry.Key) && entry.Value.Nodes.Any(node => node.Kind == BridgeWireKind.Upload)).Select(entry => entry.Key))
-        Shared(property, "upload", "client", UploadDeclaration, UploadDocumentation);
-    foreach (var property in properties.Where(PageSettable))
-    {
-        XmlDocumentation.Append(dts, "  ", DevelopmentOnly(property) ? WithNote(SetterDocumentation(property), DevelopmentOnlyCallNote) : SetterDocumentation(property));
-        dts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;{Mapped(BridgeSourceMap.Setter, WireName(property), $"set{property.Name}")}");
-        Shared(property, "setter", "client", $"set{property.Name}(value: {TsPropertyType(property)}): Promise<{SharedClients.Owner}State>;");
-    }
-    foreach (var property in checkedProperties)
-    {
-        var writeDocumentation = XmlDocumentation.Summary(property)
-            ?? $"Writes `{property.ReflectedType?.Name}.{property.Name}` with an acknowledged field write, which reports whether .NET committed it.";
-        XmlDocumentation.Append(dts, "  ", DevelopmentOnly(property) ? WithNote(writeDocumentation, DevelopmentOnlyCallNote) : writeDocumentation);
-        dts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: {Ref("FieldWriteOptions")}<{TsPropertyType(property)}>): Promise<{Ref("FieldWriteReceipt")}<{TsPropertyType(property)}>>;{Mapped(BridgeSourceMap.Setter, WireName(property), $"write{property.Name}")}");
-    }
-    if (needsCheckedWriter)
-    {
-        dts.AppendLine("  /** The value and version of a checked field that a `write…` call is based on. */");
-        dts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>;");
-    }
-    if (hasFieldPaths)
-    {
-        dts.AppendLine("  /** A checked write of a field path below a member (field-paths/1); `{View}Fields` descriptors call it. */");
-        dts.AppendLine($"  writePath<T>(member: string, path: readonly string[], write: {Ref("BridgeFieldWriteRequest")}, decode: (wire: unknown) => T): Promise<{Ref("FieldWriteReceipt")}<T>>;");
-        dts.AppendLine("  /** The version a field path write is based on: the revision of the state the client shows. */");
-        dts.AppendLine("  fieldPathVersion(): number;");
-    }
-    foreach (var command in commands)
-    {
-        var plan = commandPlans[command];
-        var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
-        var documentation = CommandDocumentation(command, commandSources[command], plan.Command);
-        // A RunicCommandKey command (#472) sends the key; .NET resolves it to the command's parameter.
-        var unresolved = plan.Key is null ? null
-            : $"Rejects with a `BridgeError` of kind `rejected` and reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.";
-        if (DevelopmentOnly(command)) unresolved = WithNote(unresolved, DevelopmentOnlyCommandNote);
-        XmlDocumentation.Append(dts, "  ", unresolved is null ? documentation
-            : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved);
-        var reply = plan.FailureGraph is { } declaredFailure
-            ? $"{Ref("BridgeOutcome")}<{SharedClients.Owner}State, {declaredFailure.TypeScriptType()}>" : $"{SharedClients.Owner}State";
-        var commandDeclaration = $"{LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;";
-        var commandMember = LowerFirst(command.Name[..^"Command".Length]);
-        dts.AppendLine("  " + commandDeclaration.Replace(SharedClients.Owner, shortName, StringComparison.Ordinal) + Mapped(BridgeSourceMap.Command, commandMember, commandMember));
-        var comparableInput = plan.HasArgument ? $"{SharedClients.Parameter}: {CommandInputType(plan)}" : "";
-        Shared(command, "command", "client", commandDeclaration, unresolved is null ? documentation
-            : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved,
-            comparable: $"{LowerFirst(command.Name[..^"Command".Length])}({comparableInput}): Promise<{reply}>;");
-        var availabilityDocumentation = plan.Key is null ? null
-            : $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.";
-        if (DevelopmentOnly(command) && plan.HasArgument)
-            availabilityDocumentation = WithNote(availabilityDocumentation, "Development-only (`[RunicDevelopmentOnly]`): false in a trimmed or NativeAOT publish, which leaves the command out.");
-        XmlDocumentation.Append(dts, "  ", availabilityDocumentation);
-        if (plan.HasArgument)
-        {
-            dts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;{Mapped(BridgeSourceMap.Command, commandMember, $"can{command.Name[..^"Command".Length]}")}");
-            Shared(command, "can-method", "client", $"can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;", availabilityDocumentation,
-                comparable: $"can{command.Name[..^"Command".Length]}({comparableInput}): Promise<boolean>;");
-        }
-    }
-    foreach (var (property, method, action) in regionMethods)
-    {
-        var regionDocumentation = action == "select"
-            ? $"Selects the region of `{WireName(property)}` with `key`. The departure guards of the region left decide; resolves with the request's outcome once the state includes it (`region-collections/1`)."
-            : $"Closes the region of `{WireName(property)}` with `key` and removes it. Its departure guards decide; resolves with the request's outcome once the state includes it (`region-collections/1`).";
-        XmlDocumentation.Append(dts, "  ", regionDocumentation);
-        dts.AppendLine($"  {method}(key: string): Promise<{Ref("RegionOutcome")}>;{Mapped(BridgeSourceMap.State, WireName(property), method)}");
-        Shared(property, "region-" + action, "client", $"{method}(key: string): Promise<{Ref("RegionOutcome")}>;", regionDocumentation);
-    }
-    foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
-    {
-        var plan = commandPlans[command];
-        var operationName = command.Name[..^"Command".Length];
-        var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}, " : "";
-        dts.AppendLine($"  /**");
-        dts.AppendLine($"   * Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;");
-        dts.AppendLine($"   * the default is a random id. A start with a request id that .NET already admitted returns that operation.");
-        if (plan.Key is not null)
-            dts.AppendLine($"   * A new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.");
-        if (DevelopmentOnly(command))
-            dts.AppendLine($"   * Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish rejects it with reason `unavailable`.");
-        dts.AppendLine($"   */");
-        dts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;{Mapped(BridgeSourceMap.Command, LowerFirst(operationName), $"start{operationName}")}");
-        dts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
-        dts.AppendLine($"  recover{operationName}(requestId: string): Promise<{shortName}{operationName}Operation>;{Mapped(BridgeSourceMap.Command, LowerFirst(operationName), $"recover{operationName}")}");
-        var operation = operationPlans.Single(candidate => candidate.Name == operationName);
-        Shared(command, "operation", "operations",
-            $"export interface {SharedClients.Owner}{operationName}Operation extends {Ref(operation.IsStream ? "BridgeStreamOperation" : "BridgeOperation")}<{operation.TypeArguments}> {{}}");
-        Shared(command, "start", "client", $"start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{SharedClients.Owner}{operationName}Operation>;",
-            $"Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;\n"
-            + "the default is a random id. A start with a request id that .NET already admitted returns that operation."
-            + (plan.Key is null ? "" : $"\nA new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`."),
-            comparable: $"start{operationName}({(plan.HasArgument ? $"{SharedClients.Parameter}: {CommandInputType(plan)}, " : "")}options?: {Ref("BridgeOperationStartOptions")}): Promise<{SharedClients.Owner}{operationName}Operation>;");
-        Shared(command, "recover", "client", $"recover{operationName}(requestId: string): Promise<{SharedClients.Owner}{operationName}Operation>;",
-            $"Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded.");
-    }
-    dts.AppendLine("}");
-    dts.AppendLine();
-    var connectAt = Ref($"connect{shortName}At");
-    var ownContracts = viewTypes is not null && viewTypes.TryGetValue(model, out var ownViews)
-        ? ownViews.Select(ContractFor).ToArray() : [null];
-    foreach (var contract in ownContracts)
-    {
-        var ownKind = PageKind(shortName, contract);
-        var functionName = char.ToUpperInvariant(ownKind[0]) + ownKind[1..];
-        var referenceType = $"{functionName}PageReference";
-        var cacheName = Ref($"page{functionName}References");
-        // A ViewModel with shared clients (#839): its reference is each shared reference, which the extends clause makes
-        // the compiler check, and names them for the frameworks' ViewRegistry types.
-        dts.AppendLine((sharedClients.Count == 0 ? $"export interface {referenceType} {{"
-            : $"export interface {referenceType} extends {string.Join(", ", sharedClients.Select(shared => shared.ReferenceType))} {{")
-            + Mapped(null, "", referenceType));
-        dts.AppendLine($"  readonly kind: \"{ownKind}\";");
-        dts.AppendLine($"  connect(): Promise<{clientName}>;");
-        if (sharedClients.Count > 0)
-        {
-            dts.AppendLine("  /** Type-only: the shared page references (`[RunicSharedClient]`) whose components a `ViewRegistry` accepts for this kind. */");
-            dts.AppendLine($"  readonly [{Ref("sharedPageReferences")}]?: {string.Join(" | ", sharedClients.Select(shared => shared.ReferenceType))};");
-        }
-        dts.AppendLine("}");
-        dts.AppendLine();
-        ts.AppendLine($"const {cacheName} = {Ref("viewReferences")}<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => {connectAt}(`content${{id}}`) }}));");
-        ts.AppendLine($"export function page{functionName}(id: string): {referenceType} {{ return {cacheName}(id); }}");
-        ts.AppendLine();
-    }
-    // The public state is the decoded TypeScript contract. The client passes one
-    // decoder per state member, which validates the member's wire value and
-    // converts it (for example int64 strings to bigint), so a frame's `set`
-    // change decodes only its member.
-    string ContentDecoder(PropertyInfo property, (Type Model, string Name)[] pages, string reference)
-    {
-        var field = WireName(property);
-        return string.Join(" : ", pages.Select(page =>
-            $"{reference}.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}({reference}.id)"))
-            + $" : (() => {{ throw new {Ref("BridgeError")}(\"failed\", {JsonSerializer.Serialize($"Unknown {field} kind.")}); }})()";
-    }
-    // A decoder is an expression of `wire`, or a block body.
-    var memberDecoders = new List<(string Member, string Decoder)>();
-    var blockDecoders = new HashSet<string>(StringComparer.Ordinal);
-    if (hasValidation) memberDecoders.Add(("validation", $"{Ref("decodeBridgeValidation")}(wire)"));
-    foreach (var property in properties)
-    {
-        var field = WireName(property);
-        if (valueProperties.TryGetValue(property, out var graph))
-            memberDecoders.Add((field, graph.EmitTypeScriptDecoder("wire")));
-        else if (queryCollections.ContainsKey(property))
-            memberDecoders.Add((field, $"{Ref("decodeQueryCollectionState")}(wire)"));
-        else if (contentProperties.TryGetValue(property, out var pages))
-        {
-            var decoder = $"{{ const reference = {Ref("contentReference")}(wire); return {ContentDecoder(property, pages, "reference")}; }}";
-            memberDecoders.Add((field, IsNullableContent(property) ? $"{{ if (wire === null) return null; {decoder[2..]}" : decoder));
-            blockDecoders.Add(field);
-        }
-        else if (regionCollections.TryGetValue(property, out var regionPages))
-            memberDecoders.Add((field, $"{Ref("regionCollection")}(wire, item => {{ const reference = {Ref("contentReference")}(item); return {ContentDecoder(property, regionPages, "reference")}; }})"));
-        else if (contentCollections.TryGetValue(property, out var collectionPages))
-        {
-            var decoder = $"bridgeWire.array(wire, item => {{ const reference = {Ref("contentReference")}(item); return {ContentDecoder(property, collectionPages, "reference")}; }})";
-            memberDecoders.Add((field, nullability.Create(property).ReadState == NullabilityState.Nullable ? $"wire === null ? null : {decoder}" : decoder));
-        }
-        if (hasErrors) memberDecoders.Add((field + "Errors", "bridgeWire.array(wire, item => bridgeWire.string(item))"));
-    }
-    foreach (var command in commands)
-    {
-        var plan = commandPlans[command];
-        var name = command.Name[..^"Command".Length];
-        if (!plan.HasArgument) memberDecoders.Add(($"can{name}", "bridgeWire.boolean(wire)"));
-        if (plan.HasExecutionState) memberDecoders.Add(($"is{name}Executing", "bridgeWire.boolean(wire)"));
-    }
-    // D072.13: a development-only member may be absent from the state.
-    foreach (var index in Enumerable.Range(0, memberDecoders.Count)
-        .Where(index => developmentOnlyState.Contains(memberDecoders[index].Member)).ToArray())
-    {
-        var (member, decoder) = memberDecoders[index];
-        memberDecoders[index] = (member, blockDecoders.Contains(member)
-            ? $"{{ if (wire === undefined) return undefined; {decoder[2..]}"
-            : $"wire === undefined ? undefined : {BridgeTypeGraph.ArrowBody(decoder)}");
-    }
-    if (hasContent)
-    {
-        ts.AppendLine($"function {Ref("contentReference")}(wire: unknown): {{ readonly kind: string; readonly id: string }} {{");
-        ts.AppendLine("  return bridgeWire.object(wire, value => ({ kind: bridgeWire.string(value[\"kind\"]), id: bridgeWire.string(value[\"id\"]) }));");
-        ts.AppendLine("}");
-    }
-    ts.AppendLine($"const {Ref("members")}: {Ref("BridgeMemberDecoders")}<{shortName}State> = {{");
-    foreach (var (member, decoder) in memberDecoders)
-        ts.AppendLine(blockDecoders.Contains(member)
-            ? $"  {TsLiteralKey(member)}: (wire: unknown) => {decoder},"
-            : $"  {TsLiteralKey(member)}: (wire: unknown) => {BridgeTypeGraph.ArrowBody(decoder)},");
-    ts.AppendLine("};");
-    ts.AppendLine($"const {Ref("bridgeContract")} = \"{model.FullName}:{contractFingerprint}\";");
-    InteractionCodeEmitter.AppendTypeScriptDefinitions(ts, interactions);
-    InteractionCodeEmitter.AppendTypeScriptRequestDefinitions(ts, requests);
-    if (needsCheckedWriter)
-        ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
-    OperationTypeScriptEmitter.AppendCodecs(ts, operationPlans);
-    ts.AppendLine();
-    if (queryCollections.Count > 0)
-    {
-        ts.AppendLine($"const {Ref("queryDefinitions")} = {{");
-        foreach (var (property, plan) in queryCollections)
-        {
-            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineQueryCollection")}<{plan.Rows.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(plan.Rows.EmitItemTypeScriptDecoder("wire"))}),");
-        }
-        ts.AppendLine("};");
-    }
-    var hasDeltaFields = incrementalCollections.Count > 0 || textFields.Length > 0;
-    if (hasDeltaFields)
-    {
-        ts.AppendLine($"const {Ref("collectionDefinitions")} = {Ref("defineCollections")}({{");
-        foreach (var (property, key) in incrementalCollections)
-        {
-            var graph = valueProperties[property];
-            var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
-            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineCollection")}<{graph.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(graph.EmitItemTypeScriptDecoder("wire"))}, item => String({TsAccess("item", keyMember.WireName)})),");
-        }
-        foreach (var property in textFields)
-            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineText")}({(IsNullableString(property) ? "true" : "")}),");
-        ts.AppendLine("});");
-    }
-    var connectOptions = $"contract: {Ref("bridgeContract")}, route, {Shorthand("members")}"
-        + (hasDeltaFields ? $", collections: {Ref("collectionDefinitions")}" : "")
-        + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
-        + (textMembers.Length > 0 ? $", texts: [{string.Join(", ", textMembers.Select(property => JsonSerializer.Serialize(WireName(property))))}]" : "")
-        + (scopedCommands.Length > 0 ? $", scopedCommands: [{string.Join(", ", scopedCommands.Select(member => JsonSerializer.Serialize(member)))}]" : "")
-        + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}, handlers: options?.handlers" : "")
-        + (requests.Length > 0 ? $", requests: {Ref("requestDefinitions")}" : "")
-        + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
-    // A View with interactions takes their handlers when it connects, so the producer can ask them from the first
-    // request on (specs/application, "Presentations").
-    var optionsType = interactions.Length > 0 ? $"{shortName}ConnectOptions" : Ref("BridgeConnectOptions");
-    if (interactions.Length > 0)
-        InteractionCodeEmitter.AppendConnectOptions(ts, interactions, shortName);
-    XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError. `options.signal` abandons the connection.\nA `using` declaration disposes the client where the engine has `Symbol.dispose`."
-        + (interactions.Length > 0 ? "\n`options.handlers` answers interactions from the first request on." : ""));
-    // globalThis.Disposable cannot be shadowed by a named type of the same name.
-    ts.AppendLine($"export function connect{shortName}(options?: {optionsType}): Promise<{clientName} & globalThis.Disposable> {{ return {connectAt}(\"{prefix}\", options); }}");
-    ts.AppendLine($"async function {connectAt}(route: string, options?: {optionsType}): Promise<{clientName} & globalThis.Disposable> {{");
-    ts.AppendLine($"  const view = await {Ref("connectView")}<{shortName}State>({{ {connectOptions}, timeout: options?.timeout, signal: options?.signal }});");
-    ts.AppendLine($"  return {Ref("disposable")}<{clientName}>({{");
-    ts.AppendLine("    get snapshot() { return view.snapshot; },");
-    ts.AppendLine("    subscribe: view.subscribe,");
-    ts.AppendLine("    dispose: view.dispose,");
-    if (usesUploads) ts.AppendLine($"    upload: {Ref("upload")},");
-    if (interactions.Length > 0)
-        ts.AppendLine($"    interactions: view.interactions as unknown as {shortName}Interactions,");
-    if (requests.Length > 0)
-        ts.AppendLine($"    requests: view.requests as unknown as {shortName}ViewRequests,");
-    if (queryCollections.Count > 0)
-        ts.AppendLine("    queries: { " + string.Join(", ", queryCollections.Keys.Select(property =>
-            $"{TsLiteralKey(WireName(property))}: view.queryCollection({JsonSerializer.Serialize(WireName(property))}, {Ref("queryDefinitions")}[{JsonSerializer.Serialize(WireName(property))}])")) + " },");
-    if (needsCheckedWriter)
-        ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
-    if (hasFieldPaths)
-    {
-        ts.AppendLine("    writePath<T>(member: string, path: readonly string[], write: " + Ref("BridgeFieldWriteRequest") + ", decode: (wire: unknown) => T) { return view.write<T>(member, { ...write, path }, decode); },");
-        ts.AppendLine("    fieldPathVersion() { return view.fieldPathVersion(); },");
-    }
-    foreach (var property in properties.Where(PageSettable))
-    {
-        // A setter sends the member's value as an edit (specs/application, "Edits").
-        var member = JsonSerializer.Serialize(WireName(property));
-        if (property.PropertyType == typeof(int))
-            ts.AppendLine($"    async set{property.Name}(value) {{ if (!Number.isSafeInteger(value)) throw new RangeError(\"Value must be an integer.\"); return view.set({member}, value); }},");
-        else
-            ts.AppendLine($"    async set{property.Name}(value) {{ return view.set({member}, {valueProperties[property].EncodeTypeScript("value")}); }},");
-    }
-    foreach (var property in checkedProperties)
-    {
-        ts.AppendLine($"    async write{property.Name}(value, options) {{");
-        ts.AppendLine("      if (typeof options?.requestId !== \"string\" || options.requestId.trim().length === 0) throw new RangeError(\"A checked field requestId is required.\");");
-        ts.AppendLine("      const baseline = options.baseline;");
-        var check = property.PropertyType == typeof(int)
-            ? "typeof value !== \"number\" || !Number.isSafeInteger(value) || !baseline || typeof baseline.value !== \"number\" || !Number.isSafeInteger(baseline.value)"
-            : property.PropertyType == typeof(bool)
-                ? "typeof value !== \"boolean\" || !baseline || typeof baseline.value !== \"boolean\""
-            : IsNullableString(property)
-                ? "(value !== null && typeof value !== \"string\") || !baseline || (baseline.value !== null && typeof baseline.value !== \"string\")"
-                    : property.PropertyType == typeof(string)
-                        ? "typeof value !== \"string\" || !baseline || typeof baseline.value !== \"string\""
-                        : "!baseline";
-        ts.AppendLine($"      if ({check} || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError(\"A checked field value and baseline are required.\");");
-        var valueGraph = valueProperties[property];
-        ts.AppendLine($"      return view.write<{TsPropertyType(property)}>({JsonSerializer.Serialize(WireName(property))}, {{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {valueGraph.EncodeTypeScript("baseline.value")}, value: {valueGraph.EncodeTypeScript("value")} }}, value => {BridgeTypeGraph.ArrowBody(valueGraph.EmitTypeScriptDecoder("value"))});");
-        ts.AppendLine("    },");
-    }
-    foreach (var command in commands)
-    {
-        var name = command.Name[..^"Command".Length];
-        var member = JsonSerializer.Serialize(LowerFirst(name));
-        var plan = commandPlans[command];
-        var parameter = plan.ParameterName;
-        var input = plan.InputGraph is { } inputGraph ? inputGraph.EncodeTypeScript(parameter)
-            : plan.HasStringArgument ? parameter : null;
-        var argument = input is null ? "" : $", {input}";
-        ts.AppendLine(plan.FailureGraph is { } failureGraph
-            ? $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.commandOutcome({member}, value => {BridgeTypeGraph.ArrowBody(failureGraph.EmitTypeScriptDecoder("value"))}{argument}); }},"
-            : $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.command({member}{argument}); }},");
-        if (plan.HasArgument)
-            ts.AppendLine($"    async can{name}({parameter}) {{ return view.can({member}{argument}); }},");
-    }
-    foreach (var (property, method, action) in regionMethods)
-        ts.AppendLine($"    async {method}(key) {{ return view.region({JsonSerializer.Serialize(WireName(property))}, \"{action}\", key); }},");
-    OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
-    ts.AppendLine("  });");
-    ts.AppendLine("}");
-    // The field descriptors ({View}Fields). A development-only member (D072.13) has none: a publish may leave it out,
-    // and a field binds a member that the state always has.
-    var fieldProperties = checkedProperties.Where(property => !DevelopmentOnly(property)).ToArray();
-    var rowFieldPaths = rowPaths.Where(entry => entry.Value.Count > 0 && !DevelopmentOnly(entry.Key)).ToArray();
-    AppendFieldDescriptors();
-
-    var body = ts.ToString();
-    // Application-facing types and errors come from the package root; the
-    // runtime only generated code calls comes from its /generated entry, and
-    // only the protocol parts this ViewModel uses are imported.
-    var publicImports = new List<string>();
-    if (body.Contains($"new {Ref("BridgeError")}(", StringComparison.Ordinal)) publicImports.Add(Import("BridgeError"));
-    if (hasValidation) publicImports.Add("type " + Import("BridgeValidationState"));
-    publicImports.Add("type " + Import("BridgeConnectOptions"));
-    publicImports.Add("type " + Import("ViewClient"));
-    if (sharedClients.Count > 0) publicImports.Add("type " + Import("sharedPageReferences"));
-    if (needsCheckedWriter || hasFieldPaths) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt")]);
-    if (fieldProperties.Length > 0 || rowFieldPaths.Length > 0) publicImports.Add("type " + Import("BridgeField"));
-    if (rowFieldPaths.Length > 0) publicImports.Add("type " + Import("BridgeRowFields"));
-    if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type " + Import("BridgeOutcome"));
-    if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type " + Import("BridgeOperation"));
-    if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
-    if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
-    if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
-    if (requests.Length > 0) publicImports.Add("type " + Import("BridgeViewRequestContext"));
-    if (regionCollections.Count > 0) publicImports.AddRange(["type " + Import("RegionCollection"), "type " + Import("RegionOutcome")]);
-    if (queryCollections.Count > 0) publicImports.AddRange(["type " + Import("QueryCollection"), "type " + Import("QueryCollectionState")]);
-    var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences"), "type " + Import("BridgeMemberDecoders") };
-    if (operationPlans.Length > 0) runtimeImports.Add("type " + Import("BridgeOperationCodec"));
-    if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
-    if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
-    if (queryCollections.Count > 0) runtimeImports.AddRange([Import("defineQueryCollection"), Import("decodeQueryCollectionState")]);
-    if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));
-    if (interactions.Length > 0) runtimeImports.Add(Import("defineInteractions"));
-    if (requests.Length > 0) runtimeImports.Add(Import("defineRequests"));
-    if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
-    if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
-    if (regionCollections.Count > 0) runtimeImports.Add(Import("regionCollection"));
-    if (hasValidation && fieldProperties.Length > 0) { runtimeImports.Add(Import("fieldErrors")); runtimeImports.Add(Import("fieldValidating")); }
-    // In this order, so that a client without development-only members imports as before.
-    if (fieldProperties.Any(nestedPaths.ContainsKey) || rowFieldPaths.Length > 0) runtimeImports.Add(Import("fieldPath"));
-    if (hasFieldPaths) runtimeImports.Add("type " + Import("BridgeFieldWriteRequest"));
-    if (rowFieldPaths.Length > 0) runtimeImports.Add(Import("rowFields"));
-    if (usesUploads) runtimeImports.Add(Import("upload"));
-    // <view>.ts imports what its own code uses and re-exports the contract's types, so imports from it keep working;
-    // the contract imports what its declarations use.
-    var contractBody = dts.ToString().TrimEnd() + "\n";
-    var contractNames = TypeScriptModuleBindings.TopLevelBindings(contractBody).ToArray();
-    var code = TypeScriptModuleBindings.WithoutComments(body);
-    var declarations = TypeScriptModuleBindings.WithoutComments(contractBody);
-    bool Uses(string text, string specifier) => text.Contains(Ref(Unmarked(specifier)), StringComparison.Ordinal);
-    static string Unmarked(string specifier) => specifier.Replace("type ", "", StringComparison.Ordinal).Trim('\u0003', '\u0004', '\u0005');
-    // An import only the contract uses moves there; a type neither uses is dropped.
-    bool Moved(string specifier) => !Uses(body, specifier)
-        && (Uses(contractBody, specifier) || specifier.StartsWith("type ", StringComparison.Ordinal));
-    publicImports.RemoveAll(Moved);
-    runtimeImports.RemoveAll(Moved);
-    ts.Clear();
-    ts.AppendLine("// <auto-generated />");
-    ts.AppendLine(publicImports.All(name => name.StartsWith("type ", StringComparison.Ordinal))
-        ? $"import type {{ {string.Join(", ", publicImports.Select(name => name["type ".Length..]))} }} from \"@runic-artifex/views\";"
-        : $"import {{ {string.Join(", ", publicImports)} }} from \"@runic-artifex/views\";");
-    ts.AppendLine($"import {{ {string.Join(", ", runtimeImports)} }} from \"@runic-artifex/views/generated\";");
-    // A namespace import of the decoder module lets every bundler drop unused decoders.
-    if (body.Contains("bridgeWire.", StringComparison.Ordinal))
-        ts.AppendLine("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
-    foreach (var (module, functions, references) in contentImports)
-    {
-        var used = functions.Concat(references.Where(reference => TypeScriptModuleBindings.Mentions(code, reference)).Select(reference => "type " + reference));
-        ts.AppendLine($"import {{ {string.Join(", ", used)} }} from \"{ClientModules.Specifier(module, ".js")}\";");
-    }
-    foreach (var shared in sharedClients.Where(shared => TypeScriptModuleBindings.Mentions(code, shared.ReferenceType)))
-        ts.AppendLine($"import type {{ {shared.ReferenceType} }} from \"{ClientModules.Specifier(shared.Module, ".js")}\";");
-    var contractImports = contractNames.Where(name => TypeScriptModuleBindings.Mentions(code, name)).ToArray();
-    if (contractImports.Length > 0)
-        ts.AppendLine($"import type {{ {string.Join(", ", contractImports)} }} from \"{ClientDeclarationMap.Specifier(typescriptPath)}\";");
-    ts.AppendLine($"export type {{ {string.Join(", ", contractNames)} }} from \"{ClientDeclarationMap.Specifier(typescriptPath)}\";");
-    ts.AppendLine(TypeScriptModules.NamedTypeImports);
-    ts.AppendLine();
-    ts.Append(body);
-
-    var contractModule = new StringBuilder();
-    contractModule.AppendLine("// <auto-generated />");
-    string[] publicTypes = ["BridgeValidationState", "ViewClient", "sharedPageReferences", "viewCommands", "FieldBaseline", "FieldWriteOptions",
-        "FieldWriteReceipt", "BridgeOutcome", "BridgeOperation", "BridgeOperationStartOptions", "BridgeStreamOperation",
-        "BridgeInteractionContext", "BridgeViewRequestContext", "RegionCollection", "RegionOutcome", "QueryCollection",
-        "QueryCollectionState"];
-    string[] runtimeTypes = ["BridgeFieldWriteRequest"];
-    foreach (var (names, module) in new[] { (publicTypes, "@runic-artifex/views"), (runtimeTypes, "@runic-artifex/views/generated") })
-        if (names.Where(name => contractBody.Contains(Ref(name), StringComparison.Ordinal)).ToArray() is { Length: > 0 } used)
-            contractModule.AppendLine($"import type {{ {string.Join(", ", used.Select(Import))} }} from \"{module}\";");
-    if (contractBody.Contains("bridgeWire.", StringComparison.Ordinal))
-        contractModule.AppendLine("import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
-    foreach (var (module, _, references) in contentImports)
-        if (references.Where(reference => TypeScriptModuleBindings.Mentions(declarations, reference)).ToArray() is { Length: > 0 } used)
-            contractModule.AppendLine($"import type {{ {string.Join(", ", used)} }} from \"{ClientModules.Specifier(module, ".contract.js")}\";");
-    foreach (var shared in sharedClients.Where(shared => TypeScriptModuleBindings.Mentions(declarations, shared.ReferenceType)))
-        contractModule.AppendLine($"import type {{ {shared.ReferenceType} }} from \"{ClientModules.Specifier(shared.Module, ".js")}\";");
-    contractModule.AppendLine(TypeScriptModules.NamedTypeImports);
-    contractModule.AppendLine();
-    contractModule.Append(contractBody);
-    // Every own binding the declarations name is one of the types imported above.
-    if (TypeScriptModuleBindings.References(contractBody).FirstOrDefault(name => !publicTypes.Contains(name) && !runtimeTypes.Contains(name)) is { } unknown)
-        throw new InvalidOperationException($"{model.Name}: the generated client contract uses {unknown}, which it does not import.");
-
     cs.Insert(codecAliasPosition, codecs.Directives());
     // Written with the shared codecs, which are named once every Bridge is generated.
     BridgeSharedCodecs.WriteLater(csharpPath, cs.ToString());
-    TypeScriptModules.Add(typescriptPath, ts.ToString(), model);
-    TypeScriptModules.Add(ClientDeclarationMap.ContractPath(typescriptPath), contractModule.ToString(), model);
-    TypeScriptModules.Add(MockModulePath(typescriptPath), MockTypeScriptEmitter.Emit(new MockTypeScriptPlan(
-        shortName, prefix,
-        ownContracts.Select(contract => PageKind(shortName, contract)).ToArray(),
-        valueProperties.Select(entry => new MockValueField(WireName(entry.Key), entry.Value)).ToArray(),
-        contentBindings.Select(entry => new MockContentField(WireName(entry.Key),
-            string.Join(" | ", entry.Value.Select(page => $"{Ref("MockReference")}<{JsonSerializer.Serialize(PageKind(page.Name, ContractFor(entry.Key)))}>")),
-            contentCollections.ContainsKey(entry.Key),
-            !regionCollections.ContainsKey(entry.Key) && IsNullableContent(entry.Key),
-            regionCollections.ContainsKey(entry.Key),
-            regionCollections.ContainsKey(entry.Key) && BridgeContractShape.RegionCollection(entry.Key)!.PageCanClose)).ToArray(),
-        MockDefaults(),
-        checkedProperties.Select(WireName).ToArray(),
-        nestedPaths.Select(entry => (WireName(entry.Key), entry.Value.Select(leaf => leaf.Path).ToArray()))
-            .Concat(rowPaths.Where(entry => entry.Value.Count > 0).Select(entry => (WireName(entry.Key), entry.Value.Select(leaf => leaf.Path).ToArray()))).ToArray(),
-        textMembers.Select(WireName).ToArray(),
-        scopedCommands,
-        properties.Where(property => PageSettable(property) && valueProperties.ContainsKey(property))
-            .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
-                checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),
-        commands.Select(command =>
-        {
-            var plan = commandPlans[command];
-            var name = command.Name[..^"Command".Length];
-            return new MockCommand(LowerFirst(name), LowerFirst(name), plan.HasArgument ? CommandInputType(plan) : null,
-                plan.HasArgument ? plan.InputGraph?.EmitTypeScriptDecoder("wire") ?? "bridgeWire.string(wire)" : null,
-                plan.HasArgument ? null : $"can{name}", plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"),
-                plan.Key is null ? null : plan.ParameterName);
-        }).ToArray(),
-        commands.Where(command => commandPlans[command].IsAsync).Select(command =>
-        {
-            var plan = commandPlans[command];
-            var name = command.Name[..^"Command".Length];
-            return new MockOperation(LowerFirst(name), LowerFirst(name), plan.HasArgument ? CommandInputType(plan) : "void",
-                plan.ResultGraph?.TypeScriptType() ?? "void", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
-                plan.ResultGraph?.EncodeTypeScript("typed"), plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
-                plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
-        }).ToArray(),
-        interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
-            plan.Output.TypeScriptType(), plan.Input.EncodeTypeScript("typed"), plan.Output.EmitTypeScriptDecoder("wire"))).ToArray(),
-        requests.Select(plan => new MockViewRequest(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
-            plan.Input.EncodeTypeScript("typed"))).ToArray(),
-        incrementalCollections.Select(entry =>
-        {
-            var graph = valueProperties[entry.Key];
-            var keyMember = graph.Root.Element!.Members.Single(member => member.Property == entry.Value);
-            return new MockCollection(WireName(entry.Key), graph.ItemTypeScriptType(), graph.EncodeItemTypeScript("typed"),
-                graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
-        }).ToArray(), $"{model.FullName}:{contractFingerprint}",
-        queryCollections.Select(entry =>
-        {
-            var rows = entry.Value.Rows;
-            // The mock's default key: a row member named Id or Key of the collection's key type.
-            var keyMember = rows.Root.Element!.Members.FirstOrDefault(member => member.Property.Name is "Id" or "Key"
-                && member.Type.NonNullableType == entry.Value.Key && !member.Type.IsNullable);
-            return new MockQuery(WireName(entry.Key), rows.ItemTypeScriptType(), rows.EncodeItemTypeScript("typed"),
-                rows.EmitItemTypeScriptDecoder("wire"), keyMember is null ? null : $"String({TsAccess("item", keyMember.WireName)})");
-        }).ToArray()), Path.GetFileNameWithoutExtension(typescriptPath)), model);
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
     return hasContent || presented;
-
-    // Field descriptors (F1): one BridgeField per settable value member, which useField, injectField and
-    // createFieldController bind an input to. Every such member is a checked field, so each has its checked write.
-    void AppendFieldDescriptors()
-    {
-        if (fieldProperties.Length == 0 && rowFieldPaths.Length == 0) return;
-        ts.AppendLine();
-        XmlDocumentation.Append(ts, "", $"Descriptors of the {shortName} ViewModel's settable members, for `useField`, `injectField` and\n`createFieldController`."
-            + (hasFieldPaths ? "\nFields below a member (`address.street`) and the cells of editable rows (`lines.at(key).quantity`) are\nchecked fields too (field-paths/1)." : ""));
-        ts.AppendLine($"export const {shortName}Fields: {{");
-        foreach (var property in fieldProperties)
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeField")}<{clientName}, {shortName}State, {TsPropertyType(property)}>"
-                + (nestedPaths.TryGetValue(property, out var nested) ? " & " + LeafTypes(nested, []) : "") + ";");
-        foreach (var (property, leaves) in rowFieldPaths)
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeRowFields")}<{LeafTypes(leaves, [])}>;");
-        ts.AppendLine("} = {");
-        foreach (var property in fieldProperties)
-        {
-            var wire = WireName(property);
-            var name = JsonSerializer.Serialize(wire);
-            var root = valueProperties[property].Root;
-            ts.AppendLine($"  {TsLiteralKey(wire)}: {{");
-            ts.AppendLine($"    name: {name}, {FieldTraits(root, property)},");
-            ts.AppendLine($"    read: state => {TsAccess("state", wire)},");
-            ts.AppendLine($"    write: (client, value) => client.set{property.Name}(value),");
-            ts.AppendLine($"    checked: (client, value, options) => client.write{property.Name}(value, options),");
-            ts.AppendLine($"    baseline: client => client.fieldBaseline({name}),");
-            if (hasValidation)
-            {
-                ts.AppendLine($"    errors: state => {Ref("fieldErrors")}(state.validation, {name}{(hasErrors ? ", " + TsAccess("state", wire + "Errors") : "")}),");
-                ts.AppendLine($"    validating: state => {Ref("fieldValidating")}(state.validation, {name}),");
-            }
-            if (nestedPaths.TryGetValue(property, out var nested))
-                foreach (var line in LeafValues(nested, [], wire, $"container: state => {TsAccess("state", wire)}",
-                    root.IsNullable ? $"NonNullable<{TsPropertyType(property)}>" : TsPropertyType(property)))
-                    ts.AppendLine("    " + line);
-            ts.AppendLine("  },");
-        }
-        foreach (var (property, leaves) in rowFieldPaths)
-        {
-            var wire = WireName(property);
-            var graph = valueProperties[property];
-            var keyMember = graph.Root.Element!.Members.Single(member => member.Property == incrementalCollections[property]);
-            var row = $"row: {{ key, rows: state => {TsAccess("state", wire)}, keyOf: item => String({TsAccess("item", keyMember.WireName)}) }}";
-            ts.AppendLine($"  {TsLiteralKey(wire)}: {Ref("rowFields")}({JsonSerializer.Serialize(wire)}, key => ({{");
-            foreach (var line in LeafValues(leaves, [], wire, row, graph.ItemTypeScriptType()))
-                ts.AppendLine("    " + line);
-            ts.AppendLine("  })),");
-        }
-        ts.AppendLine("};");
-    }
-
-    // field-paths/1: the type of the descriptors below prefix, such as { readonly street: BridgeField<…> }.
-    string LeafTypes(IReadOnlyList<BridgeFieldLeaf> leaves, string[] prefix)
-    {
-        var members = leaves.Where(leaf => leaf.Path.Length == prefix.Length + 1 && leaf.Path.Take(prefix.Length).SequenceEqual(prefix))
-            .Select(leaf =>
-            {
-                var children = leaves.Any(other => other.Path.Length > leaf.Path.Length && other.Path.Take(leaf.Path.Length).SequenceEqual(leaf.Path));
-                return $"readonly {TsPropertyName(leaf.Path[^1])}: {Ref("BridgeField")}<{clientName}, {shortName}State, {BridgeTypeGraph.NodeTypeScriptType(leaf.Node)}>"
-                    + (children ? " & " + LeafTypes(leaves, leaf.Path) : "");
-            });
-        return $"{{ {string.Join("; ", members)} }}";
-    }
-
-    // field-paths/1: the descriptors below prefix, one fieldPath per path; a path with paths below it spreads its
-    // descriptor and adds theirs.
-    IEnumerable<string> LeafValues(IReadOnlyList<BridgeFieldLeaf> leaves, string[] prefix, string member, string locate, string containerType)
-    {
-        foreach (var leaf in leaves.Where(leaf => leaf.Path.Length == prefix.Length + 1 && leaf.Path.Take(prefix.Length).SequenceEqual(prefix)))
-        {
-            var node = leaf.Node;
-            var valueType = BridgeTypeGraph.NodeTypeScriptType(node);
-            var read = "value";
-            for (var index = 0; index < leaf.Chain.Length; index++)
-            {
-                var optional = index > 0 && leaf.Chain[index - 1].Type.IsNullable;
-                var segment = leaf.Chain[index].WireName;
-                read = IsTypeScriptIdentifier(segment) && segment != "__proto__"
-                    ? $"{read}{(optional ? "?." : ".")}{segment}"
-                    : $"{read}{(optional ? "?." : "")}[{JsonSerializer.Serialize(segment)}]";
-            }
-            if (leaf.Chain.Take(leaf.Chain.Length - 1).Any(member => member.Type.IsNullable)) read += $" as {valueType}";
-            var spec = $"{Ref("fieldPath")}<{clientName}, {shortName}State, {valueType}, {containerType}>({{ member: {JsonSerializer.Serialize(member)}, "
-                + $"path: [{string.Join(", ", leaf.Path.Select(segment => JsonSerializer.Serialize(segment)))}], {locate}, "
-                + $"read: (value: {containerType}) => {read}, "
-                + $"encode: (value: {valueType}) => {BridgeTypeGraph.ArrowBody(BridgeTypeGraph.NodeTypeScriptEncoder(node, "value"))}, "
-                + $"decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(BridgeTypeGraph.NodeTypeScriptDecoder(node, "wire"))}, "
-                + FieldTraits(node, leaf.Chain[^1].Property)
-                + (hasValidation ? ", validation: state => state.validation" : "") + " })";
-            var children = LeafValues(leaves, leaf.Path, member, locate, containerType).ToArray();
-            if (children.Length == 0)
-            {
-                yield return $"{TsLiteralKey(leaf.Path[^1])}: {spec},";
-                continue;
-            }
-            yield return $"{TsLiteralKey(leaf.Path[^1])}: {{ ...{spec},";
-            foreach (var child in children) yield return "  " + child;
-            yield return "},";
-        }
-    }
-
-    // A field's kind and the traits that go with it, from its wire type and its property's DataAnnotations.
-    string FieldTraits(BridgeTypeNode root, PropertyInfo property)
-    {
-        var kind = root.Kind switch
-        {
-            BridgeWireKind.Boolean => "boolean",
-            BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16 or
-            BridgeWireKind.Int32 or BridgeWireKind.UInt32 or BridgeWireKind.Single or BridgeWireKind.Double => "number",
-            BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => "bigint",
-            // C1: kinds with their own text form (locale numbers, the ISO forms of native date inputs).
-            BridgeWireKind.Decimal => "decimal",
-            BridgeWireKind.DateOnly => "date",
-            BridgeWireKind.TimeOnly => "time",
-            BridgeWireKind.DateTime or BridgeWireKind.DateTimeOffset => "datetime",
-            BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.TimeSpan => "text",
-            BridgeWireKind.Enum => "choice",
-            _ => "value",
-        };
-        var traits = $"kind: \"{kind}\"";
-        if (root.IsNullable) traits += ", nullable: true";
-        if (root.Kind is BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16
-            or BridgeWireKind.Int32 or BridgeWireKind.UInt32) traits += ", integer: true";
-        if (root.Kind == BridgeWireKind.DateTimeOffset) traits += ", offset: true";
-        if (FieldConstraintSet.Of(property)?.TypeScript() is { } constraints) traits += $", constraints: {constraints}";
-        if (root.Kind == BridgeWireKind.Enum)
-        {
-            // The names .NET writes: the first declared name of each value, as the enum codec does.
-            var written = new HashSet<object>();
-            traits += $", choices: [{string.Join(", ", root.EnumCases.Where(@case => written.Add(@case.Field.GetRawConstantValue()!))
-                .Select(@case => JsonSerializer.Serialize(@case.WireName)))}]";
-        }
-        return traits;
-    }
-
-    string TsPropertyType(PropertyInfo property) => valueProperties.TryGetValue(property, out var graph)
-        ? graph.TypeScriptType()
-        : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
-
-    string CommandInputType(GeneratedCommandPlan plan) => plan.InputGraph?.TypeScriptType()
-        ?? (plan.HasStringArgument ? "string" : "never");
-
-    bool IsNullableString(PropertyInfo property) =>
-        property.PropertyType == typeof(string)
-        && nullability.Create(property).ReadState == NullabilityState.Nullable;
-
-    // State a mock fills in unless the test sets it: command availability and
-    // execution, and empty validation.
-    (string Field, string Default)[] MockDefaults()
-    {
-        var defaults = new List<(string Field, string Default)>();
-        if (hasValidation) defaults.Add(("validation", "{ hasErrors: false, truncated: false, errors: [] }"));
-        if (hasErrors) defaults.AddRange(properties.Select(property => (WireName(property) + "Errors", "[]")));
-        foreach (var command in commands)
-        {
-            var plan = commandPlans[command];
-            var name = command.Name[..^"Command".Length];
-            if (!plan.HasArgument) defaults.Add(($"can{name}", "true"));
-            if (plan.HasExecutionState) defaults.Add(($"is{name}Executing", "false"));
-        }
-        return [.. defaults];
-    }
 }
 
 // The View in the contract IR (specs/application/contract-ir.md), from its plan. Names are UpperCamelCase: the C#
@@ -2541,6 +1665,7 @@ static JsonObject ContractIrView(ViewPlan view)
     {
         var item = Named(property.Name, WireName(property), XmlDocumentation.Summary(property));
         ContractIr.Publish(model, property, command: false, WireName(property));
+        SharedClients.Record(model, property, settable: view.PageSettable(property));
         if (view.ContentProperties.TryGetValue(property, out var pages))
         {
             item["kind"] = "content";
@@ -2603,6 +1728,7 @@ static JsonObject ContractIrView(ViewPlan view)
         var name = command.Name[..^"Command".Length];
         var item = Named(name, LowerFirst(name), CommandDocumentation(command, view.CommandSources[command], plan.Command));
         ContractIr.Publish(model, command, command: true, LowerFirst(name));
+        SharedClients.Record(model, command);
         if (plan.HasArgument) item["parameter"] = plan.ParameterName;
         if (plan.InputGraph is { } input) item["input"] = ContractIr.Value(input);
         else if (plan.HasStringArgument) item["input"] = ContractIr.UntypedString();
@@ -2638,6 +1764,10 @@ static JsonObject ContractIrView(ViewPlan view)
         ir["sharedClients"] = new JsonArray([.. view.SharedClients.Select(shared => (JsonNode)shared.Interface.FullName!)]);
     ir["members"] = members;
     ir["commands"] = commands;
+    foreach (var plan in view.Interactions)
+        SharedClients.Record(model, plan.Property, unsupported: "an interaction, which a shared client does not include. Remove it from the interface.");
+    foreach (var plan in view.Requests)
+        SharedClients.Record(model, plan.Property, unsupported: "a view request, which a shared client does not include. Remove it from the interface.");
     if (view.Interactions.Length > 0)
         ir["interactions"] = new JsonArray([.. view.Interactions.Select(plan =>
         {
@@ -2727,9 +1857,6 @@ static void AppendValidationContextReader(StringBuilder cs, IReadOnlyList<string
     cs.AppendLine("        new(ReadValidationContextErrors, ObserveValidationContext);");
     cs.AppendLine();
 }
-
-static string MockModulePath(string typescriptPath) =>
-    Path.Combine(Path.GetDirectoryName(Path.GetFullPath(typescriptPath))!, $"{Path.GetFileNameWithoutExtension(typescriptPath)}.mock.ts");
 
 // A command's declared failure type (W130-029): at most one [RunicFailure], on
 // the command property or its [RelayCommand] method, naming a value type the
@@ -2864,7 +1991,7 @@ static string CommandParameterName(MethodInfo? source, GeneratedCommandPlan plan
     if (candidate is null && plan.InputGraph?.Root is { Kind: BridgeWireKind.Dto or BridgeWireKind.Union or BridgeWireKind.Enum } root)
         candidate = LowerFirst(root.NonNullableType.Name.Split('`')[0]);
     if (candidate is null || !IsTypeScriptIdentifier(candidate)) return "input";
-    return TypeScriptModules.IsReservedParameterName(candidate) ? candidate + "Value" : candidate;
+    return ClientMemberNames.IsReservedParameterName(candidate) ? candidate + "Value" : candidate;
 }
 
 static string LowerFirst(string text) => char.ToLowerInvariant(text[0]) + text[1..];
@@ -2883,19 +2010,6 @@ static string WireName(PropertyInfo property)
 static bool IsTypeScriptIdentifier(string name) => name.Length > 0
     && (char.IsLetter(name[0]) || name[0] is '_' or '$')
     && name.Skip(1).All(character => char.IsLetterOrDigit(character) || character is '_' or '$');
-
-static string TsPropertyName(string name) => IsTypeScriptIdentifier(name)
-    ? name
-    : JsonSerializer.Serialize(name);
-
-// An object-literal key. "__proto__" stays computed: as a plain or quoted key
-// it would set the literal's prototype instead of an own property.
-static string TsLiteralKey(string name) => name == "__proto__" ? $"[{JsonSerializer.Serialize(name)}]" : TsPropertyName(name);
-
-// Reads an own property; "__proto__" is bracketed like any other non-plain name.
-static string TsAccess(string target, string name) => IsTypeScriptIdentifier(name) && name != "__proto__"
-    ? $"{target}.{name}"
-    : $"{target}[{JsonSerializer.Serialize(name)}]";
 
 static void WriteIfChanged(string path, string content) => GeneratedFile.WriteIfChanged(path, content);
 
@@ -3034,6 +2148,8 @@ static class BridgeDiagnosticCodes
     internal const string ClientModuleItem = "RUNICBRIDGE082";
     /// <summary>Warning: a mapped client library declares no View, so its RunicApplicationFrontendClientModule does nothing (#1318).</summary>
     internal const string ClientModuleEmpty = "RUNICBRIDGE083";
+    /// <summary>The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views (reported by the build and its launcher).</summary>
+    internal const string ClientEmitter = "RUNICBRIDGE084";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -3099,6 +2215,7 @@ static class BridgeDiagnosticCodes
         (ClientModuleOwner, "error", "A mapped client library's ViewModel presents content of another owner, or a shared client's implementers have different owners"),
         (ClientModuleItem, "error", "A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include"),
         (ClientModuleEmpty, "warning", "A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing"),
+        (ClientEmitter, "error", "The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -3256,14 +2373,11 @@ static class Diagnostics
 }
 
 /// <summary>
-/// Collects the generated ViewModel modules, then writes them together with
-/// the shared named-type module once every name is known.
+/// The names that a generated client reserves: what the generator checks a ViewModel's commands and parameters
+/// against, so that the client the emitter writes from the contract IR compiles.
 /// </summary>
-static class TypeScriptModules
+static class ClientMemberNames
 {
-    /// <summary>A line the module writer replaces with the named-type imports.</summary>
-    internal const string NamedTypeImports = "\u0002named-type-imports\u0002";
-
     // Identifiers generated client methods use, and JavaScript reserved
     // words. A command parameter with such a name gets a "Value" suffix.
     internal static readonly HashSet<string> ReservedParameterNames = new(StringComparer.Ordinal)
@@ -3296,150 +2410,6 @@ static class TypeScriptModules
     internal static bool IsReservedParameterName(string name) => ReservedParameterNames.Contains(name)
         || name.StartsWith("bridgeNullable", StringComparison.Ordinal) || name.StartsWith("bridgeUnion", StringComparison.Ordinal)
         || name.StartsWith("bridgeDecodedUnion", StringComparison.Ordinal);
-
-    private static readonly List<(string Path, string Text, MemberInfo? Owner)> Pending = [];
-
-    // Assigns the module's own bindings (TypeScriptModuleBindings) before the
-    // named types, which avoid every name the resolved modules declare.
-    // A module that a mapped client library owns (ClientModules.Discarding) is resolved, so its name checks still run,
-    // but the library writes it.
-    internal static void Add(string path, string text, MemberInfo? owner = null)
-    {
-        var resolved = TypeScriptModuleBindings.Resolve(text, path, owner);
-        if (!ClientModules.Discarding) Pending.Add((path, resolved, owner));
-    }
-
-    /// <summary>Writes the pending modules and <c>types.ts</c>; true when there are named types, so <c>types.ts</c> exists.</summary>
-    internal static bool WriteAll(string directory)
-    {
-        TypeScriptNamedTypes.Complete(Pending.Select(module => module.Text));
-        var typesPath = Path.Combine(directory, $"{TypeScriptNamedTypes.ModuleName}.ts");
-        if (TypeScriptNamedTypes.Any && File.Exists(typesPath) && !GeneratedOutput.IsGenerated(typesPath))
-            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
-                $"{Path.GetFullPath(typesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or generate into a dedicated directory.");
-        var texts = Pending.ToDictionary(module => Path.GetFullPath(module.Path), module => module.Text, StringComparer.Ordinal);
-        foreach (var (path, text, owner) in Pending)
-        {
-            var contract = path.EndsWith(ClientDeclarationMap.Suffix, StringComparison.Ordinal);
-            var used = TypeScriptNamedTypes.Used(text);
-            // A client module also re-exports the named types of its contract (#952), as when it declared them itself.
-            var exported = contract ? text
-                : text + (texts.GetValueOrDefault(Path.GetFullPath(ClientDeclarationMap.ContractPath(path))) ?? "");
-            var reexported = TypeScriptNamedTypes.Used(exported);
-            var values = TypeScriptNamedTypes.UsedValues(exported);
-            var lines = new List<string>();
-            // A module that imports a client library's module brings in the check of the library's contracts.
-            if (!contract && ClientModules.ImportsLibrary(text)) lines.Add(ClientModules.CheckImport);
-            if (used.Count > 0) lines.Add($"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
-            if (!contract && reexported.Count > 0) lines.Add($"export type {{ {string.Join(", ", reexported)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
-            if (!contract && values.Count > 0) lines.Add($"export {{ {string.Join(", ", values)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
-            var resolved = TypeScriptNamedTypes.Resolve(text)
-                .Replace(NamedTypeImports + Environment.NewLine, lines.Count == 0 ? "" : string.Join(Environment.NewLine, lines) + Environment.NewLine, StringComparison.Ordinal);
-            if (!contract)
-            {
-                WarnOnLostSourceInformation(path, resolved, null, owner);
-                WriteFile(path, resolved);
-                continue;
-            }
-            var (declarations, map) = ClientDeclarationMap.Complete(path, resolved);
-            WarnOnLostSourceInformation(path, declarations, map, owner);
-            WriteFile(path, declarations);
-            if (map is not null) WriteFile(path + ".map", map);
-            // tsserver reads <file>.map even without a sourceMappingURL comment.
-            else if (File.Exists(path + ".map") && ClientDeclarationMap.IsGeneratedMap(path + ".map")) File.Delete(path + ".map");
-        }
-        if (TypeScriptNamedTypes.Any)
-        {
-            var types = $"{GeneratedOutput.Header}{Environment.NewLine}{TypeScriptNamedTypes.Module()}";
-            WarnOnLostSourceInformation(typesPath, types, null, null);
-            WriteFile(typesPath, types);
-        }
-        else if (File.Exists(typesPath) && GeneratedOutput.IsGenerated(typesPath))
-            File.Delete(typesPath);
-        Pending.Clear();
-        return TypeScriptNamedTypes.Any;
-    }
-
-    /// <summary>
-    /// RUNICBRIDGE076 (#1298): the module replaces a generated file that has more members in its declaration map, or
-    /// more documentation lines, and an assembly of <paramref name="owner"/> (any assembly for the named types) has no
-    /// PDB. The generator reads member locations and partial properties' comments through the PDB, so a committed client
-    /// would otherwise change between a build with PDBs and one without, such as Release with DebugType none.
-    /// </summary>
-    private static void WarnOnLostSourceInformation(string path, string content, string? map, MemberInfo? owner)
-    {
-        var fullPath = Path.GetFullPath(path);
-        if (!File.Exists(fullPath)) return;
-        var lost = new List<string>();
-        try
-        {
-            if (path.EndsWith(ClientDeclarationMap.Suffix, StringComparison.Ordinal))
-            {
-                var mapPath = fullPath + ".map";
-                var before = File.Exists(mapPath) && ClientDeclarationMap.IsGeneratedMap(mapPath)
-                    ? ClientDeclarationMap.MappedNames(File.ReadAllText(mapPath)) : 0;
-                var after = map is null ? 0 : ClientDeclarationMap.MappedNames(map);
-                if (after < before)
-                    lost.Add(after == 0 ? "its declaration map" : $"{before - after} of the {before} names in its declaration map");
-            }
-            var removed = DocumentationLines(File.ReadAllText(fullPath)) - DocumentationLines(content);
-            if (removed > 0) lost.Add(removed == 1 ? "a documentation line" : $"{removed} documentation lines");
-        }
-        // The check only explains a change; an unreadable existing file is overwritten as before.
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return;
-        }
-        if (lost.Count == 0) return;
-        var type = owner as Type ?? owner?.DeclaringType;
-        var assemblies = SourceLocator.AssembliesWithoutPdb(type);
-        if (assemblies.Count == 0) return;
-        var named = string.Join(", ", assemblies);
-        Diagnostics.WarnAt(BridgeDiagnosticCodes.ClientWithoutPdb, fullPath,
-            $"the generated {Path.GetFileName(path)} loses {string.Join(" and ", lost)} that the existing file has, because "
-            + $"{named} {(assemblies.Count == 1 ? "has" : "have")} no PDB, through which the generator finds member locations "
-            + "and the comments of partial properties. "
-            + $"A committed client then changes between configurations. Give {named} a PDB in every configuration, such as "
-            + "<DebugType>portable</DebugType> (or embedded), or suppress RUNICBRIDGE076 with NoWarn if the generated clients are not committed.");
-    }
-
-    // The lines of /** … */ comments that carry text.
-    private static int DocumentationLines(string text)
-    {
-        var count = 0;
-        var inside = false;
-        foreach (var raw in text.Split('\n'))
-        {
-            var line = raw.Trim();
-            var opens = line.StartsWith("/**", StringComparison.Ordinal);
-            if (!inside && !opens) continue;
-            inside = !line.EndsWith("*/", StringComparison.Ordinal);
-            if (opens) line = line[3..];
-            if (line.EndsWith("*/", StringComparison.Ordinal)) line = line[..^2];
-            if (line.TrimStart('*').Trim().Length > 0) count++;
-        }
-        return count;
-    }
-
-    private static void WriteFile(string path, string content)
-    {
-        // Match the repository and generated-client LF contract on every host.
-        content = content.ReplaceLineEndings("\n");
-        var fullPath = Path.GetFullPath(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        if (File.Exists(fullPath) && File.ReadAllText(fullPath) == content) return;
-        // Frontend watchers must never observe a truncated module.
-        var temporary = Path.Combine(Path.GetDirectoryName(fullPath)!, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
-        try
-        {
-            File.WriteAllText(temporary, content);
-            File.Move(temporary, fullPath, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
-        }
-    }
 }
 
 static class GeneratedOutput

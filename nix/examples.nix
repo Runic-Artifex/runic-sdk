@@ -21,6 +21,9 @@ let
           ../eng/build
           ../packages/dotnet
           ../tools/Runic.Application.Views.Codegen
+          # The TypeScript emitter that the generator's build bundles with Bun (codegen/index.js); it imports nothing
+          # outside this directory.
+          ../packages/web/views/src/codegen
           ../tools/Runic.Application.Views.Codegen.ReactiveUI
           ../tools/Runic.Application.Views.Codegen.Toolkit
           ../examples/Directory.Build.props

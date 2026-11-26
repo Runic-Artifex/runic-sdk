@@ -111,6 +111,7 @@ and severities are open.
 | [`RUNICBRIDGE081`](#runicbridge081) | Error | Generator | A mapped client library's ViewModel presents content of another owner, or a shared client's implementers have different owners |
 | [`RUNICBRIDGE082`](#runicbridge082) | Error | Build targets; generator | A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include |
 | [`RUNICBRIDGE083`](#runicbridge083) | Warning | Generator | A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing |
+| [`RUNICBRIDGE084`](#runicbridge084) | Error | Build targets | The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's `@runic-artifex/views` |
 
 ### Errors and warnings while you type
 
@@ -1022,7 +1023,8 @@ publish. See [MSBuild properties](msbuild.md#runicapplicationviews).
 
 ### RUNICBRIDGE076
 
-A warning from the Bridge generator (since 0.24). A generated client replaces a
+A warning from the Bridge generator (since 0.24; since the TypeScript emitter
+writes the clients, from the build's emitter step). A generated client replaces a
 file that has more: the new `<view>.contract.d.ts` has no declaration map, or
 fewer members in it, or a generated module has fewer documentation lines, and an
 assembly that declares the client's ViewModel or one of its base classes has no
@@ -1031,9 +1033,8 @@ generator finds member locations, and the `<summary>` of a partial property such
 as `[Reactive] public partial string Name { get; set; }`, through the assembly's
 PDB. Without one, the client is written without them, so clients committed to
 source control change between a Debug and a Release build of the same source.
-The warning names the file and the assemblies without a PDB, and repeats on
-builds that reuse the cached generation. A first generation, with no file to
-compare, does not warn.
+The warning names the file and the assemblies without a PDB. A first
+generation, with no file to compare, does not warn.
 
 **Fix:** give every assembly whose ViewModels the application presents a
 portable or embedded PDB in every configuration, such as
@@ -1145,6 +1146,39 @@ item. The warning repeats on builds that reuse the cached generation.
 
 **Fix:** declare the Views of the library's ViewModels in the library, or remove
 the item. See [MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE084
+
+An error from the `Runic.Application.Views` build targets (since 0.24). Since
+0.24 the Views TypeScript emitter, `@runic-artifex/views/codegen`, writes the
+generated clients from the contract IR that the generator writes in `obj`, and
+Node.js or Bun runs it. The build reports this code when it cannot run the
+emitter:
+
+- neither `node` nor `bun` is on `PATH`, or the command that
+  `RunicApplicationFrontendCodegenRuntime` names does not run;
+- the frontend (a `package.json` in `RunicApplicationFrontendDirectory`) declares
+  `@runic-artifex/views` in one of its dependency fields, but it is not installed,
+  in its `node_modules` or one above it, after the install step (the install is
+  disabled or failed), while the build builds the frontend;
+- the frontend's `@runic-artifex/views` is older than 0.24 and has no emitter, or
+  cannot read the IR of this `Runic.Application.Views`.
+
+The emitter comes from the frontend's `@runic-artifex/views` when it is
+installed, so the clients match the runtime they import. Otherwise the build uses
+the copy bundled with `Runic.Application.Views`, which matches the generator's
+version: for a project without a frontend, such as a library or a test project, a
+frontend whose `package.json` does not declare `@runic-artifex/views`, and a build
+that does not build the frontend (`RunicApplicationFrontendBuildEnabled=false`,
+as the `runic-app` template's test project sets).
+
+**Fix:** install Node.js or Bun, or set `RunicApplicationFrontendCodegenRuntime`
+to a `node` or `bun` executable; add `@runic-artifex/views` of the same version
+as `Runic.Application.Views` to the frontend's dependencies and install them,
+or let the build install them (`RunicApplicationFrontendInstallEnabled`). Set
+`RunicApplicationFrontendGenerationEnabled=false` in a project that another
+project generates the Bridges for. See
+[MSBuild properties](msbuild.md#runicapplicationviews).
 
 ## dotnet runic
 

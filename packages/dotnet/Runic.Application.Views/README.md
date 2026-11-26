@@ -2574,6 +2574,7 @@ an extension point.
 | --- | --- | --- |
 | `RunicApplicationFrontendDirectory` | `$(MSBuildProjectDirectory)/Frontend` | Frontend package directory. |
 | `RunicApplicationFrontendGeneratedDirectory` | `<frontend>/src/generated` | Generated TypeScript clients. |
+| `RunicApplicationFrontendCodegenRuntime` | the first of `node` and `bun` on `PATH` (`bun` first with the `bun` package manager) | The Node.js or Bun command that runs the TypeScript emitter (since 0.24, [Incremental generation](#incremental-generation)). |
 | `RunicApplicationFrontendPackageManager` | `packageManager` in `package.json`, then `pnpm-lock.yaml`, `bun.lock`, else `npm` | `npm`, `pnpm` or `bun`: selects the default build and install commands. Another value, such as `yarn`, uses the npm commands and warns with [`RUNICBRIDGE029`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge029) unless the project sets both commands. |
 | `RunicApplicationFrontendBuildCommand` | `npm run build`, `pnpm run build`, or `bun run --bun build` | Production frontend build. |
 | `RunicApplicationFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs before the frontend build when `package.json` or a lock file changed since the last install (stamp: `obj/runic-bridge-frontend-install.stamp`), or when declared dependencies have no `node_modules`. A `package.json` without dependencies needs no `node_modules`. |
@@ -5445,6 +5446,27 @@ directory. It hashes the model/dependency assemblies, generator assemblies,
 output-affecting options, and generated output contents. Missing or edited
 outputs invalidate the cache; unchanged generated files keep their timestamps.
 Set `RUNIC_BRIDGE_CODEGEN_FORCE=1` or `RUNIC_BRIDGE_CODEGEN_CACHE=0` to bypass it.
+
+Since 0.24 the generator writes the C# Bridges, the development source map and the
+contract IR (`runic-bridge/contract.ir.json`, see the
+[contract IR](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/contract-ir.md)),
+and the TypeScript emitter writes the clients from the IR: `@runic-artifex/views/codegen`,
+which Node.js or Bun runs after the generator (`RunicViewsGenerateClients`), so building a
+project that generates clients needs `node` or `bun` on `PATH`
+(`RunicApplicationFrontendCodegenRuntime` names another). The emitter is the one of the
+frontend's `@runic-artifex/views` when it is installed, resolved from
+`RunicApplicationFrontendDirectory` like an import, so the clients match the runtime they
+import, and the build installs the frontend before it runs. Otherwise the build uses the copy
+bundled with this package, which matches the generator's version: without a frontend (no
+`package.json`), such as a library or a test project, when the frontend's `package.json` declares
+no `@runic-artifex/views`, and with `RunicApplicationFrontendBuildEnabled=false`. A frontend that
+declares `@runic-artifex/views` without having it installed after the install step, and a build
+without either runtime, fail with
+[`RUNICBRIDGE084`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge084).
+The emitter runs when the IR, the emitter, the frontend's `package.json` or lock file, or the
+generation settings changed, or when a client it wrote was removed or edited since
+(`runic-bridge/typescript.outputs` records each file's SHA-256); it rewrites only the files whose
+content changed, and removes the generated files it no longer writes.
 
 The configured frontend build command (`RunicApplicationFrontendBuildCommand`) runs
 when one of its inputs is newer than

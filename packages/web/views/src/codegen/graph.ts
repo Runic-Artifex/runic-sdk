@@ -289,6 +289,12 @@ export class NamedTypes {
     return `${MARKER}${entry.index}${MARKER}`;
   }
 
+  /** A text with each named type as the simple name of its .NET type, such as `Note` for `Notes.Note`, for a message. */
+  display(text: string): string {
+    return text.replace(placeholder, (_, index: string) =>
+      this.entries[Number(index)]!.hints.source.split("[")[0]!.split(/[.+]/).at(-1)!.split("`")[0]!);
+  }
+
   private get kept(): Entry[] { return this.entries.filter(entry => entry.kept); }
 
   get any(): boolean { return this.entries.some(entry => entry.kept); }

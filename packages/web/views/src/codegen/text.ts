@@ -49,12 +49,16 @@ export function relaxedQuote(value: string): string {
 export const sibling = (file: string) => `"${"."}/${file}"`;
 
 /**
- * .NET's `\w`, which the .NET generator's name scans use (letters, nonspacing marks, decimal digits and connector
- * punctuation), for a pattern with the `u` flag. JavaScript's `\w` is ASCII: a scan would stop inside `pageÜbersicht`.
+ * A character that continues a name in the emitter's scans (letters, nonspacing marks, decimal digits and connector
+ * punctuation, as .NET's `\w`), for a pattern with the `u` flag. JavaScript's `\w` is ASCII: a scan would stop inside
+ * `pageÜbersicht`.
  */
 export const WORD = String.raw`\p{L}\p{Mn}\p{Nd}\p{Pc}`;
-/** A name as the .NET generator's scans read one: `[A-Za-z_$][\w$]*` with .NET's `\w`, for a pattern with the `u` flag. */
-export const NAME = String.raw`[A-Za-z_$][${WORD}$]*`;
+/**
+ * A name in the emitter's scans, for a pattern with the `u` flag: any letter, `_` or `$`, then {@link WORD} characters
+ * or `$`. A name may start with a non-ASCII letter, such as `ÜbersichtState` (#1355).
+ */
+export const NAME = String.raw`[\p{L}_$][${WORD}$]*`;
 
 /**
  * A double as .NET's `Convert.ToString(double, InvariantCulture)` writes it: JavaScript's shortest round-trip digits, in

@@ -128,9 +128,15 @@ internal sealed class CodegenCacheTests
         }
     }
 
-    private static Task GenerateAsync(string root, string generator, string csharp, string typescript,
-        params string[] options) => GeneratedHarnessProcess.RunAsync("dotnet",
-        [generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, typescript, .. options], root);
+    private static async Task GenerateAsync(string root, string generator, string csharp, string typescript,
+        params string[] options)
+    {
+        await GeneratedHarnessProcess.RunAsync("dotnet",
+            [generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, .. options], root).ConfigureAwait(false);
+        // The build runs the TypeScript emitter on the IR after the generator (R7 G6).
+        var (exitCode, output) = await TypeScriptEmitterProcess.RunAsync(csharp, typescript).ConfigureAwait(false);
+        Require(exitCode == 0, $"The TypeScript emitter failed.\n{output}");
+    }
 
     private static async Task<string> GenerateOutputAsync(string root, string generator, string csharp, string typescript)
     {
@@ -139,7 +145,7 @@ internal sealed class CodegenCacheTests
             StartInfo = new System.Diagnostics.ProcessStartInfo("dotnet")
             {
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, WorkingDirectory = root,
-                ArgumentList = { generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, typescript },
+                ArgumentList = { generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp },
             },
         };
         process.Start();
@@ -152,8 +158,9 @@ internal sealed class CodegenCacheTests
             process.Kill(entireProcessTree: true);
             throw new TimeoutException("The bridge generator did not finish within 30 seconds.");
         }
-        var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
-        Require(process.ExitCode == 0, $"The bridge generator failed.\n{text}");
+        var (exitCode, text) = await TypeScriptEmitterProcess.AfterGeneratorAsync(
+            (process.ExitCode, await output.ConfigureAwait(false) + await error.ConfigureAwait(false)), csharp, typescript).ConfigureAwait(false);
+        Require(exitCode == 0, $"The bridge generator or the TypeScript emitter failed.\n{text}");
         return text;
     }
 

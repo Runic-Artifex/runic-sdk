@@ -301,7 +301,7 @@ package.
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
 | `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), [components](#components-experimental). `onBridgeDraining` is a root export; 0.23 removed its deprecated re-export here |
-| `@runic-artifex/views/codegen` | Internal: the TypeScript emitter that writes generated clients from the [Views contract IR](../../../specs/application/contract-ir.md), version-locked to this runtime. The .NET generator still writes the clients; this entry is not for application code |
+| `@runic-artifex/views/codegen` | Internal: the TypeScript emitter that writes generated clients from the [Views contract IR](../../../specs/application/contract-ir.md), version-locked to this runtime. The `Runic.Application.Views` build runs the frontend's copy with Node.js or Bun (since 0.24); this entry is not for application code |
 
 Every entry has `types`, `development`, `import` and `default` conditions (see
 [Development build](#development-build)); the package is ESM only. Application code imports the root entry and `/mock`. The `/experimental`

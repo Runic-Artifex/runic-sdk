@@ -4,8 +4,8 @@ using System.Text.Json;
 /// <summary>
 /// The language-neutral names and identities of the named types (enums, DTOs, unions) of a contract: the identity
 /// that tells two uses of one .NET type apart (<see cref="Shape"/>), the base name a target language names the type
-/// from, and the qualifiers that tell colliding names apart. <see cref="TypeScriptNamedTypes"/> names the TypeScript
-/// declarations with them, and <see cref="ContractIr"/> writes them as the contract IR's name hints.
+/// from, and the qualifiers that tell colliding names apart. <see cref="ContractIr"/> writes them as the contract IR's
+/// name hints, from which the emitter names the TypeScript declarations.
 /// </summary>
 internal static class TypeNames
 {

@@ -11,8 +11,8 @@ internal sealed record FieldConstraintBound(string Text, bool IsNumber);
 
 /// <summary>
 /// C8: the DataAnnotations of a field that a page can mirror on its input (<c>required</c>, <c>maxlength</c>,
-/// <c>min</c>, <c>max</c>, <c>pattern</c>). They describe the C# validation; .NET still validates. The generated field
-/// descriptors write them as TypeScript (<see cref="TypeScript"/>) and the contract IR as values (<see cref="Json"/>).
+/// <c>min</c>, <c>max</c>, <c>pattern</c>). They describe the C# validation; .NET still validates. The contract IR
+/// carries them as values (<see cref="Json"/>), which the emitter writes into the generated field descriptors.
 /// </summary>
 internal sealed record FieldConstraintSet(bool Required, int? MinLength, int? MaxLength, FieldConstraintBound? Min, FieldConstraintBound? Max,
     bool MinExclusive, bool MaxExclusive, string? Pattern)
@@ -70,26 +70,6 @@ internal sealed record FieldConstraintSet(bool Required, int? MinLength, int? Ma
             _ when operand == typeof(string) || operand == typeof(int) || operand == typeof(double) => new(text, false),
             _ => null,
         };
-    }
-
-    private static readonly JsonSerializerOptions RelaxedJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-
-    /// <summary>The constraints as the TypeScript object literal of a field descriptor's <c>constraints</c>.</summary>
-    internal string TypeScript()
-    {
-        var parts = new List<string>();
-        static string Bound(FieldConstraintBound bound) => bound.IsNumber ? bound.Text : JsonSerializer.Serialize(bound.Text);
-        if (Required) parts.Add("required: true");
-        if (MinLength is { } minLength) parts.Add($"minLength: {minLength}");
-        if (MaxLength is { } maxLength) parts.Add($"maxLength: {maxLength}");
-        if (Min is { } min) parts.Add($"min: {Bound(min)}");
-        if (Max is { } max) parts.Add($"max: {Bound(max)}");
-        if (MinExclusive) parts.Add("minExclusive: true");
-        if (MaxExclusive) parts.Add("maxExclusive: true");
-        if (Pattern is not null)
-            // Relaxed escaping keeps + < > & readable; the text is TypeScript, not HTML.
-            parts.Add($"pattern: {JsonSerializer.Serialize(Pattern, RelaxedJson)}");
-        return "{ " + string.Join(", ", parts) + " }";
     }
 
     /// <summary>The constraints as the contract IR's <c>constraints</c> object: numbers as JSON numbers, the .NET text kept.</summary>

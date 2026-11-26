@@ -6,8 +6,8 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
 
-// R7 G5: what the dual-run gate of the Views generators compares and no other fixture has. The gate runs the TypeScript
-// emitter on this assembly's contract IR and requires the .NET generator's output byte for byte.
+// R7 G5, G6: what no other fixture has, for the TypeScript emitter that writes this assembly's clients from its contract
+// IR. G5's dual-run gate compared the emitter with the .NET generator on these; the dual-run goldens pin the output.
 
 // Numeric bounds that .NET writes in exponent form (1E+20, 1E-07: a double at or above 1E+17 or below 1E-04), and the
 // plain neighbours on both sides of each threshold.
@@ -31,9 +31,7 @@ public sealed class DualRunBoundsViewModel : INotifyPropertyChanged
 public sealed partial class DualRunBoundsWindow : RunicWindow<DualRunBoundsViewModel>;
 
 // Non-ASCII names after an ASCII first letter: a View (GrößenState, pageGrößen, connectGrößenAt), members, a command and
-// named types. The generators' name scans read a name as [A-Za-z_$][\w$]*, with .NET's Unicode \w. A name that starts
-// with a non-ASCII letter (ÜbersichtState) is not read by either generator, which then leaves it out of the client's
-// imports and re-exports; G6 fixes that in the emitter's scans (eng/ci/README.md, "Views dual-run gate").
+// named types. The emitter's name scans read letters, marks, digits and connector punctuation, as .NET's \w does.
 public sealed record Größe(string Maß, int Höhe);
 
 public sealed record Grün(string Farbton);
@@ -50,3 +48,20 @@ public sealed partial class GrößenViewModel : ObservableObject
 }
 
 public sealed partial class GrößenWindow : RunicWindow<GrößenViewModel>;
+
+// #1355 (R7 G6): names that start with a non-ASCII letter: a View (ÜbersichtState, ÜbersichtClient), a member, a command
+// and a named type (Änderung). The .NET generator's scans, and the emitter's until G6, read a name only from an ASCII
+// letter on, so the client left these types out of its imports and re-exports and did not type-check. DualRunGoldenTests
+// pins the client and type-checks it.
+public sealed record Änderung(string Text, int Zähler);
+
+public sealed partial class ÜbersichtViewModel : ObservableObject
+{
+    [ObservableProperty] private string ärger = "";
+    [ObservableProperty] private Änderung? letzte;
+
+    [RelayCommand]
+    private void Übernehmen() => Ärger = "";
+}
+
+public sealed partial class ÜbersichtWindow : RunicWindow<ÜbersichtViewModel>;

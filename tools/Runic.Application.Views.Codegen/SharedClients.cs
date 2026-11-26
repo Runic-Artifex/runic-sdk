@@ -1,28 +1,14 @@
 using System.Reflection;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Runic.Application.Views;
-using static TypeScriptModuleBindings;
 
 // [RunicSharedClient] (#839): one TypeScript client for the ViewModels that implement an interface, so one web
-// component renders all of them. GenerateOne records the client parts each Bridge member of an implementing ViewModel
-// contributes, with the ViewModel's own name replaced by Owner. Once every ViewModel is generated, Generate checks that
-// the implementing ViewModels publish each property of the interface alike (RUNICBRIDGE036) and writes `{name}.ts` with
-// `{Name}State`, `{Name}Client`, `{Name}PageReference` and `{name}Kinds`. Each implementing ViewModel's page reference
-// extends `{Name}PageReference` and names it under `sharedPageReferences`, which the frameworks' ViewRegistry types read.
-// Nothing changes for a ViewModel that implements no such interface.
-
-/// <summary>A part of a generated client that one Bridge member contributes.</summary>
-/// <param name="Key">What the part is, such as <c>state</c>, <c>setter</c> or <c>command</c>.</param>
-/// <param name="Section">Where it goes: <c>state</c>, <c>client</c>, <c>queries</c> or <c>operations</c>.</param>
-/// <param name="Declaration">The TypeScript declaration, with <see cref="SharedClients.Owner"/> for the ViewModel's own name.</param>
-/// <param name="Comparable">The declaration without the names that do not change its type, such as parameter names.</param>
-/// <param name="Optional">Shared only when every implementing ViewModel has it alike, such as a member's validation errors.</param>
-/// <param name="Imports">The page reference types it names, with their modules.</param>
-/// <param name="Unsupported">Why the member cannot be part of a shared client, if it cannot.</param>
-internal sealed record SharedClientPart(string Key, string Section, string Declaration, string Comparable, string? Documentation,
-    bool Optional = false, IReadOnlyList<(string Module, string Type)>? Imports = null, string? Unsupported = null);
+// component renders all of them. Discover finds the interfaces; once every ViewModel is planned, Check reports what only
+// .NET can tell (an interface member that an implementing ViewModel does not publish, publishes as an interaction, or
+// declares with another nullability), and the checked shared clients go to the contract IR. The emitter compares the
+// client parts each implementing View contributes (RUNICBRIDGE036) and writes `{name}.ts` with `{Name}State`,
+// `{Name}Client`, `{Name}PageReference` and `{name}Kinds`. Nothing changes for a ViewModel that implements no such
+// interface.
 
 /// <summary>A <c>[RunicSharedClient]</c> interface and the generated ViewModels that implement it.</summary>
 internal sealed record SharedClientDeclaration(Type Interface, string Name, (Type Model, string Name)[] Implementers)
@@ -33,18 +19,13 @@ internal sealed record SharedClientDeclaration(Type Interface, string Name, (Typ
 
 internal static class SharedClients
 {
-    /// <summary>Stands for the ViewModel's own name in a recorded declaration.</summary>
-    internal const string Owner = "\u0006";
-    // Stands for a parameter name in a comparable declaration.
-    internal const string Parameter = "\u0007";
     private const string AttributeName = "Runic.Application.Views.RunicSharedClientAttribute";
 
-    private static readonly Dictionary<Type, Dictionary<PropertyInfo, List<SharedClientPart>>> Surfaces = [];
-    // The types of @runic-artifex/views that shared client parts can name.
-    private static readonly string[] PublicTypes = ["ViewClient", "BridgeOutcome", "BridgeOperation", "BridgeStreamOperation",
-        "BridgeOperationStartOptions", "RegionCollection", "RegionOutcome", "QueryCollection", "QueryCollectionState"];
+    // What each Bridge member of an implementing ViewModel publishes: whether the page can set it, or why a shared
+    // client cannot include it.
+    private static readonly Dictionary<Type, Dictionary<PropertyInfo, (bool Settable, string? Unsupported)>> Surfaces = [];
     private static readonly Dictionary<Type, SharedClientDeclaration[]> ByModel = [];
-    // The shared clients Generate checked without a problem, with the property that publishes each interface member in
+    // The shared clients Check found without a problem, with the property that publishes each interface member in
     // every implementing ViewModel, for the contract IR.
     private static readonly List<(SharedClientDeclaration Declaration, (PropertyInfo Member, (Type Model, PropertyInfo Published)[] Implementations)[] Members)> Checked = [];
 
@@ -117,21 +98,22 @@ internal static class SharedClients
     /// <summary>The shared clients a ViewModel implements, ordered by name.</summary>
     internal static IReadOnlyList<SharedClientDeclaration> For(Type model) => ByModel.GetValueOrDefault(model) ?? [];
 
-    /// <summary>Records a part of an implementing ViewModel's client.</summary>
-    internal static void Record(Type model, PropertyInfo property, SharedClientPart part)
+    /// <summary>
+    /// Records a Bridge member of an implementing ViewModel: a member or command, with whether the page can set it, or
+    /// an interaction or view request, which a shared client cannot include.
+    /// </summary>
+    internal static void Record(Type model, PropertyInfo property, bool settable = false, string? unsupported = null)
     {
         if (!ByModel.ContainsKey(model)) return;
         if (!Surfaces.TryGetValue(model, out var surface)) Surfaces.Add(model, surface = []);
-        if (!surface.TryGetValue(property, out var parts)) surface.Add(property, parts = []);
-        parts.Add(part);
+        surface[property] = (settable, unsupported);
     }
 
     /// <summary>
-    /// Checks the implementing ViewModels of every shared client and adds its module. Each problem is reported; a shared
-    /// client with one is not written.
+    /// Checks the implementing ViewModels of every shared client. Each problem is reported; a shared client with one is
+    /// left out of the contract IR.
     /// </summary>
-    internal static void Generate(string directory, IReadOnlyList<SharedClientDeclaration> declarations,
-        IReadOnlyDictionary<Type, List<Type>> viewTypes, Func<string, string?, string> pageKind, Func<MemberInfo, string?> contractFor)
+    internal static void Check(IReadOnlyList<SharedClientDeclaration> declarations)
     {
         // A member of an interface that another shared interface extends is checked for both; it is reported once.
         var reportedMembers = new HashSet<(Type Model, Module Module, int Token)>();
@@ -140,7 +122,7 @@ internal static class SharedClients
             PropertyInfo[] members;
             try { members = Members(declaration.Interface); }
             catch (Exception error) when (Diagnostics.IsReportable(error)) { Diagnostics.Report(error); continue; }
-            var collected = new List<(Type Model, Dictionary<PropertyInfo, (PropertyInfo Published, List<SharedClientPart> Parts)> Members)>();
+            var collected = new List<(Type Model, Dictionary<PropertyInfo, PropertyInfo> Members)>();
             foreach (var (model, _) in declaration.Implementers)
             {
                 try { collected.Add((model, Collect(declaration, model, members))); }
@@ -150,17 +132,9 @@ internal static class SharedClients
                 }
                 catch (Exception error) when (Diagnostics.IsReportable(error)) { Diagnostics.Report(error, model); }
             }
-            // The ViewModels that do implement every member are compared too, so one build reports each one's first problem.
-            var shared = Compare(declaration, members, collected, reportedMembers);
-            if (shared is null || collected.Count != declaration.Implementers.Length) continue;
+            if (collected.Count != declaration.Implementers.Length) continue;
             Checked.Add((declaration, [.. members.Select(member =>
-                (member, collected.Select(entry => (entry.Model, entry.Members[member].Published)).ToArray()))]));
-            var kinds = declaration.Implementers.SelectMany(entry => viewTypes.TryGetValue(entry.Model, out var views)
-                ? views.Select(view => pageKind(entry.Name, contractFor(view))) : [pageKind(entry.Name, null)]).ToArray();
-            // A mapped client library's shared client is checked, but the library writes it (ClientModules).
-            ClientModules.Discarding = ClientModules.IsOwned(declaration.Module);
-            try { TypeScriptModules.Add(Path.Combine(directory, $"{declaration.Module}.ts"), Emit(declaration, shared, kinds), declaration.Interface); }
-            finally { ClientModules.Discarding = false; }
+                (member, collected.Select(entry => (entry.Model, entry.Members[member])).ToArray()))]));
         }
     }
 
@@ -205,13 +179,12 @@ internal static class SharedClients
         return members;
     }
 
-    // The published property and the client parts of each interface member in one implementing ViewModel.
-    private static Dictionary<PropertyInfo, (PropertyInfo Published, List<SharedClientPart> Parts)> Collect(
-        SharedClientDeclaration declaration, Type model, PropertyInfo[] members)
+    // The published property of each interface member in one implementing ViewModel.
+    private static Dictionary<PropertyInfo, PropertyInfo> Collect(SharedClientDeclaration declaration, Type model, PropertyInfo[] members)
     {
         var recorded = Surfaces.GetValueOrDefault(model) ?? [];
         var nullability = new NullabilityInfoContext();
-        var result = new Dictionary<PropertyInfo, (PropertyInfo, List<SharedClientPart>)>();
+        var result = new Dictionary<PropertyInfo, PropertyInfo>();
         foreach (var member in members)
         {
             try { result.Add(member, CollectMember(declaration, model, member, recorded, nullability)); }
@@ -220,15 +193,15 @@ internal static class SharedClients
         return result;
     }
 
-    // A member's problem in one implementing ViewModel; Generate reports it once for the shared clients that include it.
+    // A member's problem in one implementing ViewModel; Check reports it once for the shared clients that include it.
     private sealed class MemberProblem(PropertyInfo member, BridgeDiagnosticException error) : Exception(error.Message, error)
     {
         internal PropertyInfo Member { get; } = member;
         internal BridgeDiagnosticException Error { get; } = error;
     }
 
-    private static (PropertyInfo Published, List<SharedClientPart> Parts) CollectMember(SharedClientDeclaration declaration, Type model,
-        PropertyInfo member, Dictionary<PropertyInfo, List<SharedClientPart>> recorded, NullabilityInfoContext nullability)
+    private static PropertyInfo CollectMember(SharedClientDeclaration declaration, Type model,
+        PropertyInfo member, Dictionary<PropertyInfo, (bool Settable, string? Unsupported)> recorded, NullabilityInfoContext nullability)
     {
         var source = $"{member.DeclaringType!.Name}.{member.Name}";
         var map = model.GetInterfaceMap(member.DeclaringType!);
@@ -251,10 +224,10 @@ internal static class SharedClients
                 $"{model.Name} implements {source} of the shared client {declaration.Name}, but {reason}.",
                 (MemberInfo?)declared ?? model);
         }
-        var parts = recorded[published];
-        if (parts.FirstOrDefault(part => part.Unsupported is not null) is { } unsupported)
+        var (settable, unsupported) = recorded[published];
+        if (unsupported is not null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
-                $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is {unsupported.Unsupported}", published);
+                $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is {unsupported}", published);
         var expected = nullability.Create(member);
         var actual = nullability.Create(published);
         if (!SameNullability(expected, actual, member.SetMethod is not null))
@@ -262,12 +235,11 @@ internal static class SharedClients
                 $"{model.Name}.{published.Name} is {Show(actual)}, but {source} of the shared client {declaration.Name} is {Show(expected)}. Declare the same nullability.",
                 published);
         // The interface decides whether the shared client sets the member.
-        var kept = parts.Where(part => part.Key != "setter" || member.SetMethod is not null).ToList();
-        if (member.SetMethod is not null && !kept.Any(part => part.Key == "setter"))
+        if (member.SetMethod is not null && !settable)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
                 $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is settable, but the page cannot set {published.Name}. Make the interface property get-only.",
                 published);
-        return (published, kept);
+        return published;
     }
 
     // Unknown (an oblivious context) matches either state.
@@ -312,126 +284,4 @@ internal static class SharedClients
         TypeCode.String => "string",
         _ => null,
     };
-
-    // The parts every implementing ViewModel publishes alike, or null after reporting the ones that differ. For each part,
-    // the declaration most implementing ViewModels have is the expected one, so the report names the ViewModels that
-    // differ from it.
-    private static List<(PropertyInfo Member, SharedClientPart Part)>? Compare(SharedClientDeclaration declaration, PropertyInfo[] members,
-        List<(Type Model, Dictionary<PropertyInfo, (PropertyInfo Published, List<SharedClientPart> Parts)> Members)> collected,
-        HashSet<(Type Model, Module Module, int Token)> reportedMembers)
-    {
-        var shared = new List<(PropertyInfo, SharedClientPart)>();
-        var reported = new HashSet<Type>();
-        foreach (var member in members)
-        {
-            var keys = collected.SelectMany(entry => entry.Members[member].Parts.Select(part => part.Key)).Distinct(StringComparer.Ordinal).ToArray();
-            foreach (var key in keys)
-            {
-                var entries = collected.Select(entry => (entry.Model, entry.Members[member].Published,
-                    Part: entry.Members[member].Parts.FirstOrDefault(part => part.Key == key))).ToArray();
-                var groups = entries.GroupBy(entry => entry.Part?.Comparable).ToArray();
-                if (groups.Length == 1)
-                {
-                    // Parameter names may differ; the most common one names the shared parameter.
-                    shared.Add((member, entries.GroupBy(entry => entry.Part!.Declaration, StringComparer.Ordinal)
-                        .OrderByDescending(group => group.Count()).First().First().Part!));
-                    continue;
-                }
-                if (entries.Any(entry => entry.Part?.Optional == true)) continue;
-                var expected = groups.OrderByDescending(group => group.Count()).First();
-                var expectedPart = expected.First().Part;
-                foreach (var entry in entries.Where(entry => entry.Part?.Comparable != expected.Key))
-                {
-                    if (!reported.Add(entry.Model) || !reportedMembers.Add((entry.Model, member.Module, member.MetadataToken))) continue;
-                    var others = expected.Select(other => other.Model.Name).ToArray();
-                    Diagnostics.Report(new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
-                        $"{entry.Model.Name}.{entry.Published.Name}: every ViewModel that implements {member.DeclaringType!.Name}.{member.Name} of the shared client {declaration.Name} must publish it alike, but {entry.Model.Name}'s client "
-                        + $"{Describe(entry.Part, declaration.Name, plural: false)} where "
-                        + (others.Length == 1 ? $"{others[0]}'s client " : $"{string.Join(", ", others[..^1])} and {others[^1]}'s clients ")
-                        + $"{Describe(expectedPart, declaration.Name, plural: others.Length > 1)}. "
-                        + "Check the member's type and attributes, such as [JsonPropertyName], [RunicCommandInput], [RunicCommandKey] and [RunicFailure].",
-                        entry.Published), entry.Model);
-                }
-            }
-        }
-        return reported.Count == 0 ? shared : null;
-    }
-
-    private static string Describe(SharedClientPart? part, string name, bool plural) => (plural ? "have" : "has") + (part is null ? " no such member"
-        : $" `{TypeScriptNamedTypes.Display(part.Declaration.Replace(Owner, name, StringComparison.Ordinal)).Replace("\u0003", "", StringComparison.Ordinal)}`");
-
-    private static string Emit(SharedClientDeclaration declaration, List<(PropertyInfo Member, SharedClientPart Part)> shared, string[] kinds)
-    {
-        var name = declaration.Name;
-        var contract = declaration.Interface.Name;
-        var implementers = string.Join(", ", declaration.Implementers.Select(entry => entry.Model.Name));
-        string Resolve(string text) => text.Replace(Owner, name, StringComparison.Ordinal);
-        string? Documentation(PropertyInfo member, SharedClientPart part) => part.Key switch
-        {
-            "state" or "command" or "query" => XmlDocumentation.Summary(member) ?? part.Documentation,
-            "setter" => (XmlDocumentation.Summary(member) is { } summary ? summary + "\n\n" : "")
-                + $"Calls the public C# setter of `{member.Name}` of the implementing ViewModel.",
-            _ => part.Documentation,
-        };
-        void Append(StringBuilder text, string indent, string section)
-        {
-            var written = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var (member, part) in shared.Where(entry => entry.Part.Section == section))
-            {
-                // A member shared by two commands, such as upload(), is declared once.
-                if (!written.Add(part.Declaration)) continue;
-                XmlDocumentation.Append(text, indent, Documentation(member, part));
-                text.AppendLine(indent + Resolve(part.Declaration));
-            }
-        }
-
-        var body = new StringBuilder();
-        XmlDocumentation.Append(body, "", $"The state that every ViewModel implementing `{contract}` publishes (`[RunicSharedClient]`).");
-        body.AppendLine($"export interface {name}State {{");
-        Append(body, "  ", "state");
-        body.AppendLine("}");
-        body.AppendLine();
-        if (shared.Any(entry => entry.Part.Section == "operations"))
-        {
-            Append(body, "", "operations");
-            body.AppendLine();
-        }
-        var summary = XmlDocumentation.Summary(declaration.Interface);
-        XmlDocumentation.Append(body, "", (summary is null ? "" : summary + "\n\n")
-            + $"A connected ViewModel that implements `{contract}`: {implementers}. Their own clients have these members too.");
-        body.AppendLine($"export interface {name}Client extends {Ref("ViewClient")}<{name}State> {{");
-        if (shared.Any(entry => entry.Part.Section == "queries"))
-        {
-            body.AppendLine("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");
-            body.AppendLine("  readonly queries: {");
-            Append(body, "    ", "queries");
-            body.AppendLine("  };");
-        }
-        Append(body, "  ", "client");
-        body.AppendLine("}");
-        body.AppendLine();
-        var kindUnion = string.Join(" | ", kinds.Select(kind => JsonSerializer.Serialize(kind)));
-        XmlDocumentation.Append(body, "", $"The page reference of any View whose ViewModel implements `{contract}`. `connect()` returns the shared client;\n"
-            + $"each implementing ViewModel's own page reference extends this one, and a `ViewRegistry` accepts a component for it at each of its kinds.");
-        body.AppendLine($"export interface {declaration.ReferenceType} {{");
-        body.AppendLine($"  readonly kind: {kindUnion};");
-        body.AppendLine($"  connect(): Promise<{name}Client>;");
-        body.AppendLine("}");
-        body.AppendLine();
-        XmlDocumentation.Append(body, "", $"Every kind of `{declaration.ReferenceType}`, for example to register one component for each with `registryEntries`.");
-        body.AppendLine($"export const {declaration.Module}Kinds: readonly {declaration.ReferenceType}[\"kind\"][] = [{string.Join(", ", kinds.Select(kind => JsonSerializer.Serialize(kind)))}];");
-
-        var text = body.ToString();
-        var publicImports = PublicTypes.Where(own => text.Contains(Ref(own), StringComparison.Ordinal)).Select(own => Import(own));
-        var module = new StringBuilder();
-        module.AppendLine(GeneratedOutput.Header);
-        module.AppendLine($"import type {{ {string.Join(", ", publicImports)} }} from \"@runic-artifex/views\";");
-        foreach (var group in shared.SelectMany(entry => entry.Part.Imports ?? []).Distinct().GroupBy(entry => entry.Module, StringComparer.Ordinal)
-                     .OrderBy(group => group.Key, StringComparer.Ordinal))
-            module.AppendLine($"import type {{ {string.Join(", ", group.Select(entry => entry.Type).Order(StringComparer.Ordinal))} }} from \"{ClientModules.Specifier(group.Key, ".js")}\";");
-        module.AppendLine(TypeScriptModules.NamedTypeImports);
-        module.AppendLine();
-        module.Append(text);
-        return module.ToString();
-    }
 }

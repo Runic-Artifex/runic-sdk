@@ -41,8 +41,12 @@ export class SharedParts {
   }
 }
 
-/** Compares the implementing Views of a shared client and adds its module. */
-export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string, View>, parts: ReadonlyMap<string, SharedParts>, modules: Modules): void {
+/**
+ * Compares the implementing Views of a shared client and adds its module. `display` shows a declaration with the .NET
+ * names of the named types it uses, for a RUNICBRIDGE036.
+ */
+export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string, View>, parts: ReadonlyMap<string, SharedParts>, modules: Modules,
+  display: (declaration: string) => string = text => text): void {
   const name = client.name;
   const module = lowerFirst(name);
   const reference = `${name}PageReference`;
@@ -79,11 +83,24 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
         continue;
       }
       if (entries.some(entry => entry.part?.optional === true)) continue;
+      // The declaration most implementing Views have is the expected one; the first View that differs is reported at the
+      // member that publishes it.
       const expected = mostCommon(groups);
-      const differing = entries.filter(entry => !expected.includes(entry)).map(entry => simpleName(entry.view));
+      const differing = entries.find(entry => !expected.includes(entry))!;
+      const others = expected.map(entry => simpleName(entry.view));
+      const describe = (part: SharedPart | undefined, plural: boolean) => (plural ? "have" : "has")
+        + (part === undefined ? " no such member" : ` \`${display(part.declaration.replaceAll(OWNER, name)).replace(/[\u0003\u0004\u0005]/g, "")}\``);
+      const published = member.published[differing.view.id]!;
+      const csharp = "member" in published
+        ? { name: differing.view.members.find(item => item.wire === published.member)?.name ?? member.name, source: `${differing.view.id}/state/${published.member}` }
+        : { name: `${differing.view.commands.find(item => item.wire === published.command)?.name ?? member.name}Command`, source: `${differing.view.id}/command/${published.command}` };
       throw new ContractIrDiagnostic(SHARED_CLIENT,
-        `every View that implements ${client.interface}.${member.name} of the shared client ${name} must publish it alike, but ${differing.join(", ")} `
-        + `${differing.length === 1 ? "differs" : "differ"} from ${expected.map(entry => simpleName(entry.view)).join(", ")}.`, implementers[0]!.id);
+        `${simpleName(differing.view)}.${csharp.name}: every ViewModel that implements ${client.interface}.${member.name} of the shared client ${name} must publish it alike, but ${simpleName(differing.view)}'s client `
+        + `${describe(differing.part, false)} where `
+        + (others.length === 1 ? `${others[0]}'s client ` : `${others.slice(0, -1).join(", ")} and ${others.at(-1)}'s clients `)
+        + `${describe(expected[0]!.part, others.length > 1)}. `
+        + "Check the member's type and attributes, such as [JsonPropertyName], [RunicCommandInput], [RunicCommandKey] and [RunicFailure].",
+        csharp.source);
     }
   }
   const kinds = implementers.flatMap(view => view.kinds);
