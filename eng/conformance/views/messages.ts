@@ -32,7 +32,19 @@ export class Messages {
   private provided = new Map<string, unknown>();
   private revisions = new Map<number, number>();
   private epochs = new Map<string, Map<number, number>>();
+  // The expected revisions first seen in the current group of unordered steps, with their route (null outside one).
+  private group: Map<number, string | null> | null = null;
   route: string | null = null;
+
+  // README "Comparing messages", Revisions: within a group of unordered steps, revisions first seen on different routes
+  // may arrive in either order, since the order of the routes' publications is the producer's; they still differ.
+  beginGroup() {
+    this.group = new Map();
+  }
+
+  endGroup() {
+    this.group = null;
+  }
 
   constructor(private readonly ids: Record<string, Id>, private readonly provide: (name: string) => Promise<unknown>) {}
 
@@ -99,12 +111,12 @@ export class Messages {
 
   // match for a candidate of an unordered group: null when equal, else the failure; bindings restored on failure.
   tryMatch(expected: unknown, actual: unknown, route: string | null): string | null {
-    const saved = [new Map(this.provided), new Map(this.revisions), new Map([...this.epochs].map(([k, v]) => [k, new Map(v)]))] as const;
+    const saved = [new Map(this.provided), new Map(this.revisions), new Map([...this.epochs].map(([k, v]) => [k, new Map(v)])), this.group && new Map(this.group)] as const;
     try {
       this.match(expected, actual, route);
       return null;
     } catch (e) {
-      [this.provided, this.revisions, this.epochs] = saved as any;
+      [this.provided, this.revisions, this.epochs, this.group] = saved as any;
       if (e instanceof ScenarioFailure) return e.message;
       throw e;
     }
@@ -186,10 +198,17 @@ export class Messages {
       if (mapped !== actual) throw new ScenarioFailure(`${path}: expected revision ${expected} was revision ${mapped} before, now ${actual}`);
       return;
     }
-    for (const [other, otherActual] of this.revisions)
+    for (const [other, otherActual] of this.revisions) {
+      if (this.group?.has(other) && this.group.get(other) !== this.route) {
+        if (otherActual === actual)
+          throw new ScenarioFailure(`${path}: expected revision ${expected} maps to ${actual}, which expected revision ${other} of another route already was`);
+        continue;
+      }
       if ((other < expected && otherActual >= actual) || (other > expected && otherActual <= actual))
         throw new ScenarioFailure(`${path}: expected revision ${expected} maps to ${actual}, out of order with expected revision ${other}, which was ${otherActual}`);
+    }
     this.revisions.set(expected, actual);
+    this.group?.set(expected, this.route);
   }
 
   private matchEpoch(expected: number, actual: number, path: string) {

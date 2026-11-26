@@ -79,6 +79,7 @@ class ScenarioRun {
   private first: string | null = null;
   private requests = new Map<string, string>(); // request step id -> connection
   private requestRoutes = new Map<string, string | null>();
+  private requestKinds = new Map<string, string | null>();
   private closes = new Set<string>();
   private flushes = new Set<string>();
 
@@ -109,6 +110,7 @@ class ScenarioRun {
       const text = await this.messages.write(step.send);
       this.requests.set(id, conn);
       this.requestRoutes.set(id, typeof step.send?.route === "string" ? step.send.route : null);
+      this.requestKinds.set(id, typeof step.send?.kind === "string" ? step.send.kind : null);
       await a.call("views.send", { conn, tag: id, text });
     } else if ("receive" in step) {
       const conn = this.connectionOf(step);
@@ -117,7 +119,7 @@ class ScenarioRun {
       const message = await this.next(conn, `${what}: ${abbreviate(step.receive, 300)}`);
       if (message.replyTo !== replyTo)
         throw new ScenarioFailure(`Expected ${what}, but the next message was ${describe(message)}: ${abbreviate(message.text)}`);
-      const actual = parse(message);
+      const actual = this.withoutRelease(step.receive, parse(message), replyTo);
       try {
         this.messages.match(step.receive, actual, this.routeOf(replyTo));
       } catch (e) {
@@ -202,15 +204,30 @@ class ScenarioRun {
       if (this.connectionOf(step) !== conn) throw new ScenarioFailure(`Step ${index + 1} is on another connection than step ${group[0][0] + 1}.`);
       return { index, replyTo: this.replyTo(step, conn), expected: step.receive };
     });
+    this.messages.beginGroup();
+    try {
+      await this.matchGroup(conn, remaining);
+    } finally {
+      this.messages.endGroup();
+    }
+  }
+
+  private async matchGroup(conn: string, remaining: { index: number; replyTo: string | null; expected: any }[]) {
     while (remaining.length) {
       const message = await this.next(conn, remaining.map((r) => `step ${r.index + 1}: ${abbreviate(r.expected, 200)}`).join("; "));
-      const actual = parse(message);
+      const parsed = parse(message);
       const failures: string[] = [];
       let matched = -1;
       for (let c = 0; c < remaining.length && matched < 0; c++) {
         const r = remaining[c];
         if (r.replyTo !== message.replyTo) continue;
-        const failure = this.messages.tryMatch(r.expected, actual, this.routeOf(r.replyTo));
+        let failure: string | null;
+        try {
+          failure = this.messages.tryMatch(r.expected, this.withoutRelease(r.expected, parsed, r.replyTo), this.routeOf(r.replyTo));
+        } catch (e) {
+          if (!(e instanceof ScenarioFailure)) throw e;
+          failure = e.message;
+        }
         if (failure) failures.push(`step ${r.index + 1}: ${failure}`);
         else matched = c;
       }
@@ -253,6 +270,16 @@ class ScenarioRun {
     this.messages.id(id, "request");
     if (this.requests.get(id) !== conn) throw new ScenarioFailure(`The request ${id} was not sent on the connection ${conn}.`);
     return id;
+  }
+
+  // README "Comparing messages", Release: a reply to a hello may carry release, a string; unless the step's message
+  // lists release, the reply is compared without it.
+  private withoutRelease(expected: any, actual: any, replyTo: string | null): any {
+    if (!replyTo || this.requestKinds.get(replyTo) !== "hello" || !actual || typeof actual !== "object" || Array.isArray(actual)) return actual;
+    if (!("release" in actual) || (expected && typeof expected === "object" && "release" in expected)) return actual;
+    if (typeof actual.release !== "string") throw new ScenarioFailure(`$.release: a hello reply's release is a string, actual ${abbreviate(actual.release)}`);
+    const { release: _, ...rest } = actual;
+    return rest;
   }
 
   private routeOf(replyTo: string | null) {

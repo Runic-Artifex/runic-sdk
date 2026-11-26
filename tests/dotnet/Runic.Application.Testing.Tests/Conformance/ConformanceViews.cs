@@ -673,6 +673,11 @@ internal sealed partial class NotesViewModel : ConformanceModel
         if (Rows.Apply(mutation, unit)) return;
         switch (mutation["op"]!.GetValue<string>())
         {
+            // "view": "detail" assigns a member of the detail View, whose route publishes its own frame.
+            case "assign" when mutation["view"]?.GetValue<string>() == "detail":
+                if (mutation["member"]!.GetValue<string>() != "lastAction") throw new NotSupportedException("The detail View can assign only lastAction.");
+                Detail!.LastAction = mutation["value"]!.GetValue<string>();
+                break;
             case "assign": Assign(mutation["member"]!.GetValue<string>(), mutation["value"]); break;
             case "progress": OnProgress(mutation); break;
             case "finish": OnFinish(mutation); break;

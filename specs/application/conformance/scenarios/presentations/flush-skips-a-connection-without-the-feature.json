@@ -1,6 +1,6 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "presentations.flush-skips-a-connection-without-the-feature.v1",
+  "id": "presentations.flush-skips-a-connection-without-the-feature.v2",
   "contract": {
     "id": "runic.views",
     "version": 4
@@ -11,9 +11,7 @@
   ],
   "description": "A connection whose hello does not list field-flush/1 gets no flush push, and a flush completes at once as answered; a flush-reply on it is invalid-request.",
   "view": "wizard",
-  "requires": [
-    "presented/1"
-  ],
+  "requires": ["field-flush/1"],
   "ids": {
     "c1": {
       "kind": "connection"

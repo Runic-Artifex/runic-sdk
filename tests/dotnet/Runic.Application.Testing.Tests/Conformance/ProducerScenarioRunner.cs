@@ -24,6 +24,7 @@ internal sealed class ProducerScenarioRunner
     private readonly Dictionary<string, ScenarioConnection> _requests = new(StringComparer.Ordinal);
     // The route each request step named, which the epochs of its reply belong to.
     private readonly Dictionary<string, string?> _requestRoutes = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _hellos = new(StringComparer.Ordinal);
     // The closes the closeWindow steps started, by id.
     private readonly Dictionary<string, Task<RunicWindowCloseResult>> _closes = new(StringComparer.Ordinal);
     // The flushes the flushFields steps started, by id (field-flush/1).
@@ -219,6 +220,7 @@ internal sealed class ProducerScenarioRunner
         var bytes = _messages.Write(message);
         _requests.Add(id, connection);
         _requestRoutes.Add(id, (message as JsonObject)?["route"]?.GetValue<string>());
+        if ((message as JsonObject)?["kind"] is JsonValue kind && kind.TryGetValue<string>(out var name) && name == "hello") _hellos.Add(id);
         _transport.Send(connection, bytes, id);
     }
 
@@ -230,7 +232,7 @@ internal sealed class ProducerScenarioRunner
         var message = await NextAsync(connection, $"{what}: {ScenarioMessages.Abbreviate(expected)}").ConfigureAwait(false);
         if (message.ReplyTo != replyTo)
             throw new ScenarioFailure($"Expected {what}, but the next message was {Describe(message)}: {Truncate(message.Json)}");
-        var actual = Parse(message);
+        var actual = WithoutRelease(expected, Parse(message), replyTo);
         try { _messages.Match(expected, actual, RouteOf(replyTo)); }
         catch (ScenarioFailure failure) { throw new ScenarioFailure($"{failure.Message}\n  actual: {Truncate(message.Json)}"); }
     }
@@ -310,7 +312,8 @@ internal sealed class ProducerScenarioRunner
             {
                 var (index, replyTo, expected) = remaining[candidate];
                 if (replyTo != message.ReplyTo) continue;
-                if (_messages.TryMatch(expected, actual, RouteOf(replyTo)) is { } failure) failures.Add($"step {index + 1}: {failure}");
+                if (_messages.TryMatch(expected, WithoutRelease(expected, actual?.DeepClone(), replyTo), RouteOf(replyTo)) is { } failure)
+                    failures.Add($"step {index + 1}: {failure}");
                 else matched = candidate;
             }
             if (matched < 0)
@@ -330,6 +333,18 @@ internal sealed class ProducerScenarioRunner
         if (!_requests.TryGetValue(replyTo, out var sentOn) || sentOn != connection)
             throw new ScenarioFailure($"The request {replyTo} was not sent on the connection {connection.Name}.");
         return replyTo;
+    }
+
+    // README "Comparing messages", Release: a reply to a hello may carry release, a string; unless the step's message
+    // lists release, the reply is compared without it.
+    private JsonNode? WithoutRelease(JsonNode expected, JsonNode? actual, string? replyTo)
+    {
+        if (replyTo is null || !_hellos.Contains(replyTo) || actual is not JsonObject reply || !reply.ContainsKey("release")
+            || expected is JsonObject listed && listed.ContainsKey("release")) return actual;
+        if (reply["release"] is not JsonValue release || !release.TryGetValue<string>(out _))
+            throw new ScenarioFailure($"$.release: a hello reply's release is a string, actual {reply["release"]?.ToJsonString()}");
+        reply.Remove("release");
+        return reply;
     }
 
     // The route a reply's epochs belong to: the route of its request. A push names its own.

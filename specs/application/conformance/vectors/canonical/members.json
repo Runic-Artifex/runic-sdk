@@ -4,6 +4,7 @@
   "contract": {"id":"runic.views","version":4},
   "area": "canonical",
   "description": "Member order and duplicate member names.",
+  "roles": ["producer"],
   "cases": [
     {
       "id": "canonical.members.ascii-order",

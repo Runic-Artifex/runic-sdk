@@ -19,12 +19,16 @@ function inputBytes(input: any): Uint8Array {
 
 const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 
-export async function runVector(adapter: Adapter, testCase: any, roles: Set<string>): Promise<Outcome> {
+// caseRoles are the roles of the case's file (README "Vectors"): an implementation with none of them excludes it. A
+// case that requires a feature the implementation does not list is unsupported, as a scenario is.
+export async function runVector(adapter: Adapter, testCase: any, roles: Set<string>, caseRoles: string[], supports: Set<string>): Promise<Outcome> {
   const { operation, input, expect } = testCase;
+  if (!caseRoles.some((role) => roles.has(role))) return { outcome: "excluded", detail: `role:${caseRoles.join(",")}` };
+  const missing: string[] = (testCase.requires ?? []).filter((r: string) => !supports.has(r));
+  if (missing.length) return { outcome: "unsupported", detail: `requires ${missing.join(", ")}`, requires: missing };
   try {
     switch (operation) {
       case "canonicalize": {
-        if (!roles.has("producer")) return { outcome: "excluded", detail: "role:producer (the client does not canonicalize)" };
         const r = await adapter.call("views.canonicalize", { input: b64(inputBytes(input)) });
         if (expect.output) {
           if (r.error) return { outcome: "fail", detail: `error ${r.error}, expected ${abbreviate(expect.output.value)}` };
@@ -49,8 +53,9 @@ export async function runVector(adapter: Adapter, testCase: any, roles: Set<stri
         return { outcome: "pass" };
       }
       case "read-request": {
-        if (!roles.has("producer")) return { outcome: "excluded", detail: "role:producer" };
-        const r = await adapter.call("views.readRequest", { input: b64(inputBytes(input)), inputBytes: testCase.limits?.inputBytes ?? null });
+        // The hello of the case's file, sent first on the fresh connection unless the case is a hello (README "Messages").
+        const hello = b64(new TextEncoder().encode(JSON.stringify(testCase.hello)));
+        const r = await adapter.call("views.readRequest", { input: b64(inputBytes(input)), inputBytes: testCase.limits?.inputBytes ?? null, hello });
         if (expect.result === "valid")
           return r.result === "valid" ? { outcome: "pass" } : { outcome: "fail", detail: `rejected: ${r.kind} ${r.reason}` };
         if (r.result === "valid") return { outcome: "fail", detail: `accepted, expected ${expect.error.kind} ${expect.error.reason}` };
@@ -60,7 +65,6 @@ export async function runVector(adapter: Adapter, testCase: any, roles: Set<stri
       }
       case "read-push":
       case "read-reply": {
-        if (!roles.has("client")) return { outcome: "excluded", detail: "role:client" };
         const r =
           operation === "read-push"
             ? await adapter.call("views.readPush", { input: b64(inputBytes(input)) })
