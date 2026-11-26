@@ -43,6 +43,10 @@ await writeFile(lockFile, JSON.stringify({
 // The build installs only when the lock or a package.json changed since its stamp; an earlier local run with the same
 // files would make it skip the install.
 await rm(join(fixture, "obj/runic-bridge-frontend-install.stamp"), { force: true });
+// A dev that an earlier step killed (webview2-debug-smoke.mjs ends its dev on this fixture by killing its tree) leaves
+// its frontend marker, and a build within 30 s of its last renewal takes the session for a running one: it then skips
+// the frontend build and, with no development server named, the install (sdk#1405).
+await rm(join(fixture, "obj/runic/dev-frontend"), { force: true });
 
 const environment = { ...process.env };
 delete environment.RUNIC_APPLICATION_SERVE_ONLY;
