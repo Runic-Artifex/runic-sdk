@@ -8,7 +8,7 @@ import { Emitter, arrowBody, type Graph, type Node } from "./graph.js";
 import { Import, Ref, Shorthand, mentions, declaredTopLevel, references, withoutComments } from "./bindings.js";
 import { ContractIrDiagnostic, REGION_COLLECTION_NAME } from "./diagnostics.js";
 import { NAMED_TYPE_IMPORTS, type Modules } from "./modules.js";
-import { Builder, csQuote, lowerFirst, relaxedQuote, tsAccess, tsLiteralKey, tsPropertyName, upperFirst, isTsIdentifier } from "./text.js";
+import { Builder, csQuote, dotnetNumber, lowerFirst, relaxedQuote, tsAccess, tsLiteralKey, tsPropertyName, upperFirst, isTsIdentifier } from "./text.js";
 import { emitMock } from "./mock.js";
 import { OWNER, PARAMETER, type SharedParts } from "./shared.js";
 
@@ -756,7 +756,7 @@ function fieldTraits(root: Node, constraints: Constraints | undefined): string {
   if (root.kind === "offset-date-time") traits += ", offset: true";
   if (constraints) {
     const parts: string[] = [];
-    const bound = (value: number | string) => (typeof value === "number" ? String(value) : csQuote(value));
+    const bound = (value: number | string) => (typeof value === "number" ? dotnetNumber(value) : csQuote(value));
     if (constraints.required) parts.push("required: true");
     if (constraints.minLength !== undefined) parts.push(`minLength: ${constraints.minLength}`);
     if (constraints.maxLength !== undefined) parts.push(`maxLength: ${constraints.maxLength}`);

@@ -1,6 +1,6 @@
 // Value graphs and named types: BridgeTypeGraph's TypeScript half and TypeScriptNamedTypes, over the IR.
 import type { ContractIr, Direction, ObjectMember, NameHints, TypeDefinition, TypeRef, Value } from "./ir.js";
-import { Builder, csQuote, ordinal } from "./text.js";
+import { Builder, NAME, WORD, csQuote, ordinal } from "./text.js";
 import { declaredTopLevel } from "./bindings.js";
 
 export interface Node {
@@ -391,11 +391,15 @@ export class NamedTypes {
   }
 }
 
+// TypeScriptNamedTypes' scans; .NET's \b, like its \w, is Unicode.
+const namedDeclaration = new RegExp(String.raw`(?<![${WORD}])(?:interface|type|function|const|let|class|enum)\s+(${NAME})`, "gu");
+const namedImport = new RegExp(String.raw`(?<![${WORD}])import\s+(?:type\s+)?\{([^}]*)\}`, "gu");
+
 function* declaredNames(module: string): Generator<string> {
   const code = module.replace(/\/\*[\s\S]*?\*\//g, " ");
-  for (const match of code.matchAll(/\b(?:interface|type|function|const|let|class|enum)\s+([A-Za-z_$][\w$]*)/g)) yield match[1]!;
+  for (const match of code.matchAll(namedDeclaration)) yield match[1]!;
   yield* declaredTopLevel(code);
-  for (const match of code.matchAll(/\bimport\s+(?:type\s+)?\{([^}]*)\}/g))
+  for (const match of code.matchAll(namedImport))
     for (const raw of match[1]!.split(",").map(part => part.trim()).filter(part => part.length > 0)) {
       const name = raw.startsWith("type ") ? raw.slice(5).trim() : raw;
       const alias = name.indexOf(" as ");
