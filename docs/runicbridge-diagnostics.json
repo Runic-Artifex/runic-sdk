@@ -129,7 +129,7 @@
     {
       "id": "RUNICBRIDGE026",
       "severity": "error",
-      "title": "The frontend declares dependencies but has no lock file for the default install"
+      "title": "The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install"
     },
     {
       "id": "RUNICBRIDGE027",
@@ -310,6 +310,31 @@
       "id": "RUNICBRIDGE086",
       "severity": "error",
       "title": "An environment variable of a former name is set"
+    },
+    {
+      "id": "RUNICBRIDGE087",
+      "severity": "error",
+      "title": "The frontend is below a JavaScript workspace that does not list it"
+    },
+    {
+      "id": "RUNICBRIDGE088",
+      "severity": "error",
+      "title": "A file that a frontend package exports does not exist after its build"
+    },
+    {
+      "id": "RUNICBRIDGE089",
+      "severity": "warning",
+      "title": "A workspace member declares another package manager than its workspace"
+    },
+    {
+      "id": "RUNICBRIDGE090",
+      "severity": "error",
+      "title": "The frontend's package manager or JavaScript runtime does not run"
+    },
+    {
+      "id": "RUNICBRIDGE091",
+      "severity": "warning",
+      "title": "RunicApplicationFrontendInstallMode is not Auto, Always or Never"
     }
   ]
 }

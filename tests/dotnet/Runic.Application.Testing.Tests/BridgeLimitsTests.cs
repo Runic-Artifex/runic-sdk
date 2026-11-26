@@ -165,10 +165,48 @@ internal sealed class BridgeLimitsTests
         // Protocol 4 names the limit: rejected with the reason capacity.
         RequireRejected(await host.Transport.CommandAsync(route, "hold"), "capacity", "A 65th awaited command was not rejected.");
         Require(model.Held == 64, "The 65th awaited command ran.");
+        // Availability is checked before the capacity (#1370).
+        RequireRejected(await host.Transport.CommandAsync(route, "lock"), "unavailable",
+            "An unavailable awaited command at capacity was not rejected as unavailable.");
 
         model.Release();
         foreach (var reply in await Task.WhenAll(running)) RequireOk(reply, "A held awaited command failed.");
         RequireOk(await host.Transport.CommandAsync(route, "hold"), "An awaited command was refused after the others ended.");
+    }
+
+    // A start's own checks (input, key, availability) come before the window's operation capacity, as a command's do
+    // (#1370); an operation id the window knows is still answered as such.
+    [Test]
+    public async Task OperationCapacityComesAfterAvailabilityAsync()
+    {
+        using var registry = new BridgeOperationRegistry("capacity-order", maximumOperations: 1, maximumRetainedTerminals: 1);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = registry.Accept(new BridgeOperationRequest("contract", "Hold", "running", "held"), () => true,
+            async _ =>
+            {
+                await release.Task.ConfigureAwait(false);
+                return BridgeOperationResult.None;
+            });
+        Require(running.Kind is BridgeOperationAdmissionKind.Accepted, "The first operation was not admitted.");
+
+        var unavailable = registry.Accept(new BridgeOperationRequest("contract", "Hold", "unavailable", "held"), () => false,
+            _ => Task.FromResult(BridgeOperationResult.None));
+        Require(unavailable is { Kind: BridgeOperationAdmissionKind.Rejected, Reason: "unavailable" },
+            $"An unavailable start at capacity was rejected with {unavailable.Reason}.");
+        var unresolved = registry.AcceptUnlessRefused(new BridgeOperationRequest("contract", "Hold", "unresolved", "held"),
+            () => "unresolved-key", _ => Task.FromResult(BridgeOperationResult.None));
+        Require(unresolved is { Kind: BridgeOperationAdmissionKind.Rejected, Reason: "unresolved-key" },
+            $"A start with an unresolved key at capacity was rejected with {unresolved.Reason}.");
+        var full = registry.Accept(new BridgeOperationRequest("contract", "Hold", "full", "held"), () => true,
+            _ => Task.FromResult(BridgeOperationResult.None));
+        Require(full is { Kind: BridgeOperationAdmissionKind.Rejected, Reason: "capacity" },
+            $"An available start at capacity was rejected with {full.Reason}.");
+        var duplicate = registry.Accept(new BridgeOperationRequest("contract", "Hold", "running", "held"), () => false,
+            _ => Task.FromResult(BridgeOperationResult.None));
+        Require(duplicate.Kind is BridgeOperationAdmissionKind.Duplicate, "A known operation id at capacity was not a duplicate.");
+
+        release.SetResult();
+        await registry.WaitForTerminalAsync(running.RequestId);
     }
 
     [Test]

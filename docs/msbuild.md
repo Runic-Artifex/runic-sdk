@@ -53,9 +53,11 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendBuildCommand` | property | the package manager's `run build` | The production frontend build. An optimized build (`Optimize=true`: Release, `dotnet publish`) runs it with `NODE_ENV=production` unless the environment sets `NODE_ENV`, so Bun's bundler resolves the production build of `@runic-artifex/views`; a Debug build leaves `NODE_ENV` unset. |
 | `RunicApplicationFrontendInstallCommand` | property | the package manager's locked install | The install before the build. |
 | `RunicApplicationFrontendAllowUnlockedInstall` | property | `false` | Install without a lock file. |
-| `RunicApplicationFrontendInstallEnabled` | property | `true` | `false` when a workspace install owns the packages. |
+| `RunicApplicationFrontendInstallEnabled` | property | `true` | `false` when something else installs the packages, the same as `RunicApplicationFrontendInstallMode=Never`. A member of a JavaScript workspace installs once at the workspace root (0.24). |
+| `RunicApplicationFrontendInstallMode` | property | `Auto` | `Auto` installs the frontend packages when the lock file, a `package.json` or the package manager changed, or `node_modules` is incomplete; `Always` on every build; `Never` leaves it to you (0.24). |
+| `RunicApplicationFrontendWorkspaceRoot` | property | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The JavaScript workspace root where a frontend without its own lock file installs (0.24); `none` installs the frontend on its own. |
 | `RunicApplicationFrontendNodeModulesDirectory` | property | none | A `node_modules` installed elsewhere, such as by the Nix builder. |
-| `RunicApplicationFrontendBuildEnabled` | property | `true`, `false` in a client library | `false` when another tool builds the frontend. |
+| `RunicApplicationFrontendBuildEnabled` | property | `true`, `auto` in a client library | `false` when another tool builds the frontend; `auto` builds it when its `package.json` has a `build` script (0.24). |
 | `RunicApplicationFrontendCopyEnabled` | property | `true`, `false` in a client library | Mirror the frontend output to the web root. |
 | `RunicApplicationFrontendDevSessionEnabled` | property | `true` | `false` makes a build ignore a running `dotnet runic dev` session, which otherwise skips the frontend build and keeps dev's development pages in the web root (since 0.20). |
 | `RunicApplicationFrontendOutputDirectory` | property | `dist` | The frontend build's output, relative to the frontend directory. |
@@ -91,6 +93,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendViteRoot` | the frontend directory | Vite's `root`, relative to the frontend directory, against which `doctor` checks the entry module; set it when `vite.config.*` sets `root`. |
 | `RunicApplicationFrontendDevServerDocument` | per development server | The HTML documents the server renders, separated by `;`. |
 | `RunicApplicationFrontendDevWatchTarget` | none | An MSBuild target that watches the frontend without a development server. |
+| `RunicApplicationFrontendDevSessionProject` | none (set by `dev`) | The project whose frontend `dev`'s development server serves, a global property that `dev` passes to its builds (0.24). Only that project skips its production frontend build and copy; referenced projects, such as a client library, build their frontend packages. |
 
 [`dotnet runic package`](../tools/dotnet-runic/README.md#package-the-application)
 reads the SDK's `ApplicationId`, `ApplicationTitle`, `Version`, `Description`,
