@@ -1,18 +1,3 @@
-<script lang="ts" module>
-  /** How a region's loading goes: the argument of the `failed` snippet, and the second of the `fallback` snippet. */
-  export interface HostedRegionStatus {
-    /** Whether the region is `loading` and its frame has loaded without the guest's page connecting. */
-    readonly stalled: boolean;
-    /** The host application's reason for `failed`, or `null`. */
-    readonly failureReason: string | null;
-    /**
-     * Asks the host application to load a `failed` region again; it decides. Returns whether the request was sent: false
-     * unless the region is `failed`.
-     */
-    readonly retry: () => boolean;
-  }
-</script>
-
 <script lang="ts">
   // Hosted regions (experimental, 0.18): a region where the host application shows a hosted guest's Window.
   import type { Snippet } from "svelte";
@@ -25,6 +10,7 @@
     type HostedRegionTitleChangeDetail,
     type RunicHostedRegionElement,
   } from "@runic-artifex/views/experimental";
+  import type { HostedRegionStatus } from "./hosted-region-status.js";
 
   let { name, sizing, label, fallback, stalled, failed, onstatechange, ontitlechange, ...attributes }: Omit<HTMLAttributes<HTMLElement>, "title" | "children"> & {
     /** The region's name, which the host application's policy embeds a guest's Window in. */
