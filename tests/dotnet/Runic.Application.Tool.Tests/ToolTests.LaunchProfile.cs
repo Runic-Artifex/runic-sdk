@@ -14,18 +14,18 @@ internal sealed partial class ToolTests
     // Scenario M's profiles: the template's first profile, a mock profile, and one of another kind.
     private const string MockLaunchSettings = """
         {
-          // dotnet run accepts comments and trailing commas.
+          // dotnet run accepts comments, but not trailing commas.
           "profiles": {
             "Runic Window": { "commandName": "RunicWindow", "commandLineArgs": "/other" },
             "Acme.Mock": {
               "commandName": "Project",
               "commandLineArgs": "/mock",
               "environmentVariables": { "DOTNET_ENVIRONMENT": "Development" },
-              "rax": { "dev": "no-window", "page": true, "devArguments": ["--verbosity", "minimal"] },
+              "rax": { "dev": "no-window", "page": true, "devArguments": ["--verbosity", "minimal"] }
             },
             "Verbose": { "commandName": "Project", "commandLineArgs": "/verbose \"two words\"" },
-            "Plain": { "commandName": "Project" },
-          },
+            "Plain": { "commandName": "Project" }
+          }
         }
         """;
 
@@ -36,6 +36,21 @@ internal sealed partial class ToolTests
     {
         var warnings = new List<string>();
         return (DevLaunch.Resolve(configuration, options, warnings.Add), warnings);
+    }
+
+    [Test, DisplayName("a launch settings file with a trailing comma is reported, and dev uses no profile, as dotnet run does")]
+    public void TrailingCommaInLaunchSettingsMeansNoProfile()
+    {
+        // dotnet run (SDK 10.0.404): "The launch profile "(Default)" could not be applied. … trailing comma …", then it
+        // runs without the profile's arguments. dev names none, so its [dev] lines don't claim the profile.
+        LaunchSettings settings = LaunchSettings.Parse("launchSettings.json",
+            """{ "profiles": { "Mock": { "commandName": "Project", "commandLineArgs": "/mock", }, } }""");
+        True(settings.Error is not null, "a trailing comma makes the file unreadable, as for dotnet run");
+        Equal(0, settings.Profiles.Count);
+        LaunchSettings withComment = LaunchSettings.Parse("launchSettings.json",
+            "{\n  // a comment\n  \"profiles\": { \"Mock\": { \"commandName\": \"Project\", \"commandLineArgs\": \"/mock\" } }\n}");
+        Equal(null, withComment.Error);
+        Equal("/mock", withComment.FirstProject?.CommandLineArgs);
     }
 
     [Test, DisplayName("launch arguments are split by ProcessStartInfo.Arguments rules")]
