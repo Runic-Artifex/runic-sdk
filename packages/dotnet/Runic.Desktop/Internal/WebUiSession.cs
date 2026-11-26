@@ -698,6 +698,7 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     private async Task DispatchConnectedIgnoringFailureAsync(Task admission, CancellationToken cancellationToken)
     {
+        // The handlers run on a thread-pool thread, never on the receive path or under the token reply's send gate.
         await Task.Yield();
         try
         {
@@ -708,10 +709,12 @@ internal sealed class WebUiSession : IAsyncDisposable
             return;
         }
 
+        var dispatched = false;
         try
         {
             if (IsAuthenticated)
             {
+                dispatched = true;
                 await _window.DispatchEventAsync(this, WebUiEventType.Connected, string.Empty, [], cancellationToken).ConfigureAwait(false);
             }
         }
@@ -722,6 +725,12 @@ internal sealed class WebUiSession : IAsyncDisposable
         {
             _eventGate.Release();
         }
+
+        // The window's presentation waits for its page; a side panel's page connects to an open window. The wait ends
+        // only after the page's Connected event, so an open that waits for its connection returns with the page counted
+        // (ConnectionCount) and its Connected event raised (#1383). A session that lost its admission before its event
+        // never connected, and the open keeps waiting for the page's next connection.
+        if (dispatched && Slot == DesktopConnectionSlot.Page) _window.NotifyPageConnected();
     }
 
     private async Task DispatchEventIgnoringFailureAsync(
@@ -793,8 +802,7 @@ internal sealed class WebUiSession : IAsyncDisposable
                 .ConfigureAwait(false);
             if (accepted)
             {
-                // The window's presentation waits for its page; a side panel's page connects to an open window.
-                if (Slot == DesktopConnectionSlot.Page) _window.NotifyAuthenticated();
+                // The window's presentation stops waiting after the Connected event (DispatchConnectedIgnoringFailureAsync).
                 // The page announces DesktopWindow.AnnounceAsync while it has the focus on WebView2 (I-184). Its live
                 // regions are added now, so that the screen reader knows them before the first message.
                 if (_window.AnnouncesInPage)

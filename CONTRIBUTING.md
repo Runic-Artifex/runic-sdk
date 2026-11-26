@@ -309,7 +309,7 @@ of each host and RID.
 
 The optional Vite DevTools dock supports Bun and is also exercised by an
 installed npm/Node consumer. See the
-[Vite plugin guide](packages/web/vite-plugin-runic/README.md#bun-runtime).
+[Vite plugin guide](packages/web/vite-plugin-runic/README.md).
 
 Vue template type checking remains an explicit npm/Node compatibility check
 because the pinned `vue-tsc` relies on Node behavior; the template's build is also
