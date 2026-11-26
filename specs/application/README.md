@@ -2235,17 +2235,20 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   The host answers `201` with `{"ok": true, "upload": {id, name, type, size}}`, or an error
   `{"ok": false, "error": {kind, reason, message}}`: `403` (`forbidden`, a missing or wrong token or origin), `413`
   (`too-large`, larger than `maximumBytes`; a `Content-Length` above it is refused before the body is read), `429` or
-  `507` (`capacity`, the window receives too many uploads at once, or its unclaimed uploads fill its space), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
+  `507` (`capacity`, the window receives too many uploads at once, or its unclaimed uploads fill its space or reach
+  their number), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
   (`invalid-request` or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
   (`failed`, the host could not store it). An upload that fails in any way, including a client that goes away, keeps
   none of the window's upload slots or space.
 - An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and
   only while no request claimed it; any other id is `invalid-input`. The producer's model claims an upload when it
   reads it; afterwards the id is invalid. An unclaimed upload is deleted when its connection closes, when the window
-  closes, or 10 minutes after it arrived. The window bounds the bytes of its unclaimed uploads, and MAY also bound their
-  number, answering `507` with `capacity`; the .NET producer bounds the bytes only (1 GiB by default), so empty uploads
-  have no bound until they expire. Everything about an upload — its bytes, type and name — comes from the page
-  and is untrusted: the producer reduces the name to a file name.
+  closes, or 10 minutes after it arrived. The window bounds both the bytes and the number of its unclaimed uploads, so
+  that empty uploads are bounded too, and counts the uploads it is still receiving against the number; an upload beyond
+  either bound is refused with `507` and `capacity`, and a claimed upload frees its share. The .NET producer's defaults
+  are 1 GiB and 256 uploads per window (`MaximumPendingUploadBytes`, `MaximumPendingUploads`). Everything about an
+  upload — its bytes, type and name — comes from the page and is untrusted: the producer reduces the name to a file
+  name.
 
 ### What a host enforces
 

@@ -142,6 +142,50 @@ internal sealed class BlobTests
         Require(refused && host.PendingUploadCount == 1, "An upload beyond MaximumPendingUploadBytes was stored.");
     }
 
+    // runic-sdk#1392: the window bounds the number of its unclaimed uploads as well as their bytes, so empty uploads are
+    // bounded too; a claimed upload frees its place.
+    [Test]
+    public async Task TheWindowBoundsTheNumberOfItsUnclaimedUploads()
+    {
+        using var host = Host(new BlobViewModel(), maximumPendingUploads: 2);
+        var first = await host.UploadAsync(ReadOnlyMemory<byte>.Empty);
+        await host.UploadAsync(ReadOnlyMemory<byte>.Empty);
+        string? refused = null;
+        try { await host.UploadAsync(ReadOnlyMemory<byte>.Empty); }
+        catch (InvalidOperationException error) { refused = error.Message; }
+        Require(refused?.Contains("2 uploads that no command claimed", StringComparison.Ordinal) == true && host.PendingUploadCount == 2,
+            $"An upload beyond MaximumPendingUploads was stored: {refused ?? "none refused"}, {host.PendingUploadCount} pending.");
+
+        first.Discard();
+        await host.UploadAsync(ReadOnlyMemory<byte>.Empty);
+        Require(host.PendingUploadCount == 2, $"A claimed upload kept its place: {host.PendingUploadCount} pending.");
+    }
+
+    [Test]
+    public async Task AWindowHolds256UnclaimedUploadsByDefault()
+    {
+        using var host = Host(new BlobViewModel());
+        for (var index = 0; index < 256; index++) await host.UploadAsync(ReadOnlyMemory<byte>.Empty);
+        var refused = false;
+        try { await host.UploadAsync(ReadOnlyMemory<byte>.Empty); }
+        catch (InvalidOperationException) { refused = true; }
+        Require(refused && host.PendingUploadCount == 256, $"The default bound is not 256: {host.PendingUploadCount} pending.");
+    }
+
+    [Test]
+    public void AnUnclaimedUploadBoundBelowOneIsRefused()
+    {
+        var refused = false;
+        try { using var host = Host(new BlobViewModel(), maximumPendingUploads: 0); }
+        catch (ArgumentOutOfRangeException error) when (error.ParamName == "MaximumPendingUploads") { refused = true; }
+        Require(refused, "MaximumPendingUploads = 0 was accepted.");
+        var options = new RunicWindowOptions { MaximumPendingUploads = 0 };
+        refused = false;
+        try { options.ThrowIfInvalid(); }
+        catch (ArgumentOutOfRangeException error) when (error.ParamName == "MaximumPendingUploads") { refused = true; }
+        Require(refused, "RunicWindowOptions.MaximumPendingUploads = 0 was accepted.");
+    }
+
     [Test]
     public async Task AHelloWithBlobsGetsTheConnectionsUploadGrant()
     {
@@ -273,12 +317,12 @@ internal sealed class BlobTests
         $$"""{"id":"{{upload.Id}}","name":"{{upload.FileName}}","type":"{{upload.ContentType}}","size":{{upload.Length}}}""";
 
     private static RunicWindowTestHost<BlobViewModel> Host(BlobViewModel model, long? maximumUploadBytes = null,
-        long? maximumPendingUploadBytes = null) =>
+        long? maximumPendingUploadBytes = null, int? maximumPendingUploads = null) =>
         new(model, (transport, content, vm) => new BlobBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions
             {
                 RootRoute = Route, ViewLocator = new TestViewLocator(), MaximumUploadBytes = maximumUploadBytes,
-                MaximumPendingUploadBytes = maximumPendingUploadBytes,
+                MaximumPendingUploadBytes = maximumPendingUploadBytes, MaximumPendingUploads = maximumPendingUploads,
             });
 
     private static void Require(bool condition, string message)

@@ -38,7 +38,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "inputBytes": { "type": "integer", "minimum": 1024, "maximum": 67108864 }
+        "inputBytes": { "type": "integer", "minimum": 1024, "maximum": 67108864 },
+        "pendingUploads": {
+          "description": "Producer (blobs/1): the most unclaimed uploads the window holds at once (README, Uploads), instead of the producer's default.",
+          "type": "integer", "minimum": 1
+        }
       }
     },
     "ids": {

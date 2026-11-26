@@ -28,6 +28,7 @@ export async function runScenario(adapter: Adapter, scenario: any, supports: Set
       view: scenario.view,
       model: expand(scenario.arrange?.model ?? {}),
       inputBytes: scenario.options?.inputBytes ?? null,
+      pendingUploads: scenario.options?.pendingUploads ?? null,
     });
   } catch (e) {
     if (e instanceof AdapterError && e.code === "unsupported") return { outcome: "unsupported", detail: e.message };

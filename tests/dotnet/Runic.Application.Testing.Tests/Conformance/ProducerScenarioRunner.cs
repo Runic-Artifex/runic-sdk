@@ -43,7 +43,7 @@ internal sealed class ProducerScenarioRunner
         using var transport = new ScenarioTransport();
         var runner = new ProducerScenarioRunner(scenario, transport);
         using var window = views.CreateWindow(scenario.View, scenario.Model,
-            new(transport, runner._clock, scenario.InputBytes));
+            new(transport, runner._clock, scenario.InputBytes, scenario.PendingUploads));
         runner._messages.Provider = window.Provide;
         try
         {

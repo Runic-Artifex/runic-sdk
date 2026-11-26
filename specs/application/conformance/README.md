@@ -116,7 +116,9 @@ implementation that cannot open a window without a View may root it at the `list
 
 A scenario file follows [`scenario.schema.json`](scenario.schema.json) (format `runic.views.scenario/1`). Its `id` is
 `{set}.{file}.v{n}`. It describes one window whose root View is `view`, one of the [test Views](#test-views), with the
-model values of `arrange.model`, and lists `steps` in order. `roles` names the runners that execute it.
+model values of `arrange.model`, and lists `steps` in order. `roles` names the runners that execute it. `options` sets
+limits of the producer's window instead of its defaults: `inputBytes`, its input limit, and `pendingUploads`, the most
+unclaimed uploads it holds at once ([uploads](../README.md#uploads)). A client runner ignores them.
 
 ### Steps
 
@@ -323,7 +325,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
 | [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
 | [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version and an unknown total before its reply, and the rows in its order with the count they start; a filter that changes the total, and a client that asks for no position past it; a query the source rejects, and an unknown filter `op` (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
-| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; a `set` of it, which is `invalid-request`; a blob in an editable row, which is no field path; an upload id that names no unclaimed upload, which is `invalid-input`; uploads (`upload` steps): claimed once, of another connection, expired after 10 minutes, and larger than `maximumBytes` |
+| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; a `set` of it, which is `invalid-request`; a blob in an editable row, which is no field path; an upload id that names no unclaimed upload, which is `invalid-input`; uploads (`upload` steps): claimed once, of another connection, expired after 10 minutes, larger than `maximumBytes`, and more unclaimed ones than the window holds |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views

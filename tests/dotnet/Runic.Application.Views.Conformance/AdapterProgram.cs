@@ -87,7 +87,8 @@ internal static class AdapterProgram
                     Convert.FromBase64String(Str(args, "hello"))).ConfigureAwait(false);
             case "views.open":
                 s_state?.Dispose();
-                s_state = ScenarioState.Open(Str(args, "view"), (args["model"] as JsonObject) ?? [], args["inputBytes"]?.GetValue<int>());
+                s_state = ScenarioState.Open(Str(args, "view"), (args["model"] as JsonObject) ?? [], args["inputBytes"]?.GetValue<int>(),
+                    args["pendingUploads"]?.GetValue<int>());
                 return new JsonObject();
             case "views.dispose":
                 s_state?.Dispose();
@@ -239,13 +240,14 @@ internal sealed class ScenarioState : IDisposable
     private readonly Dictionary<string, Task<RunicWindowCloseResult>> _closes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task<bool>> _flushes = new(StringComparer.Ordinal);
 
-    private ScenarioState(string view, JsonObject model, int? inputBytes)
+    private ScenarioState(string view, JsonObject model, int? inputBytes, int? pendingUploads)
     {
-        try { _window = ConformanceViews.Producer.CreateWindow(view, model, new(_transport, _clock, inputBytes)); }
+        try { _window = ConformanceViews.Producer.CreateWindow(view, model, new(_transport, _clock, inputBytes, pendingUploads)); }
         catch (NotSupportedException error) { _transport.Dispose(); throw new AdapterFailure("unsupported", error.Message); }
     }
 
-    internal static ScenarioState Open(string view, JsonObject model, int? inputBytes) => new(view, model, inputBytes);
+    internal static ScenarioState Open(string view, JsonObject model, int? inputBytes, int? pendingUploads) =>
+        new(view, model, inputBytes, pendingUploads);
 
     internal async Task<JsonNode> HandleAsync(string op, JsonObject args)
     {

@@ -4646,12 +4646,14 @@ await client.attach(ref);
   it as a path.
 - An upload whose body sends nothing for 30 seconds is dropped (HTTP 408), on
   every host.
-- Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
-  and `MaximumPendingUploadBytes` (unclaimed uploads of a Window at once, default
-  1 GiB), with host defaults of the same names on `RunicDesktopHostOptions`,
-  `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions`, and
-  `WindowContentSessionOptions` for a session you create. The WPF host uses the
-  defaults.
+- Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB),
+  `MaximumPendingUploadBytes` (the bytes of a Window's unclaimed uploads at once,
+  default 1 GiB) and `MaximumPendingUploads` (their number, also of empty
+  uploads, counting those still being received, default 256); an upload beyond
+  either is refused with HTTP 507. `RunicDesktopHostOptions`,
+  `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions` have host defaults
+  of the same names, and `WindowContentSessionOptions` has them for a session
+  you create. The WPF host uses the defaults.
 - Uploads are stored in a new folder of each Window, `runic-uploads-{random}`
   with mode 0700, below the temporary directory when no other user can change
   it (it is the user's own, or sticky such as `/tmp`), otherwise below

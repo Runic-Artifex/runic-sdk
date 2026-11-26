@@ -61,7 +61,7 @@ One window is open at a time.
 
 | op | args | ok | Notes |
 | --- | --- | --- | --- |
-| `views.open` | `{view, model, inputBytes}` | `{}` | The test View `view` with the model values (generators already expanded), failure detail off and publication coalescing off. `unsupported` for a View the adapter does not have. |
+| `views.open` | `{view, model, inputBytes, pendingUploads}` | `{}` | The test View `view` with the model values (generators already expanded), failure detail off and publication coalescing off. `inputBytes` and `pendingUploads` are the case's `options` (README "Scenarios"), or `null` for the producer's defaults. `unsupported` for a View the adapter does not have, or a `pendingUploads` its producer cannot set. |
 | `views.dispose` | — | `{}` | Closes every connection and the window. |
 | `views.connect`, `views.disconnect` | `{conn}` | `{}` | `conn` is the scenario's connection name; the adapter gives it fresh transport identities. |
 | `views.send` | `{conn, tag, text}` | `{}` | Delivers the request; its reply is tagged with `tag`. |
