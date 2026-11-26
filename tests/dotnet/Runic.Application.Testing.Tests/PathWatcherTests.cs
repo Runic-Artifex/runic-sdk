@@ -375,6 +375,31 @@ internal sealed class PathWatcherTests
         Require(!joining.Revalidate(), "The lease that restarted the watch reported its own restart.");
     }
 
+    // #1360: creating, renaming and deleting entries in a watched directory moves its change time but does not replace
+    // it, so the watch keeps running. On Linux the identity used to end in Directory.GetCreationTimeUtc, which .NET reads
+    // there through lstat as the change time, and every write restarted the watch.
+    [Test]
+    public void AWriteInsideAWatchedDirectoryDoesNotRestartItsWatch()
+    {
+        using var root = new TempDirectory();
+        var directory = root.Directory("d");
+        // Without a birth time, the identity takes the change time (DirectoryIdentity), so a write restarts the watch.
+        if (OperatingSystem.IsLinux() && Output(root.Root, "stat", ["-c", "%W", directory]).Trim() is "0" or "-")
+            Skip.Test("The file system records no birth time.");
+        var identity = DirectoryIdentity.Read(directory);
+        using var lease = SharedDirectoryWatches.Acquire(directory, recursive: false, NullSink.Instance);
+        // The change time follows the kernel's coarse clock, a few milliseconds: let it move past the directory's
+        // creation.
+        Thread.Sleep(50);
+        File.WriteAllText(Path.Combine(directory, "entry"), "1");
+        File.Move(Path.Combine(directory, "entry"), Path.Combine(directory, "renamed"));
+        Directory.CreateDirectory(Path.Combine(directory, "child"));
+        File.Delete(Path.Combine(directory, "renamed"));
+        var after = DirectoryIdentity.Read(directory);
+        Require(after == identity, $"Writes inside the directory changed its identity from {identity} to {after}.");
+        Require(!lease.Revalidate(), "A write inside the watched directory restarted its watch.");
+    }
+
     // #1123: a watcher has one sink for all its leases. After a stopped watch it releases the old lease on the thread
     // pool, and its next evaluation can acquire the replacement's first; disposing the old lease must not stop the new.
     [Test]
@@ -420,6 +445,10 @@ internal sealed class PathWatcherTests
         var format = OperatingSystem.IsMacOS() ? new[] { "-f", "%d:%i" } : ["-c", "%d:%i"];
         var expected = Output(root.Root, "stat", [.. format, directory]).Trim();
         Require(identity?.StartsWith(expected + ":", StringComparison.Ordinal) == true, $"DirectoryIdentity read {identity}, stat {expected}.");
+        // #1360: on Linux, the birth time that statx reads, where the file system records one.
+        if (OperatingSystem.IsLinux() && Output(root.Root, "stat", ["-c", "%W", directory]).Trim() is var birth && birth is not ("0" or "-"))
+            Require(identity!.StartsWith($"{expected}:b{birth}.", StringComparison.Ordinal),
+                $"DirectoryIdentity read {identity}, not the birth time {birth} that stat reads.");
         Directory.Delete(directory);
         Directory.CreateDirectory(directory);
         Require(DirectoryIdentity.Read(directory) != identity, "A recreated directory kept its identity.");
