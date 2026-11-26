@@ -105,7 +105,14 @@ internal static class DevApplication
         try
         {
             ToolOptionValues.RequireWindowOptions(options);
-            project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
+            // From a solution root, the solution's one Window project (devtools-library-dx F9).
+            ProjectSelection selection = await ProjectDiscovery.FindWindowProjectAsync(Environment.CurrentDirectory, options.Project, "dev",
+                ProjectDiscovery.EvaluateWindowProject(ResolveDotNetHost()), cancellationToken).ConfigureAwait(false);
+            project = selection.Project;
+            if (selection.Solution is { } solution)
+            {
+                Console.WriteLine($"[dev] Solution: {solution}, whose one Window project is {Path.GetRelativePath(Path.GetDirectoryName(solution)!, project).Replace('\\', '/')}");
+            }
             return await RunProjectAsync(context, options, project, evaluated, cancellationToken).ConfigureAwait(false);
         }
         catch (DevDevelopmentException error)

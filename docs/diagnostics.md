@@ -1417,9 +1417,13 @@ found. Exit code 1.
 ### RAPPDEV1002
 
 The project cannot be selected: the given project does not exist or is not a
-`.csproj`, or the directory has no `.csproj` or several. Exit code 1.
+`.csproj`, or the directory has no `.csproj` or several. Exit code 1. From a
+solution root, `dev` and `doctor` take the solution's one Window project (since
+0.24); they report this code when the directory holds several solutions, or
+when the solution has no Window project or several, which the message lists.
 
-**Fix:** pass the project with `--project`.
+**Fix:** pass the project with `--project`, for example
+`dotnet runic dev --project Acme.App/Acme.App.csproj`.
 
 ### RAPPDEV1003
 

@@ -38,6 +38,9 @@ internal static partial class Program
     private const string ProjectDescription =
         "The project file, or a directory with one .csproj. Defaults to the current directory.";
 
+    private const string WindowProjectDescription =
+        "The project file, a directory with one .csproj, or a solution (.sln, .slnx) or its directory, whose one Window project is used. Defaults to the current directory.";
+
     internal static Task<int> Main(string[] arguments) =>
         arguments is [ProcessTreeSignal.CtrlCHelperArgument, string processId]
             ? Task.FromResult(ProcessTreeSignal.RunCtrlCHelper(processId))
@@ -106,7 +109,7 @@ internal static partial class Program
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
-        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug",
         [Option("--launch-profile", ValueName = "NAME", Description = "Run the Window with this profile from Properties/launchSettings.json. By default dev uses no launch profile.")] string launchProfile = "",
         [Option("--verbosity", "-v", ValueName = "LEVEL", Choices = ["q", "quiet", "m", "minimal", "n", "normal", "d", "detailed", "diag", "diagnostic"], Description = VerbosityDescription)] string verbosity = "")
@@ -189,7 +192,7 @@ internal static partial class Program
         [Option("--self-contained", ConflictsWith = ["no-self-contained"], Description = "With --runtime, check a publish with --self-contained true.")] bool selfContained,
         [Option("--no-self-contained", ConflictsWith = ["self-contained"], Description = "With --runtime, check a publish with --self-contained false.")] bool noSelfContained,
         CancellationToken cancellationToken,
-        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --runtime as dotnet publish does.")] string configuration = "",
         [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail in both output modes.")] string failOn = "",
         [Option("--runtime", "--rid", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
