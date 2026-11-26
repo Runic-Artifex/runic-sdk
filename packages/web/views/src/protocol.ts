@@ -146,6 +146,8 @@ function validError(value: unknown): value is ReplyError {
 const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   hello: reply => reply["protocol"] !== 4 || isObject(reply["implementation"]) && isString(reply["implementation"]["name"])
     && isString(reply["implementation"]["version"])
+    // `release` (since 0.24): the producer's Runic release, which the runtime compares with its own.
+    && (reply["release"] === undefined || isString(reply["release"]))
     && (reply["features"] === undefined || Array.isArray(reply["features"]) && reply["features"].every(isString)),
   open: reply => isSafe(reply["revision"]) && isObject(reply["state"]) && validFields(reply["fields"]) && isString(reply["presentation"]),
   snapshot: reply => isSafe(reply["revision"]) && isObject(reply["state"]) && validFields(reply["fields"]),

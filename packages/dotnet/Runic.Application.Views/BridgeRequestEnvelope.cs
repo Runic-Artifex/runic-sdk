@@ -14,7 +14,10 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     internal const int MaximumIdentifierLength = 128;
     internal const int MaximumRouteLength = 128;
     internal const long MaximumSafeInteger = 9_007_199_254_740_991;
+    // Reserved routes belong to host services. The rename window (specs/application/README.md, "Rename window")
+    // reserves the renamed prefix rax. beside today's runic., so a page of either spelling reaches a host service.
     internal const string ReservedRoutePrefix = "runic.";
+    internal const string RenamedReservedRoutePrefix = "rax.";
 
     private static readonly JsonDocumentOptions ReaderOptions = new()
     {
@@ -44,11 +47,11 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     // navigation-path/1: the longest route path a navigation request may carry.
     internal const int MaximumNavigationPath = 2048;
 
-    internal bool IsServiceRoute => Route is { } route && route.StartsWith(ReservedRoutePrefix, StringComparison.Ordinal);
+    internal bool IsServiceRoute => Route is { } route && ReservedPrefixLength(route) > 0;
 
     public void Dispose() => _document.Dispose();
 
-    // The request kinds of Views routes. hello and receive belong to the connection, and reserved routes (runic.*)
+    // The request kinds of Views routes. hello and receive belong to the connection, and reserved routes (runic.*, rax.*)
     // define their own kinds.
     internal const int MaximumFieldPathSegments = 64;
     internal const int MaximumFieldPathSegmentLength = 2_048;
@@ -336,11 +339,17 @@ internal sealed class BridgeRequestEnvelope : IDisposable
         return true;
     }
 
-    // A route is [A-Za-z0-9_-]{1,128}, or a reserved route of a host service, which starts with "runic.".
+    // The length of the reserved prefix a route starts with, "runic." or "rax.", or 0.
+    internal static int ReservedPrefixLength(string route) =>
+        route.StartsWith(ReservedRoutePrefix, StringComparison.Ordinal) ? ReservedRoutePrefix.Length
+            : route.StartsWith(RenamedReservedRoutePrefix, StringComparison.Ordinal) ? RenamedReservedRoutePrefix.Length
+            : 0;
+
+    // A route is [A-Za-z0-9_-]{1,128}, or a reserved route of a host service, which starts with "runic." or "rax.".
     internal static bool IsRoute(string value)
     {
         if (value.Length is 0 or > MaximumRouteLength) return false;
-        var start = value.StartsWith(ReservedRoutePrefix, StringComparison.Ordinal) ? ReservedRoutePrefix.Length : 0;
+        var start = ReservedPrefixLength(value);
         if (start == value.Length) return false;
         for (var index = start; index < value.Length; index++)
         {

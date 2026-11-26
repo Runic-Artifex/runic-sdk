@@ -161,6 +161,27 @@
       "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     },
     {
+      "id": "messages.requests.reserved-route",
+      "description": "A route that starts with runic. is reserved for a host service; a window that serves none answers released.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"runic.menu-bar"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.renamed-reserved-route",
+      "description": "During the rename window a route that starts with rax. is reserved as well, so a page of a release after the rename reaches a host service.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"rax.menu-bar"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.renamed-reserved-prefix-alone",
+      "description": "A reserved prefix without a name after it is no route.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"rax."}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
       "id": "messages.requests.start",
       "operation": "read-request",
       "input": {

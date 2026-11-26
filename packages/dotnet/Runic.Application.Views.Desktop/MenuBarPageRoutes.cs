@@ -14,12 +14,13 @@ namespace Runic.Application.Views.Menus;
 // specs/desktop/menu-bar-page.md, on the Views protocol 4 channel. One source for both hosts:
 // Runic.Application.Views.CsWebUi compiles this file, with MenuCommandBinding.cs and the planner, through its own
 // IMenuBarSource and IMenuBarPageWindow; it references neither Runic.Desktop nor Views.Desktop.
-// - Requests to the reserved route runic.menu-bar, after the connection's hello: menu-bar-watch answers the state and
-//   pushes each later state to the connection; menu-bar-unwatch ends that; menu-bar-invoke runs an item through
-//   IMenuBarPageWindow.TryExecuteAsync with the invoking connection, so the Window's command runs as that page's command
-//   invocation; an item only the application's commands run takes the native bar's path; menu-bar-shortcuts takes or
-//   returns the connection's "app" lease, under which the page matches the items' shortcuts itself and the host's own
-//   path runs nothing. A closed connection ends its watch and its leases.
+// - Requests to the reserved route runic.menu-bar, or rax.menu-bar during the rename window (specs/application,
+//   "Rename window"; pushes carry the name the connection watched with), after the connection's hello: menu-bar-watch
+//   answers the state and pushes each later state to the connection; menu-bar-unwatch ends that; menu-bar-invoke runs
+//   an item through IMenuBarPageWindow.TryExecuteAsync with the invoking connection, so the Window's command runs as that
+//   page's command invocation; an item only the application's commands run takes the native bar's path;
+//   menu-bar-shortcuts takes or returns the connection's "app" lease, under which the page matches the items' shortcuts
+//   itself and the host's own path runs nothing. A closed connection ends its watch and its leases.
 // - The pushes are targeted, because `shortcuts` differs per connection. On CS-WebUI they travel through the Views
 //   mailbox. Each push carries the whole state, so a connection receives the latest state, in revision order.
 // - The state follows the bar, the window's placement and the availability of the commands: MenuCommandBinding raises
@@ -60,6 +61,8 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
 {
     // The reserved route of menu bar page protocol 2.
     internal const string Route = "runic.menu-bar";
+    // The route's name after the rename of 0.25, served beside Route during the rename window.
+    internal const string RenamedRoute = "rax.menu-bar";
     internal const string PushKind = "menu-bar";
     // The version of the state; a later host may add members, never change these.
     internal const int Protocol = 2;
@@ -71,10 +74,11 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
     private readonly ILogger _logger;
     private readonly BridgeDispatcher _dispatcher;
     private readonly IDisposable _route;
+    private readonly IDisposable _renamedRoute;
     private readonly IDisposable _connections;
     private readonly CancellationTokenSource _stop = new();
-    // The connections that watch the state, and the revision each one was last sent.
-    private readonly Dictionary<string, long> _watchers = new(StringComparer.Ordinal);
+    // The connections that watch the state, the revision each one was last sent, and the route name it watched.
+    private readonly Dictionary<string, (long Sent, string Route)> _watchers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _leases = new(StringComparer.Ordinal);
     private Snapshot _snapshot = Snapshot.Initial;
     private IReadOnlyList<DesktopMenu>? _menus;
@@ -95,7 +99,16 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         _logger = logger;
         _dispatcher = BridgeDispatcher.For(transport);
         _route = _dispatcher.RegisterRoute(Route, this);
-        try { _connections = _dispatcher.OnConnectionClosed(ReleaseConnection); }
+        try
+        {
+            _renamedRoute = _dispatcher.RegisterRoute(RenamedRoute, this);
+            try { _connections = _dispatcher.OnConnectionClosed(ReleaseConnection); }
+            catch
+            {
+                _renamedRoute.Dispose();
+                throw;
+            }
+        }
         catch
         {
             _route.Dispose();
@@ -171,6 +184,7 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         if (application is not null) application.Changed -= OnChanged;
         _stop.Cancel();
         _route.Dispose();
+        _renamedRoute.Dispose();
         _connections.Dispose();
         if (suspended) window?.SuspendHostShortcuts(false);
     }
@@ -339,11 +353,11 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
                     return;
                 }
                 _undelivered = false;
-                foreach (var (connection, sent) in _watchers.ToArray())
+                foreach (var (connection, (sent, route)) in _watchers.ToArray())
                 {
                     if (sent >= _snapshot.Revision) continue;
-                    _watchers[connection] = _snapshot.Revision;
-                    pushes.Add((connection, Encoding.UTF8.GetBytes(Push(_snapshot, connection))));
+                    _watchers[connection] = (_snapshot.Revision, route);
+                    pushes.Add((connection, Encoding.UTF8.GetBytes(Push(_snapshot, connection, route))));
                 }
             }
             foreach (var (connection, push) in pushes)
@@ -385,7 +399,7 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
                 lock (_gate)
                 {
                     if (_disposed) return new(BridgeMessages.Released);
-                    _watchers[connection] = _snapshot.Revision;
+                    _watchers[connection] = (_snapshot.Revision, request.Route);
                     return new(StateReply(_snapshot, connection));
                 }
             case "menu-bar-unwatch":
@@ -451,7 +465,7 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
             {
                 Publish(_snapshot with { Revision = _snapshot.Revision + 1 });
                 // The reply carries this state, so the connection's own watch need not push it.
-                if (_watchers.ContainsKey(connection)) _watchers[connection] = _snapshot.Revision;
+                if (_watchers.TryGetValue(connection, out var watch)) _watchers[connection] = watch with { Sent = _snapshot.Revision };
             }
             reply = StateReply(_snapshot, connection);
         }
@@ -470,8 +484,8 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         MenuBarPageState.WriteReply(snapshot.Revision, snapshot.Placement, ShortcutsOf(snapshot, connection), _platform, snapshot.MenusJson);
 
     // Called under the gate.
-    private string Push(Snapshot snapshot, string connection) =>
-        MenuBarPageState.WritePush(snapshot.Revision, snapshot.Placement, ShortcutsOf(snapshot, connection), _platform, snapshot.MenusJson);
+    private string Push(Snapshot snapshot, string connection, string route) =>
+        MenuBarPageState.WritePush(snapshot.Revision, snapshot.Placement, ShortcutsOf(snapshot, connection), _platform, snapshot.MenusJson, route);
 
     private static byte[] Result(string result) => Encoding.UTF8.GetBytes("{\"ok\":true,\"result\":\"" + result + "\"}");
 
@@ -511,13 +525,15 @@ internal static class MenuBarPageState
             writer.WriteEndObject();
         });
 
-    // {"kind":"menu-bar","route":"runic.menu-bar","state":{…}}: the push of a watched state.
-    internal static string WritePush(long revision, string placement, string shortcuts, MenuPlatform platform, string menusJson) =>
+    // {"kind":"menu-bar","route":"runic.menu-bar","state":{…}}: the push of a watched state, under the route name the
+    // connection watched (rax.menu-bar during the rename window).
+    internal static string WritePush(long revision, string placement, string shortcuts, MenuPlatform platform, string menusJson,
+        string route = MenuBarPageRoutes.Route) =>
         Encoding.UTF8.GetString(BridgeMessages.Write(writer =>
         {
             writer.WriteStartObject();
             writer.WriteString("kind", MenuBarPageRoutes.PushKind);
-            writer.WriteString("route", MenuBarPageRoutes.Route);
+            writer.WriteString("route", route);
             writer.WritePropertyName("state");
             WriteState(writer, revision, placement, shortcuts, platform, menusJson);
             writer.WriteEndObject();

@@ -244,9 +244,37 @@ Client rules:
   compare `implementation.version` when `implementation.name` names the producer it is released with.
   `@runic-artifex/views` reports a diagnostic with code `version` once per page, and keeps working, when the reply's
   `release` differs from its own release, whatever `implementation.name` is, or when the reply has no `release`,
-  `implementation.name` is `Runic.Application.Views` and the version differs from its own. It reports no version
-  diagnostic for other producers. (The client half of `release` is tracked in
-  [#1361](https://github.com/Runic-Artifex/runic-sdk/issues/1361).)
+  `implementation.name` is one of the names of Runic's producer (`Runic.Application.Views`, and during the
+  [rename window](#rename-window) `RunicArtifex.Application.Views`) and the version differs from its own. It reports no
+  version diagnostic for other producers. A client reads a reply whose `release` is present but not a string as an
+  invalid response.
+
+### Rename window
+
+0.25 renames Runic's names on the wire (D079.27, D079.21): the producer `Runic.Application.Views` becomes
+`RunicArtifex.Application.Views`, and the reserved route prefix `runic.` becomes `rax.`, so the menu bar's route
+`runic.menu-bar` becomes `rax.menu-bar`. [Feature names](#features) carry no prefix and keep their names. From 0.24
+through the last 1.0.x release, the **rename window**, every implementation accepts both spellings, so that a client
+and a producer on either side of the rename agree on these names:
+
+| Today's name (sent through 0.24) | Renamed (sent from 0.25) | Where it is matched |
+| --- | --- | --- |
+| `Runic.Application.Views` | `RunicArtifex.Application.Views` | `implementation.name` in the `hello` reply: a client treats both as Runic's producer ([client rules](#handshake)) |
+| route prefix `runic.` | route prefix `rax.` | [route names](#routes-and-members): both prefixes are reserved for host services |
+| `runic.menu-bar` | `rax.menu-bar` | the [menu bar page protocol](../desktop/menu-bar-page.md)'s route |
+
+- **Sending.** An implementation sends one spelling: today's through 0.24, the renamed one from 0.25 on. An
+  implementation first released after the rename, such as one in another language, sends the renamed one.
+- **Receiving.** Through 1.0.x an implementation accepts both spellings and treats them as one name. A producer serves
+  a reserved route under both names, with the same handler and state, and answers and pushes under the name the
+  connection used: a watch of `rax.menu-bar` is pushed with `"route":"rax.menu-bar"`.
+- **Ends.** The window ends with 2.0, together with the old-name build guards of D079.11. From then on, today's
+  spellings are ordinary names: a producer named `Runic.Application.Views` is another producer, and a route that starts
+  with `runic.` is not a route.
+- The window does not change any other rule: a client refuses a producer of another protocol version
+  ([client rules](#handshake)) whatever its names. The page globals (`__runicBridge`, the
+  [shared keys](#shared-globals) `runic.views.*`) are not matched between a client and a producer and are not part of
+  the window.
 
 ## Features
 
@@ -403,9 +431,10 @@ production, and a `domain-failed` error never has it. When a producer is in deve
 
 - **Route names** are chosen by the producer. A root View's route name is a string of 1 to 128 characters from
   `[A-Za-z0-9_-]` that the generated contract names. A content route is `content{id}`, where `id` is the content's id,
-  32 lowercase hexadecimal digits. Route names that start with `runic.` are reserved for host services that share the
-  channel, such as the [menu bar page protocol](../desktop/menu-bar-page.md); their request kinds and pushes are
-  defined by those services.
+  32 lowercase hexadecimal digits. Route names that start with `runic.`, or with `rax.` during the
+  [rename window](#rename-window), are reserved for host services that share the channel, such as the
+  [menu bar page protocol](../desktop/menu-bar-page.md); their request kinds and pushes are defined by those services.
+  After the prefix, a reserved route has 1 or more characters from `[A-Za-z0-9_.-]`, and 128 characters in all.
 - **Member names** are the wire names of the contract: the name the member has in state (`title`), the command's wire
   name (`save`) or the checked field's name. `kind` keeps setters, commands and availability queries apart, so a
   member name can never collide with another kind of request.

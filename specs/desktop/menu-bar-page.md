@@ -45,6 +45,10 @@ instead of answering waits.
   controller `unavailable`. `busy` no longer exists, because nothing waits.
 - The request kinds above belong to the `runic.menu-bar` route. Sent to another route they
   are `invalid-request`, and other request kinds sent to `runic.menu-bar` are too.
+- **Rename window.** 0.25 renames the route to `rax.menu-bar`. From 0.24 through 1.0.x a host
+  serves the route under both names, with one state and the same leases, and pushes to a
+  connection under the name it watched with; a page sends one of them, `runic.menu-bar`
+  through 0.24 ([Views rename window](../application/README.md#rename-window)).
 
 ## Routes (protocol 1)
 

@@ -196,6 +196,68 @@ test("a hello from another Runic.Application.Views release is reported once, and
   }
 });
 
+// specs/application "Handshake" and "Rename window" (#1361, P7): a hello reply's `release` decides for a producer of any
+// name; without it, both names of Runic's producer are compared by their version. The text names no .NET host.
+test("the version diagnostic follows the reply's release, and both names of Runic's producer without one", async () => {
+  // The mock with the given identity in its hello replies; `release` only when given.
+  const producer = (bridge: MockBridge, name: string, version: string, release?: unknown) => {
+    (globalThis as { __runicBridge?: RunicBridgeClient }).__runicBridge = {
+      isConnected: () => bridge.isConnected(),
+      async request(text) {
+        const reply = await bridge.request(text);
+        return (JSON.parse(text) as { kind: string }).kind !== "hello" ? reply
+          : JSON.stringify({ ...JSON.parse(reply) as object, implementation: { name, version }, ...(release === undefined ? {} : { release }) });
+      },
+      onMessage: listener => bridge.onMessage(listener),
+      onConnectionChange: listener => bridge.onConnectionChange(listener),
+    };
+  };
+  const reported = async (name: string, version: string, release?: string) => {
+    const { diagnostics, stop } = captureDiagnostics();
+    try {
+      const bridge = fresh();
+      producer(bridge, name, version, release);
+      bridge.view("editor", { state: { title: "" } });
+      const client = await connect();
+      assert.equal((await client.set("title", "x")).title, "x", `${name}: the client keeps working`);
+      client.dispose();
+      return diagnostics.filter(diagnostic => diagnostic.code === "version").map(diagnostic => diagnostic.message);
+    } finally {
+      stop();
+    }
+  };
+  const version = viewsVersion.replaceAll(".", "\\.");
+  // The other release: the renamed producer, without release, of another version.
+  const renamed = await reported("RunicArtifex.Application.Views", "0.1.0-other");
+  assert.equal(renamed.length, 1);
+  assert.match(renamed[0]!, new RegExp(`^The producer is RunicArtifex\\.Application\\.Views 0\\.1\\.0-other, but this page uses @runic-artifex/views ${version}\\.`));
+  assert.deepEqual(await reported("RunicArtifex.Application.Views", viewsVersion), []);
+  // A release decides whatever the name, also over a version that differs.
+  const other = await reported("rust-producer", "0.3.0", "0.1.0-other");
+  assert.equal(other.length, 1);
+  assert.match(other[0]!, new RegExp(`^The producer rust-producer 0\\.3\\.0 belongs to Runic release 0\\.1\\.0-other, but this page uses @runic-artifex/views ${version}\\.`));
+  assert.deepEqual(await reported("rust-producer", "0.3.0", viewsVersion), []);
+  assert.deepEqual(await reported("Runic.Application.Views", "0.1.0-other", viewsVersion), []);
+  for (const message of [...renamed, ...other]) assert.doesNotMatch(message, /\.NET/);
+  // Another producer without release is not compared.
+  assert.deepEqual(await reported("RunicArtifex.Application.Views.Other", "0.1.0-other"), []);
+});
+
+test("a hello reply whose release is not a string is an invalid response", async () => {
+  const bridge = fresh();
+  (globalThis as { __runicBridge?: RunicBridgeClient }).__runicBridge = {
+    isConnected: () => bridge.isConnected(),
+    async request(text) {
+      const reply = await bridge.request(text);
+      return (JSON.parse(text) as { kind: string }).kind !== "hello" ? reply : JSON.stringify({ ...JSON.parse(reply) as object, release: 25 });
+    },
+    onMessage: listener => bridge.onMessage(listener),
+    onConnectionChange: listener => bridge.onConnectionChange(listener),
+  };
+  bridge.view("editor", { state: { title: "" } });
+  await assert.rejects(connect(), (error: unknown) => error instanceof BridgeError && error.kind === "failed");
+});
+
 test("the package version matches its manifest", async () => {
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
   assert.equal(viewsVersion, manifest.version);
