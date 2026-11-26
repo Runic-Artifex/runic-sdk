@@ -40,6 +40,9 @@ await writeFile(manifest, JSON.stringify(npmManifest, null, 2) + "\n");
 await writeFile(lockFile, JSON.stringify({
   name: npmManifest.name, lockfileVersion: 3, requires: true, packages: { "": { name: npmManifest.name } },
 }, null, 2) + "\n");
+// The build installs only when the lock or a package.json changed since its stamp; an earlier local run with the same
+// files would make it skip the install.
+await rm(join(fixture, "obj/runic-bridge-frontend-install.stamp"), { force: true });
 
 const environment = { ...process.env };
 delete environment.RUNIC_APPLICATION_SERVE_ONLY;
@@ -53,6 +56,8 @@ const dev = spawn("dotnet", [tool, "dev", "--project", project, "-c", "Release",
 let output = "", errors = "";
 dev.stdout.on("data", chunk => { output += chunk; });
 dev.stderr.on("data", chunk => { errors += chunk; });
+// dev's own lines and the build's install, frontend and diagnostic lines, which the tail of a long build output cuts off.
+const frontendLines = text => text.split(/\r?\n/).filter(line => /^\[dev\]|RAPPDEV|RUNICBRIDGE|[Ii]nstall|[Ff]rontend/.test(line)).join("\n");
 const detail = async () => `dev stdout:\n${tail(output)}\ndev stderr:\n${tail(errors)}`;
 const until = (condition, label, timeout) => waitFor(condition, { label, detail, timeout });
 let entry;
@@ -72,9 +77,9 @@ try {
     throw new Error(`dotnet runic dev exited with ${started.exited}:\n${tail(output)}\n${tail(errors)}`);
   // dev's build installed the packages with npm, dev ran no install of its own, and it started the watcher through npm.
   if (!/Installing frontend dependencies in .+ with npm\./m.test(output))
-    throw new Error(`dev's build did not install the frontend with npm ci:\n${tail(output)}`);
+    throw new Error(`dev's build did not install the frontend with npm ci. dev's lines and the build's frontend lines:\n${frontendLines(output)}\n${tail(output)}`);
   if (/^\[dev\] Installing Views Window frontend dependencies/m.test(output))
-    throw new Error(`dev ran its own frontend install besides the build's:\n${tail(output)}`);
+    throw new Error(`dev ran its own frontend install besides the build's:\n${frontendLines(output)}`);
   if (!/^\[frontend\] Watching index\.html$/m.test(output)) throw new Error(`npm run dev did not start the watcher:\n${tail(output)}`);
   entry = await admitToBrowserEntry(started);
   await until(async () => (await served()) === "one", "the initial page", 30_000);
