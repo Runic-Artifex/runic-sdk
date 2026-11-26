@@ -300,6 +300,16 @@
       "id": "RUNICBRIDGE084",
       "severity": "error",
       "title": "The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views"
+    },
+    {
+      "id": "RUNICBRIDGE085",
+      "severity": "error",
+      "title": "A package of a former ID is in the package graph"
+    },
+    {
+      "id": "RUNICBRIDGE086",
+      "severity": "error",
+      "title": "An environment variable of a former name is set"
     }
   ]
 }

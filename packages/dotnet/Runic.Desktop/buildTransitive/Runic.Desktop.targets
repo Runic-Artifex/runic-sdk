@@ -1,4 +1,7 @@
 <Project>
+  <!-- The old-name guards (D079.11) of the SDK's packages, which Runic.Application.Views ships too; one of the copies is
+       imported. -->
+  <Import Project="$(MSBuildThisFileDirectory)Runic.Sdk.RenamedNames.targets" Condition="'$(_RunicSdkRenamedNamesImported)' != 'true'" />
   <!-- The presentation server (X2): Runic.Desktop has none of its own. The project references Runic.Desktop.Kestrel
        (ASP.NET Core Kestrel) or the experimental Runic.Desktop.NativeServer, whose props set the Referenced properties.
        With both, the native server serves unless RunicDesktopServer is Kestrel. None declares an executable that opens

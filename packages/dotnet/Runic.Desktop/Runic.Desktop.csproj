@@ -59,6 +59,8 @@
     <None Include="NOTICE" Pack="true" PackagePath="" />
     <None Include="licenses/WebUI-LICENSE.txt" Pack="true" PackagePath="licenses/WebUI/" />
     <None Include="buildTransitive\Runic.Desktop.targets" Pack="true" PackagePath="buildTransitive\Runic.Desktop.targets" />
+    <!-- The old-name guards (D079.11), generated from Runic.Application.Views/rename/old-names.json. -->
+    <None Include="buildTransitive\Runic.Sdk.RenamedNames.targets" Pack="true" PackagePath="buildTransitive\Runic.Sdk.RenamedNames.targets" />
   </ItemGroup>
 
 </Project>
