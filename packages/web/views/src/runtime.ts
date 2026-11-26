@@ -20,7 +20,7 @@ import { appearanceFeature, receiveAppearancePush } from "./appearance-push.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { clientLanguages, clientLanguagesFeature } from "./client-languages.js";
-import { hostedRegionsFeature } from "./hosted-region-wire.js";
+import { hostedRegionLoadingFeature, hostedRegionsFeature } from "./hosted-region-wire.js";
 import { endWindowDraining, reportWindowClosed, reportWindowDraining } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitDrafts } from "./field-controller.js";
@@ -79,7 +79,7 @@ export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
   translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature, hostedRegionsFeature,
-  openEndedInteractionsFeature,
+  openEndedInteractionsFeature, hostedRegionLoadingFeature,
   // Development tools (calls.ts): only the development build lists them, and a request carries their members only while
   // a reader of the Bridge-call channel follows its call. The production build's hello is the same as without them.
   ...__RUNIC_DEVELOPMENT__ ? [traceContextFeature, handlerTimingFeature] : [],

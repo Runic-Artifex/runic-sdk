@@ -131,6 +131,10 @@ internal static partial class DesktopLog
         Message = "{Name} does not apply appearance overrides (region-appearance/1, from 0.19): its window in the region '{Region}' shows the desktop's appearance.")]
     internal static partial void HostedRegionAppearanceUnavailable(ILogger logger, string name, string region);
 
+    [LoggerMessage(EventId = 2031, EventName = "DesktopHostedRegionRetryRefused", Level = LogLevel.Warning,
+        Message = "The host page asked for the region '{Region}' again more than 3 times within a minute; the region stays failed until the application retries it.")]
+    internal static partial void HostedRegionRetryRefused(ILogger logger, string region);
+
     [LoggerMessage(EventId = 2029, EventName = "DesktopHostedPeerRefused", Level = LogLevel.Warning,
         Message = "The elevated hosted application refused a connection from {Peer}: the process at that end does not run elevated, or Runic cannot show that it does (elevated-peer-refused).")]
     internal static partial void HostedPeerRefused(ILogger logger, string peer);

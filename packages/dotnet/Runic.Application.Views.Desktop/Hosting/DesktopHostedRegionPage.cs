@@ -111,6 +111,24 @@ internal sealed class DesktopHostedRegionPage : IHostedRegionPage, IHostedRegion
         }
     }
 
+    public void FrameLoaded(HostedRegionRequest request)
+    {
+        lock (_gate)
+        {
+            if (_closed) return;
+            _directory.FrameLoaded(this, request.Name);
+        }
+    }
+
+    public void RetryRequested(HostedRegionRequest request)
+    {
+        lock (_gate)
+        {
+            if (_closed) return;
+            _directory.RetryRequested(this, request.Name);
+        }
+    }
+
     public bool ShowFrame(string name, string src, string? title, string allow, string? colorScheme = null) =>
         _regions.ShowFrame(name, src, title, allow, colorScheme);
 
@@ -120,9 +138,11 @@ internal sealed class DesktopHostedRegionPage : IHostedRegionPage, IHostedRegion
     public bool Update(string name, HostedRegionTitle title, int? height, HostedRegionColorScheme colorScheme = default) =>
         _regions.Update(name, title, height, colorScheme);
 
-    public bool Empty(string name, HostedRegionEmptyReason reason) => _regions.Empty(name, reason);
+    public bool Empty(string name, HostedRegionEmptyReason reason, string? failure = null) => _regions.Empty(name, reason, failure);
 
     public bool Focus(string name) => _regions.Focus(name);
+
+    public bool Connected(string name) => _regions.Connected(name);
 
     public void Dispose()
     {

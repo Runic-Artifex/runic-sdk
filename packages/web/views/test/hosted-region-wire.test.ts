@@ -35,3 +35,14 @@ test("colorScheme in content and update pushes keeps them valid, also with a val
     for (const push of [{ ...content, colorScheme }, { ...component, colorScheme }, { kind: "hosted-region-update", name: "check", colorScheme }])
       assert.equal(readPush(JSON.stringify(push)).result, "valid", JSON.stringify(push));
 });
+
+// hosted-region-loading/1: connected on an update, and a failure with the host application's reason.
+test("connected and failed pushes are valid, and malformed ones are invalid", () => {
+  for (const push of [{ kind: "hosted-region-update", name: "check", connected: true }, { kind: "hosted-region-update", name: "check", connected: false },
+    { kind: "hosted-region-empty", name: "check", reason: "failed", failure: "unreachable" }, { kind: "hosted-region-empty", name: "check", reason: "failed", failure: null },
+    { kind: "hosted-region-empty", name: "check", reason: "failed" }, { kind: "hosted-region-empty", name: "check", reason: "failed", failure: "r".repeat(256) }])
+    assert.equal(readPush(JSON.stringify(push)).result, "valid", JSON.stringify(push));
+  for (const push of [{ kind: "hosted-region-update", name: "check", connected: "yes" }, { kind: "hosted-region-update", name: "check", connected: null },
+    { kind: "hosted-region-empty", name: "check", reason: "failed", failure: 3 }, { kind: "hosted-region-empty", name: "check", reason: "failed", failure: "r".repeat(257) }])
+    assert.equal(readPush(JSON.stringify(push)).result, "invalid", JSON.stringify(push));
+});

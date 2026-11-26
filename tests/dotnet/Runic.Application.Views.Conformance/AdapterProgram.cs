@@ -23,7 +23,7 @@ internal static class AdapterProgram
         "text-splice/1", "presentation-epoch/1", "presented/1", "field-flush/1", "view-requests/1", "request-session/1",
         "region-collections/1", "query-collections/1", "field-paths/1", "translation-text/1", "navigation-path/1",
         "appearance/1", "client-languages/1", "client-errors/1", "blobs/1", "validation-pending/1", "trace-context/1",
-        "handler-timing/1", "hosted-regions/1",
+        "handler-timing/1", "hosted-regions/1", "hosted-region-loading/1",
     ];
     private static readonly string[] Capabilities = ["virtual-clock", "held-delivery"];
 

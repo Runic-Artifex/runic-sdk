@@ -35,9 +35,13 @@ internal interface IHostedRegionPage
     bool Update(string name, Runic.Application.Views.HostedRegionTitle title, int? height,
         Runic.Application.Views.HostedRegionColorScheme colorScheme = default);
 
-    bool Empty(string name, Runic.Application.Views.HostedRegionEmptyReason reason);
+    // failure: the host application's reason for Failed (hosted-region-loading/1), or null.
+    bool Empty(string name, Runic.Application.Views.HostedRegionEmptyReason reason, string? failure = null);
 
     bool Focus(string name);
+
+    // hosted-region-loading/1: the guest's page in the region's frame connected; false for a page without the feature.
+    bool Connected(string name);
 }
 
 // A region that a page declares now.
@@ -125,6 +129,22 @@ internal sealed class HostedRegionDirectory
             slot.Report = report;
         }
         slot.Region?.OnReport(slot, report);
+    }
+
+    // hosted-region-loading/1: the region's frame loaded while it loaded, or the page asks for a failed region again.
+    internal void FrameLoaded(IHostedRegionPage page, string name)
+    {
+        if (SlotOf(page, name) is { Region: { } region } slot) region.OnFrameLoaded(slot);
+    }
+
+    internal void RetryRequested(IHostedRegionPage page, string name)
+    {
+        if (SlotOf(page, name) is { Region: { } region } slot) region.OnPageRetry(slot);
+    }
+
+    private HostedRegionSlot? SlotOf(IHostedRegionPage page, string name)
+    {
+        lock (_gate) return _pages.TryGetValue(page, out var slots) ? slots.GetValueOrDefault(name) : null;
     }
 
     // The host window closed: its regions are gone, and the region windows it showed close (host-protocol.md, Lifecycle

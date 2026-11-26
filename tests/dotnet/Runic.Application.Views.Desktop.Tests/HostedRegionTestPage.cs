@@ -43,6 +43,10 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
         internal List<string?> SchemeUpdates { get; } = [];
         internal int? AppliedHeight { get; set; }
         internal int FocusRequests { get; set; }
+        // hosted-region-loading/1: the host's word that the guest's page connected, and its reason for failed.
+        internal int Connections { get; set; }
+        internal int Contents { get; set; }
+        internal string? Failure { get; set; }
 
         internal HostedRegionReport Report() => new(Name, "c1", Width, Height, Scale, X, Y, Visible, Focused, Focused ? Source : null);
     }
@@ -127,9 +131,16 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
     // The host window closed.
     internal void Close() => directory.PageClosed(this);
 
+    // hosted-region-loaded: the region's frame loaded while the region loaded.
+    internal void FrameLoaded(string name) => directory.FrameLoaded(this, name);
+
+    // hosted-region-retry: the page asks for a failed region again.
+    internal void Retry(string name) => directory.RetryRequested(this, name);
+
     public bool ShowFrame(string name, string src, string? title, string allow, string? colorScheme = null) => Push(name, region =>
     {
         region.Shows = "content";
+        region.Contents++;
         region.Src = src;
         region.Title = title;
         region.Allow = allow;
@@ -156,16 +167,20 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
         }
     });
 
-    public bool Empty(string name, HostedRegionEmptyReason reason) => Push(name, region =>
+    public bool Empty(string name, HostedRegionEmptyReason reason, string? failure = null) => Push(name, region =>
     {
         region.Shows = reason switch
         {
             HostedRegionEmptyReason.Waiting => "waiting",
             HostedRegionEmptyReason.Detached => "detached",
+            HostedRegionEmptyReason.Failed => "failed",
             _ => "ended",
         };
+        region.Failure = failure;
         region.Src = null;
     });
+
+    public bool Connected(string name) => Push(name, static region => region.Connections++);
 
     public bool Focus(string name)
     {

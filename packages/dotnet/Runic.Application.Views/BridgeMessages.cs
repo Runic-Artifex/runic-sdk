@@ -81,6 +81,7 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.TraceContextFeature);
             writer.WriteStringValue(BridgeDispatcher.OpenEndedInteractionsFeature);
             writer.WriteStringValue(BridgeDispatcher.ViewContractFeature);
+            writer.WriteStringValue(BridgeHostedRegions.LoadingFeature);
             if (handlerTiming) writer.WriteStringValue(BridgeDispatcher.HandlerTimingFeature);
             writer.WriteEndArray();
             if (grant is not null)

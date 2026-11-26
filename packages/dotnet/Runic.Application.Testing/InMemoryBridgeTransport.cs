@@ -344,6 +344,9 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 // hosted-regions/1: a test page may declare hosted regions; a connection that declares none receives no push
                 // of the feature.
                 writer.WriteStringValue("hosted-regions/1");
+                // hosted-region-loading/1: as a current page, a test page learns when a region's guest page connected and
+                // when the host gave a region up.
+                writer.WriteStringValue("hosted-region-loading/1");
                 // open-ended-interactions/1: an interaction without a deadline arrives without expiresAt, as a current page
                 // receives it.
                 writer.WriteStringValue("open-ended-interactions/1");
