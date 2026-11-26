@@ -94,7 +94,9 @@ export const packageLayouts = {
     includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets",
       "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.dll", "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.CodeFixes.dll",
       // R7 G6: the TypeScript emitter's launcher and the bundled emitter for projects without a frontend.
-      "buildTransitive/runic-views-codegen.mjs", "tools/codegen/index.js"],
+      "buildTransitive/runic-views-codegen.mjs", "tools/codegen/index.js",
+      // The old-name guards (D079.11), which Runic.Desktop ships too.
+      "buildTransitive/Runic.Sdk.RenamedNames.targets"],
     rollForwardMajor: ["tools/net10.0/BridgeCodegen.runtimeconfig.json"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
@@ -138,7 +140,7 @@ export const packageLayouts = {
     dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions",
       "Microsoft.Web.WebView2", "Runic.Platform", "Runic.Platform.Linux.DBus", "Tmds.DBus.Protocol"],
     exactDependencies: ["Runic.Platform", "Runic.Platform.Linux.DBus"],
-    includes: ["buildTransitive/Runic.Desktop.targets"],
+    includes: ["buildTransitive/Runic.Desktop.targets", "buildTransitive/Runic.Sdk.RenamedNames.targets"],
   },
   // The native Desktop server (D053.24: the default of new applications): no assembly, the shared library of every
   // runtime identifier, and a runtime.json that brings Runic.Desktop.NativeServer.Static.<rid> for a runtime-specific

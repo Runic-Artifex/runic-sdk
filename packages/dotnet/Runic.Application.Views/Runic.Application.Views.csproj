@@ -57,6 +57,8 @@
     <None Include="../Runic.Application.Views.Analyzers.CodeFixes/bin/$(Configuration)/netstandard2.0/Runic.Application.Views.Analyzers.CodeFixes.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.targets" />
+    <!-- The old-name guards (D079.11), generated from rename/old-names.json; Runic.Desktop packs the same file. -->
+    <None Update="build/Runic.Sdk.RenamedNames.targets" Pack="true" PackagePath="buildTransitive/Runic.Sdk.RenamedNames.targets" />
     <!-- R7 G6: the targets run the TypeScript emitter through this launcher, with the frontend's @runic-artifex/views or,
          without a frontend, the copy of its emitter that the generator's build bundles (codegen/index.js), in tools/codegen. -->
     <None Update="build/runic-views-codegen.mjs" Pack="true" PackagePath="buildTransitive/runic-views-codegen.mjs" />

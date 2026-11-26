@@ -112,6 +112,8 @@ and severities are open.
 | [`RUNICBRIDGE082`](#runicbridge082) | Error | Build targets; generator | A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include |
 | [`RUNICBRIDGE083`](#runicbridge083) | Warning | Generator | A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing |
 | [`RUNICBRIDGE084`](#runicbridge084) | Error | Build targets | The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's `@runic-artifex/views` |
+| [`RUNICBRIDGE085`](#runicbridge085) | Error | Build targets | A package of a former ID is in the package graph |
+| [`RUNICBRIDGE086`](#runicbridge086) | Error | Build targets | An environment variable of a former name is set |
 
 ### Errors and warnings while you type
 
@@ -436,7 +438,11 @@ property or item by a former name, which no longer applies:
   ReactiveUI.Primitives.
 
 Until 0.9 this was a warning and the old name still applied. The message names
-the new property.
+the new property. Since 0.24 the renamed names are the MSBuild list of the
+old-name guards (D079.11, `Runic.Sdk.RenamedNames.targets`, generated from
+`packages/dotnet/Runic.Application.Views/rename/old-names.json`), which
+`Runic.Desktop` ships too; `RUNICBRIDGE085` and `RUNICBRIDGE086` report old
+package IDs and environment variables.
 
 **Fix:** remove `RunicApplicationFrontendReactiveUiFlavor`. Rename any other
 property or item, for example
@@ -1179,6 +1185,40 @@ or let the build install them (`RunicApplicationFrontendInstallEnabled`). Set
 `RunicApplicationFrontendGenerationEnabled=false` in a project that another
 project generates the Bridges for. See
 [MSBuild properties](msbuild.md#runicapplicationviews).
+
+### RUNICBRIDGE085
+
+An error from the build targets of `Runic.Application.Views` and `Runic.Desktop`
+(since 0.24): the project's package graph holds a package whose ID was renamed,
+referenced by the project (`PackageReference`) or brought in by another package.
+Packages of the old and the new IDs do not work together in one application:
+the build would load their targets twice, and the Bridge would not recognise a
+type that the old package declares under its old name. The message names the
+new ID.
+
+It is one of the old-name guards (D079.11), with `RUNICBRIDGE017` for build
+properties and items and `RUNICBRIDGE086` for environment variables. They are
+reported through 1.0.x and removed in 2.0. The list of old IDs is
+`Runic.Sdk.RenamedNames.targets`, generated from
+`packages/dotnet/Runic.Application.Views/rename/old-names.json`; 0.24 lists no
+package.
+
+**Fix:** run `rax migrate` (`dnx RunicArtifex.Tool migrate` without a tool
+manifest), which moves the project's references to the new IDs, or replace the
+old `PackageReference` by hand. A package that another package brings in moves
+with that package: update it to a release of the new names.
+
+### RUNICBRIDGE086
+
+An error from the build targets of `Runic.Application.Views` and `Runic.Desktop`
+(since 0.24): an environment variable that the build read under a former name is
+set. The old name no longer applies, and the message names the new one. It is
+one of the old-name guards (D079.11), like `RUNICBRIDGE085`; 0.24 lists no
+environment variable.
+
+**Fix:** set the variable by its new name and remove the old one from the
+environment, for example from a `launchSettings.json`, a CI workflow or a shell
+profile.
 
 ## dotnet runic
 

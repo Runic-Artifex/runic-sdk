@@ -1,0 +1,62 @@
+<Project>
+  <!-- Generated from packages/dotnet/Runic.Application.Views/rename/old-names.json
+       by packages/dotnet/Runic.Application.Views/rename/old-names.mjs: do not edit; change the input and regenerate.
+       Old-name guards (D079.11), shipped through 1.0.x and removed in 2.0:
+       RUNICBRIDGE085: an old package ID is in the package graph (a PackageReference, or a package that NuGet resolved);
+       RUNICBRIDGE017: the project sets an old public MSBuild property or item;
+       RUNICBRIDGE086: an old environment variable is set.
+       Each name is reported once. A root package imports this file once, also when two of the family's packages ship it. -->
+  <PropertyGroup>
+    <_RunicSdkRenamedNamesImported>true</_RunicSdkRenamedNamesImported>
+  </PropertyGroup>
+  <!-- Old package IDs: none. -->
+  <!-- Old public MSBuild properties and items. -->
+  <ItemGroup>
+    <!-- The RunicBridge* and RunicViewsWindowProject names of 0.7.0-preview.6 and earlier: every build property of the Views targets starts with RunicApplicationFrontend. -->
+    <_RunicSdkRenamedName Include="RunicBridgeFrontendDir" NewName="RunicApplicationFrontendDirectory" Kind="property" Condition="'$(RunicBridgeFrontendDir)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeTypescriptDir" NewName="RunicApplicationFrontendGeneratedDirectory" Kind="property" Condition="'$(RunicBridgeTypescriptDir)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeFrontendPackageManager" NewName="RunicApplicationFrontendPackageManager" Kind="property" Condition="'$(RunicBridgeFrontendPackageManager)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeFrontendBuildCommand" NewName="RunicApplicationFrontendBuildCommand" Kind="property" Condition="'$(RunicBridgeFrontendBuildCommand)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeFrontendInstallCommand" NewName="RunicApplicationFrontendInstallCommand" Kind="property" Condition="'$(RunicBridgeFrontendInstallCommand)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeInstallFrontend" NewName="RunicApplicationFrontendInstallEnabled" Kind="property" Condition="'$(RunicBridgeInstallFrontend)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeBuildFrontend" NewName="RunicApplicationFrontendBuildEnabled" Kind="property" Condition="'$(RunicBridgeBuildFrontend)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeCopyFrontend" NewName="RunicApplicationFrontendCopyEnabled" Kind="property" Condition="'$(RunicBridgeCopyFrontend)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeBuildEnabled" NewName="RunicApplicationFrontendGenerationEnabled" Kind="property" Condition="'$(RunicBridgeBuildEnabled)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeCompositionType" NewName="RunicApplicationFrontendCompositionType" Kind="property" Condition="'$(RunicBridgeCompositionType)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeModelAssembly" NewName="RunicApplicationFrontendModelAssembly" Kind="property" Condition="'$(RunicBridgeModelAssembly)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeDocumentation" NewName="RunicApplicationFrontendDocumentationEnabled" Kind="property" Condition="'$(RunicBridgeDocumentation)' != ''" />
+    <_RunicSdkRenamedName Include="RunicViewsWindowProject" NewName="RunicApplicationFrontendWindowProject" Kind="property" Condition="'$(RunicViewsWindowProject)' != ''" />
+    <_RunicSdkRenamedName Include="RunicBridgeFrontendInput" NewName="RunicApplicationFrontendInput" Kind="item" Condition="'@(RunicBridgeFrontendInput)' != ''" />
+    <!-- The runic-app template's names of 0.8: the application's identity is MSBuild's ApplicationId and ApplicationTitle, which Runic.Platform.MacOS and Runic.Platform.Linux.Polkit read too. A project that keeps its own RunicApplicationId next to ApplicationId is left alone. -->
+    <_RunicSdkRenamedName Include="RunicApplicationId" NewName="ApplicationId" Kind="property" Condition="'$(RunicApplicationId)' != '' and '$(ApplicationId)' == ''" />
+    <_RunicSdkRenamedName Include="RunicApplicationName" NewName="ApplicationTitle" Kind="property" Condition="'$(RunicApplicationName)' != '' and '$(ApplicationTitle)' == ''" />
+  </ItemGroup>
+  <!-- Old environment variables: none. -->
+
+  <!-- ErrorAndContinue reports every old name, not only the first. -->
+  <Target Name="RunicSdkReportRenamedNames" BeforeTargets="PrepareForBuild"
+          Condition="('@(_RunicSdkRenamedName)' != '' or '@(_RunicSdkRenamedEnvironmentVariable)' != '') and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <Error Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicSdkRenamedName)' != ''"
+           Text="The Runic build %(_RunicSdkRenamedName.Kind) %(_RunicSdkRenamedName.Identity) is renamed to %(_RunicSdkRenamedName.NewName). The old name no longer applies; rename it in $(MSBuildProjectFile), its imports or the command line." />
+    <Error Code="RUNICBRIDGE086" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge086" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicSdkRenamedEnvironmentVariable)' != ''"
+           Text="The environment variable %(_RunicSdkRenamedEnvironmentVariable.Identity) is renamed to %(_RunicSdkRenamedEnvironmentVariable.NewName). The old name no longer applies; set %(_RunicSdkRenamedEnvironmentVariable.NewName) instead and remove %(_RunicSdkRenamedEnvironmentVariable.Identity) from the environment." />
+  </Target>
+
+  <!-- After restore, PackageDependencies lists every package of the graph, the transitive ones too. Package IDs
+       compare without case. -->
+  <Target Name="RunicSdkReportRenamedPackages" AfterTargets="ResolvePackageAssets"
+          Condition="'@(_RunicSdkRenamedPackage)' != '' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <PropertyGroup>
+      <_RunicSdkPackageGraph>;@(PackageReference);@(PackageDependencies);</_RunicSdkPackageGraph>
+      <_RunicSdkPackageGraph>$(_RunicSdkPackageGraph.ToLowerInvariant())</_RunicSdkPackageGraph>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicSdkRenamedPackageInGraph Include="@(_RunicSdkRenamedPackage)" Condition="$(_RunicSdkPackageGraph.Contains(';%(Identity);'))" />
+    </ItemGroup>
+    <Error Code="RUNICBRIDGE085" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge085" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicSdkRenamedPackageInGraph)' != ''"
+           Text="$(MSBuildProjectName) references the package %(_RunicSdkRenamedPackageInGraph.Name), directly or through another package. It is renamed to %(_RunicSdkRenamedPackageInGraph.NewName), and packages of the old and the new names do not work together. Run rax migrate (dnx RunicArtifex.Tool migrate without a tool manifest) to move the project to the new names." />
+  </Target>
+</Project>

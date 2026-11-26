@@ -44,27 +44,11 @@
        The RunicBridge* and RunicViewsWindowProject names of 0.7.0-preview.6 and
        earlier, and the runic-app template's RunicApplicationId and
        RunicApplicationName of 0.8, are no longer applied: a project that still
-       sets one fails with RUNICBRIDGE017, which names the new property. -->
+       sets one fails with RUNICBRIDGE017, which names the new property. The
+       old-name guards (D079.11) list them in Runic.Sdk.RenamedNames.targets,
+       generated from rename/old-names.json, which Runic.Desktop ships too. -->
+  <Import Project="$(MSBuildThisFileDirectory)Runic.Sdk.RenamedNames.targets" Condition="'$(_RunicSdkRenamedNamesImported)' != 'true'" />
   <ItemGroup>
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendDir" NewName="RunicApplicationFrontendDirectory" Kind="property" Condition="'$(RunicBridgeFrontendDir)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeTypescriptDir" NewName="RunicApplicationFrontendGeneratedDirectory" Kind="property" Condition="'$(RunicBridgeTypescriptDir)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendPackageManager" NewName="RunicApplicationFrontendPackageManager" Kind="property" Condition="'$(RunicBridgeFrontendPackageManager)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendBuildCommand" NewName="RunicApplicationFrontendBuildCommand" Kind="property" Condition="'$(RunicBridgeFrontendBuildCommand)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendInstallCommand" NewName="RunicApplicationFrontendInstallCommand" Kind="property" Condition="'$(RunicBridgeFrontendInstallCommand)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeInstallFrontend" NewName="RunicApplicationFrontendInstallEnabled" Kind="property" Condition="'$(RunicBridgeInstallFrontend)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeBuildFrontend" NewName="RunicApplicationFrontendBuildEnabled" Kind="property" Condition="'$(RunicBridgeBuildFrontend)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeCopyFrontend" NewName="RunicApplicationFrontendCopyEnabled" Kind="property" Condition="'$(RunicBridgeCopyFrontend)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeBuildEnabled" NewName="RunicApplicationFrontendGenerationEnabled" Kind="property" Condition="'$(RunicBridgeBuildEnabled)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeCompositionType" NewName="RunicApplicationFrontendCompositionType" Kind="property" Condition="'$(RunicBridgeCompositionType)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeModelAssembly" NewName="RunicApplicationFrontendModelAssembly" Kind="property" Condition="'$(RunicBridgeModelAssembly)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeDocumentation" NewName="RunicApplicationFrontendDocumentationEnabled" Kind="property" Condition="'$(RunicBridgeDocumentation)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicViewsWindowProject" NewName="RunicApplicationFrontendWindowProject" Kind="property" Condition="'$(RunicViewsWindowProject)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendInput" NewName="RunicApplicationFrontendInput" Kind="item" Condition="'@(RunicBridgeFrontendInput)' != ''" />
-    <!-- The application's identity is MSBuild's ApplicationId and ApplicationTitle, which Runic.Platform.MacOS and
-         Runic.Platform.Linux.Polkit read too. A project that keeps its own RunicApplicationId next to ApplicationId
-         is left alone. -->
-    <_RunicApplicationFrontendRenamedName Include="RunicApplicationId" NewName="ApplicationId" Kind="property" Condition="'$(RunicApplicationId)' != '' and '$(ApplicationId)' == ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicApplicationName" NewName="ApplicationTitle" Kind="property" Condition="'$(RunicApplicationName)' != '' and '$(ApplicationTitle)' == ''" />
     <!-- Removed properties whose value the build now infers. The ReactiveUI flavor of the generated code is the
          flavor of the Runic ReactiveUI adapter the project references (see _RunicViewsReactiveUiFlavor). -->
     <_RunicApplicationFrontendRemovedName Include="RunicApplicationFrontendReactiveUiFlavor" Reason="The ReactiveUI flavor is now inferred from the referenced Runic ReactiveUI adapter" Condition="'$(RunicApplicationFrontendReactiveUiFlavor)' != ''" />
@@ -675,12 +659,10 @@
            Text="$(MSBuildProjectName) references Runic.Application.Views.ReactiveUI, which uses ReactiveUI.Primitives, with Runic.Navigation.ReactiveUI.Reactive, directly or through another package or project. Reference Runic.Navigation.ReactiveUI instead and select one ReactiveUI flavor for the application." />
   </Target>
 
-  <Target Name="RunicViewsReportRenamedProperties" BeforeTargets="PrepareForBuild"
-          Condition="('@(_RunicApplicationFrontendRenamedName)' != '' or '@(_RunicApplicationFrontendRemovedName)' != '') and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+  <!-- RunicSdkReportRenamedNames (Runic.Sdk.RenamedNames.targets) reports the renamed names first. -->
+  <Target Name="RunicViewsReportRenamedProperties" BeforeTargets="PrepareForBuild" DependsOnTargets="RunicSdkReportRenamedNames"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <!-- ErrorAndContinue reports every old name, not only the first. -->
-    <Error Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017" ContinueOnError="ErrorAndContinue"
-           Condition="'@(_RunicApplicationFrontendRenamedName)' != ''"
-           Text="The Runic build %(_RunicApplicationFrontendRenamedName.Kind) %(_RunicApplicationFrontendRenamedName.Identity) is renamed to %(_RunicApplicationFrontendRenamedName.NewName). The old name no longer applies; rename it in $(MSBuildProjectFile), its imports or the command line." />
     <Error Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017" ContinueOnError="ErrorAndContinue"
            Condition="'@(_RunicApplicationFrontendRemovedName)' != ''"
            Text="The Runic build property %(_RunicApplicationFrontendRemovedName.Identity) is removed. %(_RunicApplicationFrontendRemovedName.Reason); remove the property from $(MSBuildProjectFile), its imports or the command line." />
@@ -1354,7 +1336,7 @@
     <!-- A target that ran before generation may still add the old item name;
          items the project declared were reported before the build. -->
     <ItemGroup>
-      <_RunicBridgeDeclaredInputRename Include="@(_RunicApplicationFrontendRenamedName)" Condition="'%(Identity)' == 'RunicBridgeFrontendInput'" />
+      <_RunicBridgeDeclaredInputRename Include="@(_RunicSdkRenamedName)" Condition="'%(Identity)' == 'RunicBridgeFrontendInput'" />
     </ItemGroup>
     <Error Code="RUNICBRIDGE017" Condition="'@(RunicBridgeFrontendInput)' != '' and '@(_RunicBridgeDeclaredInputRename)' == ''"
            File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017"

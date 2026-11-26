@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "decision": "D079.11: build errors for old package IDs in the graph and for renamed MSBuild names and environment variables, through 1.0.x, removed in 2.0",
+  "family": {
+    "token": "RunicSdk",
+    "buildName": "Runic",
+    "helpLinkBase": "$(_RunicDiagnosticsHelpLinkBase)",
+    "diagnostics": {
+      "packages": "RUNICBRIDGE085",
+      "msbuild": "RUNICBRIDGE017",
+      "environment": "RUNICBRIDGE086"
+    },
+    "skipCondition": "'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'",
+    "root": "../../../..",
+    "generator": "packages/dotnet/Runic.Application.Views/rename/old-names.mjs",
+    "input": "packages/dotnet/Runic.Application.Views/rename/old-names.json",
+    "outputs": [
+      "packages/dotnet/Runic.Application.Views/build/Runic.Sdk.RenamedNames.targets",
+      "packages/dotnet/Runic.Desktop/buildTransitive/Runic.Sdk.RenamedNames.targets"
+    ]
+  },
+  "packages": [],
+  "msbuild": [
+    { "old": "RunicBridgeFrontendDir", "new": "RunicApplicationFrontendDirectory", "kind": "property", "note": "The RunicBridge* and RunicViewsWindowProject names of 0.7.0-preview.6 and earlier: every build property of the Views targets starts with RunicApplicationFrontend." },
+    { "old": "RunicBridgeTypescriptDir", "new": "RunicApplicationFrontendGeneratedDirectory", "kind": "property" },
+    { "old": "RunicBridgeFrontendPackageManager", "new": "RunicApplicationFrontendPackageManager", "kind": "property" },
+    { "old": "RunicBridgeFrontendBuildCommand", "new": "RunicApplicationFrontendBuildCommand", "kind": "property" },
+    { "old": "RunicBridgeFrontendInstallCommand", "new": "RunicApplicationFrontendInstallCommand", "kind": "property" },
+    { "old": "RunicBridgeInstallFrontend", "new": "RunicApplicationFrontendInstallEnabled", "kind": "property" },
+    { "old": "RunicBridgeBuildFrontend", "new": "RunicApplicationFrontendBuildEnabled", "kind": "property" },
+    { "old": "RunicBridgeCopyFrontend", "new": "RunicApplicationFrontendCopyEnabled", "kind": "property" },
+    { "old": "RunicBridgeBuildEnabled", "new": "RunicApplicationFrontendGenerationEnabled", "kind": "property" },
+    { "old": "RunicBridgeCompositionType", "new": "RunicApplicationFrontendCompositionType", "kind": "property" },
+    { "old": "RunicBridgeModelAssembly", "new": "RunicApplicationFrontendModelAssembly", "kind": "property" },
+    { "old": "RunicBridgeDocumentation", "new": "RunicApplicationFrontendDocumentationEnabled", "kind": "property" },
+    { "old": "RunicViewsWindowProject", "new": "RunicApplicationFrontendWindowProject", "kind": "property" },
+    { "old": "RunicBridgeFrontendInput", "new": "RunicApplicationFrontendInput", "kind": "item" },
+    { "old": "RunicApplicationId", "new": "ApplicationId", "kind": "property", "whenNewUnset": true, "note": "The runic-app template's names of 0.8: the application's identity is MSBuild's ApplicationId and ApplicationTitle, which Runic.Platform.MacOS and Runic.Platform.Linux.Polkit read too. A project that keeps its own RunicApplicationId next to ApplicationId is left alone." },
+    { "old": "RunicApplicationName", "new": "ApplicationTitle", "kind": "property", "whenNewUnset": true }
+  ],
+  "environment": []
+}

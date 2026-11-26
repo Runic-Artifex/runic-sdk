@@ -2160,6 +2160,10 @@ static class BridgeDiagnosticCodes
     internal const string ClientModuleEmpty = "RUNICBRIDGE083";
     /// <summary>The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views (reported by the build and its launcher).</summary>
     internal const string ClientEmitter = "RUNICBRIDGE084";
+    /// <summary>A package of a former ID is in the package graph (old-name guards, D079.11; reported by Runic.Sdk.RenamedNames.targets).</summary>
+    internal const string FormerPackage = "RUNICBRIDGE085";
+    /// <summary>An environment variable of a former name is set (old-name guards, D079.11; reported by Runic.Sdk.RenamedNames.targets).</summary>
+    internal const string FormerEnvironmentVariable = "RUNICBRIDGE086";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2226,6 +2230,8 @@ static class BridgeDiagnosticCodes
         (ClientModuleItem, "error", "A RunicApplicationFrontendClientModule item has no Specifier, a relative one, or a duplicate Include"),
         (ClientModuleEmpty, "warning", "A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing"),
         (ClientEmitter, "error", "The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views"),
+        (FormerPackage, "error", "A package of a former ID is in the package graph"),
+        (FormerEnvironmentVariable, "error", "An environment variable of a former name is set"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
