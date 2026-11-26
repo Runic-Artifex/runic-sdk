@@ -596,7 +596,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.FilesViewModel",
       "name": "Files",
       "route": "files",
-      "fingerprint": "518E5C2180CD62648C1621B96627D6CA0F8BB50C60AE08892D52B8C918E41269",
+      "fingerprint": "FEB2D9817F262FBB6C84C278A584EA615F63A849F0AEFE4CF1A4C79501E2A435",
       "kinds": [
         "files"
       ],
@@ -624,7 +624,8 @@
               "kind": "string",
               "nullable": true
             }
-          }
+          },
+          "text": true
         }
       ],
       "commands": [

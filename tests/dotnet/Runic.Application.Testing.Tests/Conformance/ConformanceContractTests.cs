@@ -1,7 +1,10 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
+using Runic.Application.Views;
+using Runic.Application.Views.Generated;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests.Conformance;
@@ -15,6 +18,8 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //   executionState; each value has the JSON form of its IR type;
 // - its fields are the IR's checked members;
 // - a set of each value member is accepted exactly when the IR marks it settable;
+// - its text members (state-changes.md, "Text members") are the IR's members with text: a set with a splice reaches a
+//   settable member exactly when the IR marks it text, and the Bridge compares and splices exactly those members;
 // - a can of each command is a request of this protocol exactly when it carries an input as the IR's command does.
 public sealed class ConformanceContractTests
 {
@@ -137,6 +142,26 @@ public sealed class ConformanceContractTests
                 Fail($"a set of {Wire(member)} answers {set.ToJsonString()}, but the IR has it {(accepted ? "not " : "")}settable");
         }
 
+        // A splice that changes nothing in the member's value at the open's revision (README, "Text splices in set"):
+        // only a settable text member takes it; any other member answers invalid-request.
+        var revision = reply["revision"]!.GetValue<long>();
+        foreach (var member in members.Where(member => member["kind"]!.GetValue<string>() == "value"))
+        {
+            var length = state[Wire(member)] is JsonValue text && text.TryGetValue<string>(out var value) ? value.Length : 0;
+            var splice = await page.RequestAsync(new JsonObject
+            {
+                ["kind"] = "set", ["route"] = route, ["member"] = Wire(member), ["edit"] = 2,
+                ["splice"] = new JsonObject { ["baseRevision"] = revision, ["length"] = length, ["index"] = 0, ["delete"] = 0, ["text"] = "" },
+            });
+            var reached = splice["error"]?["reason"]?.GetValue<string>() != "invalid-request";
+            if (reached != (member["settable"] is not null && member["text"] is not null))
+                Fail($"a set of {Wire(member)} with a splice answers {splice.ToJsonString()}, but the IR has it {(reached ? "not " : "")}a settable text member");
+        }
+        var textMembers = page.TextMembers(route);
+        var irText = members.Where(member => member["text"] is not null).Select(Wire).Order(StringComparer.Ordinal).ToArray();
+        if (!textMembers.SequenceEqual(irText))
+            Fail($"its text members are [{string.Join(", ", textMembers)}], the IR's [{string.Join(", ", irText)}]");
+
         foreach (var command in commands)
         {
             foreach (var withInput in new[] { command["input"] is not null, command["input"] is null })
@@ -207,6 +232,19 @@ public sealed class ConformanceContractTests
     private sealed class Page(ScenarioTransport transport, ScenarioConnection connection)
     {
         private int _requests;
+
+        // The text members of the Bridge that serves the route. Read-only text members show on the wire only in a
+        // frame's splices, which no generic change of a test View produces, so this reads them from the Bridge.
+        internal string[] TextMembers(string route)
+        {
+            var handler = BridgeDispatcher.For(transport).FindRoute(route)
+                ?? throw new InvalidOperationException($"No Bridge serves {route}.");
+            var owner = handler.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Single(field => typeof(ViewModelBridge).IsAssignableFrom(field.FieldType)).GetValue(handler)!;
+            var text = typeof(ViewModelBridge).GetField("_textMembers", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("ViewModelBridge has no _textMembers: update ConformanceContractTests.");
+            return [.. ((PropertyDescriptor[])text.GetValue(owner)!).Select(member => member.WireName).Order(StringComparer.Ordinal)];
+        }
 
         internal async Task<JsonObject> RequestAsync(JsonObject request)
         {

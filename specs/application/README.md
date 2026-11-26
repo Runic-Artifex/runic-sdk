@@ -435,7 +435,8 @@ production, and a `domain-failed` error never has it. When a producer is in deve
   32 lowercase hexadecimal digits. Route names that start with `runic.`, or with `rax.` during the
   [rename window](#rename-window), are reserved for host services that share the channel, such as the
   [menu bar page protocol](../desktop/menu-bar-page.md); their request kinds and pushes are defined by those services.
-  After the prefix, a reserved route has 1 or more characters from `[A-Za-z0-9_.-]`, and 128 characters in all.
+  After the prefix, a reserved route has 1 or more characters from `[A-Za-z0-9_.-]`, and 128 characters in all, its
+  prefix included. A dot is allowed only there: a root View's route has none.
 - **Member names** are the wire names of the contract: the name the member has in state (`title`), the command's wire
   name (`save`) or the checked field's name. `kind` keeps setters, commands and availability queries apart, so a
   member name can never collide with another kind of request.
@@ -642,7 +643,10 @@ A checked field accepts writes that are checked against the value and version th
   a bounded number of request ids.
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
 - A checked field is also a settable member ([contract IR](contract-ir.md#state-members)): a `set` changes it as any
-  setter does, without the check, and a change it makes raises the field's version like a change the model announces.
+  setter does, without the check. The field's version counts the changes the model announces, and a `set` raises it
+  through them: once for each announcement its setter makes, also of an equal value when the setter announces one,
+  and never once more for the `set` itself. A setter that announces nothing raises nothing. (The .NET producer
+  advances the version on each `PropertyChanged` of the field.)
 - On a connection that uses `text-splice/1`, a `write` of a checked field that is a
   [text member](state-changes.md#text-members) may carry `splice` instead of `expectedValue` and `value` (below).
 - On a connection that uses `field-paths/1`, a `write` may carry `path`: it writes the value at that path below the
@@ -1809,8 +1813,11 @@ confirmation.
   `ownerEpoch` a number the producer assigns that the reply repeats. It is not the presentation epoch of
   `presentation-epoch/1`, with or without the feature: the .NET producer numbers the requests it pushes to each
   presentation 1, 2, 3 and so on. `input` is encoded as the interaction's input type.
-- **Cancellation.** When a request ends before the page answered, the producer pushes `interaction-cancelled` with a
-  human-readable `message`. The page stops the handler.
+- **Cancellation.** When a request that the producer pushed ends before the page answered while its presentation is
+  still open, the producer pushes `interaction-cancelled` with a human-readable `message`: when it times out, when its
+  scope ends (its command ends or is cancelled), or when the application cancels it. The page stops the handler. A request that ends because its presentation closed, was replaced by an `open`
+  of the same presentation on another connection, or lost its connection, or because the window closed, ends without
+  a push: the page closed it, or no longer reaches the producer. A request not pushed yet ends without a push too.
 - **Replies.** `outcome` is `answered` (with `output`, encoded as the interaction's output type), `cancelled` or
   `failed`. The reply is `{ok:true, result}`: `ok`, `already-completed` for a repeat of the reply already received
   ([canonically equal](values.md#canonical-equality) `outcome` and `output`), `stale` for a request that is no longer
