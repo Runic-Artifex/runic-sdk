@@ -19,7 +19,7 @@ const members: BridgeMemberDecoders<ShellState> = {
   about: (wire: unknown) => { const reference = contentReference(wire); return reference.kind === "about" ? pageAbout(reference.id) : (() => { throw new BridgeError("failed", "Unknown about kind."); })(); },
   support: (wire: unknown) => { const reference = contentReference(wire); return reference.kind === "support" ? pageSupport(reference.id) : (() => { throw new BridgeError("failed", "Unknown support kind."); })(); },
 };
-const bridgeContract = "SharedLibraryApp.ShellViewModel:4D9CB7131831590BAA5AF3E8F4BBD330D223A636ECF9C600A8CC64DA0B81DDCD";
+const bridgeContract = "SharedLibraryApp.ShellViewModel:00F58C3DA87D2ED1DD235CE4F19A4981AC50B16108AFADCFB589C96F93830FB1";
 
 /**
  * Connects a Shell client. It waits up to `options.timeout` milliseconds (default 5000) for the

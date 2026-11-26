@@ -40,7 +40,7 @@ export interface DocumentMock extends MockTypedView<DocumentMockState, DocumentC
 const spec: MockTypedViewSpec = {
   kind: "document",
   route: "document",
-  contract: "NotesReactiveViews.DocumentViewModel:FAFDBBCB0481E9D8C9EE5A7076BBA2D142C49BBB36ECA35E33FC1434D034352E",
+  contract: "NotesReactiveViews.DocumentViewModel:1819B07C0DD286376A084F1330BA43FC262942C0F2BA8775AA155EAFB85F7480",
   fields: {
     activePane: { encode: (value: unknown) => { const typed = value as DocumentPane; return typed; }, decode: (wire: unknown) => bridgeWire.enumName<DocumentPane>(wire, ["Editor", "Preview"]) },
     status: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

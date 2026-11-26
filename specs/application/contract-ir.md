@@ -250,7 +250,7 @@ which are present only when true:
 | Part | Left out | Changed |
 | --- | --- | --- |
 | The View | `id`, `name`, `fingerprint`, `doc`, `owner`, `sharedClients` | `kinds` sorted by UTF-16 code units: the kinds are a set on the wire, and their order only chooses the client's default |
-| A state member | `name`, `doc`, `declaringType`, `constraints`, `defaultKey` | `name` left out of each page reference in `pages`, and `constraints` left out of each entry of `fieldPaths` |
+| A state member | `name`, `doc`, `declaringType`, `constraints`, `defaultKey` | Each page reference in `pages` is `{kind}` alone, and `pages` is sorted by `kind` (UTF-16 code units). `constraints` is left out of each entry of `fieldPaths` |
 | A command | `doc`, `parameter` | |
 | An interaction or view request | `doc`, `contract` | |
 | A value position (`value`, `rows`, `input`, `result`, `failure`, `output`) | | Its `type` projected |
@@ -275,7 +275,7 @@ What stays is the wire contract:
 - each state member's `wire`, `kind` and value position (direction, value kinds, nullability, and the wire names,
   `optional` and `absent` flags and enum values of the named types it reaches);
 - `settable`, `checked`, `text`, `appendOnlyText`, `collectionKey`, `rowEditor` and the field paths;
-- the presented Views' ids and kinds, `nullable`, `region` and `pageCanClose`;
+- the kinds a content slot may present, as a set, `nullable`, `region` and `pageCanClose`;
 - each command's `name` (on the wire in `can{Name}` and `is{Name}Executing`), `wire`, input, result, failure and flags;
 - each interaction's and view request's `name` (on the wire in its contract), `wire`, input and output.
 
@@ -284,6 +284,10 @@ What is left out:
 - the names that only the client or the source uses: the View's `id`, which the operation contract carries beside the
   fingerprint, the public name, the member names, parameter names, declaring types, and the named types' ids and name
   hints;
+- the presented Views' ids and names, and the order of a slot's pages. A content reference on the wire is
+  `{kind, id}` ([Content](README.md#content)): only the kind is part of the contract. The presented View's own contract
+  is its own fingerprint, which its route checks (`view-contract/1`), so a change to a presented View does not change
+  the Views that present it;
 - documentation;
 - the constraints, which the producer checks anyway;
 - the mock's `defaultKey`;

@@ -190,7 +190,7 @@ function projection(types, view) {
   result.kinds = [...view.kinds].sort();
   result.members = view.members.map(member => {
     const item = positions(types, omit(member, ["name", "doc", "declaringType", "constraints", "defaultKey"]));
-    if (item.pages) item.pages = item.pages.map(page => omit(page, ["name"]));
+    if (item.pages) item.pages = item.pages.map(page => page.kind).sort().map(kind => ({ kind }));
     if (item.fieldPaths) item.fieldPaths = item.fieldPaths.map(path => omit(path, ["constraints"]));
     return item;
   });
@@ -274,4 +274,23 @@ test("the worked example of the fingerprint specification holds", () => {
   assert.equal(view.fingerprint, example.fingerprint);
   assert.equal(`${view.id}:${view.fingerprint}`, example.contracts.operation);
   assert.equal(view.interactions[0].contract, example.contracts.interaction);
+  for (const each of example.document.views) assert.equal(each.fingerprint, fingerprint(example.document, each), each.id);
+});
+
+test("a fingerprint names a presented View by its kind alone", () => {
+  const found = documents.flatMap(({ ir }) => ir.views.flatMap((view, index) =>
+    view.members.filter(member => (member.pages?.length ?? 0) > 1).map(member => ({ ir, index, wire: member.wire }))));
+  assert.ok(found.length > 0, "no corpus View has a slot that presents more than one View");
+  const { ir, index, wire } = found[0];
+  const base = fingerprint(ir, ir.views[index]);
+  const mutated = mutate => {
+    const copy = structuredClone(ir);
+    mutate(copy.views[index].members.find(member => member.wire === wire).pages);
+    return fingerprint(copy, copy.views[index]);
+  };
+  assert.equal(mutated(pages => { for (const page of pages) { page.view = `other::${page.view}`; page.name = "Other"; } }), base,
+    "a presented View's id or name changed the fingerprint");
+  assert.equal(mutated(pages => pages.reverse()), base, "the order of a slot's pages changed the fingerprint");
+  assert.notEqual(mutated(pages => { pages[0].kind += "X"; }), base, "another presented kind left the fingerprint as it was");
+  assert.notEqual(mutated(pages => { pages.pop(); }), base, "a slot that presents fewer kinds left the fingerprint as it was");
 });

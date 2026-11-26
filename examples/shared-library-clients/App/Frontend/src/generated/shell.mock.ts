@@ -21,7 +21,7 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "SharedLibraryApp.ShellViewModel:4D9CB7131831590BAA5AF3E8F4BBD330D223A636ECF9C600A8CC64DA0B81DDCD",
+  contract: "SharedLibraryApp.ShellViewModel:00F58C3DA87D2ED1DD235CE4F19A4981AC50B16108AFADCFB589C96F93830FB1",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },

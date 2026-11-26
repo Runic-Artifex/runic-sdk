@@ -18,7 +18,7 @@ const members: BridgeMemberDecoders<DocumentsState> = {
   canNewDocument: (wire: unknown) => bridgeWire.boolean(wire),
   isNewDocumentExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "DocumentTabs.DocumentsViewModel:CF576F7643F8E8992F6CA4BB3E77F7B2CE02F0012E4DD374944D5CB3A55A084F";
+const bridgeContract = "DocumentTabs.DocumentsViewModel:C66AE96C9F5114086269605D5B5F8C87C7CD1A9A46E96B891E5C116EB9478CBE";
 const newDocumentOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

@@ -30,9 +30,9 @@ const members: BridgeMemberDecoders<DocumentState> = {
   canClose: (wire: unknown) => bridgeWire.boolean(wire),
   isCloseExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesReactiveViews.DocumentViewModel:FAFDBBCB0481E9D8C9EE5A7076BBA2D142C49BBB36ECA35E33FC1434D034352E";
+const bridgeContract = "NotesReactiveViews.DocumentViewModel:1819B07C0DD286376A084F1330BA43FC262942C0F2BA8775AA155EAFB85F7480";
 const interactionDefinitions = defineInteractions({
-  confirmLeave: { contract: "FAFDBBCB0481E9D8C9EE5A7076BBA2D142C49BBB36ECA35E33FC1434D034352E:interaction:ConfirmLeave", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmLeave: { contract: "1819B07C0DD286376A084F1330BA43FC262942C0F2BA8775AA155EAFB85F7480:interaction:ConfirmLeave", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const showEditorOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const showPreviewOperation: BridgeOperationCodec<void> = { decode: value => undefined };
