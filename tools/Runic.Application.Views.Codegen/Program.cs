@@ -2166,6 +2166,8 @@ static class BridgeDiagnosticCodes
     internal const string FormerEnvironmentVariable = "RUNICBRIDGE086";
     /// <summary>The frontend is below a JavaScript workspace that does not list it (reported by the Views targets).</summary>
     internal const string FrontendWorkspaceMember = "RUNICBRIDGE087";
+    /// <summary>A file that a frontend package exports does not exist after its build (reported by the Views targets).</summary>
+    internal const string FrontendPackageExports = "RUNICBRIDGE088";
     /// <summary>A workspace member declares another package manager than its workspace (reported by the Views targets).</summary>
     internal const string FrontendWorkspacePackageManager = "RUNICBRIDGE089";
     /// <summary>The frontend's package manager or JavaScript runtime does not run (reported by the Views targets).</summary>
@@ -2241,6 +2243,7 @@ static class BridgeDiagnosticCodes
         (FormerPackage, "error", "A package of a former ID is in the package graph"),
         (FormerEnvironmentVariable, "error", "An environment variable of a former name is set"),
         (FrontendWorkspaceMember, "error", "The frontend is below a JavaScript workspace that does not list it"),
+        (FrontendPackageExports, "error", "A file that a frontend package exports does not exist after its build"),
         (FrontendWorkspacePackageManager, "warning", "A workspace member declares another package manager than its workspace"),
         (FrontendPackageManagerMissing, "error", "The frontend's package manager or JavaScript runtime does not run"),
         (FrontendInstallMode, "warning", "RunicApplicationFrontendInstallMode is not Auto, Always or Never"),

@@ -53,6 +53,15 @@ if (existsSync("emits-build")) {
   writeFileSync("build/index.html", "<p>build</p>");
 }
 if (existsSync("build-fails")) { console.error("error during build:"); console.error("[vite]: Rollup failed to resolve import"); process.exit(1); }
+if (existsSync("unresolved-import")) { console.error(\`[vite]: Rolldown failed to resolve import "\${readFileSync("unresolved-import", "utf8").trim()}" from "src/main.ts".\`); process.exit(1); }
+if (existsSync("emits-package")) {
+  // A compiled library package, as tsc writes it: no .contract.d.ts in dist/generated.
+  rmSync("dist", { recursive: true, force: true });
+  mkdirSync("dist/generated", { recursive: true });
+  if (!existsSync("skips-index")) writeFileSync("dist/index.js", "export {};");
+  writeFileSync("dist/generated/runic-clients.js", "export {};");
+  writeFileSync("dist/generated/runic-clients.d.ts", "export * from './about.contract';");
+}
 if (existsSync("build-reports")) { console.log("src/App.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'."); process.exit(2); }
 if (existsSync("build-warns")) console.log("src/App.ts(1,1): warning TS6133: 'unused' is declared but never read.");
 if (existsSync("svelte-check-human")) {
@@ -175,7 +184,7 @@ function packageManagers() {
   for (const name of ["npm", "pnpm", "bun"]) {
     writeFileSync(join(bin, `${name}.mjs`), `
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 // The build asks the manager for its version (RUNICBRIDGE090, and RUNICBRIDGE033 for Bun).
 if (process.argv[2] === "--version") {
   if (process.env.RUNIC_TEST_VERSION_LOG) appendFileSync(process.env.RUNIC_TEST_VERSION_LOG, "${name} --version\\n");
@@ -187,6 +196,12 @@ if (process.argv[2]?.endsWith(".mjs")) process.exit(spawnSync(process.execPath, 
 // RUNIC_TEST_COMMANDS logs to one file with the folder the command ran in, as the workspace install runs at the root.
 const log = process.env.RUNIC_TEST_COMMANDS;
 appendFileSync(log ?? "../commands.log", ["${name}", ...process.argv.slice(2)].join(" ") + (log ? " in " + process.cwd() : "") + "\\n");
+// "run <script>" runs the package's script, as a package build does.
+const run = process.argv.indexOf("run");
+if (run >= 2) {
+  const script = JSON.parse(readFileSync("package.json", "utf8")).scripts?.[process.argv.at(-1)];
+  process.exit(script === undefined ? 1 : spawnSync(script, { shell: true, stdio: "inherit" }).status ?? 1);
+}
 if (process.env.RUNIC_TEST_INSTALL_DELAY) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.RUNIC_TEST_INSTALL_DELAY));
 mkdirSync("node_modules", { recursive: true });
 // The record a complete install leaves: npm's hidden lock file, pnpm's .modules.yaml.
@@ -1948,6 +1963,178 @@ test("a changed runic-client-modules.ts rebuilds the frontend", () => {
   const result = build(app);
   assert.equal(result.status, 0, result.output);
   assert.equal(builds(result), 1, "A changed library contract does not rebuild the frontend.");
+});
+
+// devtools-library-dx S2 (M2–M5, M7, D081.6): library packages and plain workspace packages are built, incrementally.
+// A node first on PATH that logs each run, so that a test sees every JavaScript process a build starts.
+function nodeSpy(log) {
+  const bin = join(directory, "node-spy");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "node"), `#!/bin/sh\necho "node $*" >> "$RUNIC_TEST_NODE_LOG"\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  return { PATH: `${bin}:${process.env.PATH}`, RUNIC_TEST_NODE_LOG: log };
+}
+
+const evaluateProperty = (project, name, extra = []) => {
+  const result = spawnSync("dotnet", ["msbuild", project, "-nologo", "-noAutoResponse", "-nodeReuse:false", ...extra, `-getProperty:${name}`], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return result.stdout.trim();
+};
+
+test("a client library builds its package when it has a build script, copies its contracts and checks its exports", { skip: process.platform === "win32" }, () => {
+  const library = fixture("library-package", { name: "@acme/shared-ui", private: true, scripts: { build: "node build.mjs" },
+    exports: { ".": "./dist/index.js", "./generated": { types: "./dist/generated/runic-clients.d.ts", default: "./dist/generated/runic-clients.js" } } });
+  writeFileSync(join(library.frontend, "emits-package"), "");
+  mkdirSync(join(library.frontend, "generated"), { recursive: true });
+  for (const file of ["about.contract.d.ts", "about.contract.d.ts.map", "runic-clients.ts"]) writeFileSync(join(library.frontend, "generated", file), "export {};\n");
+  const properties = ["RunicApplicationFrontendClientLibrary=true"];
+  const project = join(library.project, "App.proj");
+  assert.equal(evaluateProperty(project, "RunicApplicationFrontendBuildEnabled", ["-p:RunicApplicationFrontendClientLibrary=true"]), "true", "auto: a build script builds.");
+  assert.equal(evaluateProperty(project, "RunicApplicationFrontendBuildEnabled", ["-p:RunicApplicationFrontendClientLibrary=true", "-p:RunicApplicationFrontendBuildEnabled=false"]), "false");
+
+  const log = join(library.project, "node.log");
+  const env = nodeSpy(log);
+  let result = build(library, { properties, env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install", "build"]);
+  assert.deepEqual(readdirSync(join(library.frontend, "dist/generated")).sort(),
+    ["about.contract.d.ts", "about.contract.d.ts.map", "runic-clients.d.ts", "runic-clients.js"], "tsc's output gets the contract declarations (F5).");
+  rmSync(log, { force: true });
+  result = build(library, { properties, env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, []);
+  assert.ok(!existsSync(log), `A no-change build starts no JavaScript process: ${existsSync(log) ? readFileSync(log, "utf8") : ""}`);
+
+  // A changed contract rebuilds the package, which deletes dist/, and is copied again.
+  writeFileSync(join(library.frontend, "generated/about.contract.d.ts"), "export type About = {};\n");
+  result = build(library, { properties, env });
+  assert.deepEqual(result.commands, ["build"]);
+  assert.equal(readFileSync(join(library.frontend, "dist/generated/about.contract.d.ts"), "utf8"), "export type About = {};\n");
+
+  // An export that the build does not write names the project and the package (F3).
+  writeFileSync(join(library.frontend, "skips-index"), "");
+  result = build(library, { properties, env });
+  assert.notEqual(result.status, 0, result.output);
+  const reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE088: App's frontend package @acme\/shared-ui exports .*library-package\/frontend\/dist\/index\.js, which its build 'node build\.mjs' did not write, so applications that import it fail to resolve it/);
+
+  result = build(library, { properties: [...properties, "RunicApplicationFrontendBuildEnabled=false"], env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [], "RunicApplicationFrontendBuildEnabled=false turns the package build off.");
+});
+
+test("a workspace package that no .NET project owns is built before the frontend, once, and again when it changes (D081.6)", () => {
+  const { root, app } = workspace("ws-plain", { workspaces: ["app/frontend", "lib"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" });
+  const lib = join(root, "lib");
+  writeFileSync(join(lib, "package.json"), JSON.stringify({ name: "@acme/lib", private: true, scripts: { build: "node build-lib.mjs" }, exports: { ".": "./dist/index.js" } }));
+  mkdirSync(join(lib, "src"), { recursive: true });
+  writeFileSync(join(lib, "src/index.ts"), "export const answer = 42;\n");
+  writeFileSync(join(lib, "build-lib.mjs"), `import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+if (!existsSync("no-output")) { mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.js", "export {};"); }
+`);
+  const env = { ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  const install = `bun install --frozen-lockfile --ignore-scripts in ${realRoot(root)}`;
+  const libraryBuild = `bun run --bun build in ${realRoot(lib)}`;
+  let result = build(app, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [install, libraryBuild, "build"]);
+  assert.match(result.output, /Building the frontend package @acme\/lib in .*ws-plain\/lib, which .*app\/frontend depends on and no \.NET project builds\./);
+  const graph = JSON.parse(readFileSync(join(app.project, "obj/runic/frontend-graph.json"), "utf8"));
+  assert.deepEqual(graph.packages.map(entry => [entry.package, entry.kind, entry.build, entry.exports, entry.outputs]),
+    [["@acme/lib", "compiled", "bun run --bun build", ["./dist/index.js"], ["./dist"]]]);
+  assert.deepEqual(readFileSync(join(app.project, "obj/runic/frontend-dependencies.txt"), "utf8").trim().split("\n"), [realRoot(lib)]);
+
+  result = build(app, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [], "Nothing changed: neither the package nor the page builds.");
+  // A source edit rebuilds the package and the page that bundles it; its output alone does not count as an edit.
+  writeFileSync(join(lib, "src/index.ts"), "export const answer = 43;\n");
+  assert.deepEqual(build(app, { env }).commands, [libraryBuild, "build"]);
+  assert.deepEqual(build(app, { env }).commands, []);
+  rmSync(join(lib, "dist"), { recursive: true });
+  assert.deepEqual(build(app, { env }).commands, [libraryBuild, "build"], "A deleted export builds the package again.");
+
+  writeFileSync(join(lib, "no-output"), "");
+  rmSync(join(lib, "dist"), { recursive: true });
+  result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [libraryBuild]);
+  const reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE088: .*ws-plain\/app\/frontend depends on @acme\/lib \(.*ws-plain\/lib\), a workspace package that no \.NET project owns, but its package\.json exports .*lib\/dist\/index\.js, which do not exist: its build 'bun run --bun build' did not write them/);
+});
+
+test("RunicViewsGetFrontendDependencies returns the packages of the referenced libraries and the workspace; a library builds its own", () => {
+  const { root, app } = workspace("ws-owned", { workspaces: ["app/frontend", "lib", "tokens"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" },
+    { appPackageJson: { name: "@acme/app", private: true, dependencies: { "@acme/lib": "workspace:*", "@acme/tokens": "workspace:*" } } });
+  const lib = join(root, "lib");
+  writeFileSync(join(lib, "package.json"), JSON.stringify({ name: "@acme/lib", private: true, scripts: { build: "tsc" }, exports: { ".": "./dist/index.js", "./generated": "./dist/generated/runic-clients.js" } }));
+  mkdirSync(join(root, "tokens"), { recursive: true });
+  writeFileSync(join(root, "tokens/package.json"), JSON.stringify({ name: "@acme/tokens", private: true }));
+  mkdirSync(join(root, "SharedUi"), { recursive: true });
+  // A client library whose package build is off: the application names it instead of failing the bundler's import.
+  writeFileSync(join(root, "SharedUi/SharedUi.proj"), `<Project>
+  <PropertyGroup>
+    <AssemblyName>SharedUi</AssemblyName>
+    <RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../lib</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const appProject = join(app.project, "App.proj");
+  writeFileSync(appProject, readFileSync(appProject, "utf8").replace("  <Import Project=", `  <PropertyGroup><UsingMicrosoftNETSdk>true</UsingMicrosoftNETSdk></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SharedUi/SharedUi.proj" />
+    <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/lib/generated" />
+  </ItemGroup>
+  <Target Name="AssignProjectConfiguration" />
+  <Target Name="_GetProjectReferenceTargetFrameworkProperties" />
+  <Target Name="_SplitProjectReferencesByFileExistence">
+    <ItemGroup><_MSBuildProjectReferenceExistent Include="@(ProjectReference)" Condition="'%(Extension)' == '.proj'" /></ItemGroup>
+  </Target>
+  <Import Project=`));
+  const env = { ...process.env, ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  const query = spawnSync("dotnet", ["msbuild", appProject, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-getTargetResult:RunicViewsGetFrontendDependencies"],
+    { cwd: app.project, encoding: "utf8", env });
+  assert.equal(query.status, 0, query.stdout + query.stderr);
+  const items = JSON.parse(query.stdout).TargetResults.RunicViewsGetFrontendDependencies.Items;
+  assert.deepEqual(items.map(item => [item.PackageName, item.Kind, item.OwnerName ?? "", item.BuildEnabled ?? "", item.Specifier ?? ""]), [
+    ["@acme/lib", "compiled", "SharedUi", "false", "@acme/lib/generated"],
+    ["@acme/tokens", "source", "", "", ""],
+    ["@acme/app", "application", "App", "", ""],
+  ]);
+  assert.ok(!existsSync(join(app.project, "commands.log")), "The query installs and builds nothing.");
+
+  let result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [`bun install --frozen-lockfile --ignore-scripts in ${realRoot(root)}`], "The application does not build a package that a library owns.");
+  let reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE088: .*app\/frontend depends on @acme\/lib \(.*ws-owned\/lib\), the frontend package of SharedUi, but its package\.json exports .*lib\/dist\/index\.js, .*lib\/dist\/generated\/runic-clients\.js, which do not exist: its package build is off in SharedUi \(RunicApplicationFrontendBuildEnabled=false\)/);
+
+  // M7: a bundler error that names a package of the graph says what that package is.
+  mkdirSync(join(lib, "dist/generated"), { recursive: true });
+  writeFileSync(join(lib, "dist/index.js"), "export {};");
+  writeFileSync(join(lib, "dist/generated/runic-clients.js"), "export {};");
+  writeFileSync(join(app.frontend, "unresolved-import"), "@acme/tokens");
+  result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE016: The frontend build 'node build\.mjs' in .* exited with code 1\. Its output is above\. @acme\/tokens \(.*ws-owned\/tokens\) is a workspace package that no \.NET project owns; check that it is built and that this frontend installs it\./);
+
+  // M5: Visual Studio's up-to-date check gets the dependency packages that the last build recorded, without node_modules.
+  mkdirSync(join(lib, "node_modules/x"), { recursive: true });
+  writeFileSync(join(lib, "node_modules/x/index.js"), "");
+  const evaluated = spawnSync("dotnet", ["msbuild", appProject, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-p:BuildingInsideVisualStudio=true", "-getItem:UpToDateCheckInput"],
+    { cwd: app.project, encoding: "utf8", env });
+  assert.equal(evaluated.status, 0, evaluated.stdout + evaluated.stderr);
+  const inputs = JSON.parse(evaluated.stdout).Items.UpToDateCheckInput.map(item => item.FullPath);
+  assert.ok(inputs.some(input => input.endsWith("ws-owned/lib/dist/index.js")) && inputs.some(input => input.endsWith("ws-owned/tokens/package.json")), inputs.join("\n"));
+  assert.ok(!inputs.some(input => input.includes("node_modules")), inputs.join("\n"));
 });
 
 // R7 G6: a source-tree build of a Views consumer has the TypeScript emitter without building the npm package first. The
