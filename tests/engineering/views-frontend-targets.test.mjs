@@ -2137,6 +2137,32 @@ test("RunicViewsGetFrontendDependencies returns the packages of the referenced l
   assert.ok(!inputs.some(input => input.includes("node_modules")), inputs.join("\n"));
 });
 
+// devtools-library-dx §3.4 (S3): dotnet runic dev names the project it serves; only that project skips its frontend
+// build and copy, so a library that the page imports still builds its package (F6).
+test("RunicApplicationFrontendDevSessionProject skips only the served project's frontend build", () => {
+  const app = fixture("dev-served-app", { name: "app", private: true, devDependencies: { vite: "8.3.2" } });
+  writeFileSync(join(app.frontend, "emits-dist"), "");
+  const library = fixture("dev-served-library", { name: "@acme/shared-ui", private: true, scripts: { build: "node build.mjs" }, exports: { ".": "./dist/index.html" } });
+  writeFileSync(join(library.frontend, "emits-dist"), "");
+  const served = `RunicApplicationFrontendDevSessionProject=${join(app.project, "App.proj")}`;
+  const output = join(app.project, "out") + "/";
+  assert.equal(evaluateProperty(join(app.project, "App.proj"), "_RunicViewsDevSessionProtocol"), "1");
+  assert.equal(evaluateProperty(join(app.project, "App.proj"), "RunicApplicationFrontendBuildEnabled", [`-p:${served}`]), "false");
+  assert.equal(evaluateProperty(join(app.project, "App.proj"), "RunicApplicationFrontendCopyEnabled", [`-p:${served}`]), "false");
+
+  let result = build(app, { targets: "RunicViewsCollectFrontendInputs;RunicViewsCopyFrontend", properties: [served, `TargetDir=${output}`] });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install"], "The served project installs its packages but neither builds nor copies its frontend.");
+  assert.ok(!existsSync(join(output, "www")));
+  result = build(library, { properties: [served, "RunicApplicationFrontendClientLibrary=true"] });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install", "build"], "Another project, such as a client library, builds its package.");
+  // What older dev passed to every project: the library's package stayed unbuilt (F6).
+  rmSync(join(library.frontend, "dist"), { recursive: true });
+  result = build(library, { properties: ["RunicApplicationFrontendBuildEnabled=false", "RunicApplicationFrontendInstallEnabled=false", "RunicApplicationFrontendClientLibrary=true"] });
+  assert.deepEqual(result.commands, []);
+});
+
 // R7 G6: a source-tree build of a Views consumer has the TypeScript emitter without building the npm package first. The
 // generator's build bundles it beside the generator (codegen/index.js), and the source-tree targets run that copy for a
 // project without a frontend, as CI's consumer job builds the DynamicData fixture.

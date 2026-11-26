@@ -2600,6 +2600,7 @@ returns an application's frontend packages as data ([Library packages](#library-
 | `RunicApplicationFrontendGenerationEnabled` | see below | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
+| `RunicApplicationFrontendDevSessionProject` | none | Set by `dotnet runic dev` (since 0.24), as a global property: the project whose frontend its development server serves. Only that project skips its production frontend build and copy; it still installs the frontend packages and builds the [packages its frontend depends on](#library-packages). |
 | `RunicApplicationFrontendBootstrap` | set by the targets (read-only) | `true` only in the bootstrap pass (see below). A project reads it, for example to leave a reference out of that pass; it does not set it. |
 
 ### JavaScript workspaces
@@ -2725,6 +2726,10 @@ frontend only when one of its inputs changed.
   the generated clients, and so the frontend, alone. `-t:Rebuild` builds it
   again. The [packages it depends on](#library-packages) are built the same
   way, each only when its own files changed.
+- **`dotnet runic dev`** leaves the install to the build since 0.24, so its
+  second start with nothing changed installs nothing; before, it ran the
+  package manager's install (`npm ci`, which reinstalls everything) on every
+  start.
 - **CI.** A fresh checkout has no `node_modules`, so `Auto` installs there, and a
   restored `node_modules` cache is reused only when its hash matches the
   checkout's lock file and `package.json` files. `ContinuousIntegrationBuild`
