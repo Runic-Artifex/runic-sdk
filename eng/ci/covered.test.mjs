@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { coveringPush, coveringRun, github, PLAN_ARTIFACT, unionPlan } from './covered.mjs';
+import { coveringPush, coveringRun, github, pendingRun, PLAN_ARTIFACT, unionPlan } from './covered.mjs';
 import { planFor, affected, planRecord, reusedPlan, coveredPlan, validPlan, skippableJobs } from './plan.mjs';
 
 const repository = 'Runic-Artifex/runic-sdk', sha = 'a'.repeat(40);
 const url = id => `https://github.com/${repository}/actions/runs/${id}`;
 const run = (id, extra = {}) => ({ id, event: 'merge_group', head_sha: sha, head_branch: `gh-readonly-queue/main/pr-7-${'b'.repeat(40)}`,
-  path: '.github/workflows/ci.yml', repository: { full_name: repository }, head_repository: { full_name: repository }, html_url: url(id), ...extra });
+  path: '.github/workflows/ci.yml', repository: { full_name: repository }, head_repository: { full_name: repository }, html_url: url(id),
+  status: 'completed', ...extra });
 const tested = planFor(affected(['packages/web/svelte/src/index.ts']));
 const verify = conclusion => ({ jobs: [{ name: 'build', conclusion: 'success' }, { name: 'verify', conclusion }] });
 
@@ -135,6 +136,55 @@ test('a coalesced push with any commit not covered, or an unusable range, keeps 
   }
   // Without a run of the pushed commit, nothing covers the push.
   assert.equal(await coveringPush(coalesced({ plans, runs: { [first]: [queue(1, first)] } })), null);
+});
+
+// 2026-11-26: #1365 and #1371 left the queue together when #1371's run passed; #1365's own run was still running and
+// passed three minutes after the push planned, so the push ran #1365's Windows and macOS legs a second time.
+const stillRunning = ({ finishAt = 90_000, conclusion = 'success', waitMinutes = 30 } = {}) => {
+  const lookup = coalesced({ plans: { 1: planRecord(managedOnly), 2: planRecord(svelteOnly) } });
+  const inner = lookup.api, clock = { now: 0 }, slept = [], logs = [];
+  lookup.api = async path => {
+    const done = clock.now >= finishAt;
+    if (path === `actions/workflows/ci.yml/runs?event=merge_group&head_sha=${first}&per_page=20`)
+      return { workflow_runs: [run(1, { head_sha: first, status: done ? 'completed' : 'in_progress' })] };
+    if (path === 'actions/runs/1/jobs?per_page=100') return verify(done ? conclusion : null);
+    return inner(path);
+  };
+  return { ...lookup, waitMinutes, pollSeconds: 30, now: () => clock.now, log: message => logs.push(message),
+    sleep: async ms => { slept.push(ms); clock.now += ms; }, slept, logs };
+};
+
+test('a coalesced push waits for an earlier entry\'s queue run that is still running, then takes the union', async () => {
+  const lookup = stillRunning();
+  const found = await coveringPush(lookup);
+  assert.equal(found.url, `${url(1)} (111111111) and run ${url(2)} (222222222)`);
+  assert.deepEqual(found.plan, unionPlan([managedOnly, svelteOnly]));
+  // Three polls of 30 s until the run passed at 90 s; each names the run it waits for.
+  assert.deepEqual(lookup.slept, [30_000, 30_000, 30_000]);
+  assert.equal(lookup.logs.length, 3);
+  assert.match(lookup.logs[0], new RegExp(`Merge queue run ${url(1)} of 111111111 is in_progress; waiting for it \\(up to 30 more min\\)`));
+  assert.deepEqual(await pendingRun({ repository, sha: first, api: stillRunning().api }), run(1, { head_sha: first, status: 'in_progress' }));
+});
+
+test('a coalesced push keeps the pushed commit\'s run alone when the earlier run fails, outlasts the wait, or waiting is off', async () => {
+  const alone = { url: url(2), plan: svelteOnly };
+  // It failed: the wait ends with it.
+  const failed = stillRunning({ conclusion: 'failure' });
+  assert.deepEqual(await coveringPush(failed), alone);
+  assert.equal(failed.slept.length, 3);
+  // Still running after the wait: no poll past the deadline.
+  const late = stillRunning({ finishAt: 31 * 60_000 });
+  assert.deepEqual(await coveringPush(late), alone);
+  assert.equal(late.slept.reduce((sum, ms) => sum + ms, 0), 30 * 60_000);
+  assert.ok(late.slept.every(ms => ms <= 30_000));
+  // The default (a local run of the CLI) does not wait.
+  const off = stillRunning({ waitMinutes: 0 });
+  assert.deepEqual(await coveringPush(off), alone);
+  assert.deepEqual(off.slept, []);
+  // Nothing to wait for: a commit without a queue run (a direct push) is not waited on.
+  const direct = { ...stillRunning(), ...coalesced({ plans: { 2: planRecord(svelteOnly) }, runs: { [second]: [queue(2, second)] } }) };
+  assert.deepEqual(await coveringPush(direct), alone);
+  assert.deepEqual(direct.slept, []);
 });
 
 // One stored or deflated entry, as upload-artifact zips the ci-plan file.
