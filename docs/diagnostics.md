@@ -1479,6 +1479,13 @@ with HTTP 500 twice, such as for an import that Vite cannot resolve, and the
 message carries Vite's own error. When the import names a frontend package that the
 page depends on, it also says whether that package has been built. A server that
 exits before it is ready reports the first error line of its output.
+
+A terminal Ctrl+C reaches the development server too, which can exit before
+`dev` handles the signal. Since 0.24, `dev` treats an exit with a stop signal's
+code (130 for SIGINT, 143 for SIGTERM, 129, 131, or Windows' Ctrl+C status) as
+its own stop when its signal follows within 2 seconds, and ends with 130.
+Such an exit without the signal to `dev`, and every other exit, is
+`RAPPDEV1007`.
 `dotnet runic doctor` resolves the page's imports of library and workspace
 packages without starting Vite, as its
 [`client-modules`](../tools/dotnet-runic/README.md#client-modules) check, and

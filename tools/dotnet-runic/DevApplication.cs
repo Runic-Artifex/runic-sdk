@@ -383,6 +383,16 @@ internal static class DevApplication
             // tool reports it, after the frontend and application process trees have stopped.
             return Program.Cancelled;
         }
+        catch (DevDevelopmentException error) when (DevStop.MayBeStop(error, stop.Token))
+        {
+            // #1396: a terminal Ctrl+C reaches the whole process group, so the development server can exit with 130
+            // before dev's own handler has run, or a request fails because the stop ended the server.
+            if (await DevStop.IsStopAsync(error, DevStop.SignalGrace, TimeProvider.System, stop.Token).ConfigureAwait(false))
+            {
+                return Program.Cancelled;
+            }
+            throw;
+        }
         finally
         {
             stop.Cancel();
@@ -541,7 +551,10 @@ internal static class DevApplication
                         : $"The frontend watcher exited unexpectedly with code {exitCode}.",
                 completed == host.Completion
                     ? CommandRunner.LocalDetail(configuration.ProjectDirectory, CommandRunner.DoctorHint(configuration.ProjectPath))
-                    : null);
+                    : null)
+            {
+                ChildExitCode = exitCode,
+            };
         }
         finally
         {
@@ -627,7 +640,10 @@ internal static class DevApplication
                 "RAPPDEV1007",
                 developmentServer is not null
                     ? $"The {configuration.DevelopmentServerKind} development server exited unexpectedly with code {exitCode}{ServerError(developmentServer)}"
-                    : $"The frontend watcher exited unexpectedly with code {exitCode}.");
+                    : $"The frontend watcher exited unexpectedly with code {exitCode}.")
+            {
+                ChildExitCode = exitCode,
+            };
         }
         finally
         {
