@@ -42,7 +42,6 @@ internal static class ArchiveZipLayout
         }
 
         var located = new ArchiveEntryData[entries.Count];
-        var spans = new (long Start, long End, string Name)[entries.Count];
         Span<byte> header = stackalloc byte[CentralHeaderLength];
         long position = directoryOffset;
         for (int index = 0; index < entries.Count; index++)
@@ -132,17 +131,18 @@ internal static class ArchiveZipLayout
                 throw Invalid($"entry '{entry.FullName}' overlaps the central directory");
             }
 
-            spans[index] = (local, dataEnd, entry.FullName);
-            located[index] = new ArchiveEntryData(stream, dataOffset, (long)compressedLength, method, crc);
+            located[index] = new ArchiveEntryData(stream, entry.FullName, local, dataOffset, (long)compressedLength, method, crc);
         }
 
-        // No two entries' bytes overlap, so no bytes are read under two names.
-        Array.Sort(spans, static (x, y) => x.Start.CompareTo(y.Start));
-        for (int index = 1; index < spans.Length; index++)
+        // No two entries' bytes overlap, so no bytes are read under two names. Sorting the entries, a reference type,
+        // shares the framework's sort code instead of adding an instantiation to every NativeAOT app.
+        var byOffset = (ArchiveEntryData[])located.Clone();
+        Array.Sort(byOffset, static (x, y) => x.LocalOffset.CompareTo(y.LocalOffset));
+        for (int index = 1; index < byOffset.Length; index++)
         {
-            if (spans[index].Start < spans[index - 1].End)
+            if (byOffset[index].LocalOffset < byOffset[index - 1].DataEnd)
             {
-                throw Invalid($"entries '{spans[index - 1].Name}' and '{spans[index].Name}' overlap");
+                throw Invalid($"entries '{byOffset[index - 1].Name}' and '{byOffset[index].Name}' overlap");
             }
         }
 
@@ -292,10 +292,24 @@ internal static class ArchiveZipLayout
     private static InvalidDataException Invalid(string reason) => new($"The asset archive is not a valid ZIP file: {reason}.");
 }
 
-// One entry's data in the archive's stream: where it starts, its compressed length, its method (0 or 8) and the CRC-32
-// that its central record gives. The reader serializes access to the stream (AssetArchiveContent).
-internal sealed class ArchiveEntryData(Stream archive, long dataOffset, long compressedLength, ushort method, uint crc32)
+// One entry's data in the archive's stream: its local header's offset, where its data starts, its compressed length, its
+// method (0 or 8) and the CRC-32 that its central record gives. The reader serializes access to the stream
+// (AssetArchiveContent).
+internal sealed class ArchiveEntryData(
+    Stream archive,
+    string name,
+    long localOffset,
+    long dataOffset,
+    long compressedLength,
+    ushort method,
+    uint crc32)
 {
+    internal string Name { get; } = name;
+
+    internal long LocalOffset { get; } = localOffset;
+
+    internal long DataEnd => dataOffset + compressedLength;
+
     internal uint Crc32 { get; } = crc32;
 
     // The entry's bytes as they are in the archive: inflated when the method is 8.

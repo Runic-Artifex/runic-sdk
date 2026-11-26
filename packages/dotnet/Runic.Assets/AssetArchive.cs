@@ -268,34 +268,36 @@ public static class AssetArchive
         }
 
         ArchiveEntryData[] located = ArchiveZipLayout.Locate(stream, archive.Entries);
-        var entries = new Dictionary<string, (ZipArchiveEntry Entry, ArchiveEntryData Data)>(StringComparer.Ordinal);
+        // Each entry's index in archive.Entries and located, by name.
+        var entries = new Dictionary<string, int>(StringComparer.Ordinal);
         for (int index = 0; index < located.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ZipArchiveEntry entry = archive.Entries[index];
-            if (entry.FullName.EndsWith('/'))
+            string name = located[index].Name;
+            if (name.EndsWith('/'))
             {
                 continue;
             }
 
-            if (!entries.TryAdd(entry.FullName, (entry, located[index])))
+            if (!entries.TryAdd(name, index))
             {
-                throw new InvalidDataException($"The asset archive contains duplicate entry '{entry.FullName}'.");
+                throw new InvalidDataException($"The asset archive contains duplicate entry '{name}'.");
             }
         }
 
-        if (!entries.Remove(ManifestEntryName, out (ZipArchiveEntry Entry, ArchiveEntryData Data) manifestEntry))
+        if (!entries.Remove(ManifestEntryName, out int manifestIndex))
         {
             throw new InvalidDataException("The asset archive does not contain runic-assets.json.");
         }
 
+        long manifestLength = archive.Entries[manifestIndex].Length;
         long manifestLimit = Math.Min(options.MaxManifestBytes, MaxAssetBytes);
-        if (manifestEntry.Entry.Length > manifestLimit)
+        if (manifestLength > manifestLimit)
         {
             throw new InvalidDataException($"The asset archive manifest exceeds the {manifestLimit} byte limit.");
         }
 
-        byte[] manifestBytes = Inflate(manifestEntry.Data, manifestEntry.Entry.Length, "The asset archive manifest");
+        byte[] manifestBytes = Inflate(located[manifestIndex], manifestLength, "The asset archive manifest");
 
         // JsonDocument checks the UTF-8 of a string only when it is read, so a member the reader ignores could carry
         // bytes that are not UTF-8.
@@ -407,18 +409,19 @@ public static class AssetArchive
 
             AssetDescriptor descriptor = descriptors[index];
             string entryName = ContentPrefix + descriptor.RelativePath;
-            if (!entries.Remove(entryName, out (ZipArchiveEntry Entry, ArchiveEntryData Data) entry))
+            if (!entries.Remove(entryName, out int entryIndex))
             {
                 throw new InvalidDataException($"The asset archive is missing '{descriptor.RelativePath}'.");
             }
 
-            if (entry.Entry.Length != descriptor.Length)
+            long entryLength = archive.Entries[entryIndex].Length;
+            if (entryLength != descriptor.Length)
             {
                 throw new InvalidDataException(
-                    $"Asset '{descriptor.RelativePath}' has a ZIP entry of {entry.Entry.Length} bytes, not its length {descriptor.Length}.");
+                    $"Asset '{descriptor.RelativePath}' has a ZIP entry of {entryLength} bytes, not its length {descriptor.Length}.");
             }
 
-            contentEntries[index] = entry.Data;
+            contentEntries[index] = located[entryIndex];
         }
 
         // An asset with contentPath has no entry of its own: one would be left here.
