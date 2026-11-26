@@ -348,7 +348,7 @@ them:
 | `confirmContract` | string | The contract of the `notes` View's `confirm` interaction ([interactions](../README.md#interactions)). |
 | `focusContract`, `revealContract`, `toastContract` | string | The contracts of the `notes` View's view requests `focus`, `reveal` and `toast` ([view requests](../README.md#view-requests)). |
 | `interactionRequest` | string | The `requestId` of an interaction request the producer sends. |
-| `ownerEpoch` | number | The `ownerEpoch` the producer assigns to an interaction request ([interactions](../README.md#interactions)); not the presentation epoch. |
+| `ownerEpoch` | number | The `ownerEpoch` the producer assigns to an interaction request ([interactions](../README.md#interactions)): a count of the presentation's interaction pushes, not the presentation epoch. |
 | `flushId` | string | The `id` of a `flush` push ([field flush](../README.md#field-flush)). |
 
 A producer derives the contract ids from the `notes` View's fingerprint, `runic.views.fingerprint/1`

@@ -627,7 +627,16 @@ public partial class ViewModelBridge
         ReadOnlyMemory<byte> reply;
         bool waits;
         if (IsAsynchronous(descriptor))
+        {
+            var calledInTurn = _modelTurn.IsCurrent;
             (reply, waits) = await ExecuteAsync(descriptor, key, connection, command, cancellationToken).ConfigureAwait(false);
+            // #1370: an awaited command can end inside a turn of the model that another publication unit runs, as when
+            // the change that completes its task runs its continuations inline. Its reply was then published in that
+            // turn, where WaitForPublishedAsync cannot wait for the frame. The reply leaves the turn first, so it
+            // still follows the frame of the command's end.
+            if (waits && !calledInTurn && _modelTurn.IsCurrent)
+                await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        }
         else
         {
             try { (reply, waits) = _modelTurn.Run(() => Execute(descriptor, key, connection, command)); }
@@ -739,31 +748,12 @@ public partial class ViewModelBridge
         BridgeConnection connection, CommandRequest request, CancellationToken token)
     {
         // The awaited command is window work like an admitted operation: closing the window waits for it before the
-        // host disposes its scope, and cancels it after the close timeout.
+        // host disposes its scope, and cancels it after the close timeout. A window at its capacity of awaited commands
+        // refuses the command only after the key and availability checks (Begin; specs/application/README.md, "Order of
+        // checks"), so a page learns that the command cannot run at all rather than that the window is busy now.
         var atCapacity = false;
         using var admission = _content is null ? null : _content.Operations.TryBeginAwaited(token, out atCapacity);
-        // A superseded command is answered so before it would be refused for capacity.
-        if (atCapacity && request.Epoch is not null)
-        {
-            try
-            {
-                if (_modelTurn.Run(() =>
-                    {
-                        lock (_modelGate) return IsInactive ? BridgeMessages.Released.ToArray() : Superseded(request);
-                    }) is { } answered)
-                    return (answered, !IsInactive);
-            }
-            catch (ObjectDisposedException) { return (BridgeMessages.Released, false); }
-        }
-        if (atCapacity)
-        {
-            var refused = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
-            refused.Complete(BridgeCallOutcome.Rejected);
-            return (EncodeFailure(new("rejected",
-                $"{descriptor.Name} was not run: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.",
-                Reason: "capacity")), false);
-        }
-        if (_content is not null && admission is null)
+        if (_content is not null && admission is null && !atCapacity)
             return (EncodeFailure(new(BridgeFailure.Released, "The window is closing.")), false);
         var cancellation = admission?.Token ?? token;
         Task<BridgeOperationResult>? execution = null;
@@ -786,9 +776,11 @@ public partial class ViewModelBridge
                     }
                     rejected = BridgeCallOutcome.Rejected;
                     if (DecodeScopedInput(descriptor, request, ref key) is { } invalid) return invalid;
-                    // An asynchronous resolver starts in this turn; the command is admitted in the next.
+                    // An asynchronous resolver starts in this turn; the command is admitted in the next. The resolution
+                    // is awaited window work itself, so a window at capacity does not start it.
                     if (descriptor.ResolveArgumentAsync is { } resolveAsync)
                     {
+                        if (atCapacity) return CapacityRefusal();
                         resolution = resolveAsync(_vm, key, cancellation).AsTask();
                         return null;
                     }
@@ -843,11 +835,17 @@ public partial class ViewModelBridge
             return (ReplyAfterCommand(new("failed", $"{descriptor.Name} failed.", detail)), true);
         }
 
-        // In a model turn: checks availability with the command's parameter and starts the command.
+        ReadOnlyMemory<byte> CapacityRefusal() => EncodeFailure(new("rejected",
+            $"{descriptor.Name} was not run: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.",
+            Reason: "capacity"));
+
+        // In a model turn: checks availability with the command's parameter, then the window's capacity, and starts the
+        // command.
         ReadOnlyMemory<byte>? Begin(object? argument)
         {
             if (!IsAvailable(descriptor, argument))
                 return EncodeFailure(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
+            if (atCapacity) return CapacityRefusal();
             using var invocation = EnterInvocation(descriptor, connection, cancellation);
             execution = InvokeCommandAsync(descriptor, argument, cancellation);
             // The command's invocation lasts until its task completes, not past it (RunicInteractionInvocation.Current).
