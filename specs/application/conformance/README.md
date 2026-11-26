@@ -323,7 +323,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
 | [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
 | [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version and an unknown total before its reply, and the rows in its order with the count they start; a filter that changes the total, and a client that asks for no position past it; a query the source rejects, and an unknown filter `op` (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
-| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; a `set` of it, which is `invalid-request`; an upload id that names no unclaimed upload, which is `invalid-input`; uploads (`upload` steps): claimed once, of another connection, expired after 10 minutes, and larger than `maximumBytes` |
+| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; a `set` of it, which is `invalid-request`; a blob in an editable row, which is no field path; an upload id that names no unclaimed upload, which is `invalid-input`; uploads (`upload` steps): claimed once, of another connection, expired after 10 minutes, and larger than `maximumBytes` |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views
@@ -536,10 +536,13 @@ its upload grant.
 | --- | --- | --- |
 | `avatar` | nullable `blob` | `null`; the model and `assign` give it as `{type, text, name}`, whose `text` is its UTF-8 content |
 | `lastUpload` | nullable `string` | `null`; the file name of the last upload `attach` claimed |
+| `attachments` | keyed collection of `{id: int32, name: string, preview: blob}`, keyed by `id` | `[]`; the model gives `preview` as `{type, text, name}`, as `avatar`; its field paths are a row's `["name"]`, and `preview`, which holds a blob, is none |
 
 | Command | Input | Available | Effect |
 | --- | --- | --- | --- |
 | `attach` | `upload` | always | claims the upload (a later request that names it is `invalid-input`) and sets `lastUpload` to its file name |
+
+Its row editor replaces the attachment with the key.
 
 ### Mutations
 

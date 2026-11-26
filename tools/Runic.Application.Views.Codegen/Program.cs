@@ -2516,6 +2516,10 @@ sealed record GeneratedKeyPlan(MethodInfo Resolver, BridgeTypeGraph KeyGraph, Ty
 // field-paths/1: one field path below a member or a row: its wire names and the members it passes through. A path
 // names a member that the page reads and that the copy of its object can change, down to three objects deep; an
 // object member has its own descriptor and those of its members. [RunicNoField] leaves a member out.
+//
+// blobs/1 (runic-sdk#1391): the page never sends a blob, so a member whose value can hold one is not a field path,
+// though the members of its object may be: the copy of the object keeps the blob. An object copied through its wire
+// form cannot copy a blob in it, so no member of it, or below it, is a field path.
 internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
 {
     internal BridgeTypeNode Node => Chain[^1].Type;
@@ -2530,6 +2534,7 @@ internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
         void Visit(BridgeTypeNode node, string[] prefix, BridgeTypeMember[] chain)
         {
             var copy = CopyOf(node).Kind;
+            if (copy == BridgeFieldCopy.Wire && HoldsBlob(node)) return;
             var parameters = node.Constructor?.GetParameters() ?? [];
             foreach (var member in node.Members)
             {
@@ -2544,7 +2549,7 @@ internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
                 if (!settable) continue;
                 string[] path = [.. prefix, member.WireName];
                 BridgeTypeMember[] next = [.. chain, member];
-                leaves.Add(new(path, next));
+                if (!HoldsBlob(member.Type)) leaves.Add(new(path, next));
                 if (member.Type.Kind != BridgeWireKind.Dto || prefix.Length >= 2 || member.Type == owner || chain.Any(step => step.Type == member.Type)) continue;
                 if (CopyOf(member.Type) is { Kind: BridgeFieldCopy.None } refused)
                 {
@@ -2575,6 +2580,16 @@ internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
             ? (BridgeFieldCopy.None, $"{BridgeTypeGraph.CSharpType(type)} has settable members the page does not see ({string.Join(", ", hidden)}) and no copy constructor or Clone()")
             : (BridgeFieldCopy.Wire, null);
     }
+
+    // Whether a value of the node can hold a blob, in itself or anywhere below it.
+    internal static bool HoldsBlob(BridgeTypeNode node) => HoldsBlob(node, []);
+
+    private static bool HoldsBlob(BridgeTypeNode node, HashSet<BridgeTypeNode> visited) =>
+        visited.Add(node) && (node.Kind == BridgeWireKind.Blob
+            || node.Members.Any(member => HoldsBlob(member.Type, visited))
+            || node.Element is { } element && HoldsBlob(element, visited)
+            || node.Value is { } value && HoldsBlob(value, visited)
+            || node.Cases.Any(@case => HoldsBlob(@case.Type, visited)));
 
     private static bool IsInitOnly(PropertyInfo property) =>
         property.SetMethod?.ReturnParameter.GetRequiredCustomModifiers().Any(modifier => modifier.FullName == "System.Runtime.CompilerServices.IsExternalInit") == true;

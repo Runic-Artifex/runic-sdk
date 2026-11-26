@@ -22,7 +22,7 @@
     {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
     {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
     {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
-    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null},"presentation":"ok"},"replyTo":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[]},"presentation":"ok"},"replyTo":"open-files"},
     {"upload":{"name":"notes.txt","type":"text/plain","text":"hello"},"answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"upload"},"name":"notes.txt","type":"text/plain","size":5}}}},
     {"advance":600000},
     {"send":{"kind":"command","route":"files","member":"attach","input":{"id":{"$id":"upload"},"name":"notes.txt","type":"text/plain","size":5}},"id":"late"},

@@ -411,6 +411,7 @@
     "messages.requests.client-error-with-a-stack-that-is-not-a-string": {"status":"pass"},
     "messages.requests.client-error-with-a-negative-dropped": {"status":"pass"},
     "blobs.a-blob-crosses-as-a-url.v1": {"status":"pass"},
+    "blobs.a-blob-in-a-row-is-not-a-field-path.v1": {"status":"pass"},
     "blobs.a-set-of-a-blob-member-is-invalid-request.v1": {"status":"pass"},
     "blobs.an-unclaimed-upload-expires-after-10-minutes.v1": {"status":"pass"},
     "blobs.an-unknown-upload-is-invalid-input.v1": {"status":"pass"},

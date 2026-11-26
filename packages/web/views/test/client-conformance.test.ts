@@ -89,8 +89,19 @@ const models: Record<string, ViewModel> = {
   // region-collections/1: the regions present page Views.
   tabs: { members: { documents: value => regionCollection(value, reference), pinned: value => regionCollection(value, reference) } },
   catalog: { members: { rows: decodeQueryCollectionState } },
-  files: { members: { avatar: value => value === null ? null : wire.blob(value), lastUpload: value => value === null ? null : wire.string(value) } },
+  files: {
+    members: {
+      avatar: value => value === null ? null : wire.blob(value),
+      lastUpload: value => value === null ? null : wire.string(value),
+      attachments: value => wire.array(value, attachment),
+    },
+    collections: defineCollections({ attachments: defineCollection(attachment, item => String(item.id)) }),
+  },
 };
+// A row of the files View's attachments: a blob in an editable row (runic-sdk#1391).
+function attachment(value: unknown) {
+  return wire.object(value, item => ({ id: int32(item["id"]), name: wire.string(item["name"]), preview: wire.blob(item["preview"]) }));
+}
 // The catalog's query collection (query-collections/1): one per route and member, created by the first query call.
 const catalogRows = defineQueryCollection(row);
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;

@@ -144,3 +144,41 @@ public sealed class PathRowsViewModel : INotifyPropertyChanged
 }
 
 public sealed partial class PathRowsWindow : RunicWindow<PathRowsViewModel>;
+
+// runic-sdk#1391: rows that hold blobs. A blob member is never a field path, since the page never sends a blob
+// (blobs/1); a member of an object that holds a blob still is, because the copy of the object keeps the blob. A sealed
+// class that is copied through its wire form cannot copy a blob, so its rows have no field paths.
+public sealed record PathFrame(string Color, RunicBlob? Mat);
+
+public sealed record PathPicture(int Id, string Caption, RunicBlob Image, PathFrame Frame);
+
+public sealed class PathSticker
+{
+    public int Id { get; set; }
+    public string Label { get; set; } = "";
+    public RunicBlob? Image { get; set; }
+}
+
+public sealed class PathGalleryViewModel : INotifyPropertyChanged
+{
+    [RunicCollection(nameof(PathPicture.Id))]
+    public ObservableCollection<PathPicture> Pictures { get; } =
+    [
+        new(1, "Lake", RunicBlob.FromBytes("lake"u8.ToArray(), "image/png", "lake.png"), new("oak", null)),
+    ];
+
+    [RunicCollection(nameof(PathSticker.Id))]
+    public ObservableCollection<PathSticker> Stickers { get; } = [new() { Id = 1, Label = "Star" }];
+
+    [RunicRowEditor]
+    public void UpdatePicture(int id, PathPicture picture) =>
+        Pictures[Pictures.IndexOf(Pictures.Single(existing => existing.Id == id))] = picture;
+
+    [RunicRowEditor]
+    public void UpdateSticker(int id, PathSticker sticker) =>
+        Stickers[Stickers.IndexOf(Stickers.Single(existing => existing.Id == id))] = sticker;
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class PathGalleryWindow : RunicWindow<PathGalleryViewModel>;

@@ -205,7 +205,10 @@ A field is a member of the object that the producer can change in a copy of the 
 - below a row, the row's key member (`collectionKey`), which a row editor never changes;
 - `absent` members;
 - members the producer cannot set in a copy (in .NET, members without a setter that a copy can use, and the members
-  of a class it cannot copy exactly), and members the source marks as no field (`[RunicNoField]`).
+  of a class it cannot copy exactly), and members the source marks as no field (`[RunicNoField]`);
+- members whose value can hold a `blob`, which only goes to the page ([blobs](README.md#blobs)), and every member in
+  or below an object or row that holds a `blob` when the producer copies it only from its wire form (in .NET, a sealed
+  class without a copy constructor or `Clone()`). The other members of an object that holds a `blob` are fields.
 
 A member without fields below it has no `fieldPaths`.
 

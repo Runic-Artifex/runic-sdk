@@ -2218,10 +2218,11 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   `Cache-Control: private, max-age=31536000, immutable` and an `ETag`; the content behind a URL never changes. A blob
   whose length the producer knows answers a single byte range (`Range: bytes=a-b`, `206`, `416`). A released or
   unknown URL answers `404`.
-- **Row editors.** A [field path](#field-paths) write of a row copies the producer's row, so the copy keeps the blobs
-  the row holds, as it keeps everything the wire does not carry. A producer that can copy a row only from its wire
-  form cannot copy a blob in it, and declares no field paths below such rows. The .NET producer also declares a blob
-  member of a row as a field path; a write of it never decodes and is `rejected` with `invalid-input`.
+- **Row editors.** A member that holds a blob anywhere in its value is never a [field path](#field-paths), as it is
+  never settable, so a `write` of it is `rejected` with `invalid-request` (step 2). The other members of its row or
+  object are: a field path write of a row copies the producer's row, so the copy keeps the blobs the row holds, as it
+  keeps everything the wire does not carry. A producer that can copy a row or object only from its wire form cannot
+  copy a blob in it, and declares no field paths in or below such a row or object.
 
 ### Uploads
 

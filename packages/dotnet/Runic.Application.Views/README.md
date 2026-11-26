@@ -2992,6 +2992,10 @@ const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { c
   `Clone()`, cannot be copied exactly and has no fields below it; as rows it is
   `RUNICBRIDGE052`, as an object inside a row warning `RUNICBRIDGE053`.
   `[RunicNoField]` leaves a member of a row or object without a field.
+- **Blobs.** A member that holds a `RunicBlob` has no field, since the page
+  never sends a blob; the other members of its object or row do, and their
+  copy keeps the blob. A sealed class copied through its codec cannot copy a
+  blob, so an object or row of such a class that holds one has no fields.
 - **Rows.** A `[RunicCollection]` with a `[RunicRowEditor]` method has a field
   for each row member except the key: `InvoiceFields.lines.at(key).quantity`.
   The method takes the row's key and the row with the one cell changed, and

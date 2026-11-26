@@ -636,7 +636,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.FilesViewModel",
       "name": "Files",
       "route": "files",
-      "fingerprint": "FEB2D9817F262FBB6C84C278A584EA615F63A849F0AEFE4CF1A4C79501E2A435",
+      "fingerprint": "544256BF62CC1CD8B91D37F39C78FA0111A9C8EB954801BD1817ECE4818A6D1D",
       "kinds": [
         "files"
       ],
@@ -666,6 +666,30 @@
             }
           },
           "text": true
+        },
+        {
+          "name": "Attachments",
+          "wire": "attachments",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.Conformance.FilesAttachment"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "name"
+              ]
+            }
+          ]
         }
       ],
       "commands": [
@@ -1033,6 +1057,40 @@
           "wire": "quantity",
           "type": {
             "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.FilesAttachment": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.FilesAttachment",
+        "base": "FilesAttachment",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "preview",
+          "type": {
+            "kind": "blob"
           }
         }
       ]
