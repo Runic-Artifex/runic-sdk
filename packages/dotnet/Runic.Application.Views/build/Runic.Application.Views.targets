@@ -487,9 +487,9 @@
     <_RunicBridgeCodegenDll Condition="Exists('$(_RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</_RunicBridgeCodegenDll>
     <_RunicBridgeCodegenDll Condition="!Exists('$(_RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../tools/net10.0/BridgeCodegen.dll</_RunicBridgeCodegenDll>
     <!-- The TypeScript emitter (R7 G6): the launcher beside these targets, and the copy of @runic-artifex/views/codegen
-         that the package bundles (in the repository, the workspace build of packages/web/views). -->
+         that the package bundles (in the repository, the one that the generator's build bundles beside it). -->
     <_RunicViewsCodegenLauncher>$(MSBuildThisFileDirectory)runic-views-codegen.mjs</_RunicViewsCodegenLauncher>
-    <_RunicViewsBundledEmitter Condition="Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../web/views/dist/codegen/index.js'))</_RunicViewsBundledEmitter>
+    <_RunicViewsBundledEmitter Condition="Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/codegen/index.js'))</_RunicViewsBundledEmitter>
     <_RunicViewsBundledEmitter Condition="!Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../tools/codegen/index.js'))</_RunicViewsBundledEmitter>
     <_RunicBridgeAotArgument Condition="'$(PublishAot)' == 'true'">--aot</_RunicBridgeAotArgument>
     <_RunicBridgeCompositionArgument Condition="'$(RunicApplicationFrontendCompositionType)' != ''">--di-composition &quot;$(RunicApplicationFrontendCompositionType)&quot;</_RunicBridgeCompositionArgument>

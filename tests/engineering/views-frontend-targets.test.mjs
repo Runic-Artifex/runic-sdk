@@ -1733,3 +1733,33 @@ test("a changed runic-client-modules.ts rebuilds the frontend", () => {
   assert.equal(result.status, 0, result.output);
   assert.equal(builds(result), 1, "A changed library contract does not rebuild the frontend.");
 });
+
+// R7 G6: a source-tree build of a Views consumer has the TypeScript emitter without building the npm package first. The
+// generator's build bundles it beside the generator (codegen/index.js), and the source-tree targets run that copy for a
+// project without a frontend, as CI's consumer job builds the DynamicData fixture.
+test("the generator's build bundles the TypeScript emitter that the source-tree targets run without a frontend", async () => {
+  const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
+  const build = spawnSync(dotnet, ["build", resolve(root, "tools/Runic.Application.Views.Codegen"), "-c", configuration,
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: root, encoding: "utf8" });
+  assert.equal(build.status, 0, build.stdout + build.stderr);
+  const bundle = resolve(root, `tools/Runic.Application.Views.Codegen/bin/${configuration}/net10.0/codegen/index.js`);
+  assert.ok(existsSync(bundle), `${bundle} is missing after the generator's build`);
+
+  const project = join(directory, "bundled-emitter");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup><Configuration>${configuration}</Configuration></PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const evaluated = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-getProperty:_RunicViewsBundledEmitter", "-nologo", "-noAutoResponse"],
+    { cwd: project, encoding: "utf8" });
+  assert.equal(evaluated.status, 0, evaluated.stdout + evaluated.stderr);
+  assert.equal(evaluated.stdout.trim(), bundle);
+
+  const { generate } = await import(new URL(`file://${bundle}`).href);
+  const files = generate({ format: "runic.views.contract-ir/1", producer: { language: "csharp", tool: "test", unit: "App" },
+    views: [{ id: "App.CounterViewModel", name: "Counter", route: "counter", fingerprint: "F1", kinds: ["counter"], members: [], commands: [] }],
+    types: {}, sources: {} }, { outputDirectory: "/generated" });
+  assert.deepEqual([...files.keys()].sort(), ["counter.contract.d.ts", "counter.mock.ts", "counter.ts"]);
+});

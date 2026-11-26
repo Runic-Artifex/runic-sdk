@@ -55,9 +55,10 @@
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.targets" />
     <!-- R7 G6: the targets run the TypeScript emitter through this launcher, with the frontend's @runic-artifex/views or,
-         without a frontend, the copy of its emitter (packages/web/views/dist/codegen) bundled in tools/codegen. -->
+         without a frontend, the copy of its emitter that the generator's build bundles (codegen/index.js), in tools/codegen. -->
     <None Update="build/runic-views-codegen.mjs" Pack="true" PackagePath="buildTransitive/runic-views-codegen.mjs" />
-    <None Include="../../web/views/dist/codegen/*.js" Pack="true" PackagePath="tools/codegen/" Visible="false" />
+    <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/codegen/index.js"
+          Pack="true" PackagePath="tools/codegen/" Visible="false" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/*.dll"
           Pack="true" PackagePath="tools/net10.0/" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.deps.json"
@@ -68,8 +69,8 @@
   <Target Name="RunicViewsCheckPackInputs" BeforeTargets="GenerateNuspec">
     <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll')"
            Text="Build BridgeCodegen for $(Configuration) before packing Runic.Application.Views." />
-    <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../web/views/dist/codegen/index.js')"
-           Text="Build @runic-artifex/views (bun run --cwd packages/web/views --bun build) before packing Runic.Application.Views, which bundles its TypeScript emitter." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/codegen/index.js')"
+           Text="Build BridgeCodegen for $(Configuration), which bundles the Views TypeScript emitter (codegen/index.js), before packing Runic.Application.Views." />
   </Target>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

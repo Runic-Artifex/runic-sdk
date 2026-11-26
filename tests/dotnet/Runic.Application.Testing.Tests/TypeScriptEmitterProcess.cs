@@ -5,8 +5,8 @@ namespace Runic.Application.Testing.Tests;
 /// <summary>
 /// Runs the Views TypeScript emitter (R7 G6) on the contract IR that the generator wrote into a C# output directory, as
 /// the build's <c>RunicViewsGenerateClients</c> does for a project without a frontend: Bun runs
-/// <c>runic-views-codegen.mjs</c> with the bundled emitter, the workspace build of <c>@runic-artifex/views</c>
-/// (<c>packages/web/views/dist/codegen</c>). The generator tests that run <c>BridgeCodegen --generate</c> themselves
+/// <c>runic-views-codegen.mjs</c> with the bundled emitter, which the generator's build bundles beside it
+/// (<c>tools/Runic.Application.Views.Codegen/bin/&lt;configuration&gt;/net10.0/codegen/index.js</c>). The generator tests that run <c>BridgeCodegen --generate</c> themselves
 /// run it afterwards, so they see the clients and the emitter's diagnostics as a build does.
 /// </summary>
 internal static class TypeScriptEmitterProcess
@@ -22,9 +22,11 @@ internal static class TypeScriptEmitterProcess
         var ir = Path.Combine(csharpDirectory, "contract.ir.json");
         if (!File.Exists(ir)) return (0, "");
         var root = WorkspaceRoot();
-        var emitter = Path.Combine(root, "packages", "web", "views", "dist", "codegen", "index.js");
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(TypeScriptEmitterProcess).Assembly)?.Configuration ?? "Release";
+        var emitter = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "codegen", "index.js");
         if (!File.Exists(emitter))
-            throw new InvalidOperationException($"{emitter} does not exist: build @runic-artifex/views (bun run --cwd packages/web/views --bun build) first.");
+            throw new InvalidOperationException($"{emitter} does not exist: build tools/Runic.Application.Views.Codegen, which bundles the emitter, first.");
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo("bun")

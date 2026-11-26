@@ -26,5 +26,29 @@
     <ProjectReference Include="../Runic.Application.Views.Codegen.Toolkit/Runic.Application.Views.Codegen.Toolkit.csproj" />
     <ProjectReference Include="../Runic.Application.Views.Codegen.ReactiveUI/Runic.Application.Views.Codegen.ReactiveUI.csproj" />
   </ItemGroup>
+  <!-- R7 G6: the TypeScript emitter (@runic-artifex/views/codegen) that Runic.Application.Views bundles for a project
+       without a frontend, as one ES module beside the generator: codegen/index.js. Bun bundles it from the source in
+       packages/web/views/src/codegen, which has no dependencies, so a source-tree build of any Views consumer has it
+       without building the npm package first; the source-tree targets run it from here, and the package packs it into
+       tools/codegen/. Node.js or Bun runs it. -->
+  <ItemGroup>
+    <_RunicViewsEmitterSource Include="../../packages/web/views/src/codegen/*.ts" />
+  </ItemGroup>
+  <!-- OutDir is set by the SDK targets, after this file's properties. -->
+  <Target Name="_RunicViewsEmitterBundlePath">
+    <PropertyGroup>
+      <_RunicViewsEmitterBundle>$(OutDir)codegen/index.js</_RunicViewsEmitterBundle>
+    </PropertyGroup>
+    <ItemGroup>
+      <FileWrites Include="$(_RunicViewsEmitterBundle)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="RunicBundleViewsEmitter" AfterTargets="CopyFilesToOutputDirectory" DependsOnTargets="_RunicViewsEmitterBundlePath"
+          Inputs="@(_RunicViewsEmitterSource);$(MSBuildThisFileFullPath)" Outputs="$(_RunicViewsEmitterBundle)">
+    <Exec Command="bun build &quot;$(MSBuildThisFileDirectory)../../packages/web/views/src/codegen/index.ts&quot; --target=node --format=esm --outfile &quot;$(_RunicViewsEmitterBundle)&quot;"
+          StandardOutputImportance="low" CustomErrorRegularExpression="^error:" />
+    <Error Condition="!Exists('$(_RunicViewsEmitterBundle)')"
+           Text="Bun did not bundle the Views TypeScript emitter into $(_RunicViewsEmitterBundle). Building the Runic SDK from source needs Bun (see CONTRIBUTING.md)." />
+  </Target>
   <Import Project="../../eng/build/application.targets" />
 </Project>
