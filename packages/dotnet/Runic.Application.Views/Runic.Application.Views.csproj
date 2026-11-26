@@ -62,6 +62,9 @@
     <!-- R7 G6: the targets run the TypeScript emitter through this launcher, with the frontend's @runic-artifex/views or,
          without a frontend, the copy of its emitter that the generator's build bundles (codegen/index.js), in tools/codegen. -->
     <None Update="build/runic-views-codegen.mjs" Pack="true" PackagePath="buildTransitive/runic-views-codegen.mjs" />
+    <!-- devtools-library-dx: the JavaScript workspace resolver (rax.frontend-graph/1) that the targets run, beside them.
+         @runic-artifex/views exports the same file as ./frontend-graph, so both ship one version of it. -->
+    <None Include="../../web/views/frontend-graph/runic-frontend-graph.mjs" Pack="true" PackagePath="buildTransitive/runic-frontend-graph.mjs" Visible="false" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/codegen/index.js"
           Pack="true" PackagePath="tools/codegen/" Visible="false" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/*.dll"

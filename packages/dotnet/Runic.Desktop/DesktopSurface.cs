@@ -44,10 +44,11 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
 
     // The one-time address a host application's window opens this surface with in runic-host/1 hosted mode
     // (WebUiWindow.BeginHostedLaunch).
-    internal Uri BeginHostedLaunch()
+    // connection completes after the page's Connected event.
+    internal Uri BeginHostedLaunch(out Task connection)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        return _engine.BeginHostedLaunch();
+        return _engine.BeginHostedLaunch(out connection);
     }
 
     // sdk#864, P1a: the side panel's page connection slot (WebUiWindow.OpenPanelSlot): a second page of this surface
@@ -173,7 +174,9 @@ public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrai
     /// one at a time, <see cref="DesktopConnectionEventKind.Connected"/> before
     /// <see cref="DesktopConnectionEventKind.Disconnected"/>, and its disconnection follows every call of that page
     /// the surface accepted, such as a Bridge call of Runic Windows and Views. Every subscription receives every
-    /// event, in subscription order. Subscribing does not change how the page navigates or reloads.
+    /// event, in subscription order. Subscribing does not change how the page navigates or reloads. With
+    /// <see cref="DesktopHostOptions.WaitForConnection"/>, opening the window returns after its page's
+    /// <see cref="DesktopConnectionEventKind.Connected"/> handlers, so a handler must not wait for that open.
     /// </remarks>
     public IDisposable SubscribeConnectionEvents(Action<DesktopConnectionEvent> handler)
     {

@@ -77,7 +77,7 @@ and severities are open.
 | [`RUNICBRIDGE023`](#runicbridge023) | Error | Build targets | The application references Runic ReactiveUI adapters of both ReactiveUI flavors |
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator; the analyzer while you type | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
-| [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
+| [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install |
 | [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator; the analyzer while you type | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
 | [`RUNICBRIDGE028`](#runicbridge028) | Warning | The analyzer, while you type and in the build; the generator without it | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
@@ -114,6 +114,11 @@ and severities are open.
 | [`RUNICBRIDGE084`](#runicbridge084) | Error | Build targets | The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's `@runic-artifex/views` |
 | [`RUNICBRIDGE085`](#runicbridge085) | Error | Build targets | A package of a former ID is in the package graph |
 | [`RUNICBRIDGE086`](#runicbridge086) | Error | Build targets | An environment variable of a former name is set |
+| [`RUNICBRIDGE087`](#runicbridge087) | Error | Build targets | The frontend is below a JavaScript workspace that does not list it |
+| [`RUNICBRIDGE088`](#runicbridge088) | Error | Build targets | A file that a frontend package exports does not exist after its build |
+| [`RUNICBRIDGE089`](#runicbridge089) | Warning | Build targets | A workspace member declares another package manager than its workspace |
+| [`RUNICBRIDGE090`](#runicbridge090) | Error | Build targets | The frontend's package manager or JavaScript runtime does not run |
+| [`RUNICBRIDGE091`](#runicbridge091) | Warning | Build targets | `RunicApplicationFrontendInstallMode` is not Auto, Always or Never |
 
 ### Errors and warnings while you type
 
@@ -595,8 +600,15 @@ so a newly published version of a dependency, malicious or not, would run in the
 frontend build. `--ignore-scripts` stops only install scripts, not a build plugin.
 Until 0.10 the build fell back to an unlocked `npm install`.
 
+Since 0.24 a frontend that is a member of a JavaScript workspace installs at the
+workspace root, so the lock file is the root's: the message then names the
+workspace (`…/App/Frontend is a member of the bun workspace at /repo, which has
+no bun.lock`). See
+[JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+
 **Fix:** run the package manager's install once (`npm install`, `pnpm install`
-or `bun install`) and commit the lock file it writes. To install without a lock
+or `bun install`) and commit the lock file it writes: in the frontend's folder,
+or, for a workspace member, in the workspace root. To install without a lock
 file anyway, set `RunicApplicationFrontendAllowUnlockedInstall` to `true`, which
 runs `npm install`, `pnpm install` or `bun install` with `--ignore-scripts`. A
 project that sets `RunicApplicationFrontendInstallCommand`,
@@ -1219,6 +1231,83 @@ environment variable.
 **Fix:** set the variable by its new name and remove the old one from the
 environment, for example from a `launchSettings.json`, a CI workflow or a shell
 profile.
+
+### RUNICBRIDGE087
+
+An error from the `Runic.Application.Views` build targets (since 0.24), before
+the frontend install. The frontend has no lock file of its own and sits below a
+folder that declares a JavaScript workspace (a `package.json` with
+`workspaces`, or `pnpm-workspace.yaml`), but the workspace's patterns do not
+include the frontend's folder. The build would install at the workspace root,
+which does not install the frontend's dependencies.
+
+**Fix:** add the frontend's folder to the root's `workspaces` (or to
+`packages` in `pnpm-workspace.yaml`) and run the install at the root once, so
+that its lock file covers the frontend. To install the frontend on its own
+instead, set `RunicApplicationFrontendWorkspaceRoot` to `none` and commit a
+lock file in the frontend's folder. See
+[JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+
+### RUNICBRIDGE088
+
+An error from the `Runic.Application.Views` build targets (since 0.24). A
+frontend package's `package.json` names a file in `exports`, `main`, `module` or
+`types` that does not exist, so a frontend that imports the package would fail
+to resolve it. It is reported in two places:
+
+- **After a client library's package build** (or with the package current),
+  naming the library project: its build script did not write the file.
+- **Before an application's (or library's) own frontend build**, for each
+  package that its frontend depends on: a library's package whose build is off
+  (`RunicApplicationFrontendBuildEnabled=false`) or did not write the file, or a
+  workspace package that no .NET project owns, which the build builds itself
+  when it has a `build` script.
+
+**Fix:** make the package's build script write the file, correct `exports` in
+its `package.json`, or turn the owner's package build on. See
+[Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
+
+### RUNICBRIDGE089
+
+A warning from the `Runic.Application.Views` build targets (since 0.24): the
+frontend is a member of a JavaScript workspace and its `package.json` declares a
+`packageManager` other than the workspace's, which comes from the root's
+`packageManager` or lock file. The build installs and builds with the
+workspace's manager: the member's would not read the root's lock file, as npm
+fails on Bun's `workspace:*` protocol.
+
+**Fix:** remove `packageManager` from the member's `package.json`, or make it
+the workspace's. To choose the manager yourself, set
+`RunicApplicationFrontendPackageManager`.
+
+### RUNICBRIDGE090
+
+An error from the `Runic.Application.Views` build targets (since 0.24): the
+package manager that the frontend uses does not run, usually because it is not
+installed or not on `PATH`. The build checks it before the frontend install
+(`<manager> --version`), and when the frontend build exits with the shell's
+"command not found" code (127, or 9009 on Windows). The message names the
+manager and where it was declared: `RunicApplicationFrontendPackageManager`,
+the `packageManager` of a `package.json`, a lock file, or npm as the default.
+It is also reported when the JavaScript runtime that resolves a frontend
+workspace, Bun for a Bun workspace and Node.js otherwise, does not run. Before
+0.24 the same failure was `RUNICBRIDGE016` with exit code 127.
+
+**Fix:** install the package manager (Bun 1.4.4 or later, pnpm, or Node.js,
+which includes npm) and make sure the build's environment finds it on `PATH`;
+an IDE may start the build with another `PATH` than your shell. To use another
+manager, set `RunicApplicationFrontendPackageManager`.
+
+### RUNICBRIDGE091
+
+A warning from the `Runic.Application.Views` build targets (since 0.24):
+`RunicApplicationFrontendInstallMode` is neither `Auto`, `Always` nor `Never`
+(compared without case). The build installs as with `Auto`: when the lock file,
+a `package.json` or the package manager changed, or `node_modules` is
+incomplete.
+
+**Fix:** set `Auto`, `Always` or `Never`, or remove the property. See
+[Fast iteration](../packages/dotnet/Runic.Application.Views/README.md#fast-iteration).
 
 ## dotnet runic
 

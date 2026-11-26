@@ -95,6 +95,8 @@ export const packageLayouts = {
       "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.dll", "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.CodeFixes.dll",
       // R7 G6: the TypeScript emitter's launcher and the bundled emitter for projects without a frontend.
       "buildTransitive/runic-views-codegen.mjs", "tools/codegen/index.js",
+      // The JavaScript workspace resolver (rax.frontend-graph/1), which @runic-artifex/views exports too.
+      "buildTransitive/runic-frontend-graph.mjs",
       // The old-name guards (D079.11), which Runic.Desktop ships too.
       "buildTransitive/Runic.Sdk.RenamedNames.targets"],
     rollForwardMajor: ["tools/net10.0/BridgeCodegen.runtimeconfig.json"],
@@ -619,9 +621,17 @@ const packages = {
   '@runic-artifex/react': ['useDebugValue', 'describeViewClient'],
   '@runic-artifex/vue': ['@vue/devtools-api', 'runic.views.calls', 'runic.views.inspector'],
 };
+// Build-time Node scripts that a package exports for the build and the tools, not for an application bundle: they have
+// one build and their own declarations next to them.
+const tools = { '@runic-artifex/views': ['./frontend-graph'] };
 for (const [name, markers] of Object.entries(packages)) {
   const manifest = JSON.parse(readFileSync(new URL(import.meta.resolve(name + '/package.json')), 'utf8'));
-  for (const entry of Object.keys(manifest.exports).filter(entry => entry !== './package.json')) {
+  for (const entry of tools[name] ?? []) {
+    const url = import.meta.resolve(name + entry.slice(1));
+    assert.ok(!url.includes('/dist/development/'), url);
+    assert.ok(existsSync(new URL(url.replace(/\\.mjs$/, '.d.mts'))), url + ' has no declarations');
+  }
+  for (const entry of Object.keys(manifest.exports).filter(entry => entry !== './package.json' && !(tools[name] ?? []).includes(entry))) {
     const url = import.meta.resolve(name + entry.slice(1));
     assert.equal(url.includes('/dist/development/'), development, url);
     assert.ok(existsSync(new URL(url.replace('/dist/development/', '/dist/').replace(/\\.js$/, '.d.ts'))), url + ' has no declarations');

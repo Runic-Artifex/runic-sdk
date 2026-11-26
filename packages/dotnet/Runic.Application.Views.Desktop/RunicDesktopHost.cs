@@ -743,8 +743,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (ownerId is null) opening.ReportOwnerIgnored("the owner is not an open hosted window of this application");
         }
         var window = opening.Window;
+        var launch = surface.BeginHostedLaunch(out var connection);
         var request = new Hosting.HostedWindowRequest(
-            ServeOnlyAnnouncement.WindowTypeName(window.GetType()), surface.BeginHostedLaunch(),
+            ServeOnlyAnnouncement.WindowTypeName(window.GetType()), launch,
             windowOptions.Width, windowOptions.Height, windowOptions.MinimumWidth, windowOptions.MinimumHeight, ownerId,
             Modal: ownerId is not null && opening.Options.Modality == RunicWindowModality.Window,
             GuardClose: opening.CloseGuard is not null,
@@ -804,9 +805,10 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
         opening.UsePresentation(hosted.Presentation!);
         // As a shown window does, the open waits for the page when the Desktop options say so; a region window's page
-        // loads only when a region attaches, so its open does not wait (host-protocol.md, Presentation of a window).
-        if (Desktop.Options.WaitForConnection && hosted.Region is null && surface.ConnectionCount == 0)
-            await WaitForPageAsync(surface, Desktop.Options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+        // loads only when a region attaches, so its open does not wait (host-protocol.md, Presentation of a window). The
+        // wait ends after the page's Connected event, so the open returns with the page counted and the event raised (#1383).
+        if (Desktop.Options.WaitForConnection && hosted.Region is null)
+            await WaitForPageAsync(connection, Desktop.Options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
     }
 
     // A hosted window's native direction (set-layout-direction): WindowOptions' direction when it fixes one, else the
@@ -851,15 +853,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         public void Dispose() => unsubscribe();
     }
 
-    private static async Task WaitForPageAsync(DesktopSurface surface, TimeSpan timeout, CancellationToken cancellationToken)
+    private static async Task WaitForPageAsync(Task connection, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var subscription = surface.SubscribeConnectionEvents(connection =>
-        {
-            if (connection.Kind == DesktopConnectionEventKind.Connected) connected.TrySetResult();
-        });
-        if (surface.ConnectionCount > 0) return;
-        try { await connected.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false); }
+        try { await connection.WaitAsync(timeout, cancellationToken).ConfigureAwait(false); }
         catch (TimeoutException error)
         {
             throw new RunicWindowConfigurationException([new RunicWindowDiagnostic("hosted-window-not-connected",
