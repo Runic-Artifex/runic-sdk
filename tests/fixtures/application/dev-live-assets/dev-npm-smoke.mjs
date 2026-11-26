@@ -1,8 +1,11 @@
 // #1081: `dotnet runic dev` with npm, the runic-app template's default package manager. On Windows Node.js installs npm
 // as npm.cmd, which dev must find through PATHEXT and start through cmd.exe. The fixture's frontend runs here as an npm
-// project: dev installs it (`npm ci`), starts its watcher (`npm run dev`, which copies the page to Frontend/dist), and
-// the Runic Desktop host serves that directory (`--browser`, serve-only). A page edit then reaches the served page,
-// so the watcher that npm started is running. The page is read through dev's --browser address with the code of the
+// project: dev's build installs it (`npm ci`, through the Views targets, which start it through cmd.exe; since 0.24 dev
+// runs no install of its own, devtools-library-dx S3), dev starts its watcher (`npm run dev`, which copies the page to
+// Frontend/dist), and the Runic Desktop host serves that directory (`--browser`, serve-only). A page edit then reaches
+// the served page, so the watcher that npm started is running. The repository turns the frontend install off for its
+// own projects (Directory.Build.props) and the fixture lies below the repository's Bun workspace without being a
+// member, so the smoke turns the install on and makes the frontend its own root. The page is read through dev's --browser address with the code of the
 // `[dev] Browser:` line, as a browser is admitted (#1187); Node does not resolve <label>.localhost on Windows, so the
 // requests go to 127.0.0.1 with the session's name as Host (browser-entry.mjs).
 // Run from the SDK root after a Release build of tools/dotnet-runic:
@@ -40,6 +43,8 @@ await writeFile(lockFile, JSON.stringify({
 
 const environment = { ...process.env };
 delete environment.RUNIC_APPLICATION_SERVE_ONLY;
+environment.RunicApplicationFrontendInstallEnabled = "true";
+environment.RunicApplicationFrontendWorkspaceRoot = "none";
 const dev = spawn("dotnet", [tool, "dev", "--project", project, "-c", "Release", "--no-dotnet-watch", "--browser"], {
   cwd: root,
   env: environment,
@@ -65,9 +70,11 @@ try {
     : /^\[dev\] Ready$/m.test(output) && output.match(/^\[dev\] Browser: Window serves at (\S+)$/m)?.[1], "dev's entry address", 300_000);
   if (typeof started !== "string")
     throw new Error(`dotnet runic dev exited with ${started.exited}:\n${tail(output)}\n${tail(errors)}`);
-  // dev installed the packages with npm and started the watcher through it.
-  if (!/^\[dev\] Installing Views Window frontend dependencies\.\.\.$/m.test(output))
-    throw new Error(`dev did not install the frontend with npm ci:\n${tail(output)}`);
+  // dev's build installed the packages with npm, dev ran no install of its own, and it started the watcher through npm.
+  if (!/Installing frontend dependencies in .+ with npm\./m.test(output))
+    throw new Error(`dev's build did not install the frontend with npm ci:\n${tail(output)}`);
+  if (/^\[dev\] Installing Views Window frontend dependencies/m.test(output))
+    throw new Error(`dev ran its own frontend install besides the build's:\n${tail(output)}`);
   if (!/^\[frontend\] Watching index\.html$/m.test(output)) throw new Error(`npm run dev did not start the watcher:\n${tail(output)}`);
   entry = await admitToBrowserEntry(started);
   await until(async () => (await served()) === "one", "the initial page", 30_000);
