@@ -2,7 +2,7 @@
 // matching, the generators, the corpus loader and the adapter client. They run no implementation; running a corpus
 // against one is `bun run conformance <implementation>`, and its CI gate is a later slice (R6 section 4).
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -10,6 +10,8 @@ import { root } from "./run.mjs";
 import { Adapter, AdapterError } from "./conformance/core/adapter.ts";
 import { names, sameFormat } from "./conformance/core/names.ts";
 import { compare, formatStatus, lintStatus, statusFromReceipt } from "./conformance/core/results.ts";
+import { createDriver } from "./conformance/core/driver.ts";
+import { formatCases as coreFormatCases } from "./conformance/core/cases.ts";
 import { formatCases, loadViewsCorpus } from "./conformance/views/corpus.ts";
 import { Messages, ScenarioFailure, expand, valueEqual } from "./conformance/views/messages.ts";
 import { anchorExists } from "./conformance/cli.ts";
@@ -174,6 +176,7 @@ test("the Views corpus loads with unique ids, and its case list is stable", () =
   assert.deepEqual(cases.find((c) => c.set === "messages.pushes").roles, ["client"]);
   const text = formatCases(names.cases, "views/4", cases);
   assert.equal(text, formatCases(names.cases, "views/4", loadViewsCorpus(corpus)));
+  assert.equal(coreFormatCases(names.cases, "views/4", cases), text, "the core writes the Views case list unchanged");
   assert.equal(JSON.parse(text).cases.length, cases.length);
 });
 
@@ -204,4 +207,40 @@ test("the adapter client speaks JSON lines, reports errors and survives a hang",
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// runic-cli-sdk and runic-translations-sdk vendor eng/conformance/core unchanged (core/README.md, R7 G11).
+test("the driver core imports only its own files, node:* and bun", () => {
+  const dir = resolve(root, "eng/conformance/core");
+  const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+  assert.ok(files.includes("driver.ts") && files.includes("index.ts"));
+  for (const file of files) {
+    const text = readFileSync(join(dir, file), "utf8");
+    for (const [, specifier] of text.matchAll(/\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']/g)) {
+      const ok = /^\.\/[\w-]+$/.test(specifier) ? existsSync(join(dir, `${specifier.slice(2)}.ts`)) : specifier === "bun" || specifier.startsWith("node:");
+      assert.ok(ok, `${file} imports ${specifier}`);
+    }
+  }
+});
+
+test("a driver without corpus modules runs and reports that it has none", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "rax-conformance-empty-"));
+  const log = console.log;
+  const lines = [];
+  console.log = (line) => lines.push(String(line));
+  try {
+    const driver = createDriver({ root: dir, dir, corpora: {}, command: "bun eng/conformance/cli.ts" });
+    assert.equal(await driver.main([]), 0);
+    assert.equal(await driver.main(["list"]), 0);
+    assert.equal(await driver.main(["cases"]), 0);
+    assert.equal(await driver.main(["lint"]), 0);
+    assert.equal(await driver.main(["dotnet-commandline"]), 2);
+  } finally {
+    console.log = log;
+    rmSync(dir, { recursive: true, force: true });
+  }
+  assert.match(lines.join("\n"), /no corpus modules yet/);
+  assert.match(lines.join("\n"), /no implementations yet/);
+  assert.match(lines.join("\n"), /usage: bun eng\/conformance\/cli\.ts <implementation>/, "the messages name the repository's command");
+  assert.match(lines.join("\n"), /unknown implementation dotnet-commandline \(this repository has no corpus modules yet\)/);
 });

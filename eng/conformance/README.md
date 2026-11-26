@@ -87,8 +87,8 @@ example `known-failure` with the issue of the follow-up pull request, or `unsupp
 
 | Path | Content |
 | --- | --- |
-| [`cli.ts`](cli.ts) | the command: runs, receipts, the status check, `cases`, `lint` |
-| [`core/`](core) | the parts every corpus shares: the adapter process client, outcomes, status files and their comparison, the format names |
+| [`cli.ts`](cli.ts) | the command's entry point, which registers runic-sdk's corpus modules |
+| [`core/`](core/README.md) | the parts every corpus and repository shares: the command (runs, receipts, the status check, `cases`, `lint`), the adapter process client, cases, outcomes, status files and their comparison, the format names. runic-cli-sdk and runic-translations-sdk vendor it unchanged |
 | [`views/`](views) | the Views protocol 4 module: corpus loading, message writing and matching, producer steps, vectors |
 | [`implementations.json`](implementations.json) | each implementation: corpus, roles, adapter build and command, status file |
 | [`adapters/ts-client.ts`](adapters/ts-client.ts) | the TypeScript client's adapter (message vectors; client scenarios are #1350) |

@@ -163,6 +163,16 @@ public sealed class RunicPathWatcher : IDisposable
         }
     }
 
+    // Whether an event named a target since its last reading, so that tests let the event arrive before they move the
+    // clock (#1356).
+    internal bool EventPending
+    {
+        get
+        {
+            lock (_gate) return _states.Any(state => state.ByEvent);
+        }
+    }
+
     // Drops platform events, so that tests can exercise the polling backstop.
     internal bool IgnoreEvents { get; set; }
 

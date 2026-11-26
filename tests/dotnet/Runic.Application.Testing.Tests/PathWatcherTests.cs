@@ -439,12 +439,20 @@ internal sealed class PathWatcherTests
         PollingInterval = TimeSpan.FromHours(1),
     };
 
+    // Before it advances the clock, it waits in real time for the platform's event (#1356). The tester advances the
+    // clock at once, and a reading the event did not cause, such as the second one after a watch is restarted for a
+    // directory whose identity changed, reports the change without the event if it comes first. On Linux every write
+    // in .git changes the identity: .NET reads a directory's creation time with lstat, so it is its change time.
+    // An event that never comes still fails below.
     private static async Task<RunicPathChange> EventAsync(RunicPathWatchTester tester, RunicPathWatcher watcher)
     {
         Require(watcher.IsEventDriven, $"The watcher polls instead of watching. {watcher.Describe()}");
+        var waited = Stopwatch.StartNew();
+        var pending = await TestTimeouts.UntilAsync(() => watcher.EventPending, TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(5));
+        var arrival = pending ? $"the event arrived {waited.ElapsedMilliseconds} ms after the change" : $"no event within {waited.ElapsedMilliseconds} ms";
         var change = await NextOrDescribeAsync(tester, watcher);
         // The tester's clock, which started at FakeTimeProvider's default: how much watcher time the waits advanced.
-        Require(change.ByEvent, $"A poll, not an event, reported the change (tester clock {tester.Time.GetUtcNow() - Epoch}). {watcher.Describe()}");
+        Require(change.ByEvent, $"A poll, not an event, reported the change (tester clock {tester.Time.GetUtcNow() - Epoch}; {arrival}). {watcher.Describe()}");
         return change;
     }
 
