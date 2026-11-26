@@ -132,6 +132,7 @@ internal sealed record ConformanceScenario(
     IReadOnlyDictionary<string, ScenarioId> Ids,
     JsonObject Model,
     int? InputBytes,
+    int? PendingUploads,
     IReadOnlyList<JsonObject> Steps)
 {
     internal static ConformanceScenario Read(string path)
@@ -147,6 +148,7 @@ internal sealed record ConformanceScenario(
             ids,
             ConformanceCorpus.Expand(scenario["arrange"]!["model"])!.AsObject(),
             scenario["options"]?["inputBytes"]?.GetValue<int>(),
+            scenario["options"]?["pendingUploads"]?.GetValue<int>(),
             [.. ConformanceCorpus.Expand(scenario["steps"])!.AsArray().Select(step => step!.AsObject())]);
     }
 }

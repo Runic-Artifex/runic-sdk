@@ -81,6 +81,14 @@ public sealed record RunicCsWebUiHostOptions
     public long? MaximumPendingUploadBytes { get; init; }
 
     /// <summary>
+    /// The most unclaimed uploads, whatever their size, that Windows whose
+    /// <see cref="RunicWindowOptions.MaximumPendingUploads"/> is <see langword="null"/> hold at once
+    /// (<see cref="WindowContentSessionOptions.MaximumPendingUploads"/>), at least 1. <see langword="null"/>, the
+    /// default, is 256. The host reads it when each Window opens.
+    /// </summary>
+    public int? MaximumPendingUploads { get; init; }
+
+    /// <summary>
     /// The menus of each window's menu bar, which the page renders, since a CS-WebUI window has no native bar; empty, the
     /// default, for none. <see cref="RunicCsWebUiHost.SetMenuBar"/> replaces them.
     /// </summary>

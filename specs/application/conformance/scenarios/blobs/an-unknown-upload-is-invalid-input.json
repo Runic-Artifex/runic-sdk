@@ -46,7 +46,7 @@
     },
     {"call":{"id":"open-files","op":"open","route":"files"}},
     {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files-request"},
-    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null},"presentation":"ok"},"replyTo":"open-files-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[]},"presentation":"ok"},"replyTo":"open-files-request"},
     {"call":{"id":"attach","op":"command","route":"files","member":"attach","input":{"id":"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC","name":"notes.txt","type":"text/plain","size":5}}},
     {"send":{"kind":"command","route":"files","member":"attach","input":{"id":"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC","name":"notes.txt","type":"text/plain","size":5}},"id":"attach-request"},
     {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-input","message":{"$any":"string","default":"Attach has an invalid input."}}},"replyTo":"attach-request"},

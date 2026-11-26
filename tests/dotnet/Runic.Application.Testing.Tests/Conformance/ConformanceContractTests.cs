@@ -1,7 +1,10 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
+using Runic.Application.Views;
+using Runic.Application.Views.Generated;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests.Conformance;
@@ -15,7 +18,12 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //   executionState; each value has the JSON form of its IR type;
 // - its fields are the IR's checked members;
 // - a set of each value member is accepted exactly when the IR marks it settable;
-// - a can of each command is a request of this protocol exactly when it carries an input as the IR's command does.
+// - its text members (state-changes.md, "Text members") are the IR's members with text: a set with a splice reaches a
+//   settable member exactly when the IR marks it text, and the Bridge compares and splices exactly those members;
+// - a can of each command is a request of this protocol exactly when it carries an input as the IR's command does;
+// - a write with a path below a member of the first row of a keyed collection, or of an object member, reaches the
+//   member exactly when the IR lists the path as a field path (field-paths/1): every path the IR lists, and each member
+//   of the row's or object's type, such as a row's key or a member that holds a blob, which are never field paths.
 public sealed class ConformanceContractTests
 {
     private static readonly string[] Features =
@@ -71,7 +79,14 @@ public sealed class ConformanceContractTests
     {
         "list" or "notes" or "catalog" => new() { ["rows"] = new JsonArray(new JsonObject { ["id"] = 1, ["label"] = "a" }) },
         "invoice" => new() { ["lines"] = new JsonArray(new JsonObject { ["id"] = 1, ["label"] = "a", ["quantity"] = 2 }) },
-        "files" => new() { ["avatar"] = new JsonObject { ["type"] = "text/plain", ["text"] = "a", ["name"] = "a.txt" } },
+        "files" => new()
+        {
+            ["avatar"] = new JsonObject { ["type"] = "text/plain", ["text"] = "a", ["name"] = "a.txt" },
+            ["attachments"] = new JsonArray(new JsonObject
+            {
+                ["id"] = 1, ["name"] = "a.txt", ["preview"] = new JsonObject { ["type"] = "text/plain", ["text"] = "a", ["name"] = "a.txt" },
+            }),
+        },
         _ => [],
     };
 
@@ -135,6 +150,62 @@ public sealed class ConformanceContractTests
             var accepted = set["ok"]!.GetValue<bool>();
             if (accepted != member["settable"] is not null)
                 Fail($"a set of {Wire(member)} answers {set.ToJsonString()}, but the IR has it {(accepted ? "not " : "")}settable");
+        }
+
+        // A splice that changes nothing in the member's value at the open's revision (README, "Text splices in set"):
+        // only a settable text member takes it; any other member answers invalid-request.
+        var revision = reply["revision"]!.GetValue<long>();
+        foreach (var member in members.Where(member => member["kind"]!.GetValue<string>() == "value"))
+        {
+            var length = state[Wire(member)] is JsonValue text && text.TryGetValue<string>(out var value) ? value.Length : 0;
+            var splice = await page.RequestAsync(new JsonObject
+            {
+                ["kind"] = "set", ["route"] = route, ["member"] = Wire(member), ["edit"] = 2,
+                ["splice"] = new JsonObject { ["baseRevision"] = revision, ["length"] = length, ["index"] = 0, ["delete"] = 0, ["text"] = "" },
+            });
+            var reached = splice["error"]?["reason"]?.GetValue<string>() != "invalid-request";
+            if (reached != (member["settable"] is not null && member["text"] is not null))
+                Fail($"a set of {Wire(member)} with a splice answers {splice.ToJsonString()}, but the IR has it {(reached ? "not " : "")}a settable text member");
+        }
+        var textMembers = page.TextMembers(route);
+        var irText = members.Where(member => member["text"] is not null).Select(Wire).Order(StringComparer.Ordinal).ToArray();
+        if (!textMembers.SequenceEqual(irText))
+            Fail($"its text members are [{string.Join(", ", textMembers)}], the IR's [{string.Join(", ", irText)}]");
+
+        // A path write whose expected value no member holds conflicts, or is rejected below a null object, when the path
+        // is a field path, so nothing changes; any other path is invalid-request (README, "Field paths", step 2).
+        var writes = 0;
+        foreach (var member in members.Where(member => member["kind"]!.GetValue<string>() == "value"))
+        {
+            var type = member["value"]!["type"]!.AsObject();
+            var keyed = member["collectionKey"] is not null;
+            var objectType = keyed ? type["element"]!.AsObject() : type;
+            if (objectType["kind"]!.GetValue<string>() != "named"
+                || ir["types"]![objectType["ref"]!.GetValue<string>()]!["kind"]!.GetValue<string>() != "object") continue;
+            if (!keyed && member["settable"] is null) continue;
+            string[] prefix = [];
+            if (keyed)
+            {
+                if (state[Wire(member)] is not JsonArray { Count: > 0 } rows) continue;
+                prefix = [rows[0]![member["collectionKey"]!.GetValue<string>()]!.ToJsonString().Trim('"')];
+            }
+            var declared = (member["fieldPaths"] as JsonArray ?? []).Select(path => string.Join('/', path!["path"]!.AsArray().Select(segment => segment!.GetValue<string>())))
+                .ToHashSet(StringComparer.Ordinal);
+            var candidates = ir["types"]![objectType["ref"]!.GetValue<string>()]!["members"]!.AsArray().Select(item => item!["wire"]!.GetValue<string>())
+                .Concat(declared).Distinct(StringComparer.Ordinal);
+            foreach (var candidate in candidates)
+            {
+                var write = await page.RequestAsync(new JsonObject
+                {
+                    ["kind"] = "write", ["route"] = route, ["member"] = Wire(member),
+                    ["path"] = new JsonArray([.. prefix.Concat(candidate.Split('/')).Select(segment => (JsonNode)segment)]),
+                    ["requestId"] = $"drift-{++writes}", ["expectedVersion"] = revision,
+                    ["expectedValue"] = new JsonObject { ["drift"] = true }, ["value"] = new JsonObject { ["drift"] = true },
+                });
+                var reached = write["error"]?["reason"]?.GetValue<string>() != "invalid-request";
+                if (reached != declared.Contains(candidate))
+                    Fail($"a write of {Wire(member)} at {string.Join('/', prefix.Append(candidate))} answers {write.ToJsonString()}, but the IR {(reached ? "does not list" : "lists")} it as a field path");
+            }
         }
 
         foreach (var command in commands)
@@ -207,6 +278,19 @@ public sealed class ConformanceContractTests
     private sealed class Page(ScenarioTransport transport, ScenarioConnection connection)
     {
         private int _requests;
+
+        // The text members of the Bridge that serves the route. Read-only text members show on the wire only in a
+        // frame's splices, which no generic change of a test View produces, so this reads them from the Bridge.
+        internal string[] TextMembers(string route)
+        {
+            var handler = BridgeDispatcher.For(transport).FindRoute(route)
+                ?? throw new InvalidOperationException($"No Bridge serves {route}.");
+            var owner = handler.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Single(field => typeof(ViewModelBridge).IsAssignableFrom(field.FieldType)).GetValue(handler)!;
+            var text = typeof(ViewModelBridge).GetField("_textMembers", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("ViewModelBridge has no _textMembers: update ConformanceContractTests.");
+            return [.. ((PropertyDescriptor[])text.GetValue(owner)!).Select(member => member.WireName).Order(StringComparer.Ordinal)];
+        }
 
         internal async Task<JsonObject> RequestAsync(JsonObject request)
         {

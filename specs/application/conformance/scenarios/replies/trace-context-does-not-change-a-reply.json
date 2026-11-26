@@ -1,0 +1,37 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "replies.trace-context-does-not-change-a-reply.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "replies",
+  "roles": ["producer"],
+  "requires": ["trace-context/1"],
+  "description": "A request of a call answers the same with a trace context, with one whose traceparent does not parse, and with a trace that is not an object: tracing never fails a request.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-notes": {"kind":"request"},
+    "valid": {"kind":"request"},
+    "invalid": {"kind":"request"},
+    "not-object": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","trace-context/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","trace-context/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok"},"replyTo":"open-notes"},
+    {"send":{"kind":"command","route":"notes","member":"addRow","input":"a","trace":{"traceparent":"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01","tracestate":"rojo=00f067aa0ba902b7"}},"id":"valid"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"rows","kind":"add","index":0,"oldIndex":-1,"keys":["1"],"items":[{"id":1,"label":"a"}]},{"field":"count","kind":"set","value":1},{"field":"summary","kind":"set","value":"rows: 1"},{"field":"canClear","kind":"set","value":true},{"field":"canConfirmClear","kind":"set","value":true}]}},
+    {"receive":{"ok":true,"revision":1},"replyTo":"valid"},
+    {"send":{"kind":"command","route":"notes","member":"addRow","input":"b","trace":{"traceparent":"nonsense"}},"id":"invalid"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"rows","kind":"add","index":1,"oldIndex":-1,"keys":["2"],"items":[{"id":2,"label":"b"}]},{"field":"count","kind":"set","value":2},{"field":"summary","kind":"set","value":"rows: 2"}]}},
+    {"receive":{"ok":true,"revision":2},"replyTo":"invalid"},
+    {"send":{"kind":"command","route":"notes","member":"addRow","input":"c","trace":5},"id":"not-object"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":2,"revision":3,"changes":[{"field":"rows","kind":"add","index":2,"oldIndex":-1,"keys":["3"],"items":[{"id":3,"label":"c"}]},{"field":"count","kind":"set","value":3},{"field":"summary","kind":"set","value":"rows: 3"}]}},
+    {"receive":{"ok":true,"revision":3},"replyTo":"not-object"}
+  ]
+}

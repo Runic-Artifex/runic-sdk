@@ -1,0 +1,32 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-set-of-a-checked-field-counts-its-announcements.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "description": "A checked field's version counts the changes the model announces, and a set raises it through its setter's announcement: the notes View's setter announces also an equal value, so a set of the same value raises the version, and a set of a new value raises it once, not once for the set and once for the announcement.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-notes": {"kind":"request"},
+    "set-same": {"kind":"request"},
+    "set-note": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok"},"replyTo":"open-notes"},
+    {"send":{"kind":"set","route":"notes","member":"note","edit":1,"value":""},"id":"set-same"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"note","kind":"set","value":"","version":1}]}},
+    {"receive":{"ok":true,"revision":1},"replyTo":"set-same"},
+    {"send":{"kind":"set","route":"notes","member":"note","edit":2,"value":"Draft"},"id":"set-note"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"note","kind":"set","value":"Draft","version":2}]}},
+    {"receive":{"ok":true,"revision":2},"replyTo":"set-note"}
+  ]
+}
