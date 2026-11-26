@@ -784,9 +784,11 @@ Only the final `verify` gate succeeding means all required jobs have passed.
 Desktop conformance (`Runic.Desktop.Tests`, a TUnit suite) runs in the native job
 on every OS, not in the managed job. It writes Microsoft.Testing.Platform
 diagnostics and a TRX report to `artifacts/native-tests`. A case fails after two
-minutes, `--timeout 3m` ends the session, and the five-minute Actions step limit
-backs up stalls outside the test application. Failure artifacts are retained by
-the following `always()` upload step. No crash dumps are requested.
+minutes, `--timeout 6m` ends the session, and the eight-minute Actions step limit
+backs up stalls outside the test application. The session holds the browser
+warm-up, the cases and one recorded retry of a case that reached its limit
+(#1347). Failure artifacts are retained by the following `always()` upload step.
+No crash dumps are requested.
 
 ## Flakes
 

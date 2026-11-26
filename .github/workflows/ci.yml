@@ -995,14 +995,16 @@ jobs:
       - name: Build managed desktop contracts
         if: matrix.shard != 'platform'
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
-      # --timeout bounds the whole session, including test-host startup and exit. MTP resolves a
-      # relative results directory against the test binary, so the paths are absolute.
+      # --timeout bounds the whole session, including test-host startup and exit. It holds the browser
+      # warm-up (up to a minute per browser), the cases (one to one and a half minutes) and one recorded
+      # retry: a case that reaches its two-minute limit and its retry (#1347). MTP resolves a relative
+      # results directory against the test binary, so the paths are absolute.
       - name: Test managed desktop contracts
         if: matrix.shard != 'platform'
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: >-
           dotnet run --project tests/dotnet/Runic.Desktop.Tests -c Release --no-build --
-          --timeout 3m --output detailed
+          --timeout 6m --output detailed
           --diagnostic --diagnostic-output-directory ${{ github.workspace }}/artifacts/native-tests
           --results-directory ${{ github.workspace }}/artifacts/native-tests --report-trx --report-trx-filename desktop.trx
       # The managed job runs these cases on Linux. FileSystemWatcher uses ReadDirectoryChangesW on Windows
