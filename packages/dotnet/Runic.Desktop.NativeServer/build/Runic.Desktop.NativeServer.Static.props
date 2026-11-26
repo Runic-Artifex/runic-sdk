@@ -14,8 +14,8 @@
     <!-- NU5128: no lib/ folder by design. NU5127: the native asset is for one runtime identifier only. -->
     <NoWarn>$(NoWarn);NU5128;NU5127</NoWarn>
     <_RunicNativeServerArtifacts Condition="'$(_RunicNativeServerArtifacts)' == ''">$(MSBuildThisFileDirectory)../../../../artifacts/native/runic-server/</_RunicNativeServerArtifacts>
-    <_RunicNativeServerStaticName Condition="$(_RunicNativeServerRuntime.StartsWith('win-'))">runic_server.lib</_RunicNativeServerStaticName>
-    <_RunicNativeServerStaticName Condition="'$(_RunicNativeServerStaticName)' == ''">librunic_server.a</_RunicNativeServerStaticName>
+    <_RunicNativeServerStaticName Condition="$(_RunicNativeServerRuntime.StartsWith('win-'))">rax_server.lib</_RunicNativeServerStaticName>
+    <_RunicNativeServerStaticName Condition="'$(_RunicNativeServerStaticName)' == ''">librax_server.a</_RunicNativeServerStaticName>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)static/README.md" Pack="true" PackagePath="/" />

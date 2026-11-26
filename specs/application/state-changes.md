@@ -130,12 +130,14 @@ A producer never publishes a state or frame with a `null` row or a missing, empt
 the code that changed the collection: a collection is often changed by a binding that an error would end.
 
 - **Withholding.** While a route's keys are invalid, the producer publishes no state or frame on it. Each later change
-  tries again. The first publication with valid keys resumes with a frame on the last published revision, in which
-  each keyed collection whose keys were invalid is a `set`, together with the other members that changed.
+  tries again. A withheld publication still takes the next revision of the window's counter, as a published one
+  does, so the revision of every later state or frame of the route is greater. The first publication with valid keys
+  resumes with a frame whose `baseRevision` is the last published revision, in which each keyed collection whose keys
+  were invalid is a `set`, together with the other members that changed.
 - **Reporting.** When a publication is withheld, the producer pushes
   `{"kind":"failure","route","revision","error":{"kind":"failed","message"}}`, once per field, problem and key until a
   publication succeeds again; rows that shift under the same invalid key do not report it again. `revision` is the
-  producer's current revision and does not change the client's. The message names the field and the rows but no key
+  revision the withheld publication took, and does not change the client's. The message names the field and the rows but no key
   value; in development, `detail` may name the key ([failure detail](README.md#failure-detail)). The client reports
   the notice as a `failed` error and keeps its last state.
 - **Explicit reads.** An `open` or `snapshot` that cannot write the state fails with
@@ -154,6 +156,12 @@ frame on that route (or a full state, below), and the unit's publication takes t
 counter. A unit never shows part of another unit's changes, and a frame is one unit, so a View whose validation spans
 several members stays consistent.
 
+- **Several routes.** A route's publication is its own: when one unit changes several routes, as a change that two
+  Views show does, each route publishes its own frame, and **each frame takes its own next revision** of the window's
+  counter. The frames therefore have different revisions; the order in which the routes publish them is the
+  producer's. A client compares revisions only within a route, so it cannot tell the order apart.
+- **Withheld publications** take a revision too ([invalid keys](#invalid-keys)).
+
 How large a unit is, is the producer's choice: one change notification, a batch the application opens, everything a
 window turn changed, or the notifications of a short interval, as a producer that keeps a minimum time between the units
 of a route does. The conformance scenarios make each mutation step one unit; a producer that coalesces notifications by
@@ -166,6 +174,19 @@ encoding with the encoding it last published on the route, by [canonical equalit
 Every member that differs becomes a `set`, except that a text member may become splices (below). A checked field whose
 version changed is a `set` with the new version, even when its value is equal. A string's encoding is equal exactly
 when the strings are equal, so a producer MAY compare text members as strings.
+
+A checked field's `version` ([checked writes](README.md#checked-writes)) counts the field's changes; it is not a
+revision. It starts at 0 when the producer starts serving the View, and takes 1 more:
+
+- for each change of the field that the model announces, also to an equal value. A producer whose model has no change
+  notifications counts each change that its model API makes to the field, such as a setter call, as announced;
+- for each write the producer applies;
+- once when a write compares the field and finds a value that changed without an announcement. That write is a
+  `conflict` whose `incoming` snapshot has the new version.
+
+A publication never changes the version: it writes the version as it is then. So a unit with two announced changes of
+the field publishes one `set` whose version is 2 more than the last published one, and a change made without an
+announcement, which the publication finds by comparison, is published as a `set` with the version unchanged.
 
 A [query collection](README.md#query-collections)'s member is a value member like the others: its `query`, `total`
 and `version` are compared, and its rows, which the state never holds, are read with `query-rows`.

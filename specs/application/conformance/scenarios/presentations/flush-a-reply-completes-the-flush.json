@@ -1,6 +1,6 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "presentations.flush-a-reply-completes-the-flush.v1",
+  "id": "presentations.flush-a-reply-completes-the-flush.v2",
   "contract": {
     "id": "runic.views",
     "version": 4
@@ -12,9 +12,7 @@
   ],
   "description": "With field-flush/1, a flush that the producer starts before a departure guard pushes flush with an id; the client writes its field drafts and replies flush-reply with that id, which completes the flush.",
   "view": "wizard",
-  "requires": [
-    "presented/1"
-  ],
+  "requires": ["field-flush/1"],
   "ids": {
     "c1": {
       "kind": "connection"

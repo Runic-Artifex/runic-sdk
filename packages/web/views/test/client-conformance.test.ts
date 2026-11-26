@@ -558,8 +558,13 @@ test("the corpus has client scenarios in every set", () => {
     assert.ok(sets.has(set), set);
 });
 
+// Client behaviour the corpus specifies before the client implements it, each with its issue.
+const pending = new Map([
+  ["handshake.version-diagnostic-for-a-runic-release.v1", "#1361: the version diagnostic from the hello reply's release"],
+]);
+
 for (const scenario of scenarios.filter(item => item.roles.includes("client"))) {
-  test(`scenario ${scenario.id}`, async () => {
+  test(`scenario ${scenario.id}`, { skip: pending.get(scenario.id) ?? false }, async () => {
     useVirtualClock();
     try { await run(scenario); } finally { useRealClock(); }
   });

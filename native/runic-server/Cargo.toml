@@ -1,5 +1,5 @@
 [package]
-name = "runic-server"
+name = "runic-artifex-server"
 description = "Native HTTP and WebSocket server for Runic Desktop surfaces (loopback, C ABI for .NET)."
 version.workspace = true
 edition.workspace = true
@@ -8,8 +8,10 @@ rust-version.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# The C ABI's short name (librax_server.so, rax_server.dll, rax_server.h), the one library that overrides its crate
+# name (D079.33, D080.7): a cdylib's file name comes from the library name, and the C ABI is the crate's public face.
 [lib]
-name = "runic_server"
+name = "rax_server"
 # rlib for the Rust tests, cdylib for JIT applications (runtimes/<rid>/native), staticlib for NativeAOT, which links
 # it into the executable (DirectPInvoke).
 crate-type = ["rlib", "cdylib", "staticlib"]

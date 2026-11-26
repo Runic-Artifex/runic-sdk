@@ -212,7 +212,7 @@ test("a linux-x64 framework-dependent publish counts the files that FD1 assigns 
   expect(fileOs(file("GirCore.Gtk-4.0.dll"))).toBe("linux");
   expect(fileOs(file("runtimes/win-x64/native/WebView2Loader.dll", "pe"))).toBe("windows");
   expect(fileOs(file("runtimes/osx-arm64/native/libx.dylib", "macho"))).toBe("macos");
-  expect(fileOs(file("runic_server.dll", "pe"))).toBe("windows");
+  expect(fileOs(file("rax_server.dll", "pe"))).toBe("windows");
   expect(fileOs(file("libwebui-2.so", "elf"))).toBe("linux");
   // Not another OS's: shared assemblies, a managed .dll, and Runic.Desktop.Gtk4, which FD1 copies everywhere (sdk#1150).
   for (const path of ["Runic.Platform.dll", "Runic.Platform.Runtime.dll", "CsWebUi.Native.dll", "Runic.Desktop.Gtk4.dll"]) expect(fileOs(file(path)), path).toBeNull();

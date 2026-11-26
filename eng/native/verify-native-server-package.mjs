@@ -4,11 +4,11 @@
 // back (tests/fixtures/desktop/Runic.Desktop.PackageConsumer), first JIT, then as a NativeAOT executable. It checks
 // that the closure has no ASP.NET Core, that a JIT build loads the package's shared library, and that NativeAOT
 // restores Runic.Desktop.NativeServer.Static.<rid> through the package's runtime.json and links it: one executable,
-// no librunic_server beside it, and no static library in any output.
+// no librax_server beside it, and no static library in any output.
 //
 // An application with a Rust static library of its own (#859) is the fixture's native/ crate, built with Cargo: one
 // NativeAOT publish loads the server's shared library beside the executable (RunicDesktopNativeServerLinkage=Shared),
-// another links the runic-server crate into the application's library (Application). Both run the application's
+// another links the runic-artifex-server crate into the application's library (Application). Both run the application's
 // native function as well as the server. --no-app-native leaves them out; they need Cargo and the host's
 // runtime identifier.
 //
@@ -99,8 +99,8 @@ try {
   assert.deepEqual(frameworks, ["Microsoft.NETCore.App"], "the consumer needs a shared framework besides .NET");
   assert.equal(runtimeConfig.configProperties?.["Runic.Desktop.NativeServer"], true, "the native server switch is not set");
   const jitFiles = files(jit);
-  assert.ok(jitFiles.some(file => /(lib)?runic_server\.(so|dylib|dll)$/.test(file)), "the JIT output has no native server library");
-  assert.ok(!jitFiles.some(file => /(lib)?runic_server\.(a|lib)$/.test(file)), "the JIT output carries the static library");
+  assert.ok(jitFiles.some(file => /(lib)?rax_server\.(so|dylib|dll)$/.test(file)), "the JIT output has no native server library");
+  assert.ok(!jitFiles.some(file => /(lib)?rax_server\.(a|lib)$/.test(file)), "the JIT output carries the static library");
   assert.ok(!jitFiles.some(file => /Microsoft\.AspNetCore\.|Runic\.Desktop\.Kestrel/.test(file)), "the JIT output carries ASP.NET Core");
   const jitOutput = run(join(jit, `Runic.Desktop.PackageConsumer${exe}`), [], jit);
   assert.match(jitOutput, /Runic\.Desktop package consumer passed/);
@@ -110,7 +110,7 @@ try {
   const selfContained = join(directory, "self-contained");
   run("dotnet", ["publish", project, "-c", "Release", "-r", rid, "--self-contained", "true", "-o", selfContained, ...properties], consumer, env);
   const scFiles = files(selfContained);
-  assert.ok(!scFiles.some(file => /(lib)?runic_server\.(a|lib)$/.test(file)), "the self-contained output carries the static library");
+  assert.ok(!scFiles.some(file => /(lib)?rax_server\.(a|lib)$/.test(file)), "the self-contained output carries the static library");
   assert.ok(!scFiles.some(file => /Microsoft\.AspNetCore\./.test(file)), "the self-contained output carries ASP.NET Core");
   report.selfContained = { files: scFiles.length, bytes: bytes(scFiles) };
 
@@ -121,7 +121,7 @@ try {
     assert.ok(Object.keys(aotAssets.libraries).some(name => name.toLowerCase() === `runic.desktop.nativeserver.static.${rid}/${version}`),
       `the NativeAOT restore did not bring Runic.Desktop.NativeServer.Static.${rid} (runtime.json)`);
     const aotFiles = files(native).filter(file => !/\.(pdb|dbg|dSYM)$/.test(file) && !file.includes(".dSYM"));
-    assert.ok(!aotFiles.some(file => /(lib)?runic_server\.(so|dylib|dll|a|lib)$/.test(file)),
+    assert.ok(!aotFiles.some(file => /(lib)?rax_server\.(so|dylib|dll|a|lib)$/.test(file)),
       `the NativeAOT output has a native server library beside the executable: ${aotFiles.join(", ")}`);
     const executable = join(native, `Runic.Desktop.PackageConsumer${exe}`);
     assert.match(run(executable, [], native), /Runic\.Desktop package consumer passed/);
@@ -152,7 +152,7 @@ try {
       run("dotnet", ["publish", project, "-c", "Release", "-r", rid, "-p:PublishAot=true", "-o", output, ...properties,
         `-p:RunicDesktopNativeServerLinkage=${linkage}`, `-p:RunicPackageConsumerNativeLibrary=${library}`], consumer, env);
       const published = files(output).filter(file => !/\.(pdb|dbg)$/.test(file) && !file.includes(".dSYM"));
-      assert.ok(!published.some(file => /(lib)?(runic_server|consumer_native)\.(a|lib)$/.test(file)), `the ${linkage} output carries a static library`);
+      assert.ok(!published.some(file => /(lib)?(rax_server|consumer_native)\.(a|lib)$/.test(file)), `the ${linkage} output carries a static library`);
       const stdout = run(join(output, `Runic.Desktop.PackageConsumer${exe}`), [], output);
       assert.match(stdout, /native library answered 42/);
       assert.match(stdout, /Runic\.Desktop package consumer passed/);
@@ -162,18 +162,18 @@ try {
     const own = buildNative("cargo-own", []);
     // Shared: the server's shared library beside the executable, which loads it at the first window.
     const shared = publishWith("aot-shared", "Shared", own);
-    const sharedServer = shared.filter(file => /(lib)?runic_server\.(so|dylib|dll)$/.test(file));
+    const sharedServer = shared.filter(file => /(lib)?rax_server\.(so|dylib|dll)$/.test(file));
     assert.equal(sharedServer.length, 1, `the Shared output has no single native server library: ${shared.join(", ")}`);
     report.aotShared = { files: shared.length, bytes: bytes(shared) };
 
     // Application: the crate in the application's own library, which exports its C ABI; Runic links no library.
-    const linked = buildNative("cargo-linked", ["--features", "runic-server"]);
+    const linked = buildNative("cargo-linked", ["--features", "runic-artifex-server"]);
     const shipped = lockVersions(join(root, "native/Cargo.lock"));
     const drifted = [...lockVersions(join(cargoProject, "Cargo.lock"))]
       .filter(([key, name]) => name !== "consumer_native" && !shipped.has(key)).map(([key]) => key);
     assert.deepEqual(drifted, [], "the application's lock resolved crates that native/Cargo.lock does not pin");
     const application = publishWith("aot-application", "Application", linked);
-    assert.ok(!application.some(file => /(lib)?runic_server\.(so|dylib|dll)$/.test(file)),
+    assert.ok(!application.some(file => /(lib)?rax_server\.(so|dylib|dll)$/.test(file)),
       `the Application output has a native server library beside the executable: ${application.join(", ")}`);
     report.aotApplication = { files: application.length, bytes: bytes(application) };
   } else if (aot) {

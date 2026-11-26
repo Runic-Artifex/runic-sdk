@@ -402,7 +402,7 @@ Other symptoms:
 | A component region is `unsupported`. | The page's policy does not admit `http://127.0.0.1:*` in `script-src` or `ws://127.0.0.1:*` in `connect-src`; the console names the blocked module. | Add both. |
 | Drops onto the frame do nothing. | A `Runic.Desktop.Gtk4` host, or a policy that refuses `FileDrop`. | GTK 3, WebView2 or WKWebView; check `ServiceAsync`. |
 | The camera does not start in the frame. | WebKitGTK, or `RegionOptions.Permissions` without `MediaCapture`. | Grant it; on Linux show the guest in a window. |
-| `native-server-unavailable`, "implements ABI 4, but Runic.Desktop needs ABI 5". | `Runic.Desktop.NativeServer` of an older version than `Runic.Desktop`. | Use the same version of every Runic package. |
+| `native-server-unavailable`, "its library 'rax_server' could not be loaded", or "implements ABI 5, but Runic.Desktop needs ABI 6". | `Runic.Desktop.NativeServer` of an older version than `Runic.Desktop`. | Use the same version of every Runic package. |
 
 To see what the host's web view does with region frames on Windows, set `RUNIC_DESKTOP_REGION_TRACE=1` before starting
 the host: WebView2 then writes each frame it creates, navigates (launch codes and fragments redacted) and destroys, each

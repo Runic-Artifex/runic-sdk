@@ -58,14 +58,17 @@ page after 18.7 instead of 33.6 ms, on macOS 8.65 instead of 11.83 MiB):
 - Only `GET` and `HEAD` reach the surface's content, as with Kestrel. The one
   exception is a window's uploads (`POST {surface}/_runic/upload`, Views feature
   `blobs/1`), whose bodies stream to the window chunk by chunk (C ABI 3,
-  `runic_server_read`), as Kestrel's do.
+  `rax_server_read`), as Kestrel's do.
 - HTTP/1.1 only, with hyper's default header limits.
 - The library's C ABI must be the one `Runic.Desktop` binds: use the
   `Runic.Desktop.NativeServer` package of the same version as `Runic.Desktop`.
   0.18.0 binds ABI 5: a listener on `[::1]` for a hosted region's frames (ABI 4)
   and an admission check that runs before a connection is read, for an elevated
-  guest's peers (ABI 5). A library of another ABI fails at the first window with
-  `native-server-unavailable`, naming both versions.
+  guest's peers (ABI 5). 0.24.0 binds ABI 6, the same functions under the
+  library name `rax_server` (`librax_server.so`, `rax_server.dll`, …) instead of
+  `runic_server`. A library of another ABI fails at the first window with
+  `native-server-unavailable`, naming both versions; a library of ABI 5 or
+  earlier has the old name and is not found.
 - No ASP.NET Core: a framework-dependent application needs only the .NET
   runtime, and a self-contained one carries no `Microsoft.AspNetCore.*` files.
   An application that resolved `IConfiguration` or `IHostEnvironment` from
@@ -89,8 +92,8 @@ them. Without it, a NativeAOT publish fails with
 [`RUNICDESK005`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk005).
 
 `RunicDesktopNativeServerLibraryDirectory` replaces the package's libraries
-with a directory's `librunic_server.so`/`.dylib`/`.a` or
-`runic_server.dll`/`.lib`; `buildRunicApplication` (Nix) sets it to its source
+with a directory's `librax_server.so`/`.dylib`/`.a` or
+`rax_server.dll`/`.lib`; `buildRunicApplication` (Nix) sets it to its source
 build of the library.
 
 On macOS the shared library carries the linker's ad hoc signature;
@@ -110,8 +113,8 @@ publish gets the server instead (since 0.17.1):
 | `RunicDesktopNativeServerLinkage` | The NativeAOT publish |
 | --- | --- |
 | `Static` (the default) | Links `Runic.Desktop.NativeServer.Static.<rid>`'s library into the executable. |
-| `Shared` | Puts the shared library (`librunic_server.so`, `librunic_server.dylib` or `runic_server.dll`) beside the executable, which loads it at the first window, as a JIT application does. |
-| `Application` | Links no library of Runic's. The application's own static library contains the `runic-server` crate and exports its C functions, which the executable binds at link time. |
+| `Shared` | Puts the shared library (`librax_server.so`, `librax_server.dylib` or `rax_server.dll`) beside the executable, which loads it at the first window, as a JIT application does. |
+| `Application` | Links no library of Runic's. The application's own static library contains the `runic-artifex-server` crate and exports its C functions, which the executable binds at link time. |
 
 The property changes nothing under the JIT (`dotnet run`, tests), which loads
 the package's shared library. Any other value fails with
@@ -128,14 +131,14 @@ linker optimise the server together with the application's own Rust code
 
 ```toml
 [dependencies]
-runic-server = { git = "https://github.com/Runic-Artifex/runic-sdk", tag = "v0.23.0" }
+runic-artifex-server = { git = "https://github.com/Runic-Artifex/runic-sdk", tag = "v0.24.0" }
 ```
 
 Its static library crate names it, because Rust links no dependency that the
 crate never uses, and the C functions would be missing:
 
 ```rust
-use runic_server as _;
+use rax_server as _;
 ```
 
 A library that is also built for WebAssembly, where the server does not
@@ -152,9 +155,9 @@ The project sets the property beside the `NativeLibrary` and
 </PropertyGroup>
 ```
 
-Runic then adds `DirectPInvoke` for `runic_server` and, on Windows, the system
+Runic then adds `DirectPInvoke` for `rax_server` and, on Windows, the system
 libraries Rust's standard library needs. A library without the crate fails to
-link with undefined `runic_server_*` symbols.
+link with undefined `rax_server_*` symbols.
 
 - **Version.** At the first window Runic.Desktop checks the C ABI the library
   implements; a crate of a release with another ABI fails with
@@ -175,10 +178,10 @@ link with undefined `runic_server_*` symbols.
   unwinding.
 - **Shared library of the application.** If the application's crate is also
   a `cdylib`, for its own JIT tests, that library contains the server as well,
-  about 1 MiB; Runic.Desktop still loads `runic_server` under the JIT.
+  about 1 MiB; Runic.Desktop still loads `rax_server` under the JIT.
 - **Nix.** `buildRunicApplication` keeps building the server's library from
   source for JIT builds and tests. The application's Rust derivation fetches the
-  git dependency with a hash: `cargoLock.outputHashes."runic-server-0.17.1"`
+  git dependency with a hash: `cargoLock.outputHashes."runic-artifex-server-0.24.0"`
   ([nix/README.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#the-native-desktop-server-and-an-applications-own-rust-library)).
 
 ## Building it
@@ -195,3 +198,10 @@ any Desktop executable builds against it with `-p:RunicDesktopServer=Native`.
 packages as an application would.
 
 The library's third-party crates are listed in `THIRD-PARTY-NOTICES.md`.
+
+The C functions the shared library exports are listed in
+`native/runic-server/abi/rax_server.symbols`. CI checks each runtime
+identifier's library against it with `node eng/native/symbols.mjs check
+<library or directory>`, and an engineering test keeps it, `rax_server.h`,
+`src/ffi.rs` and the .NET P/Invokes in step. A new function goes into the list
+and the header; a removed one also needs a new `RAX_SERVER_ABI_VERSION`.

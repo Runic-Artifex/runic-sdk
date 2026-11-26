@@ -4,6 +4,7 @@
   "contract": {"id":"runic.views","version":4},
   "area": "canonical",
   "description": "Nesting depth. The depth of a scalar is 0, and an array or object is one deeper than its deepest member; at most 64 is accepted.",
+  "roles": ["producer"],
   "cases": [
     {
       "id": "canonical.limits.depth-64-arrays",

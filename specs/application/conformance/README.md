@@ -17,15 +17,43 @@ The repository checks the corpus itself in `eng/views-conformance.test.mjs` (run
 `bun run test eng/views-conformance.test.mjs`, and in the engineering job): every file against its schema, the
 canonical vectors against a reference RFC 8785 reader and JavaScript's `JSON.stringify` with sorted members, the value
 and message vectors against reference readers of the specification, and every scenario for the resources it creates.
-The producer runner belongs in `Runic.Application.Testing.Tests` and the client runner in the `@runic-artifex/views`
-tests; both are added with the protocol-4 implementations.
+
+The runners:
+
+- the language-neutral conformance driver, [`eng/conformance`](../../../eng/conformance/README.md)
+  (`bun run conformance <implementation>`), which runs every case through a small adapter in the implementation's
+  language ([`rax.conformance-adapter/1`](../../../eng/conformance/PROTOCOL.md)) and compares the outcomes with the
+  implementation's [status file](status);
+- the .NET producer's own runner, in `tests/dotnet/Runic.Application.Testing.Tests/Conformance`;
+- the TypeScript client's own runner, `packages/web/views/test/client-conformance.test.ts`.
+
+**Features an implementation has.** A runner takes the features an implementation has from the implementation's own
+handshake: the `features` of its `hello` reply to a client that lists every feature, or of its `hello` request. It
+never keeps a list of its own. A scenario that [requires](#requirements) a feature the implementation does not list is
+`unsupported`; one that it lists and fails is a failure.
 
 ## Vectors
 
 A vector file follows [`vector.schema.json`](vector.schema.json) (format `runic.views.vector/1`) and holds the cases of
 one topic. Its `id` is `{area}.{file}`, and each case's `id` starts with it and is unique in the corpus. Every case has
 an `operation`, an `input` and one `expect`. `input.encoding` is `json` (the value is embedded), `utf8` (the bytes are
-the UTF-8 encoding of the string `value`) or `base64` (for bytes that are not UTF-8).
+the UTF-8 encoding of the string `value`) or `base64` (for bytes that are not UTF-8). A runner writes a `json` value
+as compact JSON, but its escaping may differ, so a case whose result depends on its size in bytes, such as one with
+`limits`, uses `utf8` or `base64`.
+
+`roles` names the runners that execute a file's cases, as a scenario's `roles` does; absent means both. A runner of
+another role reports the file's cases excluded. A case's `requires`, like a scenario's
+([requirements](#requirements)), names the features it needs; a runner whose implementation does not list one reports
+the case unsupported. The request vectors of a kind that a feature defines require it: `view-requests` requires
+`view-requests/1`, `region` `region-collections/1`, `navigation` `navigation-path/1`, `client-error` `client-errors/1`,
+and `presented` and `closing-reply` `presented/1`.
+
+| Files | `roles` | Why |
+| --- | --- | --- |
+| `canonical/*` | `producer` | The producer canonicalizes, for an operation's identity; the client never does. |
+| `values/*` | both | Both sides read and write every wire value. |
+| `messages/requests.json` | `producer` | Requests as the producer reads them. |
+| `messages/pushes.json`, `messages/replies.json` | `client` | Pushes and replies as the client reads them. |
 
 ### Canonical form (`vectors/canonical`)
 
@@ -58,8 +86,25 @@ the normal form.
 
 ### Messages (`vectors/messages`)
 
-The cases check the message envelope only; whether a route or member exists is checked by scenarios. Requests,
-replies and pushes are read as on a connection that uses every [feature](../README.md#features).
+The cases check the message envelope only; whether a route or member exists is checked by scenarios. Replies and
+pushes are read as on a connection that uses every [feature](../README.md#features).
+
+A producer runner reads each `read-request` case in a **fresh window**, on a new connection. The window serves no View,
+so every route is unknown and a request that names one is answered `released` once its envelope is valid. (An
+implementation that cannot open a window without a View may root it at the `list` View: no case names its route.)
+
+1. Unless the case is itself a `hello`, it first sends the `hello` of the case's file and requires that its reply is
+   successful. That `hello` lists the features the cases' request kinds need (`text-splice/1`,
+   `presentation-epoch/1`, `presented/1`, `view-requests/1`, `region-collections/1`, `client-errors/1` and
+   `navigation-path/1`), and not `request-session/1`, whose requests would have to name the session. A case is a
+   `hello` when its input bytes are one JSON object whose top-level `kind` is the string `"hello"`; input that is not
+   JSON, or not an object, is not a `hello`.
+2. It sends the case's bytes as one request, with failure detail off and, when the case has `limits.inputBytes`,
+   that input limit.
+3. The request is **valid** when its reply is not `rejected` with the reason `invalid-request`, `invalid-input` or
+   `no-hello`. Any other reply counts: a route that nothing serves answers `released`, which is a scenario's concern.
+   It is **invalid** when the reply is `rejected` with one of those reasons, and then `kind` and `reason` must equal
+   `expect.error`.
 
 | `operation` | Role | `expect.result` |
 | --- | --- | --- |
@@ -87,7 +132,8 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `send` | delivers the request to the producer | requires that the client's next request on the connection equals the message |
 | `receive` | requires that the producer's next message on the connection equals the message | delivers the message: as the reply to the request `replyTo`, or as a push. With `drop: true` it does not deliver it. |
 | `advance` | advances the virtual clock by that many milliseconds | the same |
-| `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again | skips it |
+| `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again. Only pushes are held; replies are always taken. The runner's transport lets the producer wait until it took a push, as the producer's [reply order](../README.md#reply-order) needs. | skips it |
+| `flushFields` | starts a [field flush](../README.md#field-flush) of the window and names it `id` | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
 | `setLocale` | sets the window's locale, a tag or `null` ([translated text](../README.md#translated-text)) | skips it |
 | `setAppearance` | sets the window's appearance, an object with the members of the `appearance` push or `null` ([appearance](../README.md#appearance)) | skips it |
@@ -95,8 +141,8 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
 passes only through `advance`. A producer runner's `expect` with `model` waits the same way: it reads the model again
-until every member matches, up to the same timeout (scaled like the runner's other timeouts, such as by
-`RUNIC_TEST_TIMEOUT_SCALE` in the .NET runner). A scenario uses it to wait for work the producer does on its own, such as
+until every member matches, up to the same timeout. A runner scales its timeouts for slow machines, such as by
+`RAX_TEST_TIMEOUT_SCALE` for the driver or `RUNIC_TEST_TIMEOUT_SCALE` for the .NET runner. A scenario uses it to wait for work the producer does on its own, such as
 a guard that a request asks, before its next step.
 
 Where the protocol leaves the order of messages open, such as a reply and the frame or reply of a request admitted
@@ -114,7 +160,10 @@ Messages are compared **by JSON value**, never by bytes or member order, with th
 - **Revisions.** The values of `revision` and `baseRevision` are compared by order: the runner maps each distinct
   expected revision to the actual one the first time it occurs, and the mapping must be consistent and strictly
   increasing. A producer may therefore advance its counter differently, as long as it orders and repeats revisions
-  the same way.
+  the same way. One exception: within a group of `unordered` steps, revisions first seen in the group on different
+  routes may map in either order, since the order of the routes' publications is the producer's
+  ([publication units](../state-changes.md#publication-units)). They still map to different revisions, and each is
+  ordered with every revision outside the group.
 - **Epochs.** The values of `epoch` ([presentation epochs](../README.md#presentation-epochs)) have their own mapping:
   the runner maps each distinct expected epoch of a route to the actual one the first time it occurs, and the mapping
   must be consistent and one-to-one per route, since a producer only has to make each epoch differ from the earlier
@@ -145,6 +194,9 @@ Messages are compared **by JSON value**, never by bytes or member order, with th
   `languages` in every `hello`. A client runner requires that a `hello`'s `languages`, when present, is an array of at
   most 16 strings, and then compares the `hello` without it unless the step's message lists `languages`. Only the
   `client-languages-*` scenarios list it.
+- **Release.** A producer may name its Runic release in each `hello` reply ([handshake](../README.md#handshake)). A
+  producer runner requires that a `hello` reply's `release`, when present, is a string, and then compares the reply
+  without it unless the step's message lists `release`.
 - Failure detail is off in every scenario.
 
 ### Calls
@@ -186,17 +238,29 @@ Expectations of the client:
 
 Expectations of the producer:
 
-- `model`: values of the root View's model.
+- `model`: members of the root View's model, each compared as its wire JSON value with the rules above; members it
+  does not list are not checked. In the same way, `arrange.model` gives the members a View starts with, as wire JSON
+  values, and a member it does not list keeps its default from [Test Views](#test-views).
 - `presented`: the result of the `waitPresented` wait `id` ([painted states](../README.md#painted-states)): `true` or
   `false` once it completed, which the runner waits for as for a `receive` step, or `"pending"` while it has not.
 - `closed`: the close of the `closeWindow` step `id` completed, and `acknowledged` is whether every page acknowledged
   it ([window close](../README.md#window-close)). The runner waits for the close as for a `receive` step.
+- `flushed`: `{id, answered}`, the result of the `flushFields` step `id`: whether every page answered the flush. The
+  runner waits for it as for a `receive` step.
 - `languages`: `{connection, value}`, the languages the producer reports for the connection after its `hello`, in
-  order and in BCP 47 case ([client languages](../README.md#client-languages)): `RunicConnection.Languages` in .NET.
+  order and in BCP 47 case ([client languages](../README.md#client-languages)), as the producer's API reports them
+  (in .NET, `RunicConnection.Languages`).
 
 ### Requirements
 
 `requires` names what a scenario needs beyond the base protocol. A runner without it reports the scenario unsupported.
+This table is the closed list of requirement names, of two kinds:
+
+- **Runner capabilities**, `held-delivery` and `virtual-clock`, describe the test seam, not the protocol. An adapter
+  reports them as its `capabilities`.
+- **Features** are [feature names](../README.md#features). An implementation has the features it lists in its own
+  handshake ([the runners](#views-protocol-4-conformance-corpus)). A scenario requires every feature whose behaviour
+  it checks, also one whose members are part of a state value on every connection, such as `validation-pending/1`.
 
 | Requirement | Meaning |
 | --- | --- |
@@ -214,6 +278,10 @@ Expectations of the producer:
 | `navigation-path/1` | The implementation implements the feature [`navigation-path/1`](../README.md#navigation-paths). |
 | `appearance/1` | The implementation implements the feature [`appearance/1`](../README.md#appearance). |
 | `client-languages/1` | The implementation implements the feature [`client-languages/1`](../README.md#client-languages). Its client `hello` sends `languages` as `{"$any":"array",…}`, since a client sends its browser's. |
+| `client-errors/1` | The implementation implements the feature [`client-errors/1`](../README.md#page-errors). |
+| `blobs/1` | The implementation implements the feature [`blobs/1`](../README.md#blobs-and-uploads). Its scenarios use the `files` View. |
+| `field-flush/1` | The implementation implements the feature [`field-flush/1`](../README.md#field-flush). Its scenarios use the `flushFields` step and the `flushed` expectation. |
+| `validation-pending/1` | The implementation implements the feature [`validation-pending/1`](../README.md#pending). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -231,7 +299,7 @@ reply; one that shows the producer without the feature, such as `locale-is-not-p
 ### Identifiers
 
 `ids` lists every identifier the scenario uses, and nothing else: each connection (`connection`), each `send` step
-(`request`), each call (`call`), each `waitPresented` mutation (`wait`), each `closeWindow` step (`close`), each
+(`request`), each call (`call`), each `waitPresented` mutation (`wait`), each `closeWindow` step (`close`), each `flushFields` step (`flush`), each
 identifier sent on the wire (`wire`, with its `value`) and each value the implementation provides (`provided`). Nothing exists before the steps run. A runner fails a scenario that uses a
 connection before connecting it, answers a request it did not send, expects a call it did not make, or uses an id that
 `ids` does not list; it never fills in a default. The repository's check rejects such scenarios (C1, #667).
@@ -240,8 +308,8 @@ connection before connecting it, answers a request it did not send, expects a ca
 
 | Set | Content |
 | --- | --- |
-| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); the window's appearance pushed after `hello`, also while unknown, and on each change, and not without `appearance/1` (`appearance-*`); the client's languages in `hello` reported on the connection, invalid ones, and ones without `client-languages/1` (`client-languages-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
-| [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)); an asynchronous check that starts and ends (`validation-pending-*`) |
+| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic for a producer that names another Runic release, or for `Runic.Application.Views` of another version, and none for other producers; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); the window's appearance pushed after `hello`, also while unknown, and on each change, and not without `appearance/1` (`appearance-*`); the client's languages in `hello` reported on the connection, invalid ones, and ones without `client-languages/1` (`client-languages-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
+| [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)); an asynchronous check that starts and ends (`validation-pending-*`); revisions: one unit that changes two routes, a withheld publication, which takes a revision, and a checked field's version, which counts changes |
 | [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
@@ -252,12 +320,44 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
 | [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
 | [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version and an unknown total before its reply, and the rows in its order with the count they start; a filter that changes the total, and a client that asks for no position past it; a query the source rejects, and an unknown filter `op` (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
+| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; an upload id that names no unclaimed upload, which is `invalid-input` |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views
 
 The scenarios use these Views. A producer runner implements them in its own language; their behaviour, not their
-code, is normative. Each root View is the root of its own window, and its route is its name.
+code, is normative, and this section is all of it. Each root View is the root of its own window, and its route is its
+name. Each window has failure detail off and publishes each mutation step as soon as it ran: it does not coalesce
+changes by time ([publication units](../state-changes.md#publication-units)).
+
+### Provided ids
+
+A `provided` id ([identifiers](#identifiers)) is a value the producer chooses. A runner asks the producer's adapter for
+it before a message it writes carries it, or binds it the first time a message it checks carries it. These are all of
+them:
+
+| Id | Type | Value |
+| --- | --- | --- |
+| `contract` | string | The operation contract of the `notes` View ([operations](../README.md#operations)), which a `start` names. |
+| `confirmContract` | string | The contract of the `notes` View's `confirm` interaction ([interactions](../README.md#interactions)). |
+| `focusContract`, `revealContract`, `toastContract` | string | The contracts of the `notes` View's view requests `focus`, `reveal` and `toast` ([view requests](../README.md#view-requests)). |
+| `interactionRequest` | string | The `requestId` of an interaction request the producer sends. |
+| `ownerEpoch` | number | The presentation epoch of the presentation an interaction request belongs to. |
+| `flushId` | string | The `id` of a `flush` push ([field flush](../README.md#field-flush)). |
+
+A producer derives the contract ids from the `notes` View's fingerprint, `runic.views.fingerprint/1`
+([contract IR, Fingerprint](../contract-ir.md#fingerprint)), as [derived contracts](../contract-ir.md#derived-contracts)
+says:
+
+- `contract` is `{view}:{fingerprint}`, with the producer's View id;
+- `confirmContract` is `{fingerprint}:interaction:Confirm`;
+- `focusContract`, `revealContract` and `toastContract` are `{fingerprint}:request:Focus`, `…:Reveal` and `…:Toast`.
+
+The fingerprint depends only on the View's wire contract, so producers whose test Views describe the same contract
+compute the same one. `contract` still differs between producers by its View id. Runners take every contract id from
+the adapter, so this corpus does not check the derivation itself. The .NET adapter's test Views are hand-written Bridges
+with placeholder contracts (`conformance-notes`, `conformance.notes.confirm.v1` and the like), not derived ones;
+deriving them is a follow-up (R7 slice G9b).
 
 ### `list`
 
@@ -265,8 +365,10 @@ The model of the protocol-3 collection fixtures. Members:
 
 | Member | Type | Notes |
 | --- | --- | --- |
-| `rows` | keyed collection of `{id: int32, label: string}`, keyed by `id` | changed by the mutations below |
+| `rows` | keyed collection of `{id: int32, label: string}`, keyed by `id` | `[]`; changed by the mutations below |
 | `title` | `string` | settable; default `""`; a text member |
+
+A key of `rows` is the decimal text of `id`, such as `"1"`.
 
 ### `log`
 
@@ -290,7 +392,7 @@ The model of the protocol-3 text fixtures. Members: `log`, a nullable append-onl
 | `isSlowImportExecuting`, `isConfirmClearExecuting` | `boolean` | execution members |
 
 View requests ([view requests](../README.md#view-requests)), whose contracts are the provided ids `focusContract`,
-`revealContract` and `toastContract`:
+`revealContract` and `toastContract`. A request's input is written as the table gives it:
 
 | Request | Input | Delivery | Raised by |
 | --- | --- | --- | --- |
@@ -298,24 +400,33 @@ View requests ([view requests](../README.md#view-requests)), whose contracts are
 | `reveal` | `{id: int32}` | `next-mounted` | the `raise` mutation |
 | `toast` | `{text: string}` | `broadcast` | the `raise` mutation |
 
-Its `fields` are `{"note": {"version"}}`, starting at version 0. Its text members are `title`, `note` and `summary`.
-Commands:
+Its `fields` are `{"note": {"version"}}`, starting at version 0; the version takes 1 more for each change of `note`
+that the model announces (an `assign`, also of an equal value) and for each write the producer applies
+([members](../state-changes.md#members)). Its text members are `title`, `note` and `summary`. Its operation contract is
+the provided id `contract`. Every setter announces its member's change, also to an equal value.
+
+Commands. Each command ends inside one publication unit with its effects, so the frame that shows its effects also
+shows it no longer executing, and an operation's terminal status carries that frame's revision:
 
 | Command | Input | Available | Effect |
 | --- | --- | --- | --- |
 | `addRow` | `string` (the label) | when the label is not empty | appends `{id, label}`, with `id` one more than the largest id (1 for the first row) |
-| `removeRow` | the key of a row (a key command) | always | removes the row; a key of no row is `unresolved-key` |
+| `removeRow` | the key of a row (a key command): the string `"1"` for the row with `id` 1 | always | removes the row; a key of no row is `unresolved-key` |
 | `clear` | none | when there are rows | removes every row, as a reset |
 | `touch` | none | always | appends `!` to `title` without announcing the change, then raises the `focus` view request |
 | `save` | none | always | fails with its declared failure `{"$case": "titleRequired"}` when `title` is empty; otherwise changes nothing |
 | `annotate` | `string` | always | sets the `detail` View's `lastAction` to the input; changes nothing in `notes` |
-| `slowImport` | `{source: string, limit: int32}` | while it is not executing | asynchronous; runs until a `finish` mutation; reports `progress` mutations; `finish` with `rows` appends rows with those labels and succeeds with their number (`int32`); `finish` with `failure` fails with that declared failure (`{"$case": "sourceMissing"}`); `finish` with `outcome: "cancelled"` ends cancelled, which the command honours only after `cancel` |
-| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts |
+| `slowImport` | `{source: string, limit: int32}` | while it is not executing | an operation; runs until a `finish` mutation, and ignores its input; reports each `progress` mutation's `value` (a number) as its progress, in the mutation's unit; `finish` with `rows` appends rows with those labels, with ids as `addRow` gives them, and succeeds with their number (`int32`); `finish` with `failure` fails with the declared failure `{"$case": "sourceMissing"}`; `finish` with `outcome: "cancelled"` ends cancelled after a `cancel`, and fails without one |
+| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts; an output of another shape fails the interaction |
+
+The `confirm` interaction's contract is the provided id `confirmContract`; its input is `{question: string}` and its
+output `{accepted: boolean}`.
 
 ### `detail`
 
-The content View in the `notes` View's `detail` slot. Members: `lastAction` (`string`, default `""`, a text member) and
-`canDismiss`.
+The content View in the `notes` View's `detail` slot, served on the route `content0123456789abcdef0123456789abcdef`.
+Members: `lastAction` (`string`, default `""`, a text member) and `canDismiss`. An `assign` mutation with
+`"view": "detail"` sets `lastAction`; in the same step as a change of `notes`, it is one unit that changes two routes.
 Command `dismiss` (no input, always available) clears the `notes` View's `detail` slot, which releases this View's
 route.
 
@@ -333,7 +444,7 @@ Rules, in this order:
 
 | Rule | Holds | Otherwise |
 | --- | --- | --- |
-| `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, with the [`text`](../README.md#text) `{"version":2,"catalog":"conformance","contractFingerprint":"sha256:` and 64 zeros `","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}`, and in `nameErrors` |
+| `name` | while `name` has at most 8 UTF-16 code units | `Name must be at most 8 characters.` at the path `["name"]`, with the [`text`](../README.md#text) `{"version":2,"catalog":"conformance","contractFingerprint":"sha256:` and 64 zeros `","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}`, and in `nameErrors` |
 | `approval` | until a `rule` mutation changes it; initially it holds | `Approval is required.` at the path `[]`. The rule names no member: a change of it changes no other member and announces none. |
 
 `name` also has an asynchronous check ([`pending`](../README.md#pending), `validation-pending/1`): while a `check`
@@ -365,7 +476,9 @@ A View with field paths ([field paths](../README.md#field-paths), `field-paths/1
 | `address` | `{street: string, city: string}` | `{"street":"","city":""}`; settable, a checked field; its field paths are `["street"]` and `["city"]` |
 | `lines` | keyed collection of `{id: int32, label: string, quantity: int32}`, keyed by `id` | `[]`; its field paths are a row's `["label"]` and `["quantity"]` |
 
-Its `fields` are `{"address": {"version"}}`, starting at version 0. Its row editor replaces the row with the key and
+Its `fields` are `{"address": {"version"}}`, starting at version 0. The `address` setter announces a change only when
+the new address differs from the current one, compared by value (both members), so an `assign` of an equal address
+changes nothing, not even the version. Its row editor replaces the row with the key and
 refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address`, and
 `insert`, `replaceAt` and `removeAt` with `member` `lines`.
 
@@ -398,7 +511,8 @@ member), the View's name.
 ### `files`
 
 A View of [blobs and uploads](../README.md#blobs-and-uploads) (`blobs/1`). The window's blob URLs and upload endpoint
-are below `http://conformance.test/`.
+are below `http://conformance.test/`, and it takes uploads of up to 256 MiB (268435456 bytes): the `maximumBytes` of
+its upload grant.
 
 | Member | Type | Default and behaviour |
 | --- | --- | --- |
@@ -413,7 +527,7 @@ are below `http://conformance.test/`.
 
 | `op` | Members | Effect |
 | --- | --- | --- |
-| `assign` | `member`, `value` | sets a member of the root View, announcing the change |
+| `assign` | `view?`, `member`, `value` | sets a member of the root View, announcing the change; with `view: "detail"`, a member of the `notes` View's `detail` View |
 | `insert`, `removeAt`, `replaceAt`, `move` | `member?`, `index`, `item`; `member?`, `index`; `member?`, `index`, `item`; `oldIndex`, `newIndex` | changes `rows`, or the invoice View's `member` (`lines`), at a position |
 | `reset` | `items` | replaces all rows at once, as a reset |
 | `appendRows` | `start`, `count`, `width?` | appends the rows of the `$rows` generator, one change each |

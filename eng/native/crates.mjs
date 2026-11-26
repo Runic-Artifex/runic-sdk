@@ -17,7 +17,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const manifest = resolve(root, "native/Cargo.toml");
 // The shipped libraries: the crate, its notices file and the sentence that names the library in it.
 const libraries = [
-  { crate: "runic-server", notices: "native/runic-server/THIRD-PARTY-NOTICES.md",
+  { crate: "runic-artifex-server", notices: "native/runic-server/THIRD-PARTY-NOTICES.md",
     library: "The native server library of Runic.Desktop.NativeServer (native/runic-server)" },
 ];
 // SPDX identifiers whose terms allow redistribution in an MIT package without source disclosure.

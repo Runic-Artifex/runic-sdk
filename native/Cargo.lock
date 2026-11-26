@@ -370,7 +370,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "runic-server"
+name = "runic-artifex-server"
 version = "0.24.0"
 dependencies = [
  "axum",

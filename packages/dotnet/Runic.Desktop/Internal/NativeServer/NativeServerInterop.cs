@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 5. Every struct mirrors its
+// The C ABI of native/runic-server (src/ffi.rs, include/rax_server.h), ABI version 6. Every struct mirrors its
 // #[repr(C)] counterpart field by field.
 internal static unsafe partial class NativeServerInterop
 {
-    internal const string Library = "runic_server";
-    internal const uint AbiVersion = 5;
+    internal const string Library = "rax_server";
+    internal const uint AbiVersion = 6;
 
     internal const int Ok = 0;
     internal const int Pending = 1;
@@ -33,7 +33,7 @@ internal static unsafe partial class NativeServerInterop
     internal const uint MessageBinary = 2;
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct RunicStr
+    internal struct RaxStr
     {
         internal byte* Pointer;
         internal nuint Length;
@@ -42,29 +42,29 @@ internal static unsafe partial class NativeServerInterop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct RunicHeader
+    internal struct RaxHeader
     {
-        internal RunicStr Name;
-        internal RunicStr Value;
+        internal RaxStr Name;
+        internal RaxStr Value;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct RunicRequest
+    internal struct RaxRequest
     {
         internal ulong Id;
         internal uint Flags;
         internal ushort RemotePort;
         internal ushort LocalPort;
-        internal RunicStr Method;
-        internal RunicStr Target;
-        internal RunicStr RemoteAddress;
-        internal RunicStr LocalAddress;
-        internal RunicHeader* Headers;
+        internal RaxStr Method;
+        internal RaxStr Target;
+        internal RaxStr RemoteAddress;
+        internal RaxStr LocalAddress;
+        internal RaxHeader* Headers;
         internal nuint HeaderCount;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct RunicServerOptions
+    internal struct RaxServerOptions
     {
         internal uint AbiVersion;
         internal uint Flags;
@@ -74,7 +74,7 @@ internal static unsafe partial class NativeServerInterop
         internal ulong MaxMessageBytes;
         internal uint ReceiveWindow;
         internal void* Context;
-        internal delegate* unmanaged[Cdecl]<void*, RunicRequest*, void> OnRequest;
+        internal delegate* unmanaged[Cdecl]<void*, RaxRequest*, void> OnRequest;
         internal delegate* unmanaged[Cdecl]<void*, ulong, void> OnAborted;
         internal delegate* unmanaged[Cdecl]<void*, ulong, ulong, uint, byte*, nuint, void> OnMessage;
         internal delegate* unmanaged[Cdecl]<void*, ulong, int, byte*, nuint, void> OnClosed;
@@ -84,55 +84,55 @@ internal static unsafe partial class NativeServerInterop
         internal delegate* unmanaged[Cdecl]<void*, byte*, nuint, ushort, byte*, nuint, ushort, int> OnAdmit;
     }
 
-    [LibraryImport(Library, EntryPoint = "runic_server_abi_version")]
+    [LibraryImport(Library, EntryPoint = "rax_server_abi_version")]
     internal static partial uint AbiVersionOfLibrary();
 
-    [LibraryImport(Library, EntryPoint = "runic_server_last_error")]
+    [LibraryImport(Library, EntryPoint = "rax_server_last_error")]
     internal static partial nuint LastError(byte* buffer, nuint capacity);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_start")]
-    internal static partial int Start(RunicServerOptions* options, nint* server, ushort* port);
+    [LibraryImport(Library, EntryPoint = "rax_server_start")]
+    internal static partial int Start(RaxServerOptions* options, nint* server, ushort* port);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_stop")]
+    [LibraryImport(Library, EntryPoint = "rax_server_stop")]
     internal static partial void Stop(nint server);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_respond")]
-    internal static partial int Respond(NativeServerHandle server, ulong id, ushort status, RunicHeader* headers,
-        nuint headerCount, uint body, RunicStr filePath);
+    [LibraryImport(Library, EntryPoint = "rax_server_respond")]
+    internal static partial int Respond(NativeServerHandle server, ulong id, ushort status, RaxHeader* headers,
+        nuint headerCount, uint body, RaxStr filePath);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_write")]
+    [LibraryImport(Library, EntryPoint = "rax_server_write")]
     internal static partial int Write(NativeServerHandle server, ulong id, byte* data, nuint length, ulong token);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_read")]
+    [LibraryImport(Library, EntryPoint = "rax_server_read")]
     internal static partial int Read(NativeServerHandle server, ulong id, ulong token);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_end")]
+    [LibraryImport(Library, EntryPoint = "rax_server_end")]
     internal static partial int End(NativeServerHandle server, ulong id);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_abort")]
+    [LibraryImport(Library, EntryPoint = "rax_server_abort")]
     internal static partial void Abort(NativeServerHandle server, ulong id);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_accept")]
-    internal static partial int AcceptWebSocket(NativeServerHandle server, ulong id, RunicStr protocol,
-        RunicHeader* headers, nuint headerCount);
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_accept")]
+    internal static partial int AcceptWebSocket(NativeServerHandle server, ulong id, RaxStr protocol,
+        RaxHeader* headers, nuint headerCount);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_queue")]
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_queue")]
     internal static partial int Queue(NativeServerHandle server, ulong connection, uint kind, byte* data, nuint length,
         ulong token);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_flush")]
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_flush")]
     internal static partial void FlushQueue(NativeServerHandle server, ulong connection);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_close")]
-    internal static partial int Close(NativeServerHandle server, ulong connection, ushort code, RunicStr reason, ulong token);
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_close")]
+    internal static partial int Close(NativeServerHandle server, ulong connection, ushort code, RaxStr reason, ulong token);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_consume")]
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_consume")]
     internal static partial void Consume(NativeServerHandle server, ulong connection, ulong message);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_abort")]
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_abort")]
     internal static partial void AbortWebSocket(NativeServerHandle server, ulong connection);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_release")]
+    [LibraryImport(Library, EntryPoint = "rax_server_ws_release")]
     internal static partial void Release(NativeServerHandle server, ulong connection);
 
     // The calling thread's last error message from the library.
@@ -148,7 +148,7 @@ internal static unsafe partial class NativeServerInterop
     }
 }
 
-// The server pointer. Every call holds a reference, so runic_server_stop runs only after the calls in progress ended.
+// The server pointer. Every call holds a reference, so rax_server_stop runs only after the calls in progress ended.
 // It also owns the callbacks' context, which it frees after the library stopped.
 internal sealed class NativeServerHandle : SafeHandle
 {

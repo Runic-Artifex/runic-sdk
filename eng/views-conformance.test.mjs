@@ -472,7 +472,36 @@ test("vector files and cases have unique ids that name their area and file", () 
   }
 });
 
-const vectorCases = area => vectorFiles.map(readJson).filter(set => set.area === area).flatMap(set => set.cases);
+// README "Vectors": a file's roles (both when absent) must include the role of each case's operation, and a file of
+// read-request cases commits the hello that a producer runner sends first.
+test("vector files name the roles of their operations and commit the hello of their requests", () => {
+  const roleOf = { "read-request": "producer", "read-push": "client", "read-reply": "client" };
+  for (const path of vectorFiles) {
+    const set = readJson(path);
+    const roles = set.roles ?? ["producer", "client"];
+    for (const item of set.cases) {
+      const role = roleOf[item.operation];
+      if (role) assert.ok(roles.includes(role) && roles.length === 1, `${item.id}: ${item.operation} is for the ${role} role only`);
+    }
+    if (set.cases.some(item => item.operation === "read-request")) {
+      assert.ok(isObject(set.hello), `${set.id}: read-request cases need the file's hello`);
+      assert.deepEqual(readRequest(JSON.stringify(set.hello)), { result: "valid" }, `${set.id}: the hello is valid`);
+      assert.ok(!(set.hello.features ?? []).includes("request-session/1"), `${set.id}: the hello's requests would need a session`);
+    }
+    // A request of a kind that a feature defines requires that feature, which the file's hello lists.
+    const gated = { "view-requests": "view-requests/1", region: "region-collections/1", navigation: "navigation-path/1",
+      "client-error": "client-errors/1", presented: "presented/1", "closing-reply": "presented/1" };
+    for (const item of set.cases.filter(item => item.operation === "read-request")) {
+      let kind;
+      try { kind = JSON.parse(textOf(item.input))?.kind; } catch { kind = undefined; }
+      const feature = gated[kind];
+      assert.deepEqual(item.requires ?? [], feature ? [feature] : [], `${item.id}: requires`);
+      for (const name of item.requires ?? []) assert.ok(set.hello.features.includes(name), `${item.id}: the hello does not list ${name}`);
+    }
+  }
+});
+
+const vectorCases = area =>vectorFiles.map(readJson).filter(set => set.area === area).flatMap(set => set.cases);
 
 test("the canonical vectors match the reference RFC 8785 implementation and JSON.stringify with sorted keys", () => {
   const cases = vectorCases("canonical");
@@ -662,7 +691,9 @@ test("every scenario is self-contained and names its file", () => {
   for (const path of scenarioFiles) {
     const scenario = readJson(path);
     const [set, file] = relative(join(corpus, "scenarios"), path).replace(/\.json$/, "").split("/");
-    if (scenario.set !== set || scenario.id !== `${set}.${file}.v1`) failures.push(`${name(path)}: id ${scenario.id}`);
+    // README "Scenarios": {set}.{file}.v{n}; a case whose meaning changes takes the next n.
+    if (scenario.set !== set || !scenario.id.startsWith(`${set}.${file}.v`) || !/^[1-9][0-9]*$/.test(scenario.id.slice(`${set}.${file}.v`.length)))
+      failures.push(`${name(path)}: id ${scenario.id}`);
     if (ids.has(scenario.id)) failures.push(`${name(path)}: duplicate id`);
     ids.add(scenario.id);
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);

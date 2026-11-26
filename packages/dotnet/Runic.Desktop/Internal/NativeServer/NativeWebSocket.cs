@@ -242,7 +242,7 @@ internal sealed class NativeWebSocket : WebSocket, IValueTaskSource<bool>, IThre
         {
             fixed (byte* pointer = reason)
             {
-                return Close(_server.Handle, Id, (ushort)status, new RunicStr { Pointer = pointer, Length = (nuint)reason.Length },
+                return Close(_server.Handle, Id, (ushort)status, new RaxStr { Pointer = pointer, Length = (nuint)reason.Length },
                     NativePresentationServer.SocketToken(Id));
             }
         }

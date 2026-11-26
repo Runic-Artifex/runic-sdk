@@ -126,6 +126,9 @@ internal static class BridgeMessages
         return buffer.WrittenSpan.ToArray();
     }
 
+    // Every hello reply names the protocol and the implementation, and the Runic release the producer belongs to
+    // (specs/application/README.md, "Handshake"): a client of another release reports the version diagnostic for any
+    // Runic producer, whatever its implementation name. The .NET producer's release is its package version.
     private static void WriteIdentity(Utf8JsonWriter writer)
     {
         writer.WriteNumber("protocol", BridgeDispatcher.ProtocolVersion);
@@ -133,5 +136,6 @@ internal static class BridgeMessages
         writer.WriteString("name", BridgeDispatcher.ImplementationName);
         writer.WriteString("version", BridgeProtocol.PackageVersion);
         writer.WriteEndObject();
+        writer.WriteString("release", BridgeProtocol.PackageVersion);
     }
 }

@@ -117,7 +117,7 @@ const nativeServerStatic = /^Runic\.Desktop\.NativeServer\.Static\.(.+)$/;
 export function nativeServerLibraryMissing(name) {
   const rid = nativeServerStatic.exec(name)?.[1];
   if (!rid) return false;
-  const library = rid.startsWith("win-") ? "runic_server.lib" : "librunic_server.a";
+  const library = rid.startsWith("win-") ? "rax_server.lib" : "librax_server.a";
   return !existsSync(resolve(root, "artifacts/native/runic-server", rid, library));
 }
 export const packedNuget = () => process.env.RUNIC_NATIVE_SERVER_REQUIRE_ALL_RUNTIMES === "true"
