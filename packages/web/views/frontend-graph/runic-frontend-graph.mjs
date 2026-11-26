@@ -13,11 +13,21 @@
 // expands the root's `workspaces` (package.json, an array or `{ "packages": [...] }`) or `packages`
 // (pnpm-workspace.yaml) and reports whether the frontend is a member.
 //
+// `packages` lists the frontend packages that the frontend depends on, dependencies first: each dependency (also a
+// dependency's own) that names a workspace member, by `workspace:` or by name, or a folder, by `file:`, `link:` or
+// `portal:`. A package with a `build` script is `compiled`, otherwise `source`; `exports` are the files that its
+// package.json's `exports`, `main`, `module` and `types` name, and `outputs` the folders of a compiled package's that
+// its build writes (the first folder of each export other than `src`).
+//
 // --out writes the graph as JSON:
 //   { "schema": "rax.frontend-graph/1", "workspaceRoot", "packageManager", "lockFile", "member",
-//     "application": { "directory", "package" }, "members": [{ "directory", "package" }], "packages": [] }
+//     "application": <package>, "members": [{ "directory", "package" }], "packages": [<package>] }
+//   <package>: { "directory", "package", "kind", "build", "watch", "exports", "generatedExport", "outputs" }
 // --msbuild writes the same facts as `name=value` lines for MSBuild's ReadLinesFromFile: `root=`, `member=`,
-// `lockFile=`, and one `manifest=` per package.json of the workspace (the root's first).
+// `lockFile=`, one `manifest=` per package.json of the workspace and of each package (the root's first), the
+// frontend's own `kind=`, `export=` (one per file) and `generatedExport=` (the folder of the `./generated` export), and
+// per package `package=<directory>|<name>|<kind>|<build command>|<watch command>`, `package.export=<directory>|<file>`
+// and `package.output=<directory>|<folder>`. Paths are absolute.
 //
 // Exit code 0 when the graph was written, also when the frontend is not a member (the build reports that as
 // RUNICBRIDGE087); 1 with an `error RUNICBRIDGE024:` line when an input cannot be read.
@@ -145,36 +155,143 @@ export function findWorkspaceRoot(directory) {
   }
 }
 
-const packageName = directory => {
-  try { return readJson(join(directory, "package.json")).name ?? null; } catch { return null; }
+const readManifest = directory => {
+  try { return readJson(join(directory, "package.json")) ?? {}; } catch { return {}; }
 };
+const packageName = directory => readManifest(directory).name ?? null;
+
+const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "optionalDependencies"];
+
+/** The command that runs a package script with the workspace's package manager, as the Views targets run it. */
+export const scriptCommand = (packageManager, script) =>
+  packageManager === "bun" ? `bun run --bun ${script}` : `${packageManager === "pnpm" ? "pnpm" : "npm"} run ${script}`;
+
+// The files an `exports` value names, depth first: a string, an array, or an object of subpaths or conditions.
+function exportTargets(value, found = []) {
+  if (typeof value === "string") found.push(value);
+  else if (Array.isArray(value)) for (const item of value) exportTargets(item, found);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) exportTargets(item, found);
+  return found;
+}
+
+// The file of the `./generated` export that declares its types: `types`, else `default` or `import`, a level deep.
+function generatedExportTarget(exports) {
+  let value = exports && typeof exports === "object" && !Array.isArray(exports) ? exports["./generated"] : undefined;
+  for (let depth = 0; depth < 3 && value && typeof value === "object" && !Array.isArray(value); depth++)
+    value = value.types ?? value.default ?? value.import;
+  return typeof value === "string" ? value : undefined;
+}
+
+const relativeTarget = target => target.replace(/\\/g, "/").replace(/^(?!\.\/)/, "./");
+
+/** A frontend package as the graph lists it; `packageManager` selects the build and watch commands. */
+export function describePackage(directory, packageManager) {
+  const manifest = readManifest(directory);
+  const scripts = manifest.scripts && typeof manifest.scripts === "object" ? manifest.scripts : {};
+  const compiled = typeof scripts.build === "string";
+  const named = [manifest.main, manifest.module, manifest.types, manifest.typings].filter(value => typeof value === "string");
+  // A pattern export (`./*`) names no single file.
+  const exports = [...new Set([...exportTargets(manifest.exports), ...named].filter(target => typeof target === "string" && !target.includes("*")).map(relativeTarget))];
+  const outputs = compiled
+    ? [...new Set(exports.map(target => target.slice(2).split("/")).filter(parts => parts.length > 1 && parts[0] !== "src" && parts[0] !== "..").map(parts => parts[0]))]
+    : [];
+  const generated = generatedExportTarget(manifest.exports);
+  return {
+    directory,
+    package: manifest.name ?? null,
+    kind: compiled ? "compiled" : "source",
+    build: compiled ? scriptCommand(packageManager, "build") : null,
+    watch: typeof scripts.watch === "string" ? scriptCommand(packageManager, "watch") : null,
+    exports,
+    generatedExport: generated ? relativeTarget(dirname(relativeTarget(generated))) : null,
+    outputs: outputs.map(folder => `./${folder}`),
+  };
+}
+
+// The local packages that one package.json depends on: workspace members, by `workspace:` or by name, and folders.
+function localDependencies(directory, membersByName) {
+  const manifest = readManifest(directory);
+  const found = [];
+  for (const field of DEPENDENCY_FIELDS) {
+    const dependencies = manifest[field];
+    if (!dependencies || typeof dependencies !== "object") continue;
+    for (const [name, specification] of Object.entries(dependencies)) {
+      if (typeof specification !== "string") continue;
+      let target;
+      const path = /^(?:file|link|portal|workspace):(\.{1,2}[\\/].*|\/.*)$/.exec(specification)?.[1];
+      if (path !== undefined) {
+        const folder = resolve(directory, path);
+        if (existsSync(join(folder, "package.json"))) target = canonical(folder);
+      } else if (specification.startsWith("workspace:")) {
+        // workspace:*, workspace:^1.0.0, or an alias, workspace:@acme/real-name@*.
+        target = membersByName.get(/^workspace:(@?[^@]+)@/.exec(specification)?.[1] ?? name);
+      } else if (!/^[a-z]+:/i.test(specification)) {
+        // npm workspaces link a member that a dependency names with a version range.
+        target = membersByName.get(name);
+      }
+      if (target) found.push(target);
+    }
+  }
+  return found;
+}
+
+/** The frontend packages that `frontend` depends on, dependencies first (a cycle is cut where it closes). */
+export function dependencyPackages(frontend, members, packageManager) {
+  const membersByName = new Map(members.filter(member => member.package).map(member => [member.package, member.directory]));
+  const seen = new Set();
+  const order = [];
+  const visit = directory => {
+    for (const dependency of localDependencies(directory, membersByName)) {
+      const key = process.platform === "win32" || process.platform === "darwin" ? dependency.toLowerCase() : dependency;
+      if (samePath(dependency, frontend) || seen.has(key)) continue;
+      seen.add(key);
+      visit(dependency);
+      order.push(dependency);
+    }
+  };
+  visit(canonical(frontend));
+  return order.map(directory => describePackage(directory, packageManager));
+}
 
 /** The workspace graph of one frontend (rax.frontend-graph/1). */
 export function resolveFrontendGraph({ frontend, root, packageManager }) {
   const directory = canonical(frontend);
   const workspaceRoot = canonical(root ?? findWorkspaceRoot(directory) ?? directory);
   const standalone = samePath(workspaceRoot, directory);
-  const members = standalone ? [] : workspaceMembers(workspaceRoot);
-  const member = standalone || members.some(candidate => samePath(candidate, directory));
+  const members = (standalone ? [] : workspaceMembers(workspaceRoot)).map(folder => ({ directory: folder, package: packageName(folder) }));
+  const member = standalone || members.some(candidate => samePath(candidate.directory, directory));
   const lock = LOCK_FILES.map(name => join(workspaceRoot, name)).find(existsSync) ?? null;
+  const manager = packageManager ?? "npm";
   return {
     schema: SCHEMA,
     workspaceRoot,
     packageManager: packageManager ?? null,
     lockFile: lock,
     member,
-    application: { directory, package: packageName(directory) },
-    members: members.map(folder => ({ directory: folder, package: packageName(folder) })),
-    packages: [],
+    application: describePackage(directory, manager),
+    members,
+    packages: dependencyPackages(directory, members, manager),
   };
 }
+
+const absolute = (directory, target) => resolve(directory, target);
 
 function msbuildLines(graph) {
   const manifests = [join(graph.workspaceRoot, "package.json"), ...graph.members.map(member => join(member.directory, "package.json"))];
   if (!graph.members.some(member => samePath(member.directory, graph.application.directory)))
     manifests.push(join(graph.application.directory, "package.json"));
-  return [`root=${graph.workspaceRoot}`, `member=${graph.member}`, `lockFile=${graph.lockFile ?? ""}`,
-    ...[...new Set(manifests)].filter(existsSync).map(file => `manifest=${file}`)];
+  manifests.push(...graph.packages.map(entry => join(entry.directory, "package.json")));
+  const self = graph.application;
+  const lines = [`root=${graph.workspaceRoot}`, `member=${graph.member}`, `lockFile=${graph.lockFile ?? ""}`,
+    ...[...new Set(manifests)].filter(existsSync).map(file => `manifest=${file}`),
+    `kind=${self.kind}`, ...self.exports.map(target => `export=${absolute(self.directory, target)}`)];
+  if (self.generatedExport) lines.push(`generatedExport=${absolute(self.directory, self.generatedExport)}`);
+  for (const entry of graph.packages) {
+    lines.push(`package=${[entry.directory, entry.package ?? "", entry.kind, entry.build ?? "", entry.watch ?? ""].join("|")}`);
+    for (const target of entry.exports) lines.push(`package.export=${entry.directory}|${absolute(entry.directory, target)}`);
+    for (const folder of entry.outputs) lines.push(`package.output=${entry.directory}|${absolute(entry.directory, folder)}`);
+  }
+  return lines;
 }
 
 function write(file, text) {

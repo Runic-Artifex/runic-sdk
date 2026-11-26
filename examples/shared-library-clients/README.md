@@ -14,14 +14,15 @@ enough to show it; a second would map the library the same way.
 | [`shared-ui/package.json`](shared-ui/package.json) | The frontend package `@acme/shared-ui`: `exports` for its components, `./generated` (the clients) and `./generated/mocks`, and `@runic-artifex/views` as a peer dependency. |
 | [`shared-ui/src/about-panel.ts`](shared-ui/src/about-panel.ts) | `mountAboutPanel`, a component typed by the generated `AboutClient`. |
 | [`shared-ui/src/generated/`](shared-ui/src/generated/runic-clients.ts) | What SharedUi's build writes: a client, contract and mock per ViewModel, `types.ts`, `runic-clients.ts` and `runic-mocks.ts`. |
-| [`App/SharedLibraryApp.csproj`](App/SharedLibraryApp.csproj) | The application. It references SharedUi and maps it with `RunicApplicationFrontendClientModule`, and lists the package's sources as `RunicApplicationFrontendInput`. |
+| [`App/SharedLibraryApp.csproj`](App/SharedLibraryApp.csproj) | The application. It references SharedUi and maps it with `RunicApplicationFrontendClientModule`. The build adds the package's folder as a frontend input, so an edit to it rebuilds the page. |
 | [`App/ShellViewModel.cs`](App/ShellViewModel.cs), [`ShellWindow.cs`](App/ShellWindow.cs) | The application's own ViewModel, which presents the two library ViewModels as content, and its Window. It declares no View of the library's ViewModels. |
 | [`App/Frontend/src/main.ts`](App/Frontend/src/main.ts) | The Vite page: it connects the shell, mounts the package's about panel, and renders the support menu with `SupportClient` from `@acme/shared-ui/generated`. |
 
 ## What each build writes
 
 `dotnet build App/SharedLibraryApp.csproj` builds SharedUi first. SharedUi's
-build writes `shared-ui/src/generated/`. It builds and copies no frontend, and
+build writes `shared-ui/src/generated/`. The package has no `build` script (it
+exports its TypeScript sources), so SharedUi builds and copies no frontend, and
 the application does not copy the package to its `www/`.
 
 The application's build generates the C# Bridges of all three ViewModels,
@@ -68,6 +69,12 @@ installs the workspace at its root, once for both folders, so a fresh clone
 needs no install step of its own; see
 [JavaScript workspaces](../../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
 Don't set `RunicApplicationFrontendInstallEnabled` to `false` for a workspace.
+
+A compiled package works the same way: give `shared-ui` a `build` script (such
+as `tsc -p tsconfig.build.json`) and `exports` into `dist/`, and SharedUi's build
+builds it, copies the contract declarations beside the compiled clients and
+checks the exports; see
+[Library packages](../../packages/dotnet/Runic.Application.Views/README.md#library-packages).
 
 Keep `resolve.dedupe: ["@runic-artifex/views"]` in the Vite config: a linked
 package can resolve its own copy of the runtime, and the page must load one.

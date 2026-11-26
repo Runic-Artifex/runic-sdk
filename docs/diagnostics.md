@@ -115,6 +115,7 @@ and severities are open.
 | [`RUNICBRIDGE085`](#runicbridge085) | Error | Build targets | A package of a former ID is in the package graph |
 | [`RUNICBRIDGE086`](#runicbridge086) | Error | Build targets | An environment variable of a former name is set |
 | [`RUNICBRIDGE087`](#runicbridge087) | Error | Build targets | The frontend is below a JavaScript workspace that does not list it |
+| [`RUNICBRIDGE088`](#runicbridge088) | Error | Build targets | A file that a frontend package exports does not exist after its build |
 | [`RUNICBRIDGE089`](#runicbridge089) | Warning | Build targets | A workspace member declares another package manager than its workspace |
 | [`RUNICBRIDGE090`](#runicbridge090) | Error | Build targets | The frontend's package manager or JavaScript runtime does not run |
 | [`RUNICBRIDGE091`](#runicbridge091) | Warning | Build targets | `RunicApplicationFrontendInstallMode` is not Auto, Always or Never |
@@ -1246,6 +1247,25 @@ that its lock file covers the frontend. To install the frontend on its own
 instead, set `RunicApplicationFrontendWorkspaceRoot` to `none` and commit a
 lock file in the frontend's folder. See
 [JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+
+### RUNICBRIDGE088
+
+An error from the `Runic.Application.Views` build targets (since 0.24). A
+frontend package's `package.json` names a file in `exports`, `main`, `module` or
+`types` that does not exist, so a frontend that imports the package would fail
+to resolve it. It is reported in two places:
+
+- **After a client library's package build** (or with the package current),
+  naming the library project: its build script did not write the file.
+- **Before an application's (or library's) own frontend build**, for each
+  package that its frontend depends on: a library's package whose build is off
+  (`RunicApplicationFrontendBuildEnabled=false`) or did not write the file, or a
+  workspace package that no .NET project owns, which the build builds itself
+  when it has a `build` script.
+
+**Fix:** make the package's build script write the file, correct `exports` in
+its `package.json`, or turn the owner's package build on. See
+[Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
 
 ### RUNICBRIDGE089
 

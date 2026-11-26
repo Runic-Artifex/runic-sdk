@@ -1711,7 +1711,8 @@ The build writes the usual client, contract (`.contract.d.ts` with its map) and
 mock of each ViewModel to `shared-ui/src/generated/`, with `types.ts`, plus
 `runic-clients.ts`, which exports every client, shared client and named type and
 `runicClientContracts`, and `runic-mocks.ts`, which exports the mocks. A client
-library builds and copies no frontend by default, an application that
+library builds its package when the package has a `build` script and copies no
+frontend (see [Library packages](#library-packages)), an application that
 references it does not copy its frontend to the application's web root, and a
 library without a View is `RUNICBRIDGE006`.
 
@@ -1750,14 +1751,15 @@ value. Chain the command on the write's promise, or await pending field writes
 as a form does before Save.
 
 **A compiled package.** A package that ships TypeScript source, as above, needs
-nothing more. A package compiled with `tsc` to `dist/` must copy each
-`src/generated/*.contract.d.ts` and its `.contract.d.ts.map` to
-`dist/generated/` after `tsc`, because `tsc` does not copy `.d.ts` files to its
-output directory. Without them every client's `.d.ts` fails to resolve its
-contract: `TS2307` in a consumer that checks libraries, and, under
-`skipLibCheck`, which the templates set, client types that are silently `any`.
-Keep the two folders at the same depth, so that the maps' relative paths to the
-C# sources still resolve.
+nothing more. A package compiled to `dist/`, with a `build` script such as
+`tsc -p tsconfig.build.json` and `exports` that point into `dist/`, is built by
+the library's build (since 0.24, [Library packages](#library-packages)). After
+it, the build copies each `src/generated/*.contract.d.ts` and its
+`.contract.d.ts.map` to the folder of the `./generated` export (its `types`,
+else `default`), such as `dist/generated/`, because `tsc` does not copy `.d.ts`
+files to its output directory; without them every client's `.d.ts` would fail
+to resolve its contract. Keep the two folders at the same depth, so that the
+maps' relative paths to the C# sources still resolve.
 
 ### The application
 
@@ -1836,11 +1838,11 @@ because nothing installs the examples' frontends inside the SDK repository.
   export default defineConfig({ resolve: { dedupe: ["@runic-artifex/views"] } });
   ```
 - The application's frontend build reruns when its generated files change, which
-  covers a rebuilt library. When the page bundles the package's own sources,
-  list them as an input so an edit to a component rebuilds the frontend too:
-  ```xml
-  <RunicApplicationFrontendInput Include="../shared-ui/src/**/*" />
-  ```
+  covers a rebuilt library, and when a file of a package that its frontend
+  depends on changes: the build adds the folder of each referenced client
+  library's package, and of each workspace package the frontend depends on, as
+  frontend inputs (since 0.24; before, the page's own
+  `RunicApplicationFrontendInput` item had to list them).
 
 ### Not supported
 
@@ -2566,9 +2568,10 @@ which the host adapters set, are not settings.
 are extension points: a project may run its own targets before or after them
 (`BeforeTargets`/`AfterTargets`), and they keep their names and order. Other
 `RunicViews*` target names are implementation details and may change in any
-release. `RunicViewsGetFrontendFiles`, which an application calls on the
-projects it references, is a protocol between Runic packages of one release, not
-an extension point.
+release. `RunicViewsGetFrontendFiles` and `RunicViewsGetFrontendPackage`, which
+an application calls on the projects it references, are a protocol between Runic
+packages of one release, not extension points. `RunicViewsGetFrontendDependencies`
+returns an application's frontend packages as data ([Library packages](#library-packages)).
 
 | Property | Default | Purpose |
 | --- | --- | --- |
@@ -2583,7 +2586,7 @@ an extension point.
 | `RunicApplicationFrontendInstallMode` | `Auto` | When the build installs the frontend packages (since 0.24): `Auto` when the install's hash changed, `Always` on every build, `Never` not at all, as `RunicApplicationFrontendInstallEnabled=false`. See [Fast iteration](#fast-iteration). Another value is [`RUNICBRIDGE091`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge091). |
 | `RunicApplicationFrontendWorkspaceRoot` | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The [JavaScript workspace](#javascript-workspaces) root where a frontend without its own lock file installs (since 0.24). `none` makes the frontend its own root. |
 | `RunicApplicationFrontendNodeModulesDirectory` | none | A `node_modules` installed by something else, such as the [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md) from the lock file. The install does not run, and the frontend's `node_modules` becomes a symbolic link (a junction on Windows) to it; an existing `node_modules` that is not a link is `RUNICBRIDGE021`. |
-| `RunicApplicationFrontendBuildEnabled` | `true`, `false` in a client library | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
+| `RunicApplicationFrontendBuildEnabled` | `true`, `auto` in a client library | Set `false` when another tool owns the frontend build. TypeScript is still generated. `auto` (since 0.24) builds when the frontend's `package.json` has a `build` script and not otherwise; see [Library packages](#library-packages). |
 | `RunicApplicationFrontendCopyEnabled` | `true`, `false` in a client library | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it, except in a client library that leaves this `false`. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
 | `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as an Angular CLI page (the `runic-app` template's `--frontend angular --translations`) or a Bun page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
@@ -2593,7 +2596,7 @@ an extension point.
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
 | `RunicApplicationFrontendCompositionType` | `<RootNamespace>.RunicViewsComposition` (host adapters), with the namespace made a valid C# name | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
-| `RunicApplicationFrontendClientLibrary` | `false` | `true` makes the project a client library (since 0.24): it generates its Views' TypeScript as a module that other frontends import. Besides the usual output, the generated directory, normally a frontend package's folder such as `../shared-ui/src/generated`, gets `runic-clients.ts`, which exports every client, shared client and named type and `runicClientContracts` (each client's ViewModel and contract fingerprint), and `runic-mocks.ts`, which exports the mocks. The assembly gets the metadata `Runic.Application.Views.ClientLibrary`. Generation is required, so a client library without a View is `RUNICBRIDGE006`. `RunicApplicationFrontendBuildEnabled` and `RunicApplicationFrontendCopyEnabled` default to `false`, and an application that references the library does not copy its frontend to its web root. |
+| `RunicApplicationFrontendClientLibrary` | `false` | `true` makes the project a client library (since 0.24): it generates its Views' TypeScript as a module that other frontends import. Besides the usual output, the generated directory, normally a frontend package's folder such as `../shared-ui/src/generated`, gets `runic-clients.ts`, which exports every client, shared client and named type and `runicClientContracts` (each client's ViewModel and contract fingerprint), and `runic-mocks.ts`, which exports the mocks. The assembly gets the metadata `Runic.Application.Views.ClientLibrary`. Generation is required, so a client library without a View is `RUNICBRIDGE006`. `RunicApplicationFrontendBuildEnabled` defaults to `auto`, which builds the package when it has a `build` script ([Library packages](#library-packages)), and `RunicApplicationFrontendCopyEnabled` to `false`; an application that references the library does not copy its frontend to its web root. |
 | `RunicApplicationFrontendGenerationEnabled` | see below | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
@@ -2640,6 +2643,63 @@ yourself, or to `none` to install the frontend on its own with its own lock
 file. With `RunicApplicationFrontendInstallEnabled=false` the build looks for no
 workspace, as before 0.24: whoever installs owns it.
 
+### Library packages
+
+A frontend package that an application's frontend depends on is built before
+the application's frontend (since 0.24), so a fresh clone needs no manual step:
+
+- **A client library builds its own package** when the package's
+  `package.json` has a `build` script: `RunicApplicationFrontendBuildEnabled`
+  is `auto` in a client library. A package without one, such as the example's
+  source package (`exports` into `src/`), stays unbuilt. Set
+  `RunicApplicationFrontendBuildEnabled=false` in the library to build the
+  package yourself, or `true` to run `RunicApplicationFrontendBuildCommand`
+  without a script. The build runs after the library generates its clients,
+  copies the contract declarations into a compiled package's output (see
+  [Its frontend package](#its-frontend-package)), and checks that every file
+  that the package's `exports`, `main`, `module` and `types` name exists:
+  a missing one is
+  [`RUNICBRIDGE088`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge088),
+  which names the library, instead of a bundler error in the application.
+- **A workspace package that no .NET project owns**, such as a component or
+  tokens package, is built by the project whose frontend depends on it, when it
+  has a `build` script, dependencies first. A dependency counts when it names a
+  workspace member (by `workspace:`, or by name in an npm workspace) or a folder
+  (`file:`, `link:`, `portal:`); with the install off, only the protocols do.
+  Its build runs with the workspace's package manager (`bun run --bun build`,
+  `pnpm run build` or `npm run build`) when one of its files (without
+  `node_modules`, `bin`, `obj`, hidden folders and the folders its exports
+  point into, such as `dist/`), its command or the install changed, or when an
+  export is missing. Its stamp is in the workspace's
+  `node_modules/.runic-builds`, so the projects of a workspace build it once.
+- **Before its own frontend build**, a project checks the exports of every
+  package its frontend depends on, and names the package and its owner
+  (`RUNICBRIDGE088`): a library whose package build is off, or that did not
+  write the file. A frontend build that fails on an import of one of these
+  packages names it in `RUNICBRIDGE016` too.
+- **Inputs.** The folder of each package becomes a frontend input of the
+  application (without `node_modules`, `bin`, `obj` and hidden folders), so an
+  edit to a package, or its rebuilt output, rebuilds the page. The folders are
+  recorded in `obj/runic/frontend-dependencies.txt`, from which Visual Studio's
+  fast up-to-date check reads them, so F5 after an edit to a library's package
+  builds the application even though the library's assembly is unchanged. The
+  record is read when Visual Studio loads the project, so it applies from the
+  first build after that.
+- **As data.** `dotnet msbuild App.csproj
+  -getTargetResult:RunicViewsGetFrontendDependencies` returns the packages,
+  dependencies first, then the application's own frontend (`Kind`
+  `application`), without building: `PackageName`, `Kind` (`compiled` with a
+  `build` script, else `source`), `Owner` and `OwnerName` (the library
+  project; empty for a workspace package), `BuildEnabled`, `BuildCommand`,
+  `WatchCommand`, `GeneratedDirectory`, `WorkspaceRoot`, and the `Specifier`
+  that a `RunicApplicationFrontendClientModule` maps. The JavaScript side of
+  the graph is in `obj/runic/frontend-graph.json` (`rax.frontend-graph/1`), whose
+  `packages` list each package's `kind`, `build`, `watch`, `exports` and
+  `outputs`.
+
+A rebuild with nothing changed builds no package and starts no JavaScript
+process.
+
 ### Fast iteration
 
 A rebuild after a C# or frontend edit runs no package manager: the build installs
@@ -2663,7 +2723,8 @@ frontend only when one of its inputs changed.
   changed, when an install installed something else, or when a file it wrote to
   its output directory is gone. A C#-only edit that changes no contract leaves
   the generated clients, and so the frontend, alone. `-t:Rebuild` builds it
-  again.
+  again. The [packages it depends on](#library-packages) are built the same
+  way, each only when its own files changed.
 - **CI.** A fresh checkout has no `node_modules`, so `Auto` installs there, and a
   restored `node_modules` cache is reused only when its hash matches the
   checkout's lock file and `package.json` files. `ContinuousIntegrationBuild`

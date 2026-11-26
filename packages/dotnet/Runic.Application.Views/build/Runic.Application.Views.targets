@@ -62,10 +62,25 @@
     <RunicApplicationFrontendGeneratedDirectory Condition="'$(RunicApplicationFrontendGeneratedDirectory)' == ''">$(RunicApplicationFrontendDirectory)/src/generated</RunicApplicationFrontendGeneratedDirectory>
     <!-- #1318: a client library (RunicApplicationFrontendClientLibrary=true) generates its Views' TypeScript as a module
          that other applications' frontends import (runic-clients.ts and runic-mocks.ts in the generated directory,
-         normally a frontend package's folder). It requires its Views, and it neither builds nor copies a frontend
-         unless the project sets these properties itself; RunicViewsGetFrontendFiles never returns its own output, so
-         an application that references it does not copy the package to its www/. -->
-    <RunicApplicationFrontendBuildEnabled Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(RunicApplicationFrontendBuildEnabled)' == ''">false</RunicApplicationFrontendBuildEnabled>
+         normally a frontend package's folder). It requires its Views, and it copies no frontend unless the project sets
+         RunicApplicationFrontendCopyEnabled itself; RunicViewsGetFrontendFiles never returns its own output, so an
+         application that references it does not copy the package to its www/.
+         devtools-library-dx M2: RunicApplicationFrontendBuildEnabled is auto for a client library, which builds the
+         package when its package.json has a build script (a compiled package, whose exports its build writes) and
+         leaves a package without one (a source package) unbuilt. false turns the build off, true builds it with or
+         without a script. Compared without case; auto is resolved here, so the targets see true or false. -->
+    <RunicApplicationFrontendBuildEnabled Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(RunicApplicationFrontendBuildEnabled)' == ''">auto</RunicApplicationFrontendBuildEnabled>
+    <_RunicFrontendPackageJson>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendDirectory)', 'package.json'))</_RunicFrontendPackageJson>
+    <_RunicFrontendPackageJsonText Condition="Exists('$(_RunicFrontendPackageJson)')">$([System.IO.File]::ReadAllText('$(_RunicFrontendPackageJson)'))</_RunicFrontendPackageJsonText>
+    <_RunicFrontendHasBuildScript Condition="'$(_RunicFrontendPackageJsonText)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_RunicFrontendPackageJsonText)', '&quot;scripts&quot;\s*:\s*\{[^{}]*&quot;build&quot;\s*:'))">true</_RunicFrontendHasBuildScript>
+    <_RunicFrontendHasWatchScript Condition="'$(_RunicFrontendPackageJsonText)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_RunicFrontendPackageJsonText)', '&quot;scripts&quot;\s*:\s*\{[^{}]*&quot;watch&quot;\s*:'))">true</_RunicFrontendHasWatchScript>
+    <!-- A dependency by workspace:, file:, link: or portal: names a local frontend package (M4), which the build builds
+         when no .NET project owns it. -->
+    <_RunicFrontendLocalDependencies Condition="'$(_RunicFrontendPackageJsonText)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_RunicFrontendPackageJsonText)', '&quot;(workspace|file|link|portal):'))">true</_RunicFrontendLocalDependencies>
+    <_RunicFrontendPackageName Condition="'$(_RunicFrontendPackageJsonText)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(_RunicFrontendPackageJsonText)', '(?&lt;=&quot;name&quot;\s*:\s*&quot;)[^&quot;]+'))</_RunicFrontendPackageName>
+    <_RunicFrontendPackageJsonText></_RunicFrontendPackageJsonText>
+    <RunicApplicationFrontendBuildEnabled Condition="'$(RunicApplicationFrontendBuildEnabled)' == 'auto' and '$(_RunicFrontendHasBuildScript)' == 'true'">true</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendBuildEnabled Condition="'$(RunicApplicationFrontendBuildEnabled)' == 'auto'">false</RunicApplicationFrontendBuildEnabled>
     <RunicApplicationFrontendCopyEnabled Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(RunicApplicationFrontendCopyEnabled)' == ''">false</RunicApplicationFrontendCopyEnabled>
     <!-- The frontend build's output, which build and publish copy, and dotnet runic dev serves from too. A relative
          path is relative to the frontend directory. -->
@@ -116,10 +131,22 @@
        Only Visual Studio reads these items, so another build does not walk the frontend directory to evaluate them;
        the glob's excludes keep evaluation out of node_modules. -->
   <!-- ItemGroup conditions, unlike properties here, see the properties that the SDK sets after this import (OutputType). -->
+  <PropertyGroup Condition="'$(BuildingInsideVisualStudio)' == 'true'">
+    <_RunicFrontendDependenciesRecord>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))', 'runic', 'frontend-dependencies.txt'))</_RunicFrontendDependenciesRecord>
+    <_RunicFrontendDependencyFolders Condition="Exists('$(_RunicFrontendDependenciesRecord)')">$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(_RunicFrontendDependenciesRecord)').Trim()), '[\r\n]+', ';'))</_RunicFrontendDependencyFolders>
+    <!-- A property function's result is escaped, so Unescape turns its ; and * back into separators and wildcards. -->
+    <_RunicFrontendDependencyGlobs Condition="'$(_RunicFrontendDependencyFolders)' != ''">$([MSBuild]::Unescape($([System.Text.RegularExpressions.Regex]::Replace('$(_RunicFrontendDependencyFolders)', '([^;]+)', '$1/**/*'))))</_RunicFrontendDependencyGlobs>
+    <_RunicFrontendDependencyExcludes Condition="'$(_RunicFrontendDependencyFolders)' != ''">$([MSBuild]::Unescape($([System.Text.RegularExpressions.Regex]::Replace('$(_RunicFrontendDependencyFolders)', '([^;]+)', '$1/node_modules/**;$1/bin/**;$1/obj/**;$1/.*/**'))))</_RunicFrontendDependencyExcludes>
+  </PropertyGroup>
   <ItemGroup Condition="'$(BuildingInsideVisualStudio)' == 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendGenerationEnabled)' != 'false' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <UpToDateCheckInput Include="$(RunicApplicationFrontendDirectory)/**/*" Set="RunicFrontend"
         Exclude="$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(_RunicApplicationFrontendOutputPath)**;$(RunicApplicationFrontendDirectory)/build/**;$(RunicApplicationFrontendDirectory)/bin/**;$(RunicApplicationFrontendDirectory)/obj/**;$(RunicApplicationFrontendDirectory)/.*/**;$(RunicApplicationFrontendGeneratedDirectory)/**" />
     <UpToDateCheckInput Include="@(RunicApplicationFrontendInput->Exists())" Set="RunicFrontend" />
+    <!-- M5: the frontend packages that the last build found the frontend depends on (obj/runic/frontend-dependencies.txt),
+         without their installed packages, so that an edit to a library's package, or its rebuilt output, rebuilds the
+         page even when the library's assembly is unchanged. -->
+    <UpToDateCheckInput Include="$(_RunicFrontendDependencyGlobs)" Exclude="$(_RunicFrontendDependencyExcludes)" Set="RunicFrontend"
+        Condition="'$(_RunicFrontendDependencyFolders)' != ''" />
     <!-- Item values see every property; the intermediate paths are those of _RunicViewsIntermediatePaths. -->
     <UpToDateCheckBuilt Include="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))', '$(Configuration)', '$(TargetFramework)', 'runic-frontend-current.stamp'))" Set="RunicFrontend" />
     <UpToDateCheckBuilt Include="$(TargetDir)$(_RunicApplicationFrontendWebRoot)/index.html" Set="RunicWebRoot"
@@ -491,6 +518,13 @@
     <!-- Where the install runs and the lock file must be: the workspace root, or the frontend directory. -->
     <_RunicFrontendInstallDirectory>$(RunicApplicationFrontendDirectory)</_RunicFrontendInstallDirectory>
     <_RunicFrontendInstallDirectory Condition="'$(_RunicFrontendInWorkspace)' == 'true'">$(_RunicFrontendWorkspaceRoot)</_RunicFrontendInstallDirectory>
+    <!-- devtools-library-dx M3/M4: the resolver also lists the frontend's local packages and its own exports. It runs for
+         a workspace member, a frontend with a workspace:, file:, link: or portal: dependency, and a client library
+         whose package has a build script (for its exports). With the install off, the resolver finds the workspace
+         itself; a frontend with its own lock file, or WorkspaceRoot=none, is its own root. -->
+    <_RunicFrontendResolveGraph Condition="Exists('$(RunicApplicationFrontendDirectory)/package.json') and ('$(_RunicFrontendInWorkspace)' == 'true' or '$(_RunicFrontendLocalDependencies)' == 'true' or ('$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(_RunicFrontendHasBuildScript)' == 'true'))">true</_RunicFrontendResolveGraph>
+    <_RunicFrontendGraphRoot Condition="'$(_RunicFrontendInWorkspace)' == 'true'">$(_RunicFrontendWorkspaceRoot)</_RunicFrontendGraphRoot>
+    <_RunicFrontendGraphRoot Condition="'$(_RunicFrontendInWorkspace)' != 'true' and ('$(_RunicFrontendOwnLock)' == 'true' or '$(RunicApplicationFrontendWorkspaceRoot)' == 'none')">$(_RunicFrontendFullDirectory)</_RunicFrontendGraphRoot>
   </PropertyGroup>
 
   <!-- The frontend package manager is RunicApplicationFrontendPackageManager, else the workspace root's package.json
@@ -1422,7 +1456,7 @@
        the frontend build. A missing frontend is RUNICBRIDGE014 rather than a
        failed command. -->
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
-          DependsOnTargets="_RunicViewsIntermediatePaths;RunicViewsResolveHost;RunicViewsGenerateClients"
+          DependsOnTargets="_RunicViewsIntermediatePaths;RunicViewsResolveHost;RunicViewsGenerateClients;_RunicViewsFrontendDependencies"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'">
     <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge014"
            Condition="!Exists('$(RunicApplicationFrontendDirectory)') or ('$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)' and !Exists('$(RunicApplicationFrontendDirectory)/package.json'))"
@@ -1531,6 +1565,14 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
   public string NodeModulesRecord { get; set; }
   // InstallMode Always: install on every build.
   public bool Always { get; set; }
+  // devtools-library-dx M4: a frontend package's build instead of an install. It is current when StampFile holds the
+  // hash and every RequiredOutputs file (the package's exports) exists. The hash covers HashInputs (the install's stamp),
+  // the command, and the path, size and time of every file below HashDirectory except node_modules, bin, obj, hidden
+  // folders and HashExcludes (the build's output folders). The lock is per package folder; no marker is written.
+  public bool PackageBuild { get; set; }
+  public string HashDirectory { get; set; }
+  public ITaskItem[] HashExcludes { get; set; }
+  public ITaskItem[] RequiredOutputs { get; set; }
   [Output] public int ExitCode { get; set; }
   [Output] public bool Installed { get; set; }
   [Output] public bool ProbeFailed { get; set; }
@@ -1550,6 +1592,7 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
   {
     Lines = new ITaskItem[0];
     string directory = Path.GetFullPath(WorkingDirectory);
+    if (PackageBuild) return BuildPackage(directory);
     string modules = Path.Combine(directory, "node_modules");
     string marker = Path.Combine(modules, ".runic-install");
     string hash = Hash();
@@ -1575,9 +1618,7 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
       var lines = new List<string>();
       ExitCode = Run(Command, directory, lines, true);
       Installed = true;
-      var items = new List<ITaskItem>();
-      foreach (string line in lines) if (line.Trim().Length > 0) items.Add(new TaskItem(line.Replace("%", "%25").Replace(";", "%3B").Replace("@", "%40").Replace("$", "%24").Replace("'", "%27")));
-      Lines = items.ToArray();
+      Lines = Escape(lines);
       if (canceled) return false;
       if (ExitCode == 0)
       {
@@ -1591,6 +1632,65 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
       }
       return true;
     }
+  }
+
+  private bool BuildPackage(string directory)
+  {
+    using (FileStream gate = Acquire(directory))
+    {
+      if (gate == null) return false;
+      bool outputs = true;
+      foreach (ITaskItem output in RequiredOutputs ?? new ITaskItem[0]) outputs &= File.Exists(output.ItemSpec);
+      if (!Always && outputs && Read(StampFile) == Hash())
+      {
+        Log.LogMessage(MessageImportance.Low, "The frontend package " + directory + " is built.");
+        return true;
+      }
+      if (!string.IsNullOrEmpty(Message)) Log.LogMessage(MessageImportance.High, Message);
+      try { if (File.Exists(StampFile)) File.Delete(StampFile); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+      var lines = new List<string>();
+      ExitCode = Run(Command, directory, lines, true);
+      Installed = true;
+      Lines = Escape(lines);
+      if (canceled) return false;
+      if (ExitCode == 0)
+      {
+        // Hashed after the build, which may write sources of its own.
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(StampFile)));
+        File.WriteAllText(StampFile, Hash());
+      }
+      return true;
+    }
+  }
+
+  private static ITaskItem[] Escape(List<string> lines)
+  {
+    var items = new List<ITaskItem>();
+    foreach (string line in lines) if (line.Trim().Length > 0) items.Add(new TaskItem(line.Replace("%", "%25").Replace(";", "%3B").Replace("@", "%40").Replace("$", "%24").Replace("'", "%27")));
+    return items.ToArray();
+  }
+
+  // The package's files, without what its build or install writes; reparse points are not followed.
+  private void Walk(string folder, HashSet<string> excluded, List<string> files)
+  {
+    string[] entries;
+    try { entries = Directory.GetFileSystemEntries(folder); } catch (IOException) { return; } catch (UnauthorizedAccessException) { return; }
+    foreach (string entry in entries)
+    {
+      string name = Path.GetFileName(entry);
+      FileAttributes attributes;
+      try { attributes = File.GetAttributes(entry); } catch (IOException) { continue; } catch (UnauthorizedAccessException) { continue; }
+      if ((attributes & FileAttributes.Directory) == 0) { files.Add(entry); continue; }
+      if ((attributes & FileAttributes.ReparsePoint) != 0 || name.StartsWith(".") || name == "node_modules" || name == "bin" || name == "obj") continue;
+      if (excluded.Contains(Key(entry))) continue;
+      Walk(entry, excluded, files);
+    }
+  }
+
+  private static string Key(string path)
+  {
+    string full = Path.GetFullPath(path).TrimEnd('/', '\\');
+    return RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? full : full.ToLowerInvariant();
   }
 
   private static string Read(string file)
@@ -1613,6 +1713,20 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
         previous = path;
         text.Append(path).Append('\n');
         text.Append(File.Exists(path) ? Hex(sha.ComputeHash(File.ReadAllBytes(path))) : "missing").Append('\n');
+      }
+      if (!string.IsNullOrEmpty(HashDirectory))
+      {
+        string root = Path.GetFullPath(HashDirectory).TrimEnd('/', '\\');
+        var excluded = new HashSet<string>(StringComparer.Ordinal);
+        foreach (ITaskItem item in HashExcludes ?? new ITaskItem[0]) excluded.Add(Key(item.ItemSpec));
+        var files = new List<string>();
+        Walk(root, excluded, files);
+        files.Sort(StringComparer.Ordinal);
+        foreach (string file in files)
+        {
+          var info = new FileInfo(file);
+          text.Append(file.Substring(root.Length)).Append('|').Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks).Append('\n');
+        }
       }
       return Hex(sha.ComputeHash(Encoding.UTF8.GetBytes(text.ToString())));
     }
@@ -1755,6 +1869,14 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
       <_RunicFrontendWorkspaceInput Include="$(_RunicViewsFrontendGraphScript);$(MSBuildThisFileFullPath)" />
       <FileWrites Include="$(_RunicFrontendWorkspaceFile);$(_RunicFrontendGraphFile)" />
     </ItemGroup>
+    <!-- The package.json files that the last resolution read, a dependency's among them: a changed one resolves again. -->
+    <ReadLinesFromFile File="$(_RunicFrontendWorkspaceFile)" Condition="Exists('$(_RunicFrontendWorkspaceFile)')">
+      <Output TaskParameter="Lines" ItemName="_RunicFrontendPreviousWorkspaceLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_RunicFrontendWorkspaceInput Include="$([System.String]::Copy('%(_RunicFrontendPreviousWorkspaceLine.Identity)').Substring(9))"
+          Condition="'@(_RunicFrontendPreviousWorkspaceLine)' != '' and $([System.String]::Copy('%(_RunicFrontendPreviousWorkspaceLine.Identity)').StartsWith('manifest=')) and Exists($([System.String]::Copy('%(_RunicFrontendPreviousWorkspaceLine.Identity)').Substring(9)))" />
+    </ItemGroup>
   </Target>
 
   <!-- RUNICBRIDGE087: the workspace root above the frontend must list it, or its install is not the workspace's. The
@@ -1763,8 +1885,11 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
        only when a package.json of the root or the frontend, pnpm-workspace.yaml or the script changed. -->
   <Target Name="RunicViewsResolveFrontendWorkspace" DependsOnTargets="_RunicViewsFrontendWorkspacePaths"
           Inputs="@(_RunicFrontendWorkspaceInput)" Outputs="$(_RunicFrontendWorkspaceFile)"
-          Condition="'$(_RunicFrontendInWorkspace)' == 'true'">
-    <Exec Command="&quot;$(_RunicFrontendScriptRuntime)&quot; &quot;$(_RunicViewsFrontendGraphScript)&quot; --frontend &quot;$(_RunicFrontendFullDirectory)&quot; --root &quot;$(_RunicFrontendWorkspaceRoot)&quot; --package-manager $(RunicApplicationFrontendPackageManager) --out &quot;$(_RunicFrontendGraphFile)&quot; --msbuild &quot;$(_RunicFrontendWorkspaceFile)&quot;"
+          Condition="'$(_RunicFrontendResolveGraph)' == 'true'">
+    <PropertyGroup>
+      <_RunicFrontendGraphRootArgument Condition="'$(_RunicFrontendGraphRoot)' != ''">--root &quot;$(_RunicFrontendGraphRoot)&quot;</_RunicFrontendGraphRootArgument>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_RunicFrontendScriptRuntime)&quot; &quot;$(_RunicViewsFrontendGraphScript)&quot; --frontend &quot;$(_RunicFrontendFullDirectory)&quot; $(_RunicFrontendGraphRootArgument) --package-manager $(RunicApplicationFrontendPackageManager) --out &quot;$(_RunicFrontendGraphFile)&quot; --msbuild &quot;$(_RunicFrontendWorkspaceFile)&quot;"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low" StandardErrorImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="_RunicFrontendGraphExitCode" />
       <Output TaskParameter="ConsoleOutput" ItemName="_RunicFrontendGraphOutputLine" />
@@ -1784,15 +1909,38 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
   </Target>
 
   <Target Name="_RunicViewsReadFrontendWorkspace" DependsOnTargets="RunicViewsResolveFrontendWorkspace"
-          Condition="'$(_RunicFrontendInWorkspace)' == 'true'">
+          Condition="'$(_RunicFrontendResolveGraph)' == 'true'">
     <ReadLinesFromFile File="$(_RunicFrontendWorkspaceFile)" Condition="Exists('$(_RunicFrontendWorkspaceFile)')">
       <Output TaskParameter="Lines" ItemName="_RunicFrontendWorkspaceLine" />
     </ReadLinesFromFile>
     <ItemGroup>
       <_RunicFrontendWorkspaceManifest Include="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').Substring(9))"
           Condition="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').StartsWith('manifest='))" />
-      <_RunicFrontendWorkspaceNonMember Include="@(_RunicFrontendWorkspaceLine)" Condition="'%(Identity)' == 'member=false'" />
+      <_RunicFrontendWorkspaceNonMember Include="@(_RunicFrontendWorkspaceLine)" Condition="'%(Identity)' == 'member=false' and '$(_RunicFrontendInWorkspace)' == 'true'" />
+      <!-- M3: the files that the frontend's own package.json exports. -->
+      <_RunicFrontendOwnExport Include="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').Substring(7))"
+          Condition="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').StartsWith('export='))" />
+      <_RunicFrontendGeneratedExportLine Include="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').Substring(16))"
+          Condition="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').StartsWith('generatedExport='))" />
+      <!-- M4: the frontend packages that it depends on, dependencies first. -->
+      <_RunicFrontendGraphPackageLine Include="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').Substring(8))"
+          Condition="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').StartsWith('package='))" />
+      <_RunicFrontendGraphPackage Include="$([System.String]::Copy('%(_RunicFrontendGraphPackageLine.Identity)').Split('|')[0])" Condition="'@(_RunicFrontendGraphPackageLine)' != ''">
+        <PackageName>$([System.String]::Copy('%(_RunicFrontendGraphPackageLine.Identity)').Split('|')[1])</PackageName>
+        <Kind>$([System.String]::Copy('%(_RunicFrontendGraphPackageLine.Identity)').Split('|')[2])</Kind>
+        <BuildCommand>$([System.String]::Copy('%(_RunicFrontendGraphPackageLine.Identity)').Split('|')[3])</BuildCommand>
+        <WatchCommand>$([System.String]::Copy('%(_RunicFrontendGraphPackageLine.Identity)').Split('|')[4])</WatchCommand>
+      </_RunicFrontendGraphPackage>
+      <_RunicFrontendGraphPackageFileLine Include="@(_RunicFrontendWorkspaceLine)"
+          Condition="$([System.String]::Copy('%(Identity)').StartsWith('package.export=')) or $([System.String]::Copy('%(Identity)').StartsWith('package.output='))" />
+      <_RunicFrontendGraphPackageFile Include="$([System.String]::Copy('%(_RunicFrontendGraphPackageFileLine.Identity)').Substring(15).Split('|')[1])" Condition="'@(_RunicFrontendGraphPackageFileLine)' != ''">
+        <Package>$([System.String]::Copy('%(_RunicFrontendGraphPackageFileLine.Identity)').Substring(15).Split('|')[0])</Package>
+        <Role>$([System.String]::Copy('%(_RunicFrontendGraphPackageFileLine.Identity)').Substring(8, 6))</Role>
+      </_RunicFrontendGraphPackageFile>
     </ItemGroup>
+    <PropertyGroup>
+      <_RunicFrontendGeneratedExport>@(_RunicFrontendGeneratedExportLine)</_RunicFrontendGeneratedExport>
+    </PropertyGroup>
     <PropertyGroup>
       <_RunicFrontendWorkspaceMembersFile Condition="Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml') and !$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendWorkspaceRoot)/package.json')), '&quot;workspaces&quot;\s*:'))">$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml's packages</_RunicFrontendWorkspaceMembersFile>
       <_RunicFrontendWorkspaceMembersFile Condition="'$(_RunicFrontendWorkspaceMembersFile)' == ''">the workspaces of $(_RunicFrontendWorkspaceRoot)/package.json</_RunicFrontendWorkspaceMembersFile>
@@ -1805,6 +1953,198 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
     <Error Code="RUNICBRIDGE087" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge087"
            Condition="'@(_RunicFrontendWorkspaceNonMember)' != ''"
            Text="The frontend $(_RunicFrontendFullDirectory) is below the $(RunicApplicationFrontendPackageManager) workspace at $(_RunicFrontendWorkspaceRoot), but $(_RunicFrontendWorkspaceMembersFile) do not include it, so the workspace's install would not install it. Add it to the workspace, or set RunicApplicationFrontendWorkspaceRoot=none to install it on its own with its own lock file." />
+  </Target>
+
+  <!-- devtools-library-dx M4: the frontend packages as data. RunicViewsGetFrontendPackage returns a client library's
+       package after those of its references, transitively; an application calls it on its references, and so learns
+       which .NET project owns (generates and builds) which package. Metadata: PackageName, Kind (compiled when its
+       package.json has a build script, else source), Owner and OwnerName (the project), AssemblyName,
+       GeneratedDirectory, BuildEnabled, BuildCommand, WatchCommand and WorkspaceRoot. It builds nothing. -->
+  <Target Name="RunicViewsGetFrontendPackage" DependsOnTargets="_RunicViewsCollectReferencedFrontendPackages"
+          Returns="@(_RunicViewsReferencedFrontendPackage);@(_RunicViewsOwnFrontendPackage)">
+    <PropertyGroup Condition="'$(_RunicFrontendHasWatchScript)' == 'true'">
+      <_RunicFrontendWatchCommand Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">bun run --bun watch</_RunicFrontendWatchCommand>
+      <_RunicFrontendWatchCommand Condition="'$(_RunicFrontendWatchCommand)' == ''">$(RunicApplicationFrontendPackageManager) run watch</_RunicFrontendWatchCommand>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicFrontendFullDirectory)' != ''">
+      <_RunicViewsOwnFrontendPackage Include="$(_RunicFrontendFullDirectory)">
+        <PackageName>$(_RunicFrontendPackageName)</PackageName>
+        <Kind Condition="'$(_RunicFrontendHasBuildScript)' == 'true'">compiled</Kind>
+        <Kind Condition="'$(_RunicFrontendHasBuildScript)' != 'true'">source</Kind>
+        <Owner>$(MSBuildProjectFullPath)</Owner>
+        <OwnerName>$(MSBuildProjectName)</OwnerName>
+        <Description>the frontend package of $(MSBuildProjectName)</Description>
+        <AssemblyName>$(AssemblyName)</AssemblyName>
+        <GeneratedDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendGeneratedDirectory)'))</GeneratedDirectory>
+        <BuildEnabled>$(RunicApplicationFrontendBuildEnabled)</BuildEnabled>
+        <BuildCommand Condition="'$(RunicApplicationFrontendBuildEnabled)' != 'false'">$(RunicApplicationFrontendBuildCommand)</BuildCommand>
+        <WatchCommand>$(_RunicFrontendWatchCommand)</WatchCommand>
+        <WorkspaceRoot>$(_RunicFrontendWorkspaceRoot)</WorkspaceRoot>
+      </_RunicViewsOwnFrontendPackage>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_RunicViewsCollectReferencedFrontendPackages"
+          DependsOnTargets="AssignProjectConfiguration;_SplitProjectReferencesByFileExistence;_GetProjectReferenceTargetFrameworkProperties"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '@(ProjectReference)' != '' and '$(UsingMicrosoftNETSdk)' == 'true'">
+    <MSBuild Projects="@(_MSBuildProjectReferenceExistent)" Targets="RunicViewsGetFrontendPackage"
+             BuildInParallel="$(BuildInParallel)" SkipNonexistentTargets="true"
+             Properties="%(_MSBuildProjectReferenceExistent.SetConfiguration); %(_MSBuildProjectReferenceExistent.SetPlatform); %(_MSBuildProjectReferenceExistent.SetTargetFramework)"
+             RemoveProperties="%(_MSBuildProjectReferenceExistent.GlobalPropertiesToRemove)"
+             Condition="'@(_MSBuildProjectReferenceExistent)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_RunicViewsReferencedFrontendPackageFound" />
+    </MSBuild>
+    <RemoveDuplicates Inputs="@(_RunicViewsReferencedFrontendPackageFound)">
+      <Output TaskParameter="Filtered" ItemName="_RunicViewsReferencedFrontendPackage" />
+    </RemoveDuplicates>
+  </Target>
+
+  <!-- The packages that this frontend depends on: those of the referenced client libraries, and the workspace or folder
+       packages that the resolver found and no referenced project owns (by name, else by folder). The application adds
+       their folders (without node_modules, bin, obj and hidden folders) as frontend inputs (M5), so an edit to a
+       package or its rebuilt output rebuilds the page, and records them in obj/runic/frontend-dependencies.txt, from
+       which Visual Studio's fast up-to-date check gets them. -->
+  <Target Name="_RunicViewsFrontendDependencies"
+          DependsOnTargets="_RunicViewsIntermediatePaths;_RunicViewsReadFrontendWorkspace;_RunicViewsCollectReferencedFrontendPackages"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicViewsOwnedPackageNames>;@(_RunicViewsReferencedFrontendPackage->'%(PackageName)', ';');</_RunicViewsOwnedPackageNames>
+      <_RunicFrontendGraphRootDirectory></_RunicFrontendGraphRootDirectory>
+      <_RunicFrontendGraphRootDirectory Condition="'%(_RunicFrontendWorkspaceLine.Identity)' != '' and $([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').StartsWith('root='))">$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').Substring(5))</_RunicFrontendGraphRootDirectory>
+      <_RunicViewsFrontendDependenciesFile>$(_RunicBridgeBaseIntermediateDirectory)runic/frontend-dependencies.txt</_RunicViewsFrontendDependenciesFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicViewsUnownedFrontendPackage Include="@(_RunicFrontendGraphPackage)" Exclude="@(_RunicViewsReferencedFrontendPackage)"
+          Condition="'%(_RunicFrontendGraphPackage.PackageName)' == '' or !$(_RunicViewsOwnedPackageNames.Contains(';%(_RunicFrontendGraphPackage.PackageName);'))">
+        <Description>a workspace package that no .NET project owns</Description>
+        <WorkspaceRoot>$(_RunicFrontendGraphRootDirectory)</WorkspaceRoot>
+      </_RunicViewsUnownedFrontendPackage>
+      <_RunicViewsFrontendDependencyPackage Include="@(_RunicViewsReferencedFrontendPackage);@(_RunicViewsUnownedFrontendPackage)" />
+    </ItemGroup>
+    <PropertyGroup>
+      <!-- A property function does not expand an item list in its arguments; a property does. -->
+      <_RunicViewsUnownedPackageDirectories>;@(_RunicViewsUnownedFrontendPackage);</_RunicViewsUnownedPackageDirectories>
+      <_RunicViewsPackageOwners>@(_RunicViewsReferencedFrontendPackage->'|%(PackageName)=%(OwnerName)=%(BuildEnabled)', '')|</_RunicViewsPackageOwners>
+    </PropertyGroup>
+    <ItemGroup>
+      <RunicApplicationFrontendInput Include="%(_RunicViewsFrontendDependencyPackage.Identity)/**/*" Condition="'@(_RunicViewsFrontendDependencyPackage)' != ''"
+          Exclude="%(_RunicViewsFrontendDependencyPackage.Identity)/node_modules/**;%(_RunicViewsFrontendDependencyPackage.Identity)/bin/**;%(_RunicViewsFrontendDependencyPackage.Identity)/obj/**;%(_RunicViewsFrontendDependencyPackage.Identity)/.*/**" />
+      <FileWrites Include="$(_RunicViewsFrontendDependenciesFile)" />
+    </ItemGroup>
+    <MakeDir Directories="$(_RunicBridgeBaseIntermediateDirectory)runic" Condition="'@(_RunicViewsFrontendDependencyPackage)' != '' or Exists('$(_RunicViewsFrontendDependenciesFile)')" />
+    <WriteLinesToFile File="$(_RunicViewsFrontendDependenciesFile)" Lines="@(_RunicViewsFrontendDependencyPackage)" Overwrite="true" WriteOnlyWhenDifferent="true"
+        Condition="'@(_RunicViewsFrontendDependencyPackage)' != '' or Exists('$(_RunicViewsFrontendDependenciesFile)')" />
+  </Target>
+
+  <!-- RunicViewsGetFrontendDependencies (on an application) returns the frontend packages that its frontend depends on,
+       dependencies first, then its own frontend (Kind application). An unowned package has no Owner. A package that a
+       RunicApplicationFrontendClientModule maps has its Specifier. `dotnet msbuild <app>
+       -getTargetResult:RunicViewsGetFrontendDependencies` reads it without building; the dependency graph of the
+       JavaScript side is also in obj/runic/frontend-graph.json (rax.frontend-graph/1). -->
+  <Target Name="RunicViewsGetFrontendDependencies" DependsOnTargets="_RunicViewsFrontendDependencies;_RunicViewsFrontendDependencySpecifiers"
+          Returns="@(_RunicViewsFrontendDependencyResult)">
+    <ItemGroup>
+      <_RunicViewsFrontendDependencyResult Include="$(_RunicFrontendFullDirectory)" Condition="'$(_RunicFrontendFullDirectory)' != '' and '$(RunicApplicationFrontendClientLibrary)' != 'true'">
+        <PackageName>$(_RunicFrontendPackageName)</PackageName>
+        <Kind>application</Kind>
+        <Owner>$(MSBuildProjectFullPath)</Owner>
+        <OwnerName>$(MSBuildProjectName)</OwnerName>
+        <AssemblyName>$(AssemblyName)</AssemblyName>
+        <GeneratedDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendGeneratedDirectory)'))</GeneratedDirectory>
+        <BuildEnabled>$(RunicApplicationFrontendBuildEnabled)</BuildEnabled>
+        <BuildCommand>$(RunicApplicationFrontendBuildCommand)</BuildCommand>
+        <WorkspaceRoot>$(_RunicFrontendWorkspaceRoot)</WorkspaceRoot>
+      </_RunicViewsFrontendDependencyResult>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_RunicViewsFrontendDependencySpecifiers" Outputs="%(RunicApplicationFrontendClientModule.Identity)"
+          DependsOnTargets="_RunicViewsFrontendDependencies">
+    <ItemGroup>
+      <_RunicViewsFrontendDependencyPackage Condition="'%(_RunicViewsFrontendDependencyPackage.AssemblyName)' == '@(RunicApplicationFrontendClientModule)'">
+        <Specifier>@(RunicApplicationFrontendClientModule->'%(Specifier)')</Specifier>
+      </_RunicViewsFrontendDependencyPackage>
+      <_RunicViewsFrontendDependencyResult Remove="@(_RunicViewsFrontendDependencyResult)" />
+      <_RunicViewsFrontendDependencyResult Include="@(_RunicViewsFrontendDependencyPackage)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- M4/M3: before its own frontend build, a project builds each package that its frontend depends on and no .NET
+       project owns, when it has a build script (a plain workspace package, D081.6), dependencies first, and checks that
+       every package's exports exist (RUNICBRIDGE088), so a missing one names its package and owner instead of failing
+       the bundler's import. A package build runs when its files (without node_modules, bin, obj, hidden folders and its
+       output folders), its command or the install changed, or an export is missing; its stamp lives in the workspace's
+       node_modules/.runic-builds (else in obj/runic/package-builds), so the projects of a workspace build it once. -->
+  <Target Name="RunicViewsBuildFrontendDependencies" BeforeTargets="RunicViewsBuildFrontend"
+          DependsOnTargets="_RunicViewsFrontendDependencies;RunicViewsInstallFrontend;_RunicViewsBuildFrontendDependency"
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'" />
+
+  <Target Name="_RunicViewsBuildFrontendDependency" Outputs="%(_RunicFrontendGraphPackage.Identity)"
+          Condition="'@(_RunicFrontendGraphPackage)' != ''">
+    <!-- A property keeps its value from one batch to the next, so each is set here. -->
+    <PropertyGroup>
+      <_RunicViewsPackageDirectory>@(_RunicFrontendGraphPackage)</_RunicViewsPackageDirectory>
+      <_RunicViewsPackageOwned>true</_RunicViewsPackageOwned>
+      <_RunicViewsPackageOwned Condition="$(_RunicViewsUnownedPackageDirectories.Contains(';$(_RunicViewsPackageDirectory);'))">false</_RunicViewsPackageOwned>
+      <_RunicViewsPackageOwnerName></_RunicViewsPackageOwnerName>
+      <_RunicViewsPackageOwnerBuildEnabled></_RunicViewsPackageOwnerBuildEnabled>
+      <_RunicViewsPackageBuildExitCode></_RunicViewsPackageBuildExitCode>
+      <_RunicViewsPackageBuilt></_RunicViewsPackageBuilt>
+      <_RunicViewsPackageMissingExports></_RunicViewsPackageMissingExports>
+      <_RunicViewsPackageMissingReason></_RunicViewsPackageMissingReason>
+      <_RunicViewsPackageOwnerText></_RunicViewsPackageOwnerText>
+      <_RunicViewsPackageName>@(_RunicFrontendGraphPackage->'%(PackageName)')</_RunicViewsPackageName>
+      <_RunicViewsPackageLabel>$(_RunicViewsPackageName)</_RunicViewsPackageLabel>
+      <_RunicViewsPackageLabel Condition="'$(_RunicViewsPackageLabel)' == ''">$(_RunicViewsPackageDirectory)</_RunicViewsPackageLabel>
+      <_RunicViewsPackageBuildCommand>@(_RunicFrontendGraphPackage->'%(BuildCommand)')</_RunicViewsPackageBuildCommand>
+      <_RunicViewsPackageNamePattern>$([System.Text.RegularExpressions.Regex]::Escape('$(_RunicViewsPackageName)'))</_RunicViewsPackageNamePattern>
+      <_RunicViewsPackageOwnerName Condition="'$(_RunicViewsPackageOwned)' == 'true' and '$(_RunicViewsPackageName)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(_RunicViewsPackageOwners)', '(?&lt;=\|$(_RunicViewsPackageNamePattern)=)[^=|]*'))</_RunicViewsPackageOwnerName>
+      <_RunicViewsPackageOwnerBuildEnabled Condition="'$(_RunicViewsPackageOwned)' == 'true' and '$(_RunicViewsPackageName)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(_RunicViewsPackageOwners)', '(?&lt;=\|$(_RunicViewsPackageNamePattern)=[^=|]*=)[^=|]*'))</_RunicViewsPackageOwnerBuildEnabled>
+      <_RunicViewsPackageOwnerName Condition="'$(_RunicViewsPackageOwnerName)' == '' and '$(_RunicViewsPackageOwned)' == 'true'">a referenced project</_RunicViewsPackageOwnerName>
+      <_RunicViewsPackageBuildState>$(_RunicFrontendGraphRootDirectory)/node_modules/.runic-builds/</_RunicViewsPackageBuildState>
+      <_RunicViewsPackageBuildState Condition="'$(_RunicFrontendGraphRootDirectory)' == '' or !Exists('$(_RunicFrontendGraphRootDirectory)/node_modules')">$(_RunicBridgeBaseIntermediateDirectory)runic/package-builds/</_RunicViewsPackageBuildState>
+      <_RunicViewsPackageStamp>$(_RunicViewsPackageBuildState)$([MSBuild]::StableStringHash('$(_RunicViewsPackageDirectory)')).stamp</_RunicViewsPackageStamp>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicViewsPackageExport Remove="@(_RunicViewsPackageExport)" />
+      <_RunicViewsPackageOutput Remove="@(_RunicViewsPackageOutput)" />
+      <_RunicViewsPackageInstallStamp Remove="@(_RunicViewsPackageInstallStamp)" />
+      <_RunicViewsPackageMissingExport Remove="@(_RunicViewsPackageMissingExport)" />
+      <_RunicViewsPackageBuildOutputLine Remove="@(_RunicViewsPackageBuildOutputLine)" />
+      <_RunicViewsPackageExport Include="@(_RunicFrontendGraphPackageFile)" Condition="'%(Package)' == '$(_RunicViewsPackageDirectory)' and '%(Role)' == 'export'" />
+      <_RunicViewsPackageOutput Include="@(_RunicFrontendGraphPackageFile)" Condition="'%(Package)' == '$(_RunicViewsPackageDirectory)' and '%(Role)' == 'output'" />
+      <_RunicViewsPackageInstallStamp Include="$(_RunicBridgeFrontendInstallStamp)" Condition="Exists('$(_RunicBridgeFrontendInstallStamp)')" />
+    </ItemGroup>
+    <RunicViewsInstallFrontendOnce Condition="'$(_RunicViewsPackageOwned)' != 'true' and '$(_RunicViewsPackageBuildCommand)' != ''"
+        PackageBuild="true" Command="$(_RunicViewsPackageBuildCommand)" WorkingDirectory="$(_RunicViewsPackageDirectory)"
+        HashDirectory="$(_RunicViewsPackageDirectory)" HashExcludes="@(_RunicViewsPackageOutput)" HashInputs="@(_RunicViewsPackageInstallStamp)"
+        RequiredOutputs="@(_RunicViewsPackageExport)" StampFile="$(_RunicViewsPackageStamp)"
+        Message="Building the frontend package $(_RunicViewsPackageLabel) in $(_RunicViewsPackageDirectory), which $(_RunicFrontendFullDirectory) depends on and no .NET project builds.">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicViewsPackageBuildExitCode" />
+      <Output TaskParameter="Installed" PropertyName="_RunicViewsPackageBuilt" />
+      <Output TaskParameter="Lines" ItemName="_RunicViewsPackageBuildOutputLine" />
+    </RunicViewsInstallFrontendOnce>
+    <RunicViewsReportCommandResult Condition="'$(_RunicViewsPackageBuilt)' == 'true' and '$(_RunicViewsPackageBuildExitCode)' != '0'"
+        Lines="@(_RunicViewsPackageBuildOutputLine)" ExitCode="$(_RunicViewsPackageBuildExitCode)"
+        WorkingDirectory="$(_RunicViewsPackageDirectory)"
+        FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The build '$(_RunicViewsPackageBuildCommand)' of the frontend package $(_RunicViewsPackageLabel) in $(_RunicViewsPackageDirectory), which $(_RunicFrontendFullDirectory) depends on, exited with code $(_RunicViewsPackageBuildExitCode). Its output is above." />
+    <ItemGroup>
+      <RunicApplicationFrontendInput Include="$(_RunicViewsPackageStamp)" Condition="Exists('$(_RunicViewsPackageStamp)')" />
+      <_RunicViewsPackageMissingExport Include="@(_RunicViewsPackageExport)" Condition="!Exists('%(Identity)')" />
+    </ItemGroup>
+    <PropertyGroup Condition="'@(_RunicViewsPackageMissingExport)' != ''">
+      <_RunicViewsPackageMissingExports>@(_RunicViewsPackageMissingExport->'%(Identity)', ', ')</_RunicViewsPackageMissingExports>
+      <_RunicViewsPackageMissingReason Condition="'$(_RunicViewsPackageOwned)' == 'true' and '$(_RunicViewsPackageOwnerBuildEnabled)' == 'false'">its package build is off in $(_RunicViewsPackageOwnerName) (RunicApplicationFrontendBuildEnabled=false). Build the package, or turn its build on</_RunicViewsPackageMissingReason>
+      <_RunicViewsPackageMissingReason Condition="'$(_RunicViewsPackageMissingReason)' == '' and '$(_RunicViewsPackageOwned)' == 'true'">$(_RunicViewsPackageOwnerName)'s build of the package did not write them. Make its build script write them, or correct exports in its package.json</_RunicViewsPackageMissingReason>
+      <_RunicViewsPackageMissingReason Condition="'$(_RunicViewsPackageMissingReason)' == '' and '$(_RunicViewsPackageBuildCommand)' != ''">its build '$(_RunicViewsPackageBuildCommand)' did not write them. Make its build script write them, or correct exports in its package.json</_RunicViewsPackageMissingReason>
+      <_RunicViewsPackageMissingReason Condition="'$(_RunicViewsPackageMissingReason)' == ''">it has no build script. Add the files, or a build script that writes them</_RunicViewsPackageMissingReason>
+      <_RunicViewsPackageOwnerText Condition="'$(_RunicViewsPackageOwned)' == 'true'">the frontend package of $(_RunicViewsPackageOwnerName)</_RunicViewsPackageOwnerText>
+      <_RunicViewsPackageOwnerText Condition="'$(_RunicViewsPackageOwned)' != 'true'">a workspace package that no .NET project owns</_RunicViewsPackageOwnerText>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE088" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge088"
+           Condition="'@(_RunicViewsPackageMissingExport)' != '' and ('$(_RunicViewsPackageBuilt)' != 'true' or '$(_RunicViewsPackageBuildExitCode)' == '0')"
+           Text="$(_RunicFrontendFullDirectory) depends on $(_RunicViewsPackageLabel) ($(_RunicViewsPackageDirectory)), $(_RunicViewsPackageOwnerText), but its package.json exports $(_RunicViewsPackageMissingExports), which do not exist: $(_RunicViewsPackageMissingReason)." />
   </Target>
 
   <!-- The install's own condition: BeforeTargets runs this even when the install does not run. -->
@@ -2008,11 +2348,22 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
     <Error Code="RUNICBRIDGE090" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge090"
            Condition="'$(_RunicFrontendBuildManagerMissing)' == 'true'"
            Text="The frontend $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) uses $(RunicApplicationFrontendPackageManager) ($(_RunicFrontendPackageManagerSource)), but '$(RunicApplicationFrontendPackageManager) --version' failed: $(RunicApplicationFrontendPackageManager) is not on PATH or does not run, so the frontend build '$(RunicApplicationFrontendBuildCommand)' could not run. Install $(_RunicFrontendPackageManagerName), or set RunicApplicationFrontendPackageManager." />
+    <!-- M7: a failure that names a package of the dependency graph says which project builds it. -->
+    <PropertyGroup Condition="'$(_RunicBridgeFrontendBuildExitCode)' != '0' and '@(_RunicViewsFrontendDependencyPackage)' != ''">
+      <_RunicBridgeFrontendBuildOutputText>@(_RunicBridgeFrontendBuildOutputLine, ' ')</_RunicBridgeFrontendBuildOutputText>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicBridgeFrontendBuildOutputText)' != ''">
+      <_RunicViewsUnresolvedPackage Include="@(_RunicViewsFrontendDependencyPackage)"
+          Condition="'%(_RunicViewsFrontendDependencyPackage.PackageName)' != '' and ($(_RunicBridgeFrontendBuildOutputText.Contains('&quot;%(_RunicViewsFrontendDependencyPackage.PackageName)')) or $(_RunicBridgeFrontendBuildOutputText.Contains(`'%(_RunicViewsFrontendDependencyPackage.PackageName)`)))" />
+    </ItemGroup>
+    <PropertyGroup Condition="'@(_RunicViewsUnresolvedPackage)' != ''">
+      <_RunicBridgeFrontendBuildHint> @(_RunicViewsUnresolvedPackage->'%(PackageName) (%(Identity)) is %(Description)%3B check that it is built and that this frontend installs it', '. ').</_RunicBridgeFrontendBuildHint>
+    </PropertyGroup>
     <RunicViewsReportCommandResult Condition="'$(_RunicFrontendBuildManagerMissing)' != 'true' and ('$(_RunicBridgeFrontendBuildExitCode)' != '0' or '$(_RunicBridgeFrontendBuildDiagnostics)' == 'true')"
         Lines="@(_RunicBridgeFrontendBuildOutputLine)" ExitCode="$(_RunicBridgeFrontendBuildExitCode)"
         WorkingDirectory="$(RunicApplicationFrontendDirectory)"
         FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
-        FailureText="The frontend build '$(RunicApplicationFrontendBuildCommand)' in $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) exited with code $(_RunicBridgeFrontendBuildExitCode). Its output is above." />
+        FailureText="The frontend build '$(RunicApplicationFrontendBuildCommand)' in $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) exited with code $(_RunicBridgeFrontendBuildExitCode). Its output is above.$(_RunicBridgeFrontendBuildHint)" />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeFrontendStamp)'))"
              Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
     <ItemGroup Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'">
@@ -2027,6 +2378,31 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
         Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
     <Touch Files="$(_RunicBridgeFrontendOutputsFile);$(_RunicBridgeFrontendStamp)" AlwaysCreate="true"
            Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
+  </Target>
+
+  <!-- devtools-library-dx M3: after a client library's package build (or with its package current), the generated
+       contract declarations (*.contract.d.ts and their maps), which tsc does not copy to its output, are copied to the
+       folder of the package's ./generated export (types, else default), unless that is the generated folder itself (a
+       source package). Then every file its package.json exports must exist (RUNICBRIDGE088). Keep the two folders at
+       the same depth, so that the maps' relative paths to the C# sources resolve. -->
+  <Target Name="RunicViewsFinishFrontendPackage" AfterTargets="RunicViewsBuildFrontend" DependsOnTargets="_RunicViewsReadFrontendWorkspace"
+          Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(_RunicFrontendResolveGraph)' == 'true'">
+    <ItemGroup>
+      <_RunicFrontendContractFile Include="$(RunicApplicationFrontendGeneratedDirectory)/*.contract.d.ts;$(RunicApplicationFrontendGeneratedDirectory)/*.contract.d.ts.map"
+          Condition="'$(_RunicFrontendGeneratedExport)' != '' and !Exists('$(_RunicFrontendGeneratedExport)/runic-clients.ts')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RunicFrontendContractFile)" DestinationFolder="$(_RunicFrontendGeneratedExport)" SkipUnchangedFiles="true"
+          Condition="'@(_RunicFrontendContractFile)' != ''" />
+    <ItemGroup>
+      <_RunicFrontendMissingOwnExport Include="@(_RunicFrontendOwnExport)" Condition="!Exists('%(Identity)')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicFrontendPackageLabel>$(_RunicFrontendPackageName)</_RunicFrontendPackageLabel>
+      <_RunicFrontendPackageLabel Condition="'$(_RunicFrontendPackageLabel)' == ''">in $(_RunicFrontendFullDirectory)</_RunicFrontendPackageLabel>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE088" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge088"
+           Condition="'@(_RunicFrontendMissingOwnExport)' != ''"
+           Text="$(MSBuildProjectName)'s frontend package $(_RunicFrontendPackageLabel) exports @(_RunicFrontendMissingOwnExport->'%(Identity)', ', '), which its build '$(RunicApplicationFrontendBuildCommand)' did not write, so applications that import it fail to resolve it. Make the build script write them, or correct exports in $(_RunicFrontendFullDirectory)/package.json." />
   </Target>
 
   <!-- Views can live in a referenced model project, for example beside a WPF
