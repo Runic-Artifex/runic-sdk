@@ -2,7 +2,7 @@
 import type { Command, View, ViewMember } from "./ir.js";
 import { Emitter, arrowBody, type Graph } from "./graph.js";
 import { Import, Ref } from "./bindings.js";
-import { Builder, csQuote, lowerFirst, sibling, tsAccess } from "./text.js";
+import { Builder, quote, lowerFirst, sibling, tsAccess } from "./text.js";
 import { NAMED_TYPE_IMPORTS } from "./modules.js";
 
 interface Graphs {
@@ -17,7 +17,6 @@ interface Graphs {
   fieldPaths: { member: string; paths: readonly (readonly string[])[] }[];
 }
 
-const quote = csQuote;
 const key = (name: string) =>
   name.length > 0 && /[\p{L}_$]/u.test(name[0]!) && /^[\p{L}\p{Nd}_$]*$/u.test(name) && name !== "__proto__" ? name : `[${quote(name)}]`;
 const encode = (expression: string, type: string) => `{ const typed = value as ${type}; return ${expression}; }`;

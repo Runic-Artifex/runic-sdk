@@ -1,46 +1,11 @@
-// String helpers that reproduce the .NET generator's formatting byte for byte.
-
-const hex = (code: number) => "\\u" + code.toString(16).toUpperCase().padStart(4, "0");
+// String helpers of the emitter. Number and name formatting reproduces the .NET generator's, as the goldens pin it.
 
 /**
- * `System.Text.Json.JsonSerializer.Serialize(string)` with the default encoder: HTML-sensitive characters
- * (`"`, `&`, `'`, `+`, `<`, `>`, backtick), controls and everything outside Basic Latin become `\uXXXX`.
+ * A string literal of generated TypeScript (and of the declaration map's JSON): `JSON.stringify`, which escapes `"`, `\`
+ * and control characters and writes every other character as itself. Until 0.24 the emitter reproduced the .NET
+ * generator's escaping (`+`, `<`, `&`, non-ASCII … as `\uXXXX`) for byte identity with it (R3, Q26).
  */
-export function csQuote(value: string): string {
-  let out = '"';
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    const char = value[index]!;
-    if (char === "\\") out += "\\\\";
-    else if (char === "\n") out += "\\n";
-    else if (char === "\r") out += "\\r";
-    else if (char === "\t") out += "\\t";
-    else if (char === "\b") out += "\\b";
-    else if (char === "\f") out += "\\f";
-    else if (code < 0x20 || code >= 0x7f || "\"&'+<>`".includes(char)) out += hex(code);
-    else out += char;
-  }
-  return out + '"';
-}
-
-/** `JavaScriptEncoder.UnsafeRelaxedJsonEscaping`: only `"`, `\` and controls are escaped (non-ASCII kept; inference for the BMP). */
-export function relaxedQuote(value: string): string {
-  let out = '"';
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    const char = value[index]!;
-    if (char === "\\") out += "\\\\";
-    else if (char === '"') out += '\\"';
-    else if (char === "\n") out += "\\n";
-    else if (char === "\r") out += "\\r";
-    else if (char === "\t") out += "\\t";
-    else if (char === "\b") out += "\\b";
-    else if (char === "\f") out += "\\f";
-    else if (code < 0x20 || code === 0x7f) out += hex(code);
-    else out += char;
-  }
-  return out + '"';
-}
+export const quote = (value: string): string => JSON.stringify(value);
 
 /**
  * The quoted specifier of a generated module beside the importing one. Built from parts, so that the package build's
@@ -85,10 +50,10 @@ export const isTsIdentifier = (name: string) =>
   name.length > 0 && (letter.test(name[0]!) || name[0] === "_" || name[0] === "$")
   && name.slice(1).split("").every(char => letterOrDigit.test(char) || char === "_" || char === "$");
 
-export const tsPropertyName = (name: string) => (isTsIdentifier(name) ? name : csQuote(name));
-export const tsLiteralKey = (name: string) => (name === "__proto__" ? `[${csQuote(name)}]` : tsPropertyName(name));
+export const tsPropertyName = (name: string) => (isTsIdentifier(name) ? name : quote(name));
+export const tsLiteralKey = (name: string) => (name === "__proto__" ? `[${quote(name)}]` : tsPropertyName(name));
 export const tsAccess = (target: string, name: string) =>
-  isTsIdentifier(name) && name !== "__proto__" ? `${target}.${name}` : `${target}[${csQuote(name)}]`;
+  isTsIdentifier(name) && name !== "__proto__" ? `${target}.${name}` : `${target}[${quote(name)}]`;
 
 /** XmlDocumentation.Append: a TSDoc block at the indentation. */
 export function appendDoc(lines: string[], indent: string, text: string | null | undefined): void {

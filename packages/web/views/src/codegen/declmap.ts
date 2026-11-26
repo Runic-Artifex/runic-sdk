@@ -2,7 +2,7 @@
 // generator's ClientDeclarationMap does.
 import type { Location } from "./ir.js";
 import { directoryOf, isAbsolutePath, relativePath } from "./paths.js";
-import { ordinal, relaxedQuote } from "./text.js";
+import { ordinal, quote } from "./text.js";
 
 export const CONTRACT_SUFFIX = ".contract.d.ts";
 
@@ -107,5 +107,5 @@ function render(file: string, body: string, names: MappedName[]): string {
       if (end < lines[line]!.length) segment(end);
     }
   }
-  return `{"version":3,"file":${relaxedQuote(file)},"sourceRoot":"","sources":[${sources.map(relaxedQuote).join(",")}],"names":[],"mappings":${relaxedQuote(mappings)}}\n`;
+  return `{"version":3,"file":${quote(file)},"sourceRoot":"","sources":[${sources.map(quote).join(",")}],"names":[],"mappings":${quote(mappings)}}\n`;
 }

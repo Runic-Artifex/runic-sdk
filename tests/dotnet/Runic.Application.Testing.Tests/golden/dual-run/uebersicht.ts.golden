@@ -12,11 +12,11 @@ export function pageÜbersicht(id: string): ÜbersichtPageReference { return pag
 
 const members: BridgeMemberDecoders<ÜbersichtState> = {
   ärger: (wire: unknown) => bridgeWire.string(wire),
-  letzte: (wire: unknown) => (wire === null ? null : bridgeWire.object<Änderung>(wire, value => ({ text: bridgeWire.string(value["text"]), zähler: bridgeWire.integer(value["z\u00E4hler"], -2147483648, 2147483647)}))),
+  letzte: (wire: unknown) => (wire === null ? null : bridgeWire.object<Änderung>(wire, value => ({ text: bridgeWire.string(value["text"]), zähler: bridgeWire.integer(value["zähler"], -2147483648, 2147483647)}))),
   canÜbernehmen: (wire: unknown) => bridgeWire.boolean(wire),
 };
 const bridgeContract = "Runic.Application.Testing.Tests.ÜbersichtViewModel:<fingerprint>";
-const checkedFieldNames = ["\u00E4rger", "letzte"];
+const checkedFieldNames = ["ärger", "letzte"];
 
 /**
  * Connects a Übersicht client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -25,7 +25,7 @@ const checkedFieldNames = ["\u00E4rger", "letzte"];
  */
 export function connectÜbersicht(options?: BridgeConnectOptions): Promise<ÜbersichtClient & globalThis.Disposable> { return connectÜbersichtAt("übersicht", options); }
 async function connectÜbersichtAt(route: string, options?: BridgeConnectOptions): Promise<ÜbersichtClient & globalThis.Disposable> {
-  const view = await connectView<ÜbersichtState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["\u00E4rger"], timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<ÜbersichtState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["ärger"], timeout: options?.timeout, signal: options?.signal });
   return disposable<ÜbersichtClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -33,21 +33,21 @@ async function connectÜbersichtAt(route: string, options?: BridgeConnectOptions
     fieldBaseline<K extends keyof ÜbersichtCheckedFields>(field: K) { return view.fieldBaseline(field) as FieldBaseline<ÜbersichtCheckedFields[K]>; },
     writePath<T>(member: string, path: readonly string[], write: BridgeFieldWriteRequest, decode: (wire: unknown) => T) { return view.write<T>(member, { ...write, path }, decode); },
     fieldPathVersion() { return view.fieldPathVersion(); },
-    async setÄrger(value) { return view.set("\u00E4rger", value); },
-    async setLetzte(value) { return view.set("letzte", (() => { const bridgeNullable0 = value; return bridgeNullable0 === null ? null : { ["text"]: bridgeNullable0["text"], ["z\u00E4hler"]: bridgeNullable0["z\u00E4hler"] }; })()); },
+    async setÄrger(value) { return view.set("ärger", value); },
+    async setLetzte(value) { return view.set("letzte", (() => { const bridgeNullable0 = value; return bridgeNullable0 === null ? null : { ["text"]: bridgeNullable0["text"], ["zähler"]: bridgeNullable0["zähler"] }; })()); },
     async writeÄrger(value, options) {
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
       const baseline = options.baseline;
       if (typeof value !== "string" || !baseline || typeof baseline.value !== "string" || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");
-      return view.write<string>("\u00E4rger", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }, value => bridgeWire.string(value));
+      return view.write<string>("ärger", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }, value => bridgeWire.string(value));
     },
     async writeLetzte(value, options) {
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
       const baseline = options.baseline;
       if (!baseline || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");
-      return view.write<Änderung | null>("letzte", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: (() => { const bridgeNullable0 = baseline.value; return bridgeNullable0 === null ? null : { ["text"]: bridgeNullable0["text"], ["z\u00E4hler"]: bridgeNullable0["z\u00E4hler"] }; })(), value: (() => { const bridgeNullable0 = value; return bridgeNullable0 === null ? null : { ["text"]: bridgeNullable0["text"], ["z\u00E4hler"]: bridgeNullable0["z\u00E4hler"] }; })() }, value => (value === null ? null : bridgeWire.object<Änderung>(value, value => ({ text: bridgeWire.string(value["text"]), zähler: bridgeWire.integer(value["z\u00E4hler"], -2147483648, 2147483647)}))));
+      return view.write<Änderung | null>("letzte", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: (() => { const bridgeNullable0 = baseline.value; return bridgeNullable0 === null ? null : { ["text"]: bridgeNullable0["text"], ["zähler"]: bridgeNullable0["zähler"] }; })(), value: (() => { const bridgeNullable0 = value; return bridgeNullable0 === null ? null : { ["text"]: bridgeNullable0["text"], ["zähler"]: bridgeNullable0["zähler"] }; })() }, value => (value === null ? null : bridgeWire.object<Änderung>(value, value => ({ text: bridgeWire.string(value["text"]), zähler: bridgeWire.integer(value["zähler"], -2147483648, 2147483647)}))));
     },
-    async übernehmen() { return view.command("\u00FCbernehmen"); },
+    async übernehmen() { return view.command("übernehmen"); },
   });
 }
 
@@ -62,11 +62,11 @@ export const ÜbersichtFields: {
   readonly letzte: BridgeField<ÜbersichtClient, ÜbersichtState, Änderung | null> & { readonly text: BridgeField<ÜbersichtClient, ÜbersichtState, string>; readonly zähler: BridgeField<ÜbersichtClient, ÜbersichtState, number> };
 } = {
   ärger: {
-    name: "\u00E4rger", kind: "text",
+    name: "ärger", kind: "text",
     read: state => state.ärger,
     write: (client, value) => client.setÄrger(value),
     checked: (client, value, options) => client.writeÄrger(value, options),
-    baseline: client => client.fieldBaseline("\u00E4rger"),
+    baseline: client => client.fieldBaseline("ärger"),
   },
   letzte: {
     name: "letzte", kind: "value", nullable: true,
@@ -75,6 +75,6 @@ export const ÜbersichtFields: {
     checked: (client, value, options) => client.writeLetzte(value, options),
     baseline: client => client.fieldBaseline("letzte"),
     text: fieldPath<ÜbersichtClient, ÜbersichtState, string, NonNullable<Änderung | null>>({ member: "letzte", path: ["text"], container: state => state.letzte, read: (value: NonNullable<Änderung | null>) => value.text, encode: (value: string) => value, decode: (wire: unknown) => bridgeWire.string(wire), kind: "text" }),
-    zähler: fieldPath<ÜbersichtClient, ÜbersichtState, number, NonNullable<Änderung | null>>({ member: "letzte", path: ["z\u00E4hler"], container: state => state.letzte, read: (value: NonNullable<Änderung | null>) => value.zähler, encode: (value: number) => value, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647), kind: "number", integer: true }),
+    zähler: fieldPath<ÜbersichtClient, ÜbersichtState, number, NonNullable<Änderung | null>>({ member: "letzte", path: ["zähler"], container: state => state.letzte, read: (value: NonNullable<Änderung | null>) => value.zähler, encode: (value: number) => value, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647), kind: "number", integer: true }),
   },
 };

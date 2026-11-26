@@ -12,13 +12,13 @@ export function pageGrößen(id: string): GrößenPageReference { return pageGr�
 
 const members: BridgeMemberDecoders<GrößenState> = {
   straße: (wire: unknown) => bridgeWire.string(wire),
-  maße: (wire: unknown) => bridgeWire.object<Größe>(wire, value => ({ maß: bridgeWire.string(value["ma\u00DF"]), höhe: bridgeWire.integer(value["h\u00F6he"], -2147483648, 2147483647)})),
+  maße: (wire: unknown) => bridgeWire.object<Größe>(wire, value => ({ maß: bridgeWire.string(value["maß"]), höhe: bridgeWire.integer(value["höhe"], -2147483648, 2147483647)})),
   farbe: (wire: unknown) => (wire === null ? null : bridgeWire.object<Grün>(wire, value => ({ farbton: bridgeWire.string(value["farbton"])}))),
   höhe: (wire: unknown) => bridgeWire.finiteNumber(wire),
   canLöschen: (wire: unknown) => bridgeWire.boolean(wire),
 };
 const bridgeContract = "Runic.Application.Testing.Tests.GrößenViewModel:<fingerprint>";
-const checkedFieldNames = ["stra\u00DFe", "ma\u00DFe", "farbe", "h\u00F6he"];
+const checkedFieldNames = ["straße", "maße", "farbe", "höhe"];
 
 /**
  * Connects a Größen client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -27,7 +27,7 @@ const checkedFieldNames = ["stra\u00DFe", "ma\u00DFe", "farbe", "h\u00F6he"];
  */
 export function connectGrößen(options?: BridgeConnectOptions): Promise<GrößenClient & globalThis.Disposable> { return connectGrößenAt("größen", options); }
 async function connectGrößenAt(route: string, options?: BridgeConnectOptions): Promise<GrößenClient & globalThis.Disposable> {
-  const view = await connectView<GrößenState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["stra\u00DFe"], timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<GrößenState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["straße"], timeout: options?.timeout, signal: options?.signal });
   return disposable<GrößenClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -35,21 +35,21 @@ async function connectGrößenAt(route: string, options?: BridgeConnectOptions):
     fieldBaseline<K extends keyof GrößenCheckedFields>(field: K) { return view.fieldBaseline(field) as FieldBaseline<GrößenCheckedFields[K]>; },
     writePath<T>(member: string, path: readonly string[], write: BridgeFieldWriteRequest, decode: (wire: unknown) => T) { return view.write<T>(member, { ...write, path }, decode); },
     fieldPathVersion() { return view.fieldPathVersion(); },
-    async setStraße(value) { return view.set("stra\u00DFe", value); },
-    async setMaße(value) { return view.set("ma\u00DFe", { ["ma\u00DF"]: value["ma\u00DF"], ["h\u00F6he"]: value["h\u00F6he"] }); },
+    async setStraße(value) { return view.set("straße", value); },
+    async setMaße(value) { return view.set("maße", { ["maß"]: value["maß"], ["höhe"]: value["höhe"] }); },
     async setFarbe(value) { return view.set("farbe", (() => { const bridgeNullable0 = value; return bridgeNullable0 === null ? null : { ["farbton"]: bridgeNullable0["farbton"] }; })()); },
-    async setHöhe(value) { return view.set("h\u00F6he", value); },
+    async setHöhe(value) { return view.set("höhe", value); },
     async writeStraße(value, options) {
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
       const baseline = options.baseline;
       if (typeof value !== "string" || !baseline || typeof baseline.value !== "string" || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");
-      return view.write<string>("stra\u00DFe", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }, value => bridgeWire.string(value));
+      return view.write<string>("straße", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }, value => bridgeWire.string(value));
     },
     async writeMaße(value, options) {
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
       const baseline = options.baseline;
       if (!baseline || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");
-      return view.write<Größe>("ma\u00DFe", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: { ["ma\u00DF"]: baseline.value["ma\u00DF"], ["h\u00F6he"]: baseline.value["h\u00F6he"] }, value: { ["ma\u00DF"]: value["ma\u00DF"], ["h\u00F6he"]: value["h\u00F6he"] } }, value => bridgeWire.object<Größe>(value, value => ({ maß: bridgeWire.string(value["ma\u00DF"]), höhe: bridgeWire.integer(value["h\u00F6he"], -2147483648, 2147483647)})));
+      return view.write<Größe>("maße", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: { ["maß"]: baseline.value["maß"], ["höhe"]: baseline.value["höhe"] }, value: { ["maß"]: value["maß"], ["höhe"]: value["höhe"] } }, value => bridgeWire.object<Größe>(value, value => ({ maß: bridgeWire.string(value["maß"]), höhe: bridgeWire.integer(value["höhe"], -2147483648, 2147483647)})));
     },
     async writeFarbe(value, options) {
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
@@ -61,9 +61,9 @@ async function connectGrößenAt(route: string, options?: BridgeConnectOptions):
       if (typeof options?.requestId !== "string" || options.requestId.trim().length === 0) throw new RangeError("A checked field requestId is required.");
       const baseline = options.baseline;
       if (!baseline || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");
-      return view.write<number>("h\u00F6he", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }, value => bridgeWire.finiteNumber(value));
+      return view.write<number>("höhe", { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value: value }, value => bridgeWire.finiteNumber(value));
     },
-    async löschen() { return view.command("l\u00F6schen"); },
+    async löschen() { return view.command("löschen"); },
   });
 }
 
@@ -80,20 +80,20 @@ export const GrößenFields: {
   readonly höhe: BridgeField<GrößenClient, GrößenState, number>;
 } = {
   straße: {
-    name: "stra\u00DFe", kind: "text",
+    name: "straße", kind: "text",
     read: state => state.straße,
     write: (client, value) => client.setStraße(value),
     checked: (client, value, options) => client.writeStraße(value, options),
-    baseline: client => client.fieldBaseline("stra\u00DFe"),
+    baseline: client => client.fieldBaseline("straße"),
   },
   maße: {
-    name: "ma\u00DFe", kind: "value",
+    name: "maße", kind: "value",
     read: state => state.maße,
     write: (client, value) => client.setMaße(value),
     checked: (client, value, options) => client.writeMaße(value, options),
-    baseline: client => client.fieldBaseline("ma\u00DFe"),
-    maß: fieldPath<GrößenClient, GrößenState, string, Größe>({ member: "ma\u00DFe", path: ["ma\u00DF"], container: state => state.maße, read: (value: Größe) => value.maß, encode: (value: string) => value, decode: (wire: unknown) => bridgeWire.string(wire), kind: "text" }),
-    höhe: fieldPath<GrößenClient, GrößenState, number, Größe>({ member: "ma\u00DFe", path: ["h\u00F6he"], container: state => state.maße, read: (value: Größe) => value.höhe, encode: (value: number) => value, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647), kind: "number", integer: true }),
+    baseline: client => client.fieldBaseline("maße"),
+    maß: fieldPath<GrößenClient, GrößenState, string, Größe>({ member: "maße", path: ["maß"], container: state => state.maße, read: (value: Größe) => value.maß, encode: (value: string) => value, decode: (wire: unknown) => bridgeWire.string(wire), kind: "text" }),
+    höhe: fieldPath<GrößenClient, GrößenState, number, Größe>({ member: "maße", path: ["höhe"], container: state => state.maße, read: (value: Größe) => value.höhe, encode: (value: number) => value, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647), kind: "number", integer: true }),
   },
   farbe: {
     name: "farbe", kind: "value", nullable: true,
@@ -104,10 +104,10 @@ export const GrößenFields: {
     farbton: fieldPath<GrößenClient, GrößenState, string, NonNullable<Grün | null>>({ member: "farbe", path: ["farbton"], container: state => state.farbe, read: (value: NonNullable<Grün | null>) => value.farbton, encode: (value: string) => value, decode: (wire: unknown) => bridgeWire.string(wire), kind: "text" }),
   },
   höhe: {
-    name: "h\u00F6he", kind: "number",
+    name: "höhe", kind: "number",
     read: state => state.höhe,
     write: (client, value) => client.setHöhe(value),
     checked: (client, value, options) => client.writeHöhe(value, options),
-    baseline: client => client.fieldBaseline("h\u00F6he"),
+    baseline: client => client.fieldBaseline("höhe"),
   },
 };
