@@ -15,7 +15,7 @@ export interface ÜbersichtCheckedFields {
 }
 
 /** The names of the Übersicht ViewModel's commands, whose handles `injectCommands` and `useCommands` make. */
-export type ÜbersichtCommandName = "\u00FCbernehmen";
+export type ÜbersichtCommandName = "übernehmen";
 
 /** A connected Übersicht ViewModel. Dispose it when its presentation ends. */
 export interface ÜbersichtClient extends ViewClient<ÜbersichtState> {
