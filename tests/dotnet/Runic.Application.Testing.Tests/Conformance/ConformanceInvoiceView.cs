@@ -28,6 +28,32 @@ internal sealed record InvoiceAddress(string Street, string City)
     internal JsonNode ToNode() => new JsonObject { ["street"] = Street, ["city"] = City };
 }
 
+// The nullable billing member: a name and a nested address, whose fields are field paths two deep.
+internal sealed record InvoiceBilling(string Name, InvoiceAddress Address)
+{
+    internal static InvoiceBilling? Read(JsonElement value) => value.ValueKind == JsonValueKind.Null ? null
+        : new(ConformanceWire.String(value.GetProperty("name")), InvoiceAddress.Read(value.GetProperty("address")));
+
+    internal static InvoiceBilling? Read(JsonNode? node) => node is null ? null
+        : new(node["name"]!.GetValue<string>(), InvoiceAddress.Read(node["address"]));
+
+    internal static void Write(Utf8JsonWriter writer, InvoiceBilling? billing)
+    {
+        if (billing is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+        writer.WriteStartObject();
+        writer.WriteString("name", billing.Name);
+        writer.WritePropertyName("address");
+        InvoiceAddress.Write(writer, billing.Address);
+        writer.WriteEndObject();
+    }
+
+    internal JsonNode ToNode() => new JsonObject { ["name"] = Name, ["address"] = Address.ToNode() };
+}
+
 internal sealed record InvoiceLine(int Id, string Label, int Quantity)
 {
     internal static int ReadQuantity(JsonElement quantity) =>
@@ -65,7 +91,21 @@ internal sealed class InvoiceViewModel : ConformanceModel
         }
     } = new("", "");
 
+    public InvoiceBilling? Billing
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            Raise();
+        }
+    }
+
     public ObservableCollection<InvoiceLine> Lines { get; } = [];
+
+    // The arrange value rowConflicts (not a state member): the row editor checks a line as a whole.
+    internal bool RowConflicts { get; private init; }
 
     // The row editor: replaces the line with its key, and refuses a negative quantity.
     internal void UpdateLine(int id, InvoiceLine line)
@@ -82,8 +122,9 @@ internal sealed class InvoiceViewModel : ConformanceModel
 
     internal static InvoiceViewModel Create(JsonObject model)
     {
-        var vm = new InvoiceViewModel();
+        var vm = new InvoiceViewModel { RowConflicts = model["rowConflicts"]?.GetValue<bool>() == true };
         if (model["address"] is { } address) vm.Address = InvoiceAddress.Read(address);
+        if (model["billing"] is { } billing) vm.Billing = InvoiceBilling.Read(billing);
         if (model["lines"] is JsonArray lines) foreach (var line in lines) vm.Lines.Add(InvoiceLine.Read(line));
         return vm;
     }
@@ -94,6 +135,7 @@ internal sealed class InvoiceViewModel : ConformanceModel
         switch (mutation["op"]!.GetValue<string>(), mutation["member"]?.GetValue<string>())
         {
             case ("assign", "address"): Address = InvoiceAddress.Read(mutation["value"]); break;
+            case ("assign", "billing"): Billing = InvoiceBilling.Read(mutation["value"]); break;
             case ("insert", "lines"): Lines.Insert(Integer("index"), InvoiceLine.Read(mutation["item"])); break;
             case ("replaceAt", "lines"): Lines[Integer("index")] = InvoiceLine.Read(mutation["item"]); break;
             case ("removeAt", "lines"): Lines.RemoveAt(Integer("index")); break;
@@ -104,6 +146,7 @@ internal sealed class InvoiceViewModel : ConformanceModel
     internal override JsonNode? Read(string member) => member switch
     {
         "address" => Address.ToNode(),
+        "billing" => Billing?.ToNode(),
         "lines" => new JsonArray([.. Lines.Select(line => line.ToNode())]),
         _ => throw new NotSupportedException($"The invoice View has no member {member}."),
     };
@@ -113,10 +156,12 @@ internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel
     : ViewModelBridge(transport, vm, typeof(InvoiceViewModel), "invoice",
         [
             new("address", (writer, model) => InvoiceAddress.Write(writer, ((InvoiceViewModel)model).Address)),
+            new("billing", (writer, model) => InvoiceBilling.Write(writer, ((InvoiceViewModel)model).Billing)),
             new("lines", (writer, model) => { writer.WriteStartArray(); foreach (var line in ((InvoiceViewModel)model).Lines) InvoiceLine.Write(writer, line); writer.WriteEndArray(); }),
         ],
         [
             new("Address", "address", model => ((InvoiceViewModel)model).Address, (model, value) => ((InvoiceViewModel)model).Address = InvoiceAddress.Read(value)),
+            new("Billing", "billing", model => ((InvoiceViewModel)model).Billing, (model, value) => ((InvoiceViewModel)model).Billing = InvoiceBilling.Read(value)),
             new("Lines", "lines", model => ((InvoiceViewModel)model).Lines, null),
         ],
         [
@@ -127,6 +172,19 @@ internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel
                 [
                     new(["street"], (address, value) => (InvoiceAddress)address with { Street = ConformanceWire.String(value) }),
                     new(["city"], (address, value) => (InvoiceAddress)address with { City = ConformanceWire.String(value) }),
+                ],
+            },
+            new("Billing", "billing", CheckedFieldValueKind.Json, model => ((InvoiceViewModel)model).Billing, (model, value) => ((InvoiceViewModel)model).Billing = (InvoiceBilling?)value,
+                readValue: element => InvoiceBilling.Read(element), writeValue: (writer, value) => InvoiceBilling.Write(writer, (InvoiceBilling?)value))
+            {
+                FieldPaths =
+                [
+                    new(["name"], (billing, value) => (InvoiceBilling)billing with { Name = ConformanceWire.String(value) }),
+                    new(["address"], (billing, value) => (InvoiceBilling)billing with { Address = InvoiceAddress.Read(value) }),
+                    new(["address", "street"], (billing, value) =>
+                        (InvoiceBilling)billing with { Address = ((InvoiceBilling)billing).Address with { Street = ConformanceWire.String(value) } }),
+                    new(["address", "city"], (billing, value) =>
+                        (InvoiceBilling)billing with { Address = ((InvoiceBilling)billing).Address with { City = ConformanceWire.String(value) } }),
                 ],
             },
         ],
@@ -141,5 +199,6 @@ internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel
                     new(["quantity"], (line, value) => (InvoiceLine)line with { Quantity = InvoiceLine.ReadQuantity(value) }),
                 ],
                 UpdateRow = (model, row, _) => ((InvoiceViewModel)model).UpdateLine(((InvoiceLine)row!).Id, (InvoiceLine)row),
+                RowConflicts = vm.RowConflicts ? RunicRowConflicts.Row : RunicRowConflicts.Cell,
             },
         ]);

@@ -15,7 +15,8 @@ namespace Runic.Application.Views;
 //   released; so is everything a route held when it is released, and everything when the Window closes. The host
 //   serves GET and HEAD of a token through ServeBlobAsync.
 // - Uploads. A connection whose hello lists blobs/1 gets a token for the host's upload URL; ReceiveUploadAsync stores
-//   the request body in a temporary file of the Window, within the per-upload and per-Window limits, under a random
+//   the request body in a temporary file of the Window, within the per-upload and per-Window limits (bytes, and the
+//   number of unclaimed uploads with those in flight, runic-sdk#1392), under a random
 //   id. A RunicUpload decodes only from an id of the request's own connection, and the first claim takes the upload out
 //   of the Window. Unclaimed uploads are deleted when their connection closes, after UnclaimedLifetime, and when the
 //   Window closes.
@@ -41,6 +42,9 @@ internal sealed class BridgeBlobs : IDisposable
     internal const string UploadNameHeader = "X-Runic-Upload-Name";
     internal const long DefaultMaximumUploadBytes = 256L * 1_048_576;
     internal const long DefaultMaximumPendingUploadBytes = 1_024L * 1_048_576;
+    // The default of MaximumPendingUploads: unclaimed uploads of a Window, each a file whose handle stays open, so the
+    // number is bounded as well as their bytes, also for empty uploads (runic-sdk#1392).
+    internal const int DefaultMaximumPendingUploads = 256;
     internal const int MaximumConcurrentUploads = 16;
     // An upload whose body sends nothing for this long is dropped (408), on every host.
     internal static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
@@ -78,6 +82,7 @@ internal sealed class BridgeBlobs : IDisposable
 
     internal long MaximumUploadBytes { get; private set; } = DefaultMaximumUploadBytes;
     internal long MaximumPendingUploadBytes { get; private set; } = DefaultMaximumPendingUploadBytes;
+    internal int MaximumPendingUploads { get; private set; } = DefaultMaximumPendingUploads;
 
     // The bases of the Window's upload folder (BridgeUploadFolder): null for the temporary directory and the user's
     // cache. Tests set their own.
@@ -108,10 +113,11 @@ internal sealed class BridgeBlobs : IDisposable
     }
 
     // A window session starts on the dispatcher, also one whose transport served an earlier session.
-    internal void Configure(long? maximumUploadBytes, long? maximumPendingUploadBytes)
+    internal void Configure(long? maximumUploadBytes, long? maximumPendingUploadBytes, int? maximumPendingUploads = null)
     {
         MaximumUploadBytes = maximumUploadBytes ?? DefaultMaximumUploadBytes;
         MaximumPendingUploadBytes = maximumPendingUploadBytes ?? DefaultMaximumPendingUploadBytes;
+        MaximumPendingUploads = maximumPendingUploads ?? DefaultMaximumPendingUploads;
         lock (_gate) _closed = false;
     }
 
@@ -444,6 +450,9 @@ internal sealed class BridgeBlobs : IDisposable
                 return StoreOutcome.Rejected(429, "capacity", $"The window already receives {MaximumConcurrentUploads} uploads.");
             if (_storedBytes + (declared ?? 0) > MaximumPendingUploadBytes)
                 return StoreOutcome.Rejected(507, "capacity", "The window's uploads that no command claimed use its whole upload space.");
+            // Uploads in flight count too, so concurrent uploads cannot store more than the bound.
+            if (_uploads.Count + _receiving >= MaximumPendingUploads)
+                return StoreOutcome.Rejected(507, "capacity", $"The window already holds {MaximumPendingUploads} uploads that no command claimed.");
             _receiving++;
             generation = _generation;
         }

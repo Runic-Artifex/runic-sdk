@@ -28,7 +28,7 @@ internal sealed class ContractIrGoldenTests
     [Arguments("domain-failures", new[] { "failureToolkit", "failureReactive" })]
     [Arguments("navigation-region", new[] { "navShell" })]
     [Arguments("explicit-publication", new[] { "importResult" })]
-    [Arguments("field-paths", new[] { "pathInvoice", "pathRows" })]
+    [Arguments("field-paths", new[] { "pathGallery", "pathInvoice", "pathRows" })]
     [Arguments("mvvm-conventions", new[] { "documented", "generatedInteraction", "generatedReactive", "reactivePassword", "toolkitCancel",
         "toolkitTyped", "typedReactive" })]
     [Arguments("view-requests", new[] { "reactiveViewRequest", "requestOnly", "toolkitViewRequest" })]

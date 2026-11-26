@@ -1,0 +1,32 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-with-row-conflicts-conflicts-on-another-cell.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "requires": ["field-paths/1"],
+  "description": "With row conflicts (the arrange value rowConflicts), a write of a cell is based on the row's version: a change of another cell of the row meanwhile is a conflict, which it is not with cell conflicts.",
+  "view": "invoice",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-invoice": {"kind":"request"},
+    "write": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "writeId": {"kind":"wire","value":"w-1"}
+  },
+  "arrange": {"model":{"lines":[{"id":1,"label":"Pens","quantity":1}],"rowConflicts":true}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"invoice","presentation":{"$id":"presentation"}},"id":"open-invoice"},
+    {"receive":{"ok":true,"revision":0,"state":{"address":{"street":"","city":""},"billing":null,"lines":[{"id":1,"label":"Pens","quantity":1}]},"fields":{"address":{"version":0},"billing":{"version":0}},"presentation":"ok"},"replyTo":"open-invoice"},
+    {"mutate":[{"op":"replaceAt","member":"lines","index":0,"item":{"id":1,"label":"Pens","quantity":2}}]},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":0,"revision":1,"changes":[{"field":"lines","kind":"replace","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"label":"Pens","quantity":2}]}]}},
+    {"send":{"kind":"write","route":"invoice","member":"lines","path":["1","label"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"Pens","value":"Pencils"},"id":"write"},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"conflict","incoming":{"value":"Pens","version":1},"message":{"$any":"string"}}},"replyTo":"write"},
+    {"expect":{"model":{"lines":[{"id":1,"label":"Pens","quantity":2}]}}}
+  ]
+}

@@ -466,7 +466,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.InvoiceViewModel",
       "name": "Invoice",
       "route": "invoice",
-      "fingerprint": "8B3BE8C93739FE5CD9A3294D3D975CE76C6E75B7220C24CB6166CADF7690C37B",
+      "fingerprint": "40CBE2F282118BD3A9168B59EE41AD6C8740F4FEB9CE6EC8225E1224FBA67C3E",
       "kinds": [
         "invoice"
       ],
@@ -493,6 +493,46 @@
             },
             {
               "path": [
+                "city"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Billing",
+          "wire": "billing",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.InvoiceBilling",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "InvoiceViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "name"
+              ]
+            },
+            {
+              "path": [
+                "address"
+              ]
+            },
+            {
+              "path": [
+                "address",
+                "street"
+              ]
+            },
+            {
+              "path": [
+                "address",
                 "city"
               ]
             }
@@ -596,7 +636,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.FilesViewModel",
       "name": "Files",
       "route": "files",
-      "fingerprint": "518E5C2180CD62648C1621B96627D6CA0F8BB50C60AE08892D52B8C918E41269",
+      "fingerprint": "544256BF62CC1CD8B91D37F39C78FA0111A9C8EB954801BD1817ECE4818A6D1D",
       "kinds": [
         "files"
       ],
@@ -624,7 +664,32 @@
               "kind": "string",
               "nullable": true
             }
-          }
+          },
+          "text": true
+        },
+        {
+          "name": "Attachments",
+          "wire": "attachments",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.Conformance.FilesAttachment"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "name"
+              ]
+            }
+          ]
         }
       ],
       "commands": [
@@ -933,6 +998,35 @@
         }
       ]
     },
+    "Runic.Application.Testing.Tests.Conformance.InvoiceBilling": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.InvoiceBilling",
+        "base": "InvoiceBilling",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "address",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Application.Testing.Tests.Conformance.InvoiceAddress"
+          }
+        }
+      ]
+    },
     "Runic.Application.Testing.Tests.Conformance.InvoiceLine": {
       "kind": "object",
       "name": {
@@ -963,6 +1057,40 @@
           "wire": "quantity",
           "type": {
             "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.FilesAttachment": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.FilesAttachment",
+        "base": "FilesAttachment",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "preview",
+          "type": {
+            "kind": "blob"
           }
         }
       ]

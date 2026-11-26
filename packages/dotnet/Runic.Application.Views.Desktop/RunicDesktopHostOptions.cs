@@ -124,6 +124,14 @@ public sealed record RunicDesktopHostOptions
     public long? MaximumPendingUploadBytes { get; init; }
 
     /// <summary>
+    /// The most unclaimed uploads, whatever their size, that Windows whose
+    /// <see cref="RunicWindowOptions.MaximumPendingUploads"/> is <see langword="null"/> hold at once
+    /// (<see cref="WindowContentSessionOptions.MaximumPendingUploads"/>), at least 1. <see langword="null"/>, the
+    /// default, is 256. The host reads it when each Window opens.
+    /// </summary>
+    public int? MaximumPendingUploads { get; init; }
+
+    /// <summary>
     /// How long Windows whose <see cref="RunicWindowOptions.CloseDrain"/> is <see langword="null"/> stay visible after
     /// their close was decided, while their accepted work drains. <see langword="null"/>, the default, is
     /// <see cref="RunicCloseDrain.None"/>: the window closes at once, as before 0.19. The host reads it when each Window
