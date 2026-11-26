@@ -38,7 +38,8 @@ jobs:
   plan:
     name: Plan affected jobs
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # A push may wait up to 30 minutes for an earlier entry's merge queue run (CI_COVER_WAIT_MINUTES below).
+    timeout-minutes: ${{ github.event_name == 'push' && 40 || 5 }}
     permissions:
       contents: read
       # The labels are read when the plan runs, so rerunning all jobs sees a label added since.
@@ -92,8 +93,10 @@ jobs:
       # passed a merge queue run plans what its diff needs (not every Linux job: the nightly run does
       # that) and keeps what that run's ci-plan record did not run (eng/ci/covered.mjs); the
       # step summary links the run. A push that coalesced several entries (main's concurrency group superseded the
-      # earlier pushes) keeps what none of their runs ran, when every commit of before..after has one. Without such a
-      # run (a direct push, a failed lookup) it plans as before.
+      # earlier pushes) keeps what none of their runs ran, when every commit of before..after has one. GitHub merges an
+      # earlier entry once a later entry's run passes, so the earlier entry's own run may still be running: the push
+      # waits up to CI_COVER_WAIT_MINUTES for it (a Linux runner waits instead of a second set of Windows and macOS
+      # legs). Without such a run (a direct push, a failed lookup, a run still going after the wait) it plans as before.
       - name: Plan jobs from the changed files
         id: plan
         # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
@@ -101,6 +104,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
+          CI_COVER_WAIT_MINUTES: "30"
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
           QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}

@@ -7,8 +7,11 @@
 // Coalesced pushes: when entries merge close together, main's concurrency group supersedes the earlier push runs, and
 // the surviving push's before..after diff spans several queue entries. When every commit of before..after has such a
 // run, the push is covered by the union of their plans (unionPlan); otherwise only the pushed commit's run covers it.
+// GitHub also merges an earlier entry as soon as a later entry's run passes, while the earlier entry's own run may still
+// be running: the push then waits up to CI_COVER_WAIT_MINUTES (default 0; ci.yml sets it for pushes) for that run to
+// finish rather than run its jobs a second time.
 //
-//   bun eng/ci/covered.mjs <commit> [<before>]        (GH_TOKEN, GITHUB_REPOSITORY)
+//   bun eng/ci/covered.mjs <commit> [<before>]        (GH_TOKEN, GITHUB_REPOSITORY, CI_COVER_WAIT_MINUTES)
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -20,18 +23,19 @@ export const CI_WORKFLOW = ".github/workflows/ci.yml";
 export const PLAN_ARTIFACT = "ci-plan";
 export const PLAN_FILE = "plan.json";
 const runId = url => /\/actions\/runs\/(\d+)(?:\/|$)/.exec(url ?? "")?.[1] ?? null;
+const ours = (repository, run, event) => run?.event === event && run.path?.split("@")[0] === CI_WORKFLOW
+  && run.repository?.full_name === repository && run.head_repository?.full_name === repository;
+const queueRuns = async (api, sha) =>
+  (await api(`actions/workflows/ci.yml/runs?event=merge_group&head_sha=${sha}&per_page=20`)).workflow_runs ?? [];
 
 // `api(path)` answers GitHub REST paths under repos/<repository>/ with JSON; `planOf(run)` returns the run's ci-plan
 // record or null.
 export async function coveringRun({ repository, sha, api, planOf }) {
   if (!/^[0-9a-f]{40}$/.test(sha ?? "")) throw new Error(`Expected a full commit SHA, not '${sha}'`);
-  const ours = (run, event) => run?.event === event && run.path?.split("@")[0] === CI_WORKFLOW
-    && run.repository?.full_name === repository && run.head_repository?.full_name === repository;
   // The latest attempt's `verify`: it passes only when every planned job passed.
   const verified = async run => (await api(`actions/runs/${run.id}/jobs?per_page=100`)).jobs?.some(job => job.name === "verify" && job.conclusion === "success");
-  const { workflow_runs: runs = [] } = await api(`actions/workflows/ci.yml/runs?event=merge_group&head_sha=${sha}&per_page=20`);
-  for (const run of [...runs].sort((a, b) => b.id - a.id)) {
-    if (!ours(run, "merge_group") || run.head_sha !== sha || !await verified(run)) continue;
+  for (const run of [...await queueRuns(api, sha)].sort((a, b) => b.id - a.id)) {
+    if (!ours(repository, run, "merge_group") || run.head_sha !== sha || !await verified(run)) continue;
     const record = await planOf(run);
     if (!record || record.schema !== 1) continue;
     if (record.reused === null && validPlan(record.plan)) return { url: run.html_url, plan: record.plan };
@@ -39,7 +43,7 @@ export async function coveringRun({ repository, sha, api, planOf }) {
     const id = runId(record.reused);
     if (!id) continue;
     const reused = await api(`actions/runs/${id}`);
-    if (!ours(reused, "pull_request") || !await verified(reused)) continue;
+    if (!ours(repository, reused, "pull_request") || !await verified(reused)) continue;
     const tested = await planOf(reused);
     if (tested?.schema === 1 && tested.reused === null && validPlan(tested.plan))
       return { url: `${run.html_url} (which reused ${reused.html_url})`, plan: tested.plan };
@@ -69,9 +73,20 @@ export function unionPlan(plans) {
   };
 }
 
+// A merge queue run of `sha` that has not completed: an earlier entry that GitHub merged when a later entry's run
+// passed, while its own run still ran (2026-11-26: #1365's run passed three minutes after the push of #1365 and #1371
+// planned, so that push ran #1365's Windows and macOS legs again).
+export async function pendingRun({ repository, sha, api }) {
+  return (await queueRuns(api, sha)).find(run => ours(repository, run, "merge_group") && run.head_sha === sha && run.status !== "completed") ?? null;
+}
+
 // The push of `sha` from `before`: the union of the covering runs of every commit of before..sha when each has one
-// (main is linear: squash merges only), else the covering run of `sha` alone. `api` also answers compare/<a>...<b>.
-export async function coveringPush({ repository, sha, before, api, planOf }) {
+// (main is linear: squash merges only), else the covering run of `sha` alone. An earlier commit whose queue run is still
+// running is waited for, polling every `pollSeconds`, until `waitMinutes` after the lookup started. `api` also answers
+// compare/<a>...<b>; `sleep`, `now` and `log` are for tests.
+export async function coveringPush({ repository, sha, before, api, planOf, waitMinutes = 0, pollSeconds = 30,
+  sleep = ms => new Promise(done => setTimeout(done, ms)), now = Date.now, log = message => console.error(message) }) {
+  const deadline = now() + waitMinutes * 60_000;
   const own = await coveringRun({ repository, sha, api, planOf });
   if (!own || !/^[0-9a-f]{40}$/.test(before ?? "") || /^0+$/.test(before)) return own;
   const { status, total_commits: total, commits = [] } = await api(`compare/${before}...${sha}?per_page=100`);
@@ -79,7 +94,13 @@ export async function coveringPush({ repository, sha, before, api, planOf }) {
   if (status !== "ahead" || total !== shas.length || shas.at(-1) !== sha || shas.length < 2) return own;
   const found = [];
   for (const commit of shas.slice(0, -1)) {
-    const run = await coveringRun({ repository, sha: commit, api, planOf });
+    let run = await coveringRun({ repository, sha: commit, api, planOf });
+    for (let pending; !run && now() < deadline && (pending = await pendingRun({ repository, sha: commit, api }));) {
+      const left = Math.ceil((deadline - now()) / 60_000);
+      log(`Merge queue run ${pending.html_url} of ${commit.slice(0, 9)} is ${pending.status}; waiting for it (up to ${left} more min).`);
+      await sleep(Math.max(0, Math.min(pollSeconds * 1000, deadline - now())));
+      run = await coveringRun({ repository, sha: commit, api, planOf });
+    }
     if (!run) return own;
     found.push({ ...run, sha: commit });
   }
@@ -125,11 +146,13 @@ export function github(repository, token, fetchImpl = fetch) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { GITHUB_REPOSITORY: repository, GH_TOKEN: token } = process.env;
+  const { GITHUB_REPOSITORY: repository, GH_TOKEN: token, CI_COVER_WAIT_MINUTES: wait = "0" } = process.env;
   const [sha, before] = process.argv.slice(2);
   try {
     if (!repository || !token) throw new Error("GH_TOKEN and GITHUB_REPOSITORY are required");
-    const found = await coveringPush({ repository, sha, before, ...github(repository, token) });
+    const waitMinutes = Number.parseInt(wait, 10);
+    if (!Number.isSafeInteger(waitMinutes) || waitMinutes < 0) throw new Error(`CI_COVER_WAIT_MINUTES must be a whole number of minutes, not '${wait}'`);
+    const found = await coveringPush({ repository, sha, before, waitMinutes, ...github(repository, token) });
     if (found) {
       console.error(`Merge queue run ${found.url} passed ${before && found.url.includes(" and run ") ? `${before.slice(0, 9)}..${sha}` : sha}.`);
       console.log(JSON.stringify(found));

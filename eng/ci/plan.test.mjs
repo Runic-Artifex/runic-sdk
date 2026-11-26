@@ -1335,7 +1335,7 @@ test('shared parts of ci.yml, and edits the planner cannot compare, plan everyth
     ['concurrency', top(/cancel-in-progress: \$\{\{ github.event_name == 'pull_request' \}\}/, 'cancel-in-progress: false')],
     ['permissions', top(/^permissions:\n {2}contents: read/m, 'permissions:\n  contents: write')],
     ['name', top(/^name: SDK CI$/m, 'name: SDK CI 2')],
-    ['plan job', editJob('plan', /timeout-minutes: \d+/, 'timeout-minutes: 9')],
+    ['plan job', editJob('plan', /timeout-minutes: [^\n]+/, 'timeout-minutes: 9')],
     ['verify job', editJob('verify', /run: bun eng\/ci\/gate\.mjs/, 'run: bun eng/ci/gate.mjs --strict')],
     ['build job, which other jobs need', editJob('build', /timeout-minutes: \d+/, 'timeout-minutes: 99')],
     ['native-libraries job, which build needs', editJob('native-libraries', /uses: \.\/\.github\/workflows\/native-libraries\.yml/, 'uses: ./.github/workflows/native-libraries.yml # v2\n    with:\n      all: true')],
