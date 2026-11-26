@@ -37,6 +37,13 @@ internal static class ConformanceCorpus
         }
     }
 
+    // The hello of the read-request vectors' file (README "Messages"), which a runner sends first on each fresh connection.
+    internal static string RequestHello()
+    {
+        var vector = JsonNode.Parse(File.ReadAllText(Path.Combine(Root, "vectors", "messages", "requests.json")))!.AsObject();
+        return vector["hello"]?.ToJsonString() ?? throw new InvalidOperationException("vectors/messages/requests.json has no hello.");
+    }
+
     // Expands the generators of README "Comparing messages": an array element that is a single-member object
     // {"$rows": [start, count, width?]} is count rows of the list View, {"$adds": [start, count, width?]} one add
     // change per such row. Everything else is copied.

@@ -116,7 +116,7 @@ async function run(impl: Implementation): Promise<number> {
       let outcome: Outcome;
       adapter.clearTail();
       try {
-        outcome = c.kind === "vector" ? await runVector(adapter, c.body, roles) : await runScenario(adapter, c.body, supports, timing, roles);
+        outcome = c.kind === "vector" ? await runVector(adapter, c.body, roles, c.roles) : await runScenario(adapter, c.body, supports, timing, roles);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         outcome = { outcome: "fail", detail: `harness: ${message}${e instanceof AdapterError ? "\n" + adapter.tail() : ""}` };

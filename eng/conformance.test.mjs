@@ -113,6 +113,24 @@ test("message matching maps revisions in order and epochs one to one", () => {
   messages.match({ epoch: 1 }, { epoch: 3 }, "other");
 });
 
+test("in an unordered group, revisions first seen on different routes may map in either order", () => {
+  const messages = new Messages({}, async () => null);
+  messages.match({ revision: 0 }, { revision: 0 }, "notes");
+  messages.beginGroup();
+  // The producer published the second route's frame first.
+  messages.match({ kind: "frame", route: "detail", revision: 2 }, { kind: "frame", route: "detail", revision: 1 }, null);
+  messages.match({ kind: "frame", route: "notes", revision: 1 }, { kind: "frame", route: "notes", revision: 2 }, null);
+  messages.endGroup();
+  messages.match({ revision: 3 }, { revision: 5 }, "notes");
+  assert.throws(() => messages.match({ revision: 4 }, { revision: 2 }, "notes"), ScenarioFailure);
+  // They still differ, and the same route stays ordered.
+  const shared = new Messages({}, async () => null);
+  shared.beginGroup();
+  shared.match({ kind: "frame", route: "a", revision: 1 }, { kind: "frame", route: "a", revision: 4 }, null);
+  assert.throws(() => shared.match({ kind: "frame", route: "b", revision: 2 }, { kind: "frame", route: "b", revision: 4 }, null), ScenarioFailure);
+  assert.throws(() => shared.match({ kind: "frame", route: "a", revision: 2 }, { kind: "frame", route: "a", revision: 3 }, null), ScenarioFailure);
+});
+
 test("message matching compares members exactly, $any by type, and frame changes per field", () => {
   const messages = new Messages({}, async () => null);
   assert.equal(messages.tryMatch({ a: { $any: "string", default: "x" } }, { a: "y" }, null), null);
@@ -147,6 +165,13 @@ test("the Views corpus loads with unique ids, and its case list is stable", () =
   assert.ok(cases.length > 500);
   assert.equal(new Set(cases.map((c) => c.id)).size, cases.length);
   for (const c of cases) assert.match(c.sha256, /^[0-9a-f]{64}$/, c.id);
+  // Vector cases have their file's roles; read-request cases carry the file's hello (README "Messages").
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  assert.deepEqual(cases.find((c) => c.set === "canonical.syntax").roles, ["producer"]);
+  assert.deepEqual(byId.get("messages.requests.hello").roles, ["producer"]);
+  assert.equal(byId.get("messages.requests.hello").body.hello.kind, "hello");
+  assert.deepEqual(cases.find((c) => c.set === "values.integers").roles, ["producer", "client"]);
+  assert.deepEqual(cases.find((c) => c.set === "messages.pushes").roles, ["client"]);
   const text = formatCases(names.cases, "views/4", cases);
   assert.equal(text, formatCases(names.cases, "views/4", loadViewsCorpus(corpus)));
   assert.equal(JSON.parse(text).cases.length, cases.length);

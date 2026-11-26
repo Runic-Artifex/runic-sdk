@@ -12,6 +12,19 @@
     "contract": { "$ref": "#/$defs/contract" },
     "area": { "enum": ["canonical", "values", "messages"] },
     "description": { "type": "string", "minLength": 1 },
+    "roles": {
+      "description": "The runners that execute the file's cases (README \"Vectors\"). Absent means both.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["producer", "client"] }
+    },
+    "hello": {
+      "description": "messages only, and required with read-request cases: the hello a producer runner sends on each case's fresh connection before the case's request, unless the case is a hello itself (README \"Messages\").",
+      "type": "object",
+      "required": ["kind", "protocol", "session", "client"],
+      "properties": { "kind": { "const": "hello" } }
+    },
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -45,7 +58,8 @@
     },
     {
       "if": { "properties": { "area": { "const": "messages" } } },
-      "then": { "properties": { "cases": { "items": { "$ref": "#/$defs/messageCase" } } } }
+      "then": { "properties": { "cases": { "items": { "$ref": "#/$defs/messageCase" } } } },
+      "else": { "not": { "required": ["hello"] } }
     }
   ],
   "$defs": {
@@ -244,6 +258,11 @@
           "if": { "properties": { "operation": { "const": "read-reply" } } },
           "then": { "required": ["request"] },
           "else": { "not": { "required": ["request"] } }
+        },
+        {
+          "description": "A case with limits gives its bytes exactly, so a runner's JSON writer cannot change its size.",
+          "if": { "required": ["limits"] },
+          "then": { "properties": { "input": { "properties": { "encoding": { "enum": ["utf8", "base64"] } } } } }
         },
         {
           "if": { "properties": { "operation": { "const": "read-request" } }, "required": ["expect"] },

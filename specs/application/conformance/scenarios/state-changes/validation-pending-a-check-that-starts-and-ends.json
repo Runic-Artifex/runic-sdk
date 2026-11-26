@@ -1,6 +1,6 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "state-changes.validation-pending-a-check-that-starts-and-ends.v1",
+  "id": "state-changes.validation-pending-a-check-that-starts-and-ends.v2",
   "contract": {
     "id": "runic.views",
     "version": 4
@@ -10,6 +10,7 @@
     "producer",
     "client"
   ],
+  "requires": ["validation-pending/1"],
   "description": "An asynchronous check of name starts and ends while name is invalid (validation-pending/1). Each change is a frame that sets validation: pending lists [\"name\"] while the check runs, beside the errors it does not change, and is absent again once it ended. No other member changes and hasErrors does not follow pending.",
   "view": "form",
   "ids": {
