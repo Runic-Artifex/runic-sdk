@@ -119,6 +119,11 @@ and severities are open.
 | [`RUNICBRIDGE089`](#runicbridge089) | Warning | Build targets | A workspace member declares another package manager than its workspace |
 | [`RUNICBRIDGE090`](#runicbridge090) | Error | Build targets | The frontend's package manager or JavaScript runtime does not run |
 | [`RUNICBRIDGE091`](#runicbridge091) | Warning | Build targets | `RunicApplicationFrontendInstallMode` is not Auto, Always or Never |
+| [`RUNICBRIDGE092`](#runicbridge092) | Error | Build targets | A web bundle cannot be written for a project whose frontend build is off |
+| [`RUNICBRIDGE093`](#runicbridge093) | Error | Build targets | The prebuilt frontend directory has no usable entry for the project |
+| [`RUNICBRIDGE094`](#runicbridge094) | Error | Build targets | A prebuilt frontend was built from other Views than the build's |
+| [`RUNICBRIDGE095`](#runicbridge095) | Error | Build targets | A prebuilt frontend was built for another host |
+| [`RUNICBRIDGE096`](#runicbridge096) | Warning | Build targets | An optimized build takes a development build of a prebuilt frontend |
 
 ### Errors and warnings while you type
 
@@ -1317,6 +1322,69 @@ incomplete.
 
 **Fix:** set `Auto`, `Always` or `Never`, or remove the property. See
 [Fast iteration](../packages/dotnet/Runic.Application.Views/README.md#fast-iteration).
+
+### RUNICBRIDGE092
+
+An error from the `Runic.Application.Views` build targets (since 0.24):
+`RunicApplicationFrontendBundleDirectory` asks for a web bundle, but the
+project cannot write its entry. Either its frontend build is off in this
+build (`RunicApplicationFrontendBuildEnabled=false`, or `dotnet runic dev`
+serves its page), so the bundle would carry an old page or none, or
+`RunicApplicationFrontendPrebuiltDirectory` is set too, and a build either
+writes a bundle or takes its frontend from one. A frontend build that wrote no
+files to its output directory is reported with this code by the generator.
+
+**Fix:** write the bundle with a build that builds the frontend, such as
+`dotnet build -c Release -p:RunicApplicationFrontendBundleDirectory=<dir>`
+while `dotnet runic dev` does not run, and set only one of the two
+directories. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE093
+
+An error from the `Runic.Application.Views` build targets (since 0.24): a
+build with `RunicApplicationFrontendPrebuiltDirectory` cannot use the web
+bundle there for a project that declares Views. The folder has no
+`web-bundle.json`, or one of another format; the manifest has no entry for the
+project's assembly; or the entry's `www/` is not the one the bundle recorded
+(its files' SHA-256 differs, as after a truncated download). It is also
+reported for a `RunicApplicationFrontendPrebuiltCheck` other than `error` or
+`warning`.
+
+**Fix:** point the property at the whole downloaded bundle, written by a build
+of the solution or project that builds the reported assembly, with the same
+Runic release. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE094
+
+An error from the `Runic.Application.Views` build targets (since 0.24): the
+prebuilt frontend was built from other ViewModels than this build's. For each
+View whose [fingerprint](../specs/application/contract-ir.md#fingerprint)
+differs, or that only one side has, the message names the View and both
+fingerprints, such as `Acme.App.CounterViewModel is 09A0D538… in this build and
+2B0C9276… in the bundle`. Such a page would fail at run time: an operation
+finds `unknown`, or members do not match.
+
+**Fix:** write the bundle from the same commit as the publish. To publish
+anyway, set `RunicApplicationFrontendPrebuiltCheck=warning`, which reports this
+as a warning. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE095
+
+An error from the `Runic.Application.Views` build targets (since 0.24): the
+prebuilt frontend was built for another host (`RUNIC_APPLICATION_HOST`, from
+`RunicApplicationHost`) than this build runs it on.
+
+**Fix:** write the bundle with the same `RunicApplicationHost`, or set
+`RunicApplicationFrontendPrebuiltCheck=warning` to publish anyway. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE096
+
+A warning from the `Runic.Application.Views` build targets (since 0.24): an
+optimized build (Release, `dotnet publish`) takes a prebuilt page that was not
+built with `NODE_ENV=production`, so it carries the development builds of
+`@runic-artifex/views` and its framework.
+
+**Fix:** write the bundle with `-c Release`. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
 
 ## dotnet runic
 

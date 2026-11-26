@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-views/web-bundle-1.schema.json",
+  "title": "Runic web bundle manifest",
+  "description": "web-bundle.json: the built frontends of a build's projects, with the View fingerprints and settings each was built from, so that a build on another machine takes them without building them and checks them first. See ../web-bundle.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "producer", "createdBy", "projects"],
+  "properties": {
+    "format": {"const": "rax.web-bundle/1"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "description": "The build integration that wrote the bundle, such as Runic.Application.Views."},
+        "version": {"type": "string", "minLength": 1, "description": "Its release."}
+      }
+    },
+    "createdBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os"],
+      "properties": {
+        "os": {"type": "string", "minLength": 1, "description": "The runtime identifier of the machine that wrote the bundle, such as linux-x64."},
+        "dotnet": {"type": "string", "minLength": 1, "description": "The .NET SDK version."},
+        "node": {"type": "string", "minLength": 1, "description": "The Node.js version on PATH, without the leading v; absent without Node.js."}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$", "description": "The Git commit of the checkout."},
+        "dirty": {"type": "boolean", "description": "Tracked files differed from the commit."}
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/project"}
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\\\]+$",
+      "not": {"pattern": "^(/|[A-Za-z]:)"},
+      "description": "A relative path with forward slashes."
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assembly", "project", "kind", "configuration", "targetFramework", "contracts"],
+      "properties": {
+        "assembly": {"type": "string", "minLength": 1, "description": "The project's assembly name, which identifies its entry."},
+        "project": {"$ref": "#/$defs/path", "description": "The project file, relative to the checkout's root."},
+        "kind": {
+          "enum": ["application", "library", "clientLibrary"],
+          "description": "application: an executable with a page. library: a model project whose page an application copies. clientLibrary: a package that applications' pages bundle; it has no page."
+        },
+        "configuration": {"type": "string"},
+        "targetFramework": {"type": "string"},
+        "host": {"type": "string", "minLength": 1, "description": "RunicApplicationHost, which the frontend build received as RUNIC_APPLICATION_HOST; absent when none."},
+        "nodeEnv": {"type": "string", "minLength": 1, "description": "The NODE_ENV the frontend build received; absent when unset."},
+        "www": {"$ref": "#/$defs/path", "description": "The page, relative to the bundle: projects/<assembly>/www. Absent for a client library."},
+        "clients": {"$ref": "#/$defs/path", "description": "The generated clients, relative to the bundle: projects/<assembly>/clients."},
+        "contracts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit", "fingerprintFormat", "irSha256", "views"],
+          "properties": {
+            "unit": {"type": "string", "description": "The contract IR's producer unit."},
+            "fingerprintFormat": {"const": "runic.views.fingerprint/1"},
+            "irSha256": {"$ref": "#/$defs/sha256", "description": "The SHA-256 of the contract IR document."},
+            "views": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "fingerprint"],
+                "properties": {
+                  "id": {"type": "string", "minLength": 1},
+                  "fingerprint": {"type": "string", "pattern": "^[0-9A-F]{64}$"}
+                }
+              }
+            }
+          }
+        },
+        "frontend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["directory"],
+          "properties": {
+            "directory": {"$ref": "#/$defs/path"},
+            "packageManager": {"type": "string", "minLength": 1},
+            "lockFile": {"$ref": "#/$defs/path"},
+            "lockSha256": {"$ref": "#/$defs/sha256"},
+            "runtimePackage": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "version"],
+              "properties": {
+                "name": {"const": "@runic-artifex/views"},
+                "version": {"type": "string", "minLength": 1}
+              }
+            },
+            "buildCommand": {"type": "string", "minLength": 1}
+          }
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "sha256"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 1},
+            "sha256": {"$ref": "#/$defs/sha256", "description": "The SHA-256 of the lines '<sha256>  <path>\\n' of every file of www/, sorted by path in ordinal order."}
+          }
+        }
+      },
+      "if": {"properties": {"kind": {"const": "clientLibrary"}}},
+      "then": {"not": {"anyOf": [{"required": ["www"]}, {"required": ["files"]}]}},
+      "else": {"required": ["www", "files"]}
+    }
+  }
+}
