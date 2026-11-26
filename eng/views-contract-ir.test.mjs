@@ -84,6 +84,16 @@ test("the schema rejects malformed documents", () => {
     "an unknown member": ir => { ir.views[0].unknown = true; },
     "a parameter without an input": ir => { ir.views[0].commands[0].parameter = "value"; },
     "another format": ir => { ir.format = "runic.views.contract-ir/0"; },
+    "a checked member that is not settable": ir => {
+      const member = ir.views[0].members.find(item => item.checked);
+      delete member.settable;
+      delete member.declaringType;
+    },
+    "field paths below a member that is not checked": ir => {
+      const member = ir.views[0].members.find(item => item.checked);
+      delete member.checked;
+      member.fieldPaths = [{ path: ["x"] }];
+    },
   };
   for (const [name, mutate] of Object.entries(cases)) {
     const ir = structuredClone(counter);

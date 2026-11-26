@@ -475,6 +475,8 @@
           "else": {"not": {"required": ["declaringType"]}}
         },
         {"if": {"required": ["constraints"]}, "then": {"required": ["checked"]}},
+        {"if": {"required": ["checked"]}, "then": {"required": ["settable"]}},
+        {"if": {"required": ["fieldPaths"]}, "then": {"anyOf": [{"required": ["checked"]}, {"required": ["rowEditor"]}]}},
         {"if": {"required": ["rowEditor"]}, "then": {"required": ["collectionKey"]}}
       ]
     },

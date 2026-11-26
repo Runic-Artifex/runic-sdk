@@ -418,6 +418,7 @@
     "edits.a-path-write-without-the-feature-is-invalid.v2": {"status":"pass"},
     "edits.a-row-added-again-under-its-key-is-a-new-row.v1": {"status":"pass"},
     "edits.a-row-editor-that-throws-rejects-the-write.v1": {"status":"pass"},
+    "edits.a-set-of-a-checked-field-raises-its-version.v1": {"status":"pass"},
     "edits.a-splice-the-producer-refuses-is-sent-in-full.v1": {"status":"excluded","reason":"role:client"},
     "edits.a-superseded-splice-is-not-checked.v1": {"status":"pass"},
     "edits.checked-write.v1": {"status":"pass"},
