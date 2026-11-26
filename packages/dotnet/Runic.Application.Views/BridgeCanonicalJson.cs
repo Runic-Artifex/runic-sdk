@@ -26,19 +26,65 @@ namespace Runic.Application.Views;
 // - Strings are written with BridgeJsonEncoder's minimal escaping. A string
 //   or name that is not valid Unicode (a lone surrogate escape, invalid UTF-8)
 //   is rejected with a FormatException (I-JSON, RFC 7493).
-// - Depth is bounded by Utf8JsonReader's default of 64.
+// - Depth is bounded by 64, Utf8JsonReader's default.
+//
+// Every failure carries one of the codes of the conformance corpus
+// (specs/application/conformance/README.md, "Canonical form"): ErrorCode
+// reads it. Malformed JSON and too deep a value throw a JsonException, the
+// other failures a FormatException, as before the codes.
 //
 // It reads with Utf8JsonReader instead of building a JsonDocument. Objects
 // whose members are already sorted are copied in one pass.
 internal static class BridgeCanonicalJson
 {
+    // The reader allows one level more, so that this class reports too deep a
+    // value itself (Read) instead of reading it from the reader's message.
+    private const int MaximumDepth = 64;
+    private static readonly JsonReaderOptions s_readerOptions = new() { MaxDepth = MaximumDepth + 1 };
+
     public static void Write(Utf8JsonWriter writer, ReadOnlySpan<byte> json)
     {
-        var reader = new Utf8JsonReader(json);
-        if (!reader.Read()) throw new JsonException("A bridge value must be a JSON value.");
-        WriteValue(writer, json, ref reader);
-        // Utf8JsonReader rejects a second top-level value or trailing data.
-        if (reader.Read()) throw new JsonException("A bridge value must be one JSON value.");
+        var reader = new Utf8JsonReader(json, s_readerOptions);
+        try
+        {
+            if (!Read(ref reader)) throw new BridgeCanonicalJsonException(BridgeCanonicalJsonErrors.InvalidJson, "A bridge value must be a JSON value.");
+            WriteValue(writer, json, ref reader);
+            // Utf8JsonReader rejects a second top-level value or trailing data.
+            if (Read(ref reader)) throw new BridgeCanonicalJsonException(BridgeCanonicalJsonErrors.InvalidJson, "A bridge value must be one JSON value.");
+        }
+        // Utf8JsonReader's own failures are syntax errors.
+        catch (JsonException error) when (error is not BridgeCanonicalJsonException)
+        {
+            throw new BridgeCanonicalJsonException(BridgeCanonicalJsonErrors.InvalidJson, error);
+        }
+    }
+
+    // The corpus code of a failure of Write and of the members built on it,
+    // or null for an exception they did not throw.
+    public static string? ErrorCode(Exception error) => error switch
+    {
+        BridgeCanonicalJsonException json => json.Code,
+        BridgeCanonicalFormatException format => format.Code,
+        _ => null,
+    };
+
+    // Reads the next token of a value nested at most MaximumDepth deep.
+    private static bool Read(ref Utf8JsonReader reader)
+    {
+        if (!reader.Read()) return false;
+        if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray && reader.CurrentDepth >= MaximumDepth)
+            throw new BridgeCanonicalJsonException(BridgeCanonicalJsonErrors.DepthExceeded,
+                $"A bridge JSON value cannot be nested deeper than {MaximumDepth}.");
+        return true;
+    }
+
+    // Utf8JsonReader.Skip through Read: the reader is on a value's first token
+    // and ends on its last.
+    private static void Skip(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType is not (JsonTokenType.StartObject or JsonTokenType.StartArray)) return;
+        var depth = reader.CurrentDepth;
+        while (Read(ref reader) && reader.CurrentDepth > depth) { }
     }
 
     public static string ToString(ReadOnlySpan<byte> json)
@@ -128,13 +174,13 @@ internal static class BridgeCanonicalJson
                 break;
             case JsonTokenType.StartArray:
                 writer.WriteStartArray();
-                while (reader.Read() && reader.TokenType != JsonTokenType.EndArray) WriteValue(writer, json, ref reader);
+                while (Read(ref reader) && reader.TokenType != JsonTokenType.EndArray) WriteValue(writer, json, ref reader);
                 writer.WriteEndArray();
                 break;
             case JsonTokenType.String:
                 if (reader.ValueIsEscaped) writer.WriteStringValue(Decode(ref reader));
                 else if (Utf8.IsValid(reader.ValueSpan)) writer.WriteStringValue(reader.ValueSpan);
-                else throw InvalidText();
+                else throw InvalidUtf8();
                 break;
             case JsonTokenType.Number:
                 WriteNumber(writer, reader.ValueSpan);
@@ -149,7 +195,7 @@ internal static class BridgeCanonicalJson
                 writer.WriteNullValue();
                 break;
             default:
-                throw new JsonException("A bridge value must be a JSON value.");
+                throw new BridgeCanonicalJsonException(BridgeCanonicalJsonErrors.InvalidJson, "A bridge value must be a JSON value.");
         }
     }
 
@@ -160,12 +206,12 @@ internal static class BridgeCanonicalJson
         try
         {
             var sorted = true;
-            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            while (Read(ref reader) && reader.TokenType != JsonTokenType.EndObject)
             {
                 var member = new Member(json, ref reader);
-                reader.Read();
+                Read(ref reader);
                 member.ValueStart = checked((int)reader.TokenStartIndex);
-                reader.Skip();
+                Skip(ref reader);
                 member.ValueEnd = checked((int)reader.BytesConsumed);
                 if (count == members.Length)
                 {
@@ -196,7 +242,8 @@ internal static class BridgeCanonicalJson
                 if (member.Name is { } name) writer.WritePropertyName(name);
                 else writer.WritePropertyName(json.Slice(member.NameStart, member.NameLength));
                 var value = json[member.ValueStart..member.ValueEnd];
-                var nested = new Utf8JsonReader(value);
+                // The outer reader has checked the value's depth.
+                var nested = new Utf8JsonReader(value, s_readerOptions);
                 nested.Read();
                 WriteValue(writer, value, ref nested);
             }
@@ -247,18 +294,25 @@ internal static class BridgeCanonicalJson
         while (right < members.Length) members[target++] = scratch[right++];
     }
 
-    private static FormatException Duplicate() => new("A bridge JSON object cannot contain duplicate property names.");
+    private static BridgeCanonicalFormatException Duplicate() =>
+        new(BridgeCanonicalJsonErrors.DuplicateMember, "A bridge JSON object cannot contain duplicate property names.");
 
     // Utf8JsonReader rejects an escaped lone surrogate and invalid UTF-8 when
-    // it decodes, with an InvalidOperationException.
+    // it decodes, both with an InvalidOperationException. Escapes are ASCII,
+    // so text whose raw bytes are well-formed UTF-8 failed on a surrogate.
     private static string Decode(ref Utf8JsonReader reader)
     {
         try { return reader.GetString()!; }
-        catch (InvalidOperationException error) { throw InvalidText(error); }
+        catch (InvalidOperationException error)
+        {
+            if (!Utf8.IsValid(reader.ValueSpan)) throw InvalidUtf8(error);
+            throw new BridgeCanonicalFormatException(BridgeCanonicalJsonErrors.LoneSurrogate,
+                "A bridge JSON string cannot contain a lone surrogate.", error);
+        }
     }
 
-    private static FormatException InvalidText(Exception? inner = null) =>
-        new("A bridge JSON string must be valid Unicode.", inner);
+    private static BridgeCanonicalFormatException InvalidUtf8(Exception? inner = null) =>
+        new(BridgeCanonicalJsonErrors.InvalidUtf8, "A bridge JSON string must be well-formed UTF-8.", inner);
 
     // An unescaped ASCII name is compared and written from the input bytes;
     // any other name is decoded once.
@@ -454,7 +508,38 @@ internal static class BridgeCanonicalJson
         return at;
     }
 
-    private static FormatException OutOfRange() => new("A bridge JSON number must be within the range of a double.");
+    private static BridgeCanonicalFormatException OutOfRange() =>
+        new(BridgeCanonicalJsonErrors.NumberOutOfRange, "A bridge JSON number must be within the range of a double.");
+}
+
+// The error codes of the canonical form, as the conformance corpus names them
+// (specs/application/conformance/README.md, "Canonical form").
+internal static class BridgeCanonicalJsonErrors
+{
+    public const string InvalidUtf8 = "invalid-utf8";
+    public const string InvalidJson = "invalid-json";
+    public const string LoneSurrogate = "lone-surrogate";
+    public const string DuplicateMember = "duplicate-member";
+    public const string DepthExceeded = "depth-exceeded";
+    public const string NumberOutOfRange = "number-out-of-range";
+}
+
+// invalid-json and depth-exceeded.
+internal sealed class BridgeCanonicalJsonException : JsonException
+{
+    public BridgeCanonicalJsonException(string code, string message) : base(message) => Code = code;
+
+    // Keeps the position of a failure of Utf8JsonReader.
+    public BridgeCanonicalJsonException(string code, JsonException inner)
+        : base(inner.Message, inner.Path, inner.LineNumber, inner.BytePositionInLine, inner) => Code = code;
+
+    public string Code { get; }
+}
+
+// invalid-utf8, lone-surrogate, duplicate-member and number-out-of-range.
+internal sealed class BridgeCanonicalFormatException(string code, string message, Exception? inner = null) : FormatException(message, inner)
+{
+    public string Code { get; } = code;
 }
 
 // A per-thread, reusable UTF-8 buffer and writer. Nested use (a codec that

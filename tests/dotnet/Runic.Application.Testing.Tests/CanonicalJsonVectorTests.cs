@@ -7,7 +7,8 @@ namespace Runic.Application.Testing.Tests;
 
 // The canonical form (RFC 8785, JCS) against vectors in the
 // runic.views.vector/1 format. Each case canonicalizes its input bytes and
-// expects either the exact output bytes or an error code.
+// expects either the exact output bytes or an error code, which the reader's
+// exception carries (BridgeCanonicalJson.ErrorCode).
 internal sealed class CanonicalJsonVectorTests
 {
     // The project file copies this suite's vectors and those of
@@ -55,7 +56,10 @@ internal sealed class CanonicalJsonVectorTests
                 }
                 catch (Exception error) when (error is JsonException or FormatException)
                 {
-                    if (!exception.IsInstanceOfType(error)) failures.Add($"{id}: {error.GetType().Name} instead of {exception.Name} for {code}");
+                    // The code, and the public exception type a caller catches.
+                    var actualCode = BridgeCanonicalJson.ErrorCode(error);
+                    if (actualCode != code) failures.Add($"{id}: {actualCode ?? "no code"} ({error.GetType().Name} {error.Message}) instead of {code}");
+                    else if (!exception.IsInstanceOfType(error)) failures.Add($"{id}: {error.GetType().Name} instead of {exception.Name} for {code}");
                 }
             }
         }
