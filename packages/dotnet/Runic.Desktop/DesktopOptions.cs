@@ -88,6 +88,10 @@ public sealed record DesktopHostOptions
     internal IWebUiEmbeddedHostFactory? BuiltInHostFactory { get; init; }
 
     /// <summary>Gets whether opening a window waits for bridge authentication.</summary>
+    /// <remarks>
+    /// The open returns once the window's page has connected: its <see cref="DesktopConnectionEventKind.Connected"/>
+    /// event has been raised, and <see cref="DesktopSurface.ConnectionCount"/> counts the page.
+    /// </remarks>
     public bool WaitForConnection { get; init; } = true;
 
     /// <summary>Gets the bridge authentication deadline.</summary>
