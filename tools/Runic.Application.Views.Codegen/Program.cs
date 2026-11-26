@@ -22,6 +22,11 @@ try
         if (args.Length == 2) File.WriteAllText(args[1], list);
         else Console.Out.Write(list);
     }
+    // D082: the web bundle that a build writes for another machine's publish.
+    else if (args.Length == 2 && args[0] == "--web-bundle-write")
+    {
+        WebBundle.Write(args[1]);
+    }
     else if (args.Length >= 1 && args[0] == "--generate")
     {
         var aot = false;
@@ -2174,6 +2179,8 @@ static class BridgeDiagnosticCodes
     internal const string FrontendPackageManagerMissing = "RUNICBRIDGE090";
     /// <summary>RunicApplicationFrontendInstallMode is not Auto, Always or Never (reported by the Views targets).</summary>
     internal const string FrontendInstallMode = "RUNICBRIDGE091";
+    /// <summary>A web bundle cannot be written: the frontend build is off (D082).</summary>
+    internal const string WebBundleWrite = "RUNICBRIDGE092";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2247,6 +2254,7 @@ static class BridgeDiagnosticCodes
         (FrontendWorkspacePackageManager, "warning", "A workspace member declares another package manager than its workspace"),
         (FrontendPackageManagerMissing, "error", "The frontend's package manager or JavaScript runtime does not run"),
         (FrontendInstallMode, "warning", "RunicApplicationFrontendInstallMode is not Auto, Always or Never"),
+        (WebBundleWrite, "error", "A web bundle cannot be written for a project whose frontend build is off"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

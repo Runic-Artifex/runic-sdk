@@ -58,6 +58,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendWorkspaceRoot` | property | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The JavaScript workspace root where a frontend without its own lock file installs (0.24); `none` installs the frontend on its own. |
 | `RunicApplicationFrontendNodeModulesDirectory` | property | none | A `node_modules` installed elsewhere, such as by the Nix builder. |
 | `RunicApplicationFrontendBuildEnabled` | property | `true`, `auto` in a client library | `false` when another tool builds the frontend; `auto` builds it when its `package.json` has a `build` script (0.24). |
+| `RunicApplicationFrontendBundleDirectory` | property | none | A folder where every project that declares Views writes its built page, generated clients and its entry of `web-bundle.json` (`rax.web-bundle/1`) after its build, for a publish on another machine (0.24, D082). A relative path is relative to the directory the build starts in. |
 | `RunicApplicationFrontendCopyEnabled` | property | `true`, `false` in a client library | Mirror the frontend output to the web root. |
 | `RunicApplicationFrontendDevSessionEnabled` | property | `true` | `false` makes a build ignore a running `dotnet runic dev` session, which otherwise skips the frontend build and keeps dev's development pages in the web root (since 0.20). |
 | `RunicApplicationFrontendOutputDirectory` | property | `dist` | The frontend build's output, relative to the frontend directory. |

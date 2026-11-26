@@ -335,6 +335,11 @@
       "id": "RUNICBRIDGE091",
       "severity": "warning",
       "title": "RunicApplicationFrontendInstallMode is not Auto, Always or Never"
+    },
+    {
+      "id": "RUNICBRIDGE092",
+      "severity": "error",
+      "title": "A web bundle cannot be written for a project whose frontend build is off"
     }
   ]
 }

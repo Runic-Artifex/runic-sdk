@@ -119,6 +119,7 @@ and severities are open.
 | [`RUNICBRIDGE089`](#runicbridge089) | Warning | Build targets | A workspace member declares another package manager than its workspace |
 | [`RUNICBRIDGE090`](#runicbridge090) | Error | Build targets | The frontend's package manager or JavaScript runtime does not run |
 | [`RUNICBRIDGE091`](#runicbridge091) | Warning | Build targets | `RunicApplicationFrontendInstallMode` is not Auto, Always or Never |
+| [`RUNICBRIDGE092`](#runicbridge092) | Error | Build targets | A web bundle cannot be written for a project whose frontend build is off |
 
 ### Errors and warnings while you type
 
@@ -1308,6 +1309,19 @@ incomplete.
 
 **Fix:** set `Auto`, `Always` or `Never`, or remove the property. See
 [Fast iteration](../packages/dotnet/Runic.Application.Views/README.md#fast-iteration).
+
+### RUNICBRIDGE092
+
+An error from the `Runic.Application.Views` build targets (since 0.24):
+`RunicApplicationFrontendBundleDirectory` asks for a web bundle, but the
+project cannot write its entry. Either its frontend build is off in this
+build (`RunicApplicationFrontendBuildEnabled=false`, or `dotnet runic dev`
+serves its page), so the bundle would carry an old page or none, or its
+frontend build wrote no files to its output directory.
+
+**Fix:** write the bundle with a build that builds the frontend, such as
+`dotnet build -c Release -p:RunicApplicationFrontendBundleDirectory=<dir>`
+while `dotnet runic dev` does not run. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
 
 ## dotnet runic
 

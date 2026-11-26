@@ -2587,6 +2587,7 @@ returns an application's frontend packages as data ([Library packages](#library-
 | `RunicApplicationFrontendWorkspaceRoot` | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The [JavaScript workspace](#javascript-workspaces) root where a frontend without its own lock file installs (since 0.24). `none` makes the frontend its own root. |
 | `RunicApplicationFrontendNodeModulesDirectory` | none | A `node_modules` installed by something else, such as the [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md) from the lock file. The install does not run, and the frontend's `node_modules` becomes a symbolic link (a junction on Windows) to it; an existing `node_modules` that is not a link is `RUNICBRIDGE021`. |
 | `RunicApplicationFrontendBuildEnabled` | `true`, `auto` in a client library | Set `false` when another tool owns the frontend build. TypeScript is still generated. `auto` (since 0.24) builds when the frontend's `package.json` has a `build` script and not otherwise; see [Library packages](#library-packages). |
+| `RunicApplicationFrontendBundleDirectory` | none | Writes a web bundle there after the build (since 0.24): each project's page, generated clients and View fingerprints, for a publish on another machine. See [Building the frontend in another job](#building-the-frontend-in-another-job). |
 | `RunicApplicationFrontendCopyEnabled` | `true`, `false` in a client library | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it, except in a client library that leaves this `false`. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
 | `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as an Angular CLI page (the `runic-app` template's `--frontend angular --translations`) or a Bun page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
@@ -2913,6 +2914,42 @@ replies and pushes are data: JSON text that the client parses with
 in a `<meta>` element. APIs that run your own script in the page, such as
 `DesktopSurface.ExecuteJavaScriptAsync`, still need `'unsafe-eval'`. See the
 [security guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/security.md#framing-and-content-security-policy).
+
+### Building the frontend in another job
+
+A team with many Linux runners and few of its target OS, such as one Windows
+runner, can build and test everything web on Linux and run only the publish on
+the target OS (since 0.24, D082). The .NET build, the Bridge generator, the
+TypeScript clients, the frontend install and build, the headless tests and a
+framework-dependent `win-x64` publish all run on Linux; NativeAOT, MSIX,
+signing and running WPF or WebView2 code need the target OS.
+
+`RunicApplicationFrontendBundleDirectory` makes a build write a **web bundle**:
+
+```sh
+dotnet build -c Release -p:RunicApplicationFrontendBundleDirectory=$RUNNER_TEMP/web-bundle
+```
+
+After its build, every project that declares Views writes its entry there:
+its frontend build's output in `projects/<assembly>/www/` (none for a [client
+library](#share-viewmodels-and-their-clients-through-a-library)), its generated
+clients in `projects/<assembly>/clients/`, and its part of `web-bundle.json`
+(format `rax.web-bundle/1`). The manifest records each project's View
+fingerprints from the contract IR, its host (`RUNIC_APPLICATION_HOST`), its
+`NODE_ENV`, its lock file's hash and the `@runic-artifex/views` it resolved, the
+.NET SDK and Node.js versions, and the commit. The projects of a solution build,
+such as a WPF application's model project and the application, write their
+entries side by side. The format is in
+[specs/application/web-bundle.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/web-bundle.md).
+Upload the folder as the job's artifact. A job that tests the frontend alone
+copies an entry's `clients/` into the frontend's `src/generated` and needs no
+.NET build.
+
+A relative directory is relative to the directory the build starts in. Start
+from an empty folder: a project's entry replaces only its own. A project whose
+frontend build is off (`RunicApplicationFrontendBuildEnabled=false`, or a page
+that `dotnet runic dev` serves) cannot write its page, and the build fails with
+`RUNICBRIDGE092`.
 
 ## Adding a Window to an existing web app
 
