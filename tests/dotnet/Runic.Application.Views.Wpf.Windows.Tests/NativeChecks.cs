@@ -19,6 +19,18 @@ internal sealed partial class NativeChecks
 {
     [System.Runtime.InteropServices.LibraryImport("user32.dll")] private static partial nint SetFocus(nint window);
     [System.Runtime.InteropServices.LibraryImport("user32.dll")] private static partial nint GetFocus();
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")] private static partial nint GetForegroundWindow();
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool IsChild(nint parent, nint window);
+    [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "GetClassNameW")]
+    private static unsafe partial int GetClassName(nint window, char* name, int capacity);
+
+    private static unsafe string ClassName(nint window)
+    {
+        var name = stackalloc char[128];
+        return new string(name, 0, GetClassName(window, name, 128));
+    }
 
     // #267: a WPF window is brought forward for a forwarded launch: shown when hidden or not shown yet, restored when
     // minimized, and reported closed once it closed. A CI desktop may keep another window in the foreground, which
@@ -125,8 +137,10 @@ internal sealed partial class NativeChecks
     // vwpf-01: Tab enters the document at its first or last tab stop and leaves it again, in both directions, to the
     // surrounding WPF controls. The keys come through the DevTools protocol, which reaches the page without the
     // window being in the foreground; WebView2 raises MoveFocusRequested for them as for a user's Tab.
-    // #1274: two failures on win-x64 with the page's focus still on its last field; a retry is recorded with the
-    // diagnostics below.
+    // #1274: two failures on win-x64 with the page's focus still on its last field and WPF's on the preceding button,
+    // after the full scaled wait (150 s in CI), so the Tab was lost rather than late. Had the page handled it, Chromium
+    // would have cleared its focused element before handing the focus out. A failure prints the focus owners after
+    // every step, the page's key and focus events and the DevTools replies; a retry is recorded with them.
     [Test, NotInParallel("WpfSuite", Order = 16), RecordedRetry(RetryReason.Gui)]
     public async Task TabEntersAndLeavesTheChildWebView()
     {
@@ -154,19 +168,62 @@ internal sealed partial class NativeChecks
             });
             await using var view = await services.CreateWpfViewAsync(host, new DesktopSurfaceOptions
             {
-                Content = new DesktopContent.Html("<!doctype html><script src=\"webui.js\"></script>"
+                Content = new DesktopContent.Html("<!doctype html><script src=\"webui.js\"></script>" + TabEventLog
                     + "<input id=\"first\" aria-label=\"First\"><input id=\"last\" aria-label=\"Last\">"),
             }, new object());
             await view.OpenAsync();
             var controller = child.Controller ?? throw new InvalidOperationException("The child presentation has no WebView2 controller.");
 
+            // #1274: the focus owners after each step, for a failure's report.
+            var windowHandle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            List<string> steps = [];
+            string Element(object? element) => element switch
+            {
+                null => "none",
+                Button button => $"{button.Content}",
+                _ => element.GetType().Name,
+            };
+            string Win32(nint handle) =>
+                handle == 0 ? "none"
+                : handle == windowHandle ? "the WPF window"
+                : handle == child.Handle ? "the control's child window"
+                : IsChild(child.Handle, handle) ? $"WebView2's {ClassName(handle)}"
+                : $"another window ({ClassName(handle)})";
+            string Owners() =>
+                $"WPF focus {Element(FocusManager.GetFocusedElement(window))}, keyboard focus {Element(Keyboard.FocusedElement)}, "
+                + $"window active {window.IsActive}, Win32 focus {Win32(GetFocus())}, foreground {Win32(GetForegroundWindow())}, "
+                + $"MoveFocusRequested events {controller.MoveFocusRequests}"
+                + (controller.LastMoveFocusRequest is { } last ? $" (last reason {last.Reason}, handled {last.Handled})" : "")
+                + ", TabOut " + (child.LastTabOut is { } tabOut ? $"reason {tabOut.Reason}, moved {tabOut.Moved}" : "never ran");
+            void Step(string step) => steps.Add($"{clock.ElapsedMilliseconds,7} ms {step}: {Owners()}");
+
             // The script's result returns after the element has focus, so the key that follows cannot overtake it: the
-            // bridge socket and the DevTools protocol are not ordered with each other.
+            // bridge socket and the DevTools protocol are not ordered with each other. It also starts the page's list of
+            // the keys it sees from here.
             async Task FocusInPageAsync(string id)
             {
                 var focused = await view.Surface.ExecuteJavaScriptAsync(
-                    $"document.getElementById('{id}').focus(); return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                    $"document.getElementById('{id}').focus(); tabKeys.length = 0; return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                Step($"the page focused {focused}");
                 Program.Check(focused == id, $"The document could not focus {id}: {focused}.");
+            }
+
+            async Task TabAsync(bool shift)
+            {
+                // As a keyboard sends them: Shift down, Tab with the Shift modifier (8), Shift up.
+                var held = shift ? 8 : 0;
+                if (shift) await KeyAsync("rawKeyDown", "Shift", "ShiftLeft", 16);
+                await KeyAsync("rawKeyDown", "Tab", "Tab", 9);
+                await KeyAsync("keyUp", "Tab", "Tab", 9);
+                if (shift) await KeyAsync("keyUp", "Shift", "ShiftLeft", 16, modifiers: 0);
+
+                async Task KeyAsync(string type, string key, string code, int virtualKey, int? modifiers = null)
+                {
+                    var reply = await controller.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                        $$"""{"type":"{{type}}","modifiers":{{modifiers ?? held}},"key":"{{key}}","code":"{{code}}","windowsVirtualKeyCode":{{virtualKey}},"nativeVirtualKeyCode":{{virtualKey}}}""");
+                    Step($"DevTools {type} {key} replied {reply}");
+                }
             }
 
             async Task LeftToAsync(Button target)
@@ -174,59 +231,78 @@ internal sealed partial class NativeChecks
                 try { await UntilAsync(() => FocusManager.GetFocusedElement(window) == target); }
                 catch (TimeoutException)
                 {
+                    Step("the wait ended");
+                    // #1274: which side dropped the Tab. The page lists the keys it saw since it focused its stop; WebView2
+                    // raises MoveFocusRequested when Tab leaves the document, and RunicWebView's TabOut moves WPF's focus on.
                     var page = await view.Surface.ExecuteJavaScriptAsync(
-                        "return `${document.activeElement?.id || '-'} hasFocus=${document.hasFocus()}`;", TimeSpan.FromSeconds(15));
-                    // #1274: which side dropped the Tab. WebView2 raises MoveFocusRequested when Tab leaves the document;
-                    // RunicWebView's handler moves WPF's focus on.
-                    var request = controller.LastMoveFocusRequest is { } last ? $"last reason {last.Reason}, handled {last.Handled}" : "none";
-                    var tabOut = child.LastTabOut is { } handler ? $"reason {handler.Reason}, moved {handler.Moved}" : "never ran";
-                    throw new InvalidOperationException(
-                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}. "
-                        + $"Window active {window.IsActive}, keyboard focus {Keyboard.FocusedElement?.ToString() ?? "none"}; "
-                        + $"MoveFocusRequested events {controller.MoveFocusRequests} ({request}); TabOut {tabOut}.");
+                        "return `${document.activeElement?.id || '-'} (hasFocus ${document.hasFocus()}, ${document.visibilityState}); "
+                        + "keys seen: ${tabKeys.join(', ') || 'none'}\\nPage events: ${tabEvents.join(' | ')}`;", TimeSpan.FromSeconds(15));
+                    var lines = page.Split('\n', 2);
+                    var failure = $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, "
+                        + $"the page's is {lines[0]}; {Owners()}.";
+                    // The record of a retried test keeps the first line only; the job log keeps the rest.
+                    var details = $"Steps:\n{string.Join("\n", steps)}\n{(lines.Length > 1 ? lines[1] : "")}";
+                    Console.Error.WriteLine($"{failure}\n{details}");
+                    throw new InvalidOperationException($"{failure}\n{details}");
                 }
+                Step($"WPF focus reached {target.Content}");
             }
 
             // In, forward: WPF's traversal from the preceding button enters the document's first tab stop.
             before.Focus();
+            Step("Before focused");
             Program.Check(before.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)),
                 "WPF could not move focus from the preceding button into the child presentation.");
             var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("first"), TimeSpan.FromSeconds(15));
+            Step($"Tab into the page: {focus}");
             Program.Check(focus.StartsWith("first ", StringComparison.Ordinal), $"Tab did not enter the document's first stop: {focus}.");
 
             // Out, forward: Tab on the last stop moves WPF focus to the following button.
             await FocusInPageAsync("last");
-            await TabAsync(controller, shift: false);
+            await TabAsync(shift: false);
             await LeftToAsync(after);
 
             // In, backward: Shift+Tab from the following button enters the document's last tab stop.
             Program.Check(after.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous)),
                 "WPF could not move focus from the following button into the child presentation.");
             focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("last"), TimeSpan.FromSeconds(15));
+            Step($"Shift+Tab into the page: {focus}");
             Program.Check(focus.StartsWith("last ", StringComparison.Ordinal), $"Shift+Tab did not enter the document's last stop: {focus}.");
 
             // Out, backward: Shift+Tab on the first stop moves WPF focus to the preceding button.
             await FocusInPageAsync("first");
-            await TabAsync(controller, shift: true);
+            await TabAsync(shift: true);
             await LeftToAsync(before);
-            Console.WriteLine("Runic.Application.Views.Wpf tab-in/tab-out checks passed.");
+            // A passing run's steps are the baseline a failure's report is read against (#1274).
+            Console.WriteLine($"Runic.Application.Views.Wpf tab-in/tab-out checks passed. Steps:\n{string.Join("\n", steps)}");
         }
         finally { window.Close(); }
-
-        static async Task TabAsync(Runic.Desktop.Internal.WindowsWebView2Controller controller, bool shift)
-        {
-            // As a keyboard sends them: Shift down, Tab with the Shift modifier (8), Shift up.
-            var held = shift ? 8 : 0;
-            if (shift) await KeyAsync("rawKeyDown", "Shift", "ShiftLeft", 16);
-            await KeyAsync("rawKeyDown", "Tab", "Tab", 9);
-            await KeyAsync("keyUp", "Tab", "Tab", 9);
-            if (shift) await KeyAsync("keyUp", "Shift", "ShiftLeft", 16, modifiers: 0);
-
-            Task<string> KeyAsync(string type, string key, string code, int virtualKey, int? modifiers = null) =>
-                controller.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-                    $$"""{"type":"{{type}}","modifiers":{{modifiers ?? held}},"key":"{{key}}","code":"{{code}}","windowsVirtualKeyCode":{{virtualKey}},"nativeVirtualKeyCode":{{virtualKey}}}""");
-        }
     }
+
+    // #1274: the page's record of what reached it, for TabEntersAndLeavesTheChildWebView's failure report: each key and
+    // whether a listener cancelled it (tabKeys, which the check clears when it focuses a stop), and the last 60 key,
+    // focus, window focus and visibility events with their times (tabEvents).
+    private const string TabEventLog = """
+        <script>
+          const tabKeys = [], tabEvents = [];
+          const at = () => Math.round(performance.now());
+          const named = node => node === window ? "window" : node?.id || node?.nodeName?.toLowerCase() || "-";
+          const record = text => { tabEvents.push(`${at()} ${text}`); if (tabEvents.length > 60) tabEvents.shift(); };
+          for (const type of ["keydown", "keyup"])
+            addEventListener(type, event => {
+              record(`${type} ${event.key} on ${named(event.target)} trusted=${event.isTrusted}`);
+              setTimeout(() => {
+                if (type === "keydown") tabKeys.push(`${event.key}${event.defaultPrevented ? " (cancelled)" : ""}`);
+                record(`after ${type} ${event.key}: cancelled=${event.defaultPrevented}, focus on ${named(document.activeElement)}`);
+              });
+            }, true);
+          addEventListener("focusin", event => record(`focusin ${named(event.target)}`), true);
+          addEventListener("focusout", event => record(`focusout ${named(event.target)} to ${named(event.relatedTarget)}`), true);
+          addEventListener("focus", event => { if (event.target === window) record("window focus"); });
+          addEventListener("blur", event => { if (event.target === window) record("window blur"); });
+          document.addEventListener("visibilitychange", () => record(`visibility ${document.visibilityState}`));
+        </script>
+        """;
 
     // SEC-04: the child WebView2 applies the default DesktopWebContentPolicy. Scripts without a user gesture cannot leave
     // the application or open windows; a click, sent through the DevTools protocol as trusted input, opens an external
