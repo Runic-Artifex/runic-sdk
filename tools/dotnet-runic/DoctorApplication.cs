@@ -16,8 +16,8 @@ internal static class DoctorApplication
         ArgumentNullException.ThrowIfNull(options);
         string dotnetHost = ResolveDotNetHost();
         // From a solution root, the solution's one Window project (devtools-library-dx F9), as dev selects it.
-        string project = (await ProjectDiscovery.FindWindowProjectAsync(Environment.CurrentDirectory, options.Project, "doctor",
-            ProjectDiscovery.EvaluateWindowProject(dotnetHost), cancellationToken).ConfigureAwait(false)).Project;
+        string project = await ProjectDiscovery.SelectProjectAsync(Environment.CurrentDirectory, options.Project, "doctor", dotnetHost,
+            cancellationToken, writeSolution: false).ConfigureAwait(false);
         DoctorProjectConfiguration configuration = await DoctorProjectConfiguration
             .EvaluateAsync(
                 dotnetHost,

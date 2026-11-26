@@ -9,12 +9,14 @@ dotnet runic dev
 ```
 
 All commands find the single `.csproj` in the current directory; pass
-`--project path/to/App.csproj` (`-p`) otherwise. `dev` and `doctor` also start
-from a solution root: in a directory without one `.csproj` but with one solution
-(`.sln` or `.slnx`), or with `--project` naming a solution or its directory, they
-evaluate the solution's projects and take its one Window project
-(`RunicApplicationFrontendWindowProject=true`). With several Window projects
-they list them and stop (`RAPPDEV1002`); choose one with `--project`. `--configuration` (`-c`)
+`--project path/to/App.csproj` (`-p`) otherwise. `dev`, `doctor`, `size` and
+`package` also start from a solution root: in a directory without one `.csproj`
+but with one solution (`.sln` or `.slnx`), or with `--project` naming a solution
+or its directory, they evaluate the solution's projects and take its one Window
+project (`RunicApplicationFrontendWindowProject=true`), and `dev`, `size` and
+`package` print `Solution: …/Acme.slnx, whose one Window project is
+Acme.App/Acme.App.csproj`. With several Window projects they list them and stop
+(`RAPPDEV1002`); choose one with `--project`. `--configuration` (`-c`)
 selects the build configuration. `dotnet runic <command> --help` describes
 every option.
 
@@ -1882,7 +1884,8 @@ dotnet runic package flathub --git-url https://github.com/example/notes.git --gi
 The [packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/packaging.md)
 lists each format's tools and how to sign with your own credentials.
 
-Every target takes `--project` (`-p`), `--configuration` (`-c`, `Release` by
+Every target takes `--project` (`-p`: a project, or a solution whose one Window
+project it packages, as described at the top), `--configuration` (`-c`, `Release` by
 default), `--runtime` (`--rid`, `-r`; the host's architecture by default) and
 `--output-directory` (`-o`; `artifacts/package/<target>` beside the project by
 default). The output directory is not `--output`, which stays the hidden alias

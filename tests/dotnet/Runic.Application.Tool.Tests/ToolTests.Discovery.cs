@@ -9,7 +9,8 @@ using TUnit.Core;
 
 namespace Runic.Application.Tool.Tests;
 
-// devtools-library-dx S7 (F9): dev and doctor from a solution root pick the solution's one Window project.
+// devtools-library-dx S7 (F9): dev and doctor from a solution root pick the solution's one Window project; ide-run-debug
+// K1: size and package do too.
 internal sealed partial class ToolTests
 {
     /// <summary>A solution root with an app, a library and tests; <paramref name="windows"/> are the Window projects.</summary>
@@ -146,5 +147,84 @@ internal sealed partial class ToolTests
         False(ProjectDiscovery.ParseWindowProjectValue("\n"), "An empty value is not a Window project.");
         True(ProjectDiscovery.ParseWindowProjectValue("""{ "Properties": { "RunicApplicationFrontendWindowProject": "true" } }"""), "JSON output is read too.");
         False(ProjectDiscovery.ParseWindowProjectValue("{ not json"), "Unreadable output is not a Window project.");
+    }
+    [Test, DisplayName("the solution line names the Window project a solution gave")]
+    public void SolutionLineNamesTheProject()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "acme");
+        string solution = Path.Combine(root, "Acme.slnx");
+        string project = Path.Combine(root, "Acme.App", "Acme.App.csproj");
+        Equal($"Solution: {solution}, whose one Window project is Acme.App/Acme.App.csproj",
+            ProjectDiscovery.SolutionLine(new ProjectSelection(project, solution)));
+        Equal(null, ProjectDiscovery.SolutionLine(new ProjectSelection(project)));
+    }
+
+    /// <summary>Runs the CLI with human output; standard output and error together.</summary>
+    private static (int ExitCode, string Output) RunCliHuman(params string[] arguments)
+    {
+        var console = new CapturingConsole();
+        int exitCode = Runic.Application.Tool.Program.RunAsync(arguments, console).GetAwaiter().GetResult();
+        return (exitCode, console.Output + console.Error);
+    }
+
+    /// <summary>The package target that runs on this OS, so that the command reaches its project selection.</summary>
+    private static string HostPackageTarget() =>
+        OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "macos" : "deb";
+
+    [Test, DisplayName("package and size from a solution root take its one Window project (K1)")]
+    public void PackageAndSizeFromSolutionRootWithOneWindowProject()
+    {
+        // MSBuild evaluates each listed project, as for dev; the projects here need no SDK.
+        using TestWorkspace workspace = CreateSolutionRoot("Acme.slnx", "Acme.App");
+        string line = $"Solution: {Path.Combine(workspace.Root, "Acme.slnx")}, whose one Window project is Acme.App/Acme.App.csproj";
+
+        // size: the selection happens first, so an existing report is the next error (RAPPSIZE1003), not RAPPDEV1002.
+        string report = workspace.Write("existing.json", "{}");
+        (int sizeExit, string sizeOutput) = RunCliHuman("size", "--project", workspace.Root, "--runtime", "linux-x64", "--report", report);
+        Equal(1, sizeExit);
+        Contains(sizeOutput, line);
+        Contains(sizeOutput, "RAPPSIZE1003");
+        DoesNotContain(sizeOutput, "RAPPDEV1002");
+
+        // package: -p with a separate value is still the project beside -p:NAME=VALUE (split CI S3). The selected project
+        // reaches the identity's evaluation, which fails on this bare project.
+        (int packageExit, string packageOutput) = RunCliHuman("package", HostPackageTarget(), "-p", workspace.Root, "-p:Acme=1");
+        True(packageExit != 0, packageOutput);
+        Contains(packageOutput, line);
+        DoesNotContain(packageOutput, "RAPPDEV1002");
+    }
+
+    [Test, DisplayName("package and size from a solution root with several or no Window project list them (K1)")]
+    public void PackageAndSizeFromSolutionRootListChoices()
+    {
+        string target = HostPackageTarget();
+        using (TestWorkspace several = CreateSolutionRoot("Acme.sln", "Acme.App", "Acme.Admin"))
+        {
+            // doctor shares the selection and its message.
+            foreach ((string command, string[] arguments) in new[]
+            {
+                ("size", new[] { "size", "--runtime", "linux-x64" }),
+                ($"package {target}", new[] { "package", target }),
+                ("doctor", new[] { "doctor" }),
+            })
+            {
+                (int exitCode, string output) = RunCliHuman([.. arguments, "--project", several.Root]);
+                True(exitCode != 0, output);
+                Contains(output, "RAPPDEV1002");
+                // The paths are relative to the working directory, from which the hint's command runs.
+                Contains(output, "error RAPPDEV1002: The solution Acme.sln has 2 Window projects: ");
+                Contains(output, "Acme.App/Acme.App.csproj, ");
+                Contains(output, $"Choose one with --project, for example 'dotnet runic {command} --project ");
+            }
+        }
+        using (TestWorkspace none = CreateSolutionRoot("Acme.slnx"))
+        {
+            foreach (string[] arguments in new[] { new[] { "size", "--runtime", "linux-x64" }, new[] { "package", target } })
+            {
+                (int exitCode, string output) = RunCliHuman([.. arguments, "--project", none.Root]);
+                True(exitCode != 0, output);
+                Contains(output, "error RAPPDEV1002: The solution Acme.slnx has no Window project");
+            }
+        }
     }
 }

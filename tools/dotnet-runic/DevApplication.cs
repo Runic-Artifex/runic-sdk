@@ -109,10 +109,7 @@ internal static class DevApplication
             ProjectSelection selection = await ProjectDiscovery.FindWindowProjectAsync(Environment.CurrentDirectory, options.Project, "dev",
                 ProjectDiscovery.EvaluateWindowProject(ResolveDotNetHost()), cancellationToken).ConfigureAwait(false);
             project = selection.Project;
-            if (selection.Solution is { } solution)
-            {
-                Console.WriteLine($"[dev] Solution: {solution}, whose one Window project is {Path.GetRelativePath(Path.GetDirectoryName(solution)!, project).Replace('\\', '/')}");
-            }
+            if (ProjectDiscovery.SolutionLine(selection) is { } line) Console.WriteLine("[dev] " + line);
             return await RunProjectAsync(context, options, project, evaluated, cancellationToken).ConfigureAwait(false);
         }
         catch (DevDevelopmentException error)

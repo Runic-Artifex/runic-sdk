@@ -35,9 +35,6 @@ internal static partial class Program
     internal const string FormatOptionName = "--format";
     internal const string FormerFormatOptionName = "--output";
 
-    private const string ProjectDescription =
-        "The project file, or a directory with one .csproj. Defaults to the current directory.";
-
     private const string WindowProjectDescription =
         "The project file, a directory with one .csproj, or a solution (.sln, .slnx) or its directory, whose one Window project is used. Defaults to the current directory.";
 
@@ -160,7 +157,7 @@ internal static partial class Program
         [Option("--no-self-contained", ConflictsWith = ["self-contained"], Description = "Publish framework-dependent, with -p:SelfContained=false, for example to compare with a self-contained build. Combine it with --no-aot.")] bool noSelfContained,
         [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Pass an MSBuild property to the evaluation and publish, as dotnet publish -p does, for example OptimizationPreference=Speed. Repeat it for several properties. Configuration, RuntimeIdentifier, PublishAot and SelfContained have their own options.")] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
-        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--runtime", "--rid", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
         [Option("--report", Description = "The JSON report to write. The file must not exist yet. Default: runic-size-<runtime>-<UTC time>.json in the current directory.")] string report = "",

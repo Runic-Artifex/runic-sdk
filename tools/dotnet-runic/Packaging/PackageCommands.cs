@@ -13,7 +13,7 @@ namespace Runic.Application.Tool.Packaging;
 internal static class PackageCommands
 {
     private const string ProjectDescription =
-        "The project file, or a directory with one .csproj. Defaults to the current directory.";
+        "The project file, a directory with one .csproj, or a solution (.sln, .slnx) or its directory, whose one Window project is used. Defaults to the current directory.";
     private const string ConfigurationDescription = "The build configuration to publish.";
     private const string RuntimeDescription =
         "The runtime identifier to publish for. Defaults to the host's architecture on the target's operating system.";

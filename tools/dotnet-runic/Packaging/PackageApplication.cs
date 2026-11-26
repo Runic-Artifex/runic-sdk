@@ -72,8 +72,10 @@ internal static class PackageApplication
         IReadOnlyList<string> runtimes = ResolveRuntimes(options);
         string? frontendBundle = ResolveFrontendBundle(options.FrontendBundle, Environment.CurrentDirectory);
         if (options.Target == PackageTarget.Flathub) FlathubPackager.Validate(options, PackageOptions.CurrentFamily);
-        string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnet = DevApplication.ResolveDotNetHost();
+        // From a solution root, the solution's one Window project, as dev and doctor select it (ide-run-debug K1).
+        string project = await ProjectDiscovery.SelectProjectAsync(Environment.CurrentDirectory, options.Project, $"package {target}", dotnet,
+            cancellationToken).ConfigureAwait(false);
         PackageIdentity identity = await PackageIdentity.ReadAsync(dotnet, project, options.Configuration, options.Publisher, cancellationToken,
             options.PropertyArguments(frontendBundle)).ConfigureAwait(false);
         string output = Path.GetFullPath(options.OutputDirectory is { Length: > 0 } selected

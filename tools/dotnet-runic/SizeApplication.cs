@@ -62,7 +62,10 @@ internal static class SizeApplication
             throw new DevUsageException("RAPPSIZE1001", "Specify --runtime explicitly, for example linux-x64.");
         if (options.VerifyArguments.Count != 0 && string.IsNullOrWhiteSpace(options.Verify))
             throw new DevUsageException("RAPPSIZE1002", "--verify-argument requires --verify.");
-        string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
+        string dotnet = DevApplication.ResolveDotNetHost();
+        // From a solution root, the solution's one Window project, as dev and doctor select it (ide-run-debug K1).
+        string project = await ProjectDiscovery.SelectProjectAsync(Environment.CurrentDirectory, options.Project, "size", dotnet,
+            cancellationToken).ConfigureAwait(false);
         string workingDirectory = Path.GetDirectoryName(project)!;
         // An explicit --report never replaces earlier evidence. Without one, each run gets its own report name, so a
         // second run in the same directory measures again instead of failing.
@@ -71,7 +74,6 @@ internal static class SizeApplication
             : Path.GetFullPath(options.Report);
         if (File.Exists(reportPath))
             throw new DevDevelopmentException("RAPPSIZE1003", "The report already exists. Select a new --report path to preserve prior evidence.");
-        string dotnet = DevApplication.ResolveDotNetHost();
         IReadOnlyList<string> settings = CreateSettings(options);
         string[] evaluated = [.. Properties, .. options.Properties.Select(static property => property.Key)
             .Where(name => !Properties.Contains(name, StringComparer.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase)];
