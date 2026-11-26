@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
@@ -16,6 +17,10 @@ internal static class PackageCommands
     private const string ConfigurationDescription = "The build configuration to publish.";
     private const string RuntimeDescription =
         "The runtime identifier to publish for. Defaults to the host's architecture on the target's operating system.";
+    private const string FrontendBundleDescription =
+        "Take the pages from this web bundle, which dotnet runic bundle wrote on another machine, instead of building the frontends: the publish needs no Node.js or Bun, and fails when the bundle was built from other ViewModels (RUNICBRIDGE094).";
+    private const string PropertyDescription =
+        "Pass an MSBuild property to the evaluation and publish, as dotnet publish -p does; -p:NAME=VALUE is the same. Repeat it for several properties.";
     private const string OutputDescription =
         "The directory to write the package to. Defaults to artifacts/package/<target> beside the project.";
 
@@ -24,16 +29,18 @@ internal static class PackageCommands
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> Windows(
         CommandExecutionContext context,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = PropertyDescription)] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
         [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--frontend-bundle", ValueName = "DIR", Description = FrontendBundleDescription)] string frontendBundle = "",
         [Option("--publisher", ValueName = "CN=...", Description = "The package's Publisher, which must equal the signing certificate's subject. Defaults to RunicApplicationPublisher.")] string publisher = "",
         [Option("--certificate", ValueName = "PFX", ConflictsWith = ["thumbprint"], Description = "Sign the package with this PFX file; its password comes from RUNIC_SIGNING_PASSWORD.")] string certificate = "",
         [Option("--thumbprint", ValueName = "SHA1", ConflictsWith = ["certificate"], Description = "Sign the package with the certificate of this SHA-1 thumbprint from the certificate store.")] string thumbprint = "",
         [Option("--timestamp-url", ValueName = "URL", Description = "Timestamp the signature with this RFC 3161 server.")] string timestampUrl = "") =>
-        RunAsync(context, Common(PackageTarget.Windows, project, configuration, runtime, outputDirectory) with
+        RunAsync(context, Common(PackageTarget.Windows, project, configuration, runtime, outputDirectory, frontendBundle, properties) with
         {
             Publisher = Value(publisher),
             Certificate = Value(certificate),
@@ -50,16 +57,18 @@ internal static class PackageCommands
         CommandExecutionContext context,
         [Option("--sandbox", Description = "Sign the bundle for the App Sandbox, which the Mac App Store requires, as RunicMacSandbox does: the sandbox, loopback network, user-selected files and bookmark entitlements.")] bool sandbox,
         [Option("--pkg", Description = "Also write an installer package with productbuild that installs the bundle in /Applications, as App Store Connect takes it.")] bool pkg,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = PropertyDescription)] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription + " Runic supports osx-arm64 (Apple silicon) only.")] string runtime = "",
         [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--frontend-bundle", ValueName = "DIR", Description = FrontendBundleDescription)] string frontendBundle = "",
         [Option("--sign", ValueName = "IDENTITY", Description = "Sign with this identity from the keychain instead of ad hoc: Developer ID Application, or Apple Distribution for the Mac App Store.")] string sign = "",
         [Option("--notary-profile", ValueName = "NAME", Requires = ["sign"], Description = "Notarize and staple the disk image, and a signed installer package, with this notarytool keychain profile.")] string notaryProfile = "",
         [Option("--provisioning-profile", ValueName = "FILE", Requires = ["sign"], Description = "Embed this provisioning profile as Contents/embedded.provisionprofile and sign with its application and team identifiers.")] string provisioningProfile = "",
         [Option("--installer-sign", ValueName = "IDENTITY", Requires = ["pkg"], Description = "Sign the installer package with this installer identity from the keychain, such as 3rd Party Mac Developer Installer or Developer ID Installer.")] string installerSign = "") =>
-        RunAsync(context, Common(PackageTarget.MacOS, project, configuration, runtime, outputDirectory) with
+        RunAsync(context, Common(PackageTarget.MacOS, project, configuration, runtime, outputDirectory, frontendBundle, properties) with
         {
             SigningIdentity = Value(sign),
             NotaryProfile = Value(notaryProfile),
@@ -74,49 +83,57 @@ internal static class PackageCommands
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> Flatpak(
         CommandExecutionContext context,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = PropertyDescription)] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
         [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--frontend-bundle", ValueName = "DIR", Description = FrontendBundleDescription)] string frontendBundle = "",
         [Option("--gpg-sign", ValueName = "KEY", Description = "Sign the repository and bundle with this GPG key ID.")] string gpgSign = "") =>
-        RunAsync(context, Common(PackageTarget.Flatpak, project, configuration, runtime, outputDirectory) with { GpgKey = Value(gpgSign) }, cancellationToken);
+        RunAsync(context, Common(PackageTarget.Flatpak, project, configuration, runtime, outputDirectory, frontendBundle, properties) with { GpgKey = Value(gpgSign) }, cancellationToken);
 
     [Command("package appimage", Description = "Package the application as an AppImage that uses the host's GTK and WebKitGTK. Runs on Linux with appimagetool.",
         Examples = ["dotnet runic package appimage", "RUNIC_APPIMAGE_RUNTIME=runtime-x86_64 dotnet runic package appimage"])]
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> AppImage(
         CommandExecutionContext context,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = PropertyDescription)] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
-        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
-        RunAsync(context, Common(PackageTarget.AppImage, project, configuration, runtime, outputDirectory), cancellationToken);
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--frontend-bundle", ValueName = "DIR", Description = FrontendBundleDescription)] string frontendBundle = "") =>
+        RunAsync(context, Common(PackageTarget.AppImage, project, configuration, runtime, outputDirectory, frontendBundle, properties), cancellationToken);
 
     [Command("package deb", Description = "Package the application as a Debian package. Runs on Linux with dpkg-deb.",
         Examples = ["dotnet runic package deb", "dotnet runic package deb --runtime linux-arm64"])]
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> Deb(
         CommandExecutionContext context,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = PropertyDescription)] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
-        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
-        RunAsync(context, Common(PackageTarget.Deb, project, configuration, runtime, outputDirectory), cancellationToken);
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--frontend-bundle", ValueName = "DIR", Description = FrontendBundleDescription)] string frontendBundle = "") =>
+        RunAsync(context, Common(PackageTarget.Deb, project, configuration, runtime, outputDirectory, frontendBundle, properties), cancellationToken);
 
     [Command("package rpm", Description = "Package the application as an rpm. Runs on Linux with rpmbuild, also on Debian and Ubuntu.",
         Examples = ["dotnet runic package rpm", "dotnet runic package rpm --runtime linux-arm64"])]
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> Rpm(
         CommandExecutionContext context,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = PropertyDescription)] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
-        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
-        RunAsync(context, Common(PackageTarget.Rpm, project, configuration, runtime, outputDirectory), cancellationToken);
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--frontend-bundle", ValueName = "DIR", Description = FrontendBundleDescription)] string frontendBundle = "") =>
+        RunAsync(context, Common(PackageTarget.Rpm, project, configuration, runtime, outputDirectory, frontendBundle, properties), cancellationToken);
 
     [Command("package flathub", Description = "Write a Flathub source-build manifest with offline NuGet and npm sources from the committed lock files. --build builds it with flatpak-builder on Linux.",
         Examples = ["dotnet runic package flathub --git-url https://github.com/example/notes.git --git-tag v1.2.0",
@@ -140,13 +157,16 @@ internal static class PackageCommands
             Build = build,
         }, cancellationToken);
 
-    private static PackageOptions Common(PackageTarget target, string project, string configuration, string runtime, string outputDirectory) =>
+    private static PackageOptions Common(PackageTarget target, string project, string configuration, string runtime, string outputDirectory,
+        string frontendBundle = "", IReadOnlyList<string>? properties = null) =>
         new(target)
         {
             Project = Value(project),
             Configuration = string.IsNullOrWhiteSpace(configuration) ? "Release" : configuration,
             Runtimes = PackageOptions.ParseRuntimes(runtime),
             OutputDirectory = Value(outputDirectory),
+            FrontendBundle = Value(frontendBundle),
+            PropertyValues = properties ?? [],
         };
 
     private static string? Value(string value) => string.IsNullOrWhiteSpace(value) ? null : value;

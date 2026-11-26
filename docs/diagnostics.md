@@ -1406,6 +1406,40 @@ exception to standard error; include it when you report the problem. See
 `dotnet runic support` moved to `runic-translations support` in 0.9; its
 `RAPPSUP` codes are in the runic-translations-sdk catalog as `RTRSUP`.
 
+### RAPPBUNDLE1001
+
+The output directory of `dotnet runic bundle` holds files other than a web
+bundle, which `bundle` would mix into the manifest or delete. Exit code 2. Since
+0.24.
+
+**Fix:** choose a new or empty directory with `--output-directory`, or one that
+an earlier `dotnet runic bundle` wrote.
+
+### RAPPBUNDLE1002
+
+The build that writes the web bundle failed. The output above names the error.
+Since 0.24.
+
+**Fix:** fix the build error; `dotnet build -c Release` reports the same.
+
+### RAPPBUNDLE1003
+
+The build succeeded, but the web bundle is missing or does not check, as
+`dotnet runic doctor --bundle` checks it. A project whose frontend build is off
+writes no entry (`RUNICBRIDGE092` stops the build first). Since 0.24.
+
+**Fix:** turn the frontend build on for the bundle's build, and build from an
+empty output directory.
+
+### RAPPBUNDLE1004
+
+A `--property` or `-p:` value of `bundle` is not `NAME=VALUE`, or sets
+`Configuration`, `RunicApplicationFrontendBundleDirectory` or
+`RunicApplicationFrontendPrebuiltDirectory`, which `bundle` sets itself or which
+would build a bundle from another bundle. Exit code 2. Since 0.24.
+
+**Fix:** use `--configuration` and `--output-directory`.
+
 ### RAPPCLI1000
 
 The `dev` or `size` command did not complete successfully. The output above the
@@ -1798,6 +1832,19 @@ Since 0.11.
 
 **Fix:** pass `--git-commit` or `--git-tag`, restore with lock files
 (`RestorePackagesWithLockFile`) and list both Linux runtime identifiers.
+
+### RAPPPKG1008
+
+A `--property` or `-p:` value of `package` is not `NAME=VALUE`, or sets
+`Configuration`, `RuntimeIdentifier`, `PublishAot` or
+`RunicApplicationFrontendPrebuiltDirectory`, which `package` sets from its own
+options (exit code 2); or `--frontend-bundle` names a folder that is not a
+usable web bundle: no `web-bundle.json`, another format, or a page that does
+not hash to the files the manifest records (exit code 1). Since 0.24.
+
+**Fix:** use `--configuration`, `--runtime` and `--frontend-bundle`; `package`
+always publishes with Native AOT. Write the bundle with `dotnet runic bundle`
+and download the whole artifact; `dotnet runic doctor --bundle <dir>` checks it.
 
 ### RAPPPKG2001
 

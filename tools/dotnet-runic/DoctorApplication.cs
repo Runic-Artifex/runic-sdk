@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,6 +34,11 @@ internal static class DoctorApplication
                 cancellationToken,
                 options.Target)
             .ConfigureAwait(false);
+        if (options.Bundle is { } bundle)
+        {
+            report = new DoctorReport([.. report.Checks,
+                DoctorWorkspaceChecks.CheckWebBundle(Path.GetFullPath(bundle, Environment.CurrentDirectory), configuration.AssemblyName)]);
+        }
         return new DoctorRun(configuration, report, options.Target);
     }
 

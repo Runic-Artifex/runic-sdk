@@ -686,7 +686,7 @@ of the same major without changes by its author. That includes:
   | `RUNICNAV` | The Runic.Navigation.ReactiveUI build targets (since 0.11); `RUNICNAV001`, the graduated experimental Navigation ID, is retired |
   | `RUNICWPF` | Retired: graduated experimental family of Runic.Application.Views.Wpf |
   | `RUNICP` | `@runic-artifex/vite-plugin-runic` |
-  | `RAPPCLI`, `RAPPDEV`, `RAPPPKG`, `RAPPSIZE` | `dotnet runic` (`RAPPPKG` since 0.11) |
+  | `RAPPBUNDLE`, `RAPPCLI`, `RAPPDEV`, `RAPPPKG`, `RAPPSIZE` | `dotnet runic` (`RAPPPKG` since 0.11, `RAPPBUNDLE` since 0.24) |
   | `RCLI` | The Runic.CommandLine codes the tools report, and `dotnet runic doctor` checks (`RCLI81xx`) |
   | `RCREATE` | `runic-create` |
   | `RAS` | The asset packer and the Runic.Assets build targets |

@@ -295,6 +295,10 @@ Since 0.11, two more checks warn without failing:
   The template's packaging script applies the same rule. Another value warns;
   a project without `ApplicationId` passes.
 
+`dotnet runic doctor --bundle <dir>` (since 0.24) also checks a web bundle that
+a publish with `package --frontend-bundle` would use, as its
+[`web-bundle`](#web-bundle) check.
+
 ### Deployment checks for a target
 
 `dotnet runic doctor --runtime <rid>` (also `--rid` or `-r`) adds checks for
@@ -401,12 +405,12 @@ redacts the message key, which always names the check. `payload.checks` is the
 complete list.
 Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `windows-targeting`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `frontend-workspace`, `package-manager-agreement`,
-`frontend-dependencies`, `client-modules`, `views-dedupe`, `compatibility-set`, `views-package-versions`,
+`frontend-dependencies`, `client-modules`, `views-dedupe`, `web-bundle`, `compatibility-set`, `views-package-versions`,
 `application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
 `browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
 `platform-services`; `views-package-versions` and `application-id` were added
 in 0.11, `dotnet-runtime` in 0.18, and `windows-targeting`, `frontend-workspace`,
-`package-manager-agreement`, `frontend-dependencies`, `client-modules` and `views-dedupe` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
+`package-manager-agreement`, `frontend-dependencies`, `client-modules`, `views-dedupe` and `web-bundle` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
@@ -552,6 +556,17 @@ export default defineConfig({ resolve: { dedupe: ["@runic-artifex/views"] } });
 ```
 
 Added in 0.24.
+
+#### `web-bundle`
+
+Only with `doctor --bundle <dir>` (since 0.24). Checks a web bundle offline, as
+`package --frontend-bundle` and the publishing build use it: the manifest's
+format (`rax.web-bundle/1`) and required members, that each entry's folders
+exist inside the bundle, that each page hashes to the files the manifest
+records (a truncated download), and that the bundle has an entry for the
+project's assembly. Fails otherwise; the fix writes the bundle again with
+`dotnet runic bundle`. The View fingerprints need this build's contract IR, so
+the publish checks them (`RUNICBRIDGE094`).
 
 #### `compatibility-set`
 
@@ -1804,6 +1819,50 @@ a usage error, exit code 2. An existing `--report` (`RAPPSIZE1003`), a project
 whose publish settings MSBuild cannot evaluate (`RAPPSIZE1004`), a failed
 publish or a failed verification exits 1.
 
+## Write a web bundle
+
+`bundle` (since 0.24, split CI, D082) builds the frontends into a **web bundle**
+(`rax.web-bundle/1`) that a publish on another machine takes with
+`package <target> --frontend-bundle`, for a CI whose Linux jobs build and test
+everything web and whose Windows or macOS job only publishes:
+
+```bash
+dotnet runic bundle --output-directory artifacts/web-bundle   # on Linux, with Node.js or Bun
+dotnet runic package windows --frontend-bundle artifacts/web-bundle   # on Windows, without them
+```
+
+It runs `dotnet build -c Release` with
+`RunicApplicationFrontendBundleDirectory`, so every project that declares
+Views, the application's references included, writes its entry. Then it checks
+the bundle and prints one line per project: its kind, its Views, and the
+files, size and SHA-256 of its page. `--project` (`-p`) takes a project, a
+solution (`.sln`, `.slnx`) or a directory with one; `--configuration` (`-c`)
+is `Release` by default; `--property` (`-p:NAME=VALUE`) passes MSBuild
+properties to the build. `--output-directory` (`-o`, `artifacts/web-bundle`
+beside the project or solution by default) must be new, empty, or an earlier
+bundle, whose entries `bundle` deletes so that none stays in the manifest. A
+folder with other files is refused (`RAPPBUNDLE1001`). A failed build is
+`RAPPBUNDLE1002`, and a bundle that does not check is `RAPPBUNDLE1003`, for
+example when a project's frontend build is off (`RUNICBRIDGE092`). The payload
+of `--format json` is `runic.application.tool.bundle/1`:
+
+```json
+{
+  "directory": "/repo/artifacts/web-bundle",
+  "format": "rax.web-bundle/1",
+  "projects": [
+    { "assembly": "Acme.App", "kind": "application", "views": 2, "files": 12, "bytes": 184320,
+      "sha256": "7f3c…", "host": "desktop", "nodeEnv": "production" }
+  ]
+}
+```
+
+`sha256`, `host` and `nodeEnv` are null when the entry has none, as for a client
+library, which has no page. The format of the bundle is in
+[specs/application/web-bundle.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/web-bundle.md),
+and the build properties in
+[Building the frontend in another job](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
 ## Package the application
 
 `package <target>` (since 0.11) publishes the application with Native AOT and
@@ -1831,6 +1890,29 @@ of `--format`. A target of another operating system, or a runtime identifier of
 another operating system, several runtime identifiers, or a runtime identifier
 that Runic does not support (`osx-x64`), is refused with `RAPPPKG1004` before
 anything is built.
+
+Since 0.24 every target except `flathub` also takes:
+
+- `--property NAME=VALUE`, or `-p:NAME=VALUE` as for `dotnet publish` (also
+  `-property:` and `/p:`), repeated for several properties. The identity's
+  evaluation and the publish receive them, so a CI job can set `ApplicationId`,
+  `Version` or `RunicApplicationHost` without editing the project. `-p` with a
+  separate value stays `--project`, as for `dotnet run`. `Configuration`,
+  `RuntimeIdentifier` and `PublishAot` have their own options, and
+  `RunicApplicationFrontendPrebuiltDirectory` is `--frontend-bundle`
+  (`RAPPPKG1008`, exit code 2).
+- `--frontend-bundle <dir>`: publish with the pages of a web bundle that
+  [`dotnet runic bundle`](#write-a-web-bundle) wrote on another machine,
+  through `RunicApplicationFrontendPrebuiltDirectory`. The publish runs no
+  frontend install or build, so the runner needs neither Node.js nor Bun.
+  Before it publishes, `package` checks the bundle as `doctor --bundle` does
+  (`RAPPPKG1008` for a missing or truncated one). The build then compares each
+  View's fingerprint with its own (`RUNICBRIDGE094`) and the host
+  (`RUNICBRIDGE095`).
+
+```bash
+dotnet runic package windows --frontend-bundle web-bundle -p:Version=1.4.0
+```
 
 The package's identity comes from the project file:
 

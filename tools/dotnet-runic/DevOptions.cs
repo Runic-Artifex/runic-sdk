@@ -160,9 +160,21 @@ internal static class ToolOptionValues
     /// Reads <c>--property Name=Value</c> values into MSBuild <c>-property:</c> arguments. A semicolon or comma in a
     /// value is escaped, so each value sets exactly one property; other MSBuild escapes such as %3B pass through.
     /// </summary>
-    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values)
+    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values) =>
+        ParseProperties(values, SizeOptionProperties, PropertyFormatCode, ReservedPropertyCode,
+            name => $"--property cannot set {name}: use --configuration, --runtime, --aot or --no-aot, and --self-contained or --no-self-contained.");
+
+    /// <summary>
+    /// Reads <c>--property Name=Value</c> values for a command whose own options set <paramref name="reserved"/>: a
+    /// malformed value is <paramref name="formatCode"/>, a reserved name <paramref name="reservedCode"/> with
+    /// <paramref name="reservedMessage"/>.
+    /// </summary>
+    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values, IReadOnlyList<string> reserved,
+        string formatCode, string reservedCode, Func<string, string> reservedMessage)
     {
         ArgumentNullException.ThrowIfNull(values);
+        ArgumentNullException.ThrowIfNull(reserved);
+        ArgumentNullException.ThrowIfNull(reservedMessage);
         var properties = new List<KeyValuePair<string, string>>(values.Count);
         foreach (string value in values)
         {
@@ -170,13 +182,12 @@ internal static class ToolOptionValues
             string name = separator < 0 ? value : value[..separator];
             if (separator <= 0 || !IsPropertyName(name))
             {
-                throw new DevUsageException(PropertyFormatCode,
+                throw new DevUsageException(formatCode,
                     "--property takes Name=Value: an MSBuild property name of letters, digits, '_' and '-', starting with a letter or '_', then '=' and the value.");
             }
-            if (Array.FindIndex(SizeOptionProperties, reserved => reserved.Equals(name, StringComparison.OrdinalIgnoreCase)) >= 0)
+            if (reserved.Any(entry => entry.Equals(name, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new DevUsageException(ReservedPropertyCode,
-                    $"--property cannot set {name}: use --configuration, --runtime, --aot or --no-aot, and --self-contained or --no-self-contained.");
+                throw new DevUsageException(reservedCode, reservedMessage(name));
             }
             properties.Add(new(name, value[(separator + 1)..]));
         }

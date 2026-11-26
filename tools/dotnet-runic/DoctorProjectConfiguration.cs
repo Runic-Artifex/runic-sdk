@@ -127,6 +127,9 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>The project's <c>RunicApplicationFrontendClientModule</c> items: the client libraries whose generated clients the page imports.</summary>
     internal IReadOnlyList<DoctorClientModule> ClientModules { get; init; } = [];
 
+    /// <summary>The evaluated AssemblyName, by which a web bundle's entry is found; empty when unknown.</summary>
+    internal string AssemblyName { get; init; } = string.Empty;
+
     /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
     /// SelfContained for the --aot, --no-aot, --self-contained and --no-self-contained switches.
@@ -199,6 +202,7 @@ internal sealed record DoctorProjectConfiguration(
             EnableWindowsTargeting = IsTrue(Value("EnableWindowsTargeting")),
             FrontendGraph = graph,
             ClientModules = ReadClientModules(document.RootElement),
+            AssemblyName = Value("AssemblyName"),
         };
     }
 
@@ -284,7 +288,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime,AssemblyName",
             "-getItem:PackageReference,ProjectReference,RunicApplicationFrontendClientModule",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));

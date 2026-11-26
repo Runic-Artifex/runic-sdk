@@ -28,6 +28,13 @@ missing tool stops it before it builds anything (`RAPPPKG1002`, which names the
 package that provides the tool). Run every target in a CI job of its operating
 system to ship all of them.
 
+That job needs no Node.js or Bun when a Linux job builds the frontends: write
+a web bundle there with `dotnet runic bundle`, upload it as an artifact, and
+package from it with `--frontend-bundle` (since 0.24). The publish checks that
+the bundle was built from the same ViewModels. `-p:NAME=VALUE` passes MSBuild
+properties, such as `Version`, to every target but `flathub`. See
+[Write a web bundle](../tools/dotnet-runic/README.md#write-a-web-bundle).
+
 ## Publishing with dotnet publish
 
 Without the packaging command, `dotnet publish` produces a framework-dependent,

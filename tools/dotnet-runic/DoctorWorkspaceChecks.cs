@@ -477,6 +477,31 @@ internal static class DoctorWorkspaceChecks
                 "to a PropertyGroup of the application's Directory.Build.props (or its project file), so it applies at restore time. The application still runs only on Windows."));
     }
 
+    /// <summary>
+    /// web-bundle (split CI F6, <c>doctor --bundle</c>): checks a web bundle offline as the publishing build would before
+    /// it compares fingerprints: its manifest, each entry's folders and the hash of each page, and that it has an entry
+    /// for <paramref name="assembly"/>. The View fingerprints need the build's contract IR, so only the publish checks them.
+    /// </summary>
+    internal static DoctorCheck CheckWebBundle(string bundle, string assembly)
+    {
+        const string id = "web-bundle";
+        ArgumentException.ThrowIfNullOrWhiteSpace(bundle);
+        (IReadOnlyList<WebBundleEntry> entries, IReadOnlyList<string> problems) = WebBundle.Read(bundle);
+        var failures = new List<string>(problems);
+        if (problems.Count == 0 && assembly.Length != 0 && !entries.Any(entry => entry.Assembly == assembly))
+        {
+            failures.Add($"it has no entry for {assembly}, only for {string.Join(", ", entries.Select(static entry => entry.Assembly))}, so its publish would fail with RUNICBRIDGE093");
+        }
+        if (failures.Count != 0)
+        {
+            return Fail(id, Sentence($"The web bundle {bundle} cannot be used: {string.Join("; ", failures)}"),
+                "Write the bundle again with 'dotnet runic bundle' on the job that builds the frontends, from this commit and for this project or its solution, and download the whole artifact.");
+        }
+        return Pass(id,
+            $"The web bundle {bundle} ({WebBundle.Format}) checks: {string.Join(", ", entries.Select(static entry => $"{entry.Assembly} ({entry.Kind}, {entry.Views} View(s){(entry.Sha256 is null ? string.Empty : $", {entry.Files} files")})"))}. " +
+            "The publish compares its View fingerprints with this build's (RUNICBRIDGE094).");
+    }
+
     /// <summary>The package manager a package.json's <c>packageManager</c> names (npm, pnpm or bun), or null.</summary>
     internal static string? PackageManagerOf(string manifest)
     {

@@ -28,6 +28,35 @@ internal sealed record PackageOptions(PackageTarget Target)
 
     internal string? OutputDirectory { get; init; }
 
+    /// <summary><c>--frontend-bundle</c>: the web bundle whose pages the publish takes (split CI F5), as given.</summary>
+    internal string? FrontendBundle { get; init; }
+
+    /// <summary><c>--property</c> and <c>-p:</c> values as given; <see cref="PackageApplication"/> parses them into <see cref="Properties"/>.</summary>
+    internal IReadOnlyList<string> PropertyValues { get; init; } = [];
+
+    /// <summary>The MSBuild properties that the evaluation and every publish of the target get (D082.5).</summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> Properties { get; init; } = [];
+
+    /// <summary>The properties that package sets from its own options; <c>--property</c> cannot set them.</summary>
+    internal static readonly string[] OptionProperties =
+        ["Configuration", "RuntimeIdentifier", "PublishAot", "RunicApplicationFrontendPrebuiltDirectory"];
+
+    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values) =>
+        ToolOptionValues.ParseProperties(values, OptionProperties, PackageCodes.PropertyInvalid, PackageCodes.PropertyInvalid,
+            name => name.Equals("RunicApplicationFrontendPrebuiltDirectory", StringComparison.OrdinalIgnoreCase)
+                ? "--property cannot set RunicApplicationFrontendPrebuiltDirectory: use --frontend-bundle."
+                : $"--property cannot set {name}: use --configuration and --runtime; package always publishes with Native AOT.");
+
+    /// <summary>
+    /// The <c>-property:</c> arguments of the evaluation and the publish: <see cref="Properties"/>, and the bundle's full
+    /// path as <c>RunicApplicationFrontendPrebuiltDirectory</c> once <paramref name="frontendBundle"/> is resolved.
+    /// </summary>
+    internal IReadOnlyList<string> PropertyArguments(string? frontendBundle) =>
+    [
+        .. Properties.Select(ToolOptionValues.PropertyArgument),
+        .. frontendBundle is null ? [] : new[] { ToolOptionValues.PropertyArgument(new("RunicApplicationFrontendPrebuiltDirectory", frontendBundle)) },
+    ];
+
     // windows
     internal string? Publisher { get; init; }
     internal string? Certificate { get; init; }
