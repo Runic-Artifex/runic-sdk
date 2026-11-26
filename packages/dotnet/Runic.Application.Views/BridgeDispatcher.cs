@@ -12,7 +12,7 @@ namespace Runic.Application.Views;
 //   the order they arrived, or answer no-hello;
 // - the envelope: the input limit, the JSON profile and the members of each kind (BridgeRequestEnvelope);
 // - routing: a request for a route goes to the route's handler (RegisterRoute); a route that nothing serves, because it
-//   was never registered or was released, answers released; reserved routes (runic.*) belong to host services;
+//   was never registered or was released, answers released; reserved routes (runic.*, rax.*) belong to host services;
 // - pushes: broadcasts, targeted pushes and, for a transport without targeted pushes, the per-connection mailbox that
 //   the host script drains with receive;
 // - the connection-level requests of presented/1: presented, which goes to the route's handler for its waits, and
@@ -208,7 +208,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
     }
 
     // Serves a route: requests that name it go to the handler until the lease is disposed; after that they answer
-    // released. A reserved route (runic.*) receives every request kind; a View's route receives the View request kinds
+    // released. A reserved route (runic.*, rax.*) receives every request kind; a View's route receives the View request kinds
     // with checked envelopes.
     internal IDisposable RegisterRoute(string route, IBridgeRouteHandler handler)
     {

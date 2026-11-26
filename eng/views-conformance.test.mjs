@@ -260,7 +260,8 @@ export function decodeValue(type, value, parameters = {}) {
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const isSafe = value => Number.isSafeInteger(value) && value >= 0;
 const isIdentifier = value => typeof value === "string" && value.length >= 1 && value.length <= 128 && /^[!-~]+$/.test(value);
-const isRoute = value => typeof value === "string" && /^(?:[A-Za-z0-9_-]{1,128}|runic\.[a-z0-9.-]{1,122})$/.test(value);
+// README.md, "Routes and members": a reserved route starts with runic., or with rax. during the rename window.
+const isRoute = value => typeof value === "string" && value.length <= 128 && /^(?:[A-Za-z0-9_-]+|(?:runic|rax)\.[A-Za-z0-9_.-]+)$/.test(value);
 const isMember = value => typeof value === "string" && value.length > 0;
 const isContract = value => typeof value === "string" && value.lastIndexOf(":") > 0 && /^[!-9;-~]{1,128}$/.test(value.slice(value.lastIndexOf(":") + 1));
 const isName = (value, maximum) => typeof value === "string" && value.length >= 1 && value.length <= maximum;
@@ -404,6 +405,7 @@ export function readPush(text) {
 const withRevision = m => m.released === true || isSafe(m.revision);
 const replyRules = {
   hello: m => isSafe(m.protocol) && isObject(m.implementation) && isName(m.implementation.name, 128) && isName(m.implementation.version, 64)
+    && (m.release === undefined || typeof m.release === "string")
     && (m.features === undefined || (Array.isArray(m.features) && m.features.every(item => typeof item === "string"))),
   open: m => isSafe(m.revision) && isObject(m.state) && validFields(m.fields) && ["ok", "ignored"].includes(m.presentation),
   snapshot: m => isSafe(m.revision) && isObject(m.state) && validFields(m.fields),

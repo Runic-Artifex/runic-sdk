@@ -313,8 +313,9 @@ component mode from the `/component` entry, which it removed, to `/experimental`
 .NET packages: code that a release generated keeps working with the runtime of
 any later release of the same major, but their shape is not for hand-written
 code. A framework binding depends on the exact same release. Use the .NET and
-npm packages of one release together: a .NET host of another release is
-reported as a diagnostic with code `version`, and a client does not connect to a
+npm packages of one release together: a producer of another Runic release,
+which its `hello` reply names, is reported as a diagnostic with code `version`
+(see [Handshake](../../../specs/application/README.md#handshake)), and a client does not connect to a
 host of another Views protocol version (see
 [Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, view request, operation and keyed
 collection runtimes to `connectView` only when its ViewModel has them, and

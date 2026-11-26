@@ -12,7 +12,7 @@ import {
 } from "./protocol.js";
 import { protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { onInstanceDisposed, type Slots } from "./scope.js";
-import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
+import { bridgeProtocol, clientName, runicProducerNames, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
 import { reportWindowLocale } from "./translated-text.js";
@@ -322,12 +322,18 @@ function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
         grant = features.has(blobsFeature) ? readBlobGrant(reply["blobs"]) : undefined;
       }
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
-      if (implementation.name === runicProducerName && implementation.version !== viewsVersion && !versionReported) {
+      // A Runic producer in any language names its release; without `release`, only a producer under one of Runic's
+      // names is compared, by its version (specs/application, "Handshake").
+      const release = reply["release"] as string | undefined;
+      const skewed = release !== undefined ? release !== viewsVersion
+        : runicProducerNames.includes(implementation.name) && implementation.version !== viewsVersion;
+      if (skewed && !versionReported) {
         versionReported = true;
+        const producer = `${implementation.name} ${implementation.version}`;
         emitBridgeDiagnostic(slots, {
           kind: "error", code: "version",
-          message: `The .NET host runs ${runicProducerName} ${implementation.version}, but this page uses @runic-artifex/views ${viewsVersion}. ` +
-            "Use the .NET and npm packages of one release.",
+          message: (release !== undefined ? `The producer ${producer} belongs to Runic release ${release}` : `The producer is ${producer}`) +
+            `, but this page uses @runic-artifex/views ${viewsVersion}. Use the producer and the npm packages of one Runic release.`,
         });
       }
     })();
