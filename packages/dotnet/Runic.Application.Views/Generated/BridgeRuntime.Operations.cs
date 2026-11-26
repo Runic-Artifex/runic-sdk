@@ -114,15 +114,20 @@ public partial class ViewModelBridge
         CancellationToken cancellationToken)
     {
         using var awaited = content.Operations.TryBeginAwaited(cancellationToken, out var atCapacity);
+        if (awaited is null && !atCapacity) return BridgeOperationRouter.Rejection(operation.Identity, "owner-closing");
+        // The resolution is awaited window work, which a window at capacity does not start: the start is admitted
+        // without it, so a known operation id and an invalid input are still answered as such, and a new one is refused
+        // for capacity in place of its key and availability.
         if (awaited is null)
-            return BridgeOperationRouter.Rejection(operation.Identity, atCapacity ? "capacity" : "owner-closing");
+            return _modelTurn.Run(() => IsInactive ? null : Admit(content, descriptor, connection, operation, () =>
+                (TryDecodeInput(descriptor, input, connection.Key, out _) ?? "capacity", null)));
         string? invalid = null;
         Task<object?>? resolution = null;
         var released = _modelTurn.Run(() =>
         {
             if (IsInactive) return true;
             invalid = TryDecodeInput(descriptor, input, connection.Key, out var key);
-            if (invalid is null) resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited.Token).AsTask();
+            if (invalid is null) resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited!.Token).AsTask();
             return false;
         });
         if (released) return null;
