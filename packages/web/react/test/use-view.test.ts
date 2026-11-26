@@ -251,10 +251,10 @@ describe("useView options", () => {
       expect(typeof (root_ as Record<string, unknown>)[name]).toBe("function");
   });
 
-  test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14), upload (0.16), useTextLocale, syncDocumentLocale and useAppearance (0.17), RunicInstanceProvider, useRunicInstance, createRunicInstance and pageInstance (0.18)", () => {
+  test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14), upload (0.16), useTextLocale, syncDocumentLocale and useAppearance (0.17), RunicInstanceProvider, useRunicInstance, createRunicInstance and pageInstance (0.18), fieldDefinition and fieldMembers (0.24)", () => {
     expect(Object.keys(root_).sort()).toEqual([
       "FieldError", "RegionOutlets", "RunicInstanceProvider", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
-      "configureTranslatedText", "createRunicInstance", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "configureTranslatedText", "createRunicInstance", "fieldDefinition", "fieldErrorText", "fieldMembers", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
       "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "regionEntries", "resolveText", "retrySuspenseView",
       "selectedRegion", "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection",
       "useCollectionViewport", "useCommand", "useCommands", "useField", "useForm", "useInteraction", "useLatestOperation", "useMenuBar", "useOperation",

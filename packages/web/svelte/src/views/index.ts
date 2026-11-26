@@ -55,9 +55,12 @@ export {
 } from "@runic-artifex/views";
 export {
   FieldError,
+  fieldDefinition,
+  fieldMembers,
   type BridgeField,
   type BridgeFieldConstraints,
   type BridgeFieldKind,
+  type BridgeFieldMembers,
   type FieldBaseline,
   type FieldDefinition,
   type FieldErrorKind,

@@ -4,7 +4,7 @@
 import { BridgeError } from "./errors.js";
 import type { BridgeFieldWriteRequest, FieldBaseline, FieldWriteOptions, FieldWriteReceipt } from "./connection.js";
 import { randomId } from "./clock.js";
-import type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
+import { fieldMembers, type BridgeField, type BridgeFieldConstraints, type BridgeFieldKind, type BridgeFieldMembers } from "./field.js";
 import type { BridgeValidationState } from "./validation.js";
 
 const noMessages: readonly string[] = Object.freeze([]);
@@ -99,7 +99,8 @@ export interface FieldPathSpec<TState, TContainer, TValue> {
 
 /**
  * A descriptor of one field path. It has no setter: every write is a checked write (`checkedOnly`), based on the
- * route's revision when the draft started.
+ * route's revision when the draft started. Generated code spreads it into an object with the descriptors of the paths
+ * below it, which its own members, under {@link fieldMembers}, leave every name to.
  */
 export function fieldPath<TClient extends FieldPathClient, TState, TValue, TContainer = never>(
   spec: FieldPathSpec<TState, TContainer, TValue>,
@@ -132,7 +133,7 @@ export function fieldPath<TClient extends FieldPathClient, TState, TValue, TCont
       throw new BridgeError("failed", row === undefined ? `${member} is null.` : `${member} has no row ${row.key}.`);
     return { value: read(state), version: client.fieldPathVersion() };
   };
-  const field: BridgeField<TClient, TState, TValue> = {
+  const members: BridgeFieldMembers<TClient, TState, TValue> = {
     name: [member, ...segments].join("."),
     kind: spec.kind,
     ...spec.nullable === true ? { nullable: true } : {},
@@ -156,7 +157,7 @@ export function fieldPath<TClient extends FieldPathClient, TState, TValue, TCont
       },
     },
   };
-  return Object.freeze(field);
+  return Object.freeze({ [fieldMembers]: Object.freeze(members) });
 }
 
 /**

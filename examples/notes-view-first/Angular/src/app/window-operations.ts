@@ -1,5 +1,5 @@
 import { inject, Injectable, type Signal } from "@angular/core";
-import type { BridgeField, FieldDefinition, ViewClient } from "@runic-artifex/views";
+import { fieldMembers, type BridgeField, type FieldDefinition, type ViewClient } from "@runic-artifex/views";
 import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 interface DisposableView { dispose(): void; }
@@ -56,8 +56,8 @@ export class WindowOperations {
    * `injectField`. It writes with the setter, so the checked write is left out.
    */
   field<V extends DisposableView, S, T>(field: BridgeField<V, S, T>): FieldDefinition<V, S, T> {
-    const { checked: _checked, baseline: _baseline, ...setter } = field;
-    return { ...setter, write: (view, value) => this.run(view, target => field.write(target, value)) };
+    const { checked: _checked, baseline: _baseline, ...setter } = field[fieldMembers];
+    return { ...setter, write: (view, value) => this.run(view, target => setter.write(target, value)) };
   }
 
   release(view: DisposableView): void {

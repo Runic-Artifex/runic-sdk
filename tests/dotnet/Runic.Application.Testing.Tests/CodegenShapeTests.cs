@@ -261,12 +261,12 @@ internal sealed class CodegenShapeTests
             // The connect timeout is an option of the generated connect function (default 5000 ms).
             ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> {"),
             ("documented.ts", documented, "members, checkedFields: checkedFieldNames, texts: [\"note\"], timeout: options?.timeout, signal: options?.signal });"),
-            // F1: one field descriptor per settable member, with its kind, setter, checked write and baseline.
-            ("documented.ts", documented, "export const DocumentedFields: {\n  readonly note: BridgeField<DocumentedClient, DocumentedState, string>;\n} = {\n  note: {\n    name: \"note\", kind: \"text\",\n    read: state => state.note,\n    write: (client, value) => client.setNote(value),\n    checked: (client, value, options) => client.writeNote(value, options),\n    baseline: client => client.fieldBaseline(\"note\"),\n  },\n};"),
+            // F1: one field descriptor per settable member, with its kind, setter, checked write and baseline under fieldMembers (#1395).
+            ("documented.ts", documented, "export const DocumentedFields: {\n  readonly note: BridgeField<DocumentedClient, DocumentedState, string>;\n} = {\n  note: {\n    [fieldMembers]: {\n      name: \"note\", kind: \"text\",\n      read: state => state.note,\n      write: (client, value) => client.setNote(value),\n      checked: (client, value, options) => client.writeNote(value, options),\n      baseline: client => client.fieldBaseline(\"note\"),\n    },\n  },\n};"),
             ("codegenShape.ts", shape, "    name: \"mode\", kind: \"choice\", choices: [\"None\", \"Active\"],\n"),
             ("codegenShape.ts", shape, "    name: \"origin\", kind: \"value\", nullable: true,\n"),
             ("dataShape.ts", GeneratedClientSource.Read(directory, "dataShape").ReplaceLineEndings("\n"),
-                "  \"exact-id\": {\n    name: \"exact-id\", kind: \"bigint\",\n    read: state => state[\"exact-id\"],\n"),
+                "  \"exact-id\": {\n    [fieldMembers]: {\n      name: \"exact-id\", kind: \"bigint\",\n      read: state => state[\"exact-id\"],\n"),
             ("scalarSetter.ts", GeneratedClientSource.Read(directory, "scalarSetter").ReplaceLineEndings("\n"),
                 "    name: \"maybe\", kind: \"number\", nullable: true, integer: true,\n"),
             ("scalarSetter.ts", GeneratedClientSource.Read(directory, "scalarSetter").ReplaceLineEndings("\n"),
@@ -315,11 +315,11 @@ internal sealed class CodegenShapeTests
         var reactive = GeneratedClientSource.Read(directory, "nullableReactive").ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
-            ("documented.ts", documented, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
+            ("documented.ts", documented, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, fieldMembers } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
             ("nullableReactive.ts", reactive, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
             ("nullableReactive.ts", reactive, "const interactionDefinitions = defineInteractions({"),
             ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });"),
-            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
+            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, defineCollection, defineCollections, fieldMembers } from \"@runic-artifex/views/generated\";\n"),
             ("collectionDelta.ts", collection, "const collectionDefinitions = defineCollections({"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),

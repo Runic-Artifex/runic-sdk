@@ -5,7 +5,7 @@ import type { FieldBaseline } from "@runic-artifex/views";
 import { connectView, type ViewConnection } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
 import * as wire from "@runic-artifex/views/generated/wire";
-import { FieldError, useField, useView, type BridgeField } from "../../dist/index.js";
+import { FieldError, fieldMembers, useField, useView, type BridgeField } from "../../dist/index.js";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean };
 type Client = ViewConnection<State>;
@@ -20,15 +20,17 @@ const connect = () => connectView<State>({
 
 const Fields = {
   title: {
-    name: "title", kind: "text", read: state => state.title,
-    write: (client, value) => client.set("title", value),
-    checked: (client, value, options) => client.write("title", {
-      requestId: options.requestId, expectedVersion: options.baseline.version, expectedValue: options.baseline.value, value,
-    }, wire.string),
-    baseline: client => client.fieldBaseline("title") as FieldBaseline<string>,
+    [fieldMembers]: {
+      name: "title", kind: "text", read: state => state.title,
+      write: (client, value) => client.set("title", value),
+      checked: (client, value, options) => client.write("title", {
+        requestId: options.requestId, expectedVersion: options.baseline.version, expectedValue: options.baseline.value, value,
+      }, wire.string),
+      baseline: client => client.fieldBaseline("title") as FieldBaseline<string>,
+    },
   } satisfies BridgeField<Client, State, string>,
-  step: { name: "step", kind: "number", read: state => state.step, write: (client, value) => client.set("step", value) } satisfies BridgeField<Client, State, number>,
-  done: { name: "done", kind: "boolean", read: state => state.done, write: (client, value) => client.set("done", value) } satisfies BridgeField<Client, State, boolean>,
+  step: { [fieldMembers]: { name: "step", kind: "number", read: state => state.step, write: (client, value) => client.set("step", value) } } satisfies BridgeField<Client, State, number>,
+  done: { [fieldMembers]: { name: "done", kind: "boolean", read: state => state.done, write: (client, value) => client.set("done", value) } } satisfies BridgeField<Client, State, boolean>,
 };
 
 const Form = defineComponent({
