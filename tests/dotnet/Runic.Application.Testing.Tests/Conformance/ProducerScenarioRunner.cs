@@ -67,6 +67,8 @@ internal sealed class ProducerScenarioRunner
                     throw new ScenarioFailure($"{scenario.Id}, step {index + 1} {ScenarioMessages.Abbreviate(step)}:\n{failure.Message}");
                 }
             }
+            // A late push of the asynchronous producer is still unmatched (R6 F8): settle first, as the driver does.
+            await transport.SettleAsync(window.RunQueuedTurnsAsync, ReceiveTimeout).ConfigureAwait(false);
             runner.RequireNothingUnmatched();
         }
         finally

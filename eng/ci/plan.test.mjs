@@ -954,7 +954,9 @@ test('the Rust, C++, conformance and NativeAOT tool components plan Linux only, 
     ['conformance', ['eng/conformance/core/driver.ts', 'eng/conformance/views/cases.json'], []],
     ['tool-aot', ['eng/aot/publish.sh', 'eng/aot/compare-rax.sh'], ['package-consumers', 'templates']],
   ]) {
-    assert.deepEqual(workspace.components[component].dependsOn, [], component);
+    // The .NET conformance adapter (tests/dotnet/Runic.Application.Views.Conformance) compiles application's test Views,
+    // so conformance follows application; its own paths still plan only itself, on Linux.
+    assert.deepEqual(workspace.components[component].dependsOn, component === 'conformance' ? ['application'] : [], component);
     assert.ok(!Object.values(workspace.components).some(item => item.dependsOn.includes(component)), `no component depends on ${component}`);
     for (const path of workspace.components[component].paths)
       assert.ok(!platformRules.some(rule => rule.paths.some(item => matchesPath(path, item) || matchesPath(item, path))), `${path} has a platform rule`);
