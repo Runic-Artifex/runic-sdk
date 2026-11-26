@@ -204,7 +204,7 @@ test("a driver without corpus modules runs and reports that it has none", async 
   const lines = [];
   console.log = (line) => lines.push(String(line));
   try {
-    const driver = createDriver({ root: dir, dir, corpora: {} });
+    const driver = createDriver({ root: dir, dir, corpora: {}, command: "bun eng/conformance/cli.ts" });
     assert.equal(await driver.main([]), 0);
     assert.equal(await driver.main(["list"]), 0);
     assert.equal(await driver.main(["cases"]), 0);
@@ -216,5 +216,6 @@ test("a driver without corpus modules runs and reports that it has none", async 
   }
   assert.match(lines.join("\n"), /no corpus modules yet/);
   assert.match(lines.join("\n"), /no implementations yet/);
+  assert.match(lines.join("\n"), /usage: bun eng\/conformance\/cli\.ts <implementation>/, "the messages name the repository's command");
   assert.match(lines.join("\n"), /unknown implementation dotnet-commandline \(this repository has no corpus modules yet\)/);
 });

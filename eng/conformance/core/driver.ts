@@ -30,10 +30,10 @@ export type Implementation = {
 };
 
 // `root` is the repository root, `dir` the directory with implementations.json (eng/conformance), `corpora` the
-// repository's modules by corpus id.
-export type DriverOptions = { root: string; dir: string; corpora: Record<string, CorpusModule> };
+// repository's modules by corpus id, and `command` how the repository runs the driver, for its messages.
+export type DriverOptions = { root: string; dir: string; corpora: Record<string, CorpusModule>; command?: string };
 
-export function createDriver({ root: ROOT, dir, corpora }: DriverOptions) {
+export function createDriver({ root: ROOT, dir, corpora, command: name = "bun run conformance" }: DriverOptions) {
   const ARTIFACTS = join(ROOT, "artifacts/conformance");
 
   const expand = (text: string) =>
@@ -202,10 +202,10 @@ export function createDriver({ root: ROOT, dir, corpora }: DriverOptions) {
     // A problem with the corpus's committed case list, or null when it is current.
     function casesProblem(corpus: string, root: string, cases: Case[]): string | null {
       const path = casesPath(root);
-      if (!existsSync(path)) return `${relative(ROOT, path)} is missing: run bun run conformance cases --write`;
+      if (!existsSync(path)) return `${relative(ROOT, path)} is missing: run ${name} cases --write`;
       return readFileSync(path, "utf8") === formatCases(names.cases, corpus, cases)
         ? null
-        : `${relative(ROOT, path)} is out of date: run bun run conformance cases --write`;
+        : `${relative(ROOT, path)} is out of date: run ${name} cases --write`;
     }
 
     function cases(): number {
@@ -287,9 +287,10 @@ export function createDriver({ root: ROOT, dir, corpora }: DriverOptions) {
       return result.exitCode === 0 ? result.stdout.toString().trim() : undefined;
     }
 
-    const usage = `usage: bun run conformance <implementation> [--only <text>] [--set <set>] [--jobs <n>] [--verbose] [--no-build]
-                                          [--receipt <file>] [--write-status] [--corpus <dir>] [--timeout-scale <x>]
-       bun run conformance list | cases [--write] | lint | check <implementation> [--receipt <file>]`;
+    const pad = " ".repeat(`usage: ${name} `.length);
+    const usage = `usage: ${name} <implementation> [--only <text>] [--set <set>] [--jobs <n>] [--verbose] [--no-build]
+${pad}[--receipt <file>] [--write-status] [--corpus <dir>] [--timeout-scale <x>]
+       ${name} list | cases [--write] | lint | check <implementation> [--receipt <file>]`;
     const none = !Object.keys(corpora).length;
 
     const [command, target] = args;
@@ -312,7 +313,7 @@ export function createDriver({ root: ROOT, dir, corpora }: DriverOptions) {
         return lint();
       case "check": {
         const impl = all[target];
-        if (!impl) throw new Error(`unknown implementation ${target}; see bun run conformance list`);
+        if (!impl) throw new Error(`unknown implementation ${target}; see ${name} list`);
         const receipt: Receipt = JSON.parse(readFileSync(flag("--receipt") ?? join(ARTIFACTS, `${impl.id}.receipt.json`), "utf8"));
         const root = corpusRoot(impl);
         return check(impl, join(root, impl.status), receipt, module(impl).load(root).map((c) => c.id), Boolean(receipt.run.filter));
