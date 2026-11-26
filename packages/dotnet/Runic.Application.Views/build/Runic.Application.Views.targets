@@ -82,6 +82,16 @@
     <RunicApplicationFrontendBuildEnabled Condition="'$(RunicApplicationFrontendBuildEnabled)' == 'auto' and '$(_RunicFrontendHasBuildScript)' == 'true'">true</RunicApplicationFrontendBuildEnabled>
     <RunicApplicationFrontendBuildEnabled Condition="'$(RunicApplicationFrontendBuildEnabled)' == 'auto'">false</RunicApplicationFrontendBuildEnabled>
     <RunicApplicationFrontendCopyEnabled Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(RunicApplicationFrontendCopyEnabled)' == ''">false</RunicApplicationFrontendCopyEnabled>
+    <!-- devtools-library-dx §3.4: dotnet runic dev names the project whose frontend its development server serves in
+         RunicApplicationFrontendDevSessionProject (a global property, so every project of the build sees it). Only that
+         project skips its production frontend build and copy; it still installs the frontend packages and builds the
+         packages its frontend depends on. Every other project, such as a client library, builds as usual. An older dev
+         passed RunicApplicationFrontendBuildEnabled=false to every project instead. _RunicViewsDevSessionProtocol tells
+         the tool that these targets read the property (1 since 0.24). -->
+    <_RunicViewsDevSessionProtocol>1</_RunicViewsDevSessionProtocol>
+    <_RunicFrontendServedByDev Condition="'$(RunicApplicationFrontendDevSessionProject)' != '' and '$([System.IO.Path]::GetFullPath($(RunicApplicationFrontendDevSessionProject)))' == '$(MSBuildProjectFullPath)'">true</_RunicFrontendServedByDev>
+    <RunicApplicationFrontendBuildEnabled Condition="'$(_RunicFrontendServedByDev)' == 'true'">false</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendCopyEnabled Condition="'$(_RunicFrontendServedByDev)' == 'true'">false</RunicApplicationFrontendCopyEnabled>
     <!-- The frontend build's output, which build and publish copy, and dotnet runic dev serves from too. A relative
          path is relative to the frontend directory. -->
     <RunicApplicationFrontendOutputDirectory Condition="'$(RunicApplicationFrontendOutputDirectory)' == ''">dist</RunicApplicationFrontendOutputDirectory>
@@ -2075,9 +2085,9 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
        the bundler's import. A package build runs when its files (without node_modules, bin, obj, hidden folders and its
        output folders), its command or the install changed, or an export is missing; its stamp lives in the workspace's
        node_modules/.runic-builds (else in obj/runic/package-builds), so the projects of a workspace build it once. -->
-  <Target Name="RunicViewsBuildFrontendDependencies" BeforeTargets="RunicViewsBuildFrontend"
+  <Target Name="RunicViewsBuildFrontendDependencies" BeforeTargets="RunicViewsBuildFrontend;RunicViewsFrontendCurrent"
           DependsOnTargets="_RunicViewsFrontendDependencies;RunicViewsInstallFrontend;_RunicViewsBuildFrontendDependency"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'" />
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and ('$(RunicApplicationFrontendBuildEnabled)' != 'false' or '$(_RunicFrontendServedByDev)' == 'true')" />
 
   <Target Name="_RunicViewsBuildFrontendDependency" Outputs="%(_RunicFrontendGraphPackage.Identity)"
           Condition="'@(_RunicFrontendGraphPackage)' != ''">
@@ -2150,7 +2160,7 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
   <!-- The install's own condition: BeforeTargets runs this even when the install does not run. -->
   <Target Name="RunicViewsCollectFrontendInstallInputs" BeforeTargets="RunicViewsInstallFrontend"
           DependsOnTargets="_RunicViewsIntermediatePaths;_RunicViewsReadFrontendWorkspace"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and ('$(RunicApplicationFrontendBuildEnabled)' != 'false' or '$(_RunicFrontendServedByDev)' == 'true') and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <PropertyGroup>
       <_RunicBridgeFrontendHasDependencies>false</_RunicBridgeFrontendHasDependencies>
       <_RunicBridgeFrontendHasDependencies Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(RunicApplicationFrontendDirectory)/package.json')), '&quot;(dependencies|devDependencies|optionalDependencies)&quot;\s*:\s*\{\s*&quot;'))">true</_RunicBridgeFrontendHasDependencies>
@@ -2249,7 +2259,7 @@ public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
   </Target>
 
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend" DependsOnTargets="_RunicViewsIntermediatePaths"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and ('$(RunicApplicationFrontendBuildEnabled)' != 'false' or '$(_RunicFrontendServedByDev)' == 'true') and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <!-- An install without a lock file resolves the declared version ranges afresh on every machine and build,
          so a newly published version, malicious or not, runs in the frontend build. -->
     <Error Code="RUNICBRIDGE026" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge026"

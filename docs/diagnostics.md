@@ -1489,11 +1489,13 @@ up to three times, and fails with this diagnostic only if every port was taken.
 
 ### RAPPDEV1008
 
-`--no-restore` was given but the frontend packages are not installed. Exit
-code 1.
+`--no-restore` was given but the frontend packages are not installed, or
+`--no-build` was given and no build has installed them yet (since 0.24 the build
+installs them, and `--no-build` runs no build). A `node_modules` at the
+JavaScript workspace root above the frontend counts. Exit code 1.
 
-**Fix:** install them with the frontend's package manager, or omit
-`--no-restore`.
+**Fix:** install them with the frontend's package manager (at the workspace
+root in a workspace), build the project once, or omit the option.
 
 ### RAPPDEV1009
 
@@ -1583,6 +1585,19 @@ Exit code 1. Since 0.21.
 **Fix:** stop the process that holds 9222, or run `dev` with
 `--no-debug-endpoint`. See
 [Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux).
+
+### RAPPDEV1019
+
+A warning from `dev` (since 0.24): the project's `Runic.Application.Views` build
+targets are older than the tool, so they do not read
+`RunicApplicationFrontendDevSessionProject`. `dev` falls back to the old
+behaviour: it installs the frontend packages itself and passes
+`RunicApplicationFrontendBuildEnabled=false` to every project it builds, so a
+client library's compiled frontend package is not built and the page can fail
+to resolve it.
+
+**Fix:** update the project's Runic packages to the tool's version. See
+[Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
 
 ### RAPPPKG1001
 

@@ -93,6 +93,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendViteRoot` | the frontend directory | Vite's `root`, relative to the frontend directory, against which `doctor` checks the entry module; set it when `vite.config.*` sets `root`. |
 | `RunicApplicationFrontendDevServerDocument` | per development server | The HTML documents the server renders, separated by `;`. |
 | `RunicApplicationFrontendDevWatchTarget` | none | An MSBuild target that watches the frontend without a development server. |
+| `RunicApplicationFrontendDevSessionProject` | none (set by `dev`) | The project whose frontend `dev`'s development server serves, a global property that `dev` passes to its builds (0.24). Only that project skips its production frontend build and copy; referenced projects, such as a client library, build their frontend packages. |
 
 [`dotnet runic package`](../tools/dotnet-runic/README.md#package-the-application)
 reads the SDK's `ApplicationId`, `ApplicationTitle`, `Version`, `Description`,

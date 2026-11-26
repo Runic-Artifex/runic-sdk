@@ -59,9 +59,18 @@ internal sealed record DevProjectConfiguration(
         "BaseIntermediateOutputPath",
         "AssemblyName",
         "RunCommand",
+        // devtools-library-dx §3.4: 1 when the Views targets read RunicApplicationFrontendDevSessionProject.
+        "_RunicViewsDevSessionProtocol",
     ];
 
     internal bool IsViewsWindowProject { get; init; }
+
+    /// <summary>
+    /// The dev session protocol of the project's Views targets (<c>_RunicViewsDevSessionProtocol</c>): 1 when they read
+    /// <c>RunicApplicationFrontendDevSessionProject</c> and install the frontend packages in the build (0.24), 0 for older
+    /// targets, or for a project whose package targets restore has not imported yet.
+    /// </summary>
+    internal int DevSessionProtocol { get; init; }
 
     /// <summary>The directory of the dev session file: <c>runic</c> below the project's <c>BaseIntermediateOutputPath</c>.</summary>
     internal string SessionDirectory { get; init; } = Path.Combine(ProjectDirectory, "obj", "runic");
@@ -261,6 +270,7 @@ internal sealed record DevProjectConfiguration(
                 ? Path.Combine(intermediate, "runic-bridge", "sources.json")
                 : string.Empty,
             ViteRoot = viteRoot,
+            DevSessionProtocol = int.TryParse(Value("_RunicViewsDevSessionProtocol"), out int protocol) ? protocol : 0,
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
@@ -272,6 +282,24 @@ internal sealed record DevProjectConfiguration(
         };
         evaluated.Validate();
         return evaluated;
+    }
+
+    /// <summary>
+    /// The dev session protocol after restore: an unrestored project has not imported the Views package's targets, so
+    /// its first evaluation reads none.
+    /// </summary>
+    internal static async System.Threading.Tasks.Task<int> EvaluateDevSessionProtocolAsync(
+        string dotnetHost,
+        DevProjectConfiguration configuration,
+        string buildConfiguration,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        CommandResult result = await CommandRunner.RunAsync(
+            dotnetHost,
+            configuration.ProjectDirectory,
+            ["msbuild", configuration.ProjectPath, "-nologo", $"-property:Configuration={buildConfiguration}", "-getProperty:_RunicViewsDevSessionProtocol"],
+            cancellationToken).ConfigureAwait(false);
+        return result.ExitCode == 0 && int.TryParse(result.StandardOutput.Trim(), out int protocol) ? protocol : 0;
     }
 
     internal static IReadOnlyList<string> CreateEvaluationArguments(string project, string configuration) =>

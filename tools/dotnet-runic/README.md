@@ -18,19 +18,28 @@ every option.
 host. It restores the .NET and JavaScript dependencies, builds the project, and
 runs the native Window alongside the frontend's Vite or Angular development
 server. While the development server runs, the build skips the production
-frontend build and leaves the development document in `www/`
-(`RunicApplicationFrontendBuildEnabled=false`, `RunicApplicationFrontendCopyEnabled=false`); the Views
-MSBuild targets still generate the typed TypeScript clients. `dotnet watch`
+frontend build of the project it serves and leaves the development document in
+`www/`: `dev` passes `RunicApplicationFrontendDevSessionProject` with the
+project's path, and only that project skips its frontend build and copy. The
+Views MSBuild targets still generate the typed TypeScript clients, and the
+projects it references, such as a client library, build their frontend packages,
+so a page that imports a compiled library package works from a fresh clone
+(since 0.24). `dotnet watch`
 restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
 `--no-dotnet-watch`, and `--dry-run` select parts of that loop; `--no-window`
 runs only the frontend, for a Window that your IDE starts under its debugger
-([Debug the Window in your IDE](#debug-the-window-in-your-ide)). `dev` installs
-the frontend packages itself and passes
-`RunicApplicationFrontendInstallEnabled=false`, so the build does not install
-them a second time (and `RunicApplicationFrontendDelivery=Files`, so a project
-that embeds its frontend serves it live while developing); with `--no-restore` nothing
-installs them, and a frontend that declares dependencies but has no
-`node_modules` stops with `RAPPDEV1008`. When `dotnet watch` restarts or `dev`
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). The build
+installs the frontend packages, at the JavaScript workspace root for a workspace
+member, only when the lock file, a `package.json` or the package manager changed,
+so a second `dev` start runs no install
+([Fast iteration](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#fast-iteration)).
+`dev` also passes `RunicApplicationFrontendDelivery=Files`, so a project that
+embeds its frontend serves it live while developing. With `--no-restore` nothing
+installs them (`RunicApplicationFrontendInstallMode=Never`), and with
+`--no-build` no build runs to install them; then a frontend that declares
+dependencies but has no `node_modules`, in its folder or at its workspace root,
+stops with `RAPPDEV1008`. With Views targets older than the tool, `dev` warns
+with `RAPPDEV1019` and installs the packages itself, as before 0.24. When `dotnet watch` restarts or `dev`
 stops the Window, the application's expected exit code after SIGTERM or Ctrl+C
 (143, 130) is not reported; any other exit code still is. Application
 arguments after `--` are passed to the Window process. When a restore, install
