@@ -6,8 +6,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, test } from "vitest";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
 import { useField, useView, type FieldHandle } from "../dist/index.js";
-import { connectInvoice, InvoiceFields } from "../../views/test/fixtures/field-names/generated/invoice.js";
-import { mockInvoice } from "../../views/test/fixtures/field-names/generated/invoice.mock.js";
+import { connectInvoice, InvoiceFields } from "./fixtures/field-names/generated/invoice.js";
+import { mockInvoice } from "./fixtures/field-names/generated/invoice.mock.js";
 
 const act: typeof React.act = React.act ?? (React as unknown as { unstable_act: typeof React.act }).unstable_act;
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

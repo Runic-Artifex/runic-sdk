@@ -224,17 +224,21 @@ function compile(files: ReadonlyMap<string, string>): string[] {
 }
 
 // sdk#1395: a checked member's fields and a row's cells named like a field descriptor's own members (name, read, write,
-// checked, baseline, errors, validating, container). test/fixtures/field-names keeps the client; field-names.test.ts and
-// the framework bindings' tests use it. RUNIC_UPDATE_GOLDEN=1 rewrites it.
+// checked, baseline, errors, validating, container). test/fixtures/field-names keeps the client for field-names.test.ts;
+// the React adapter's test keeps the same client under its own test/fixtures, so that it imports @runic-artifex/views
+// from its own node_modules (as the lowest-peer run installs it). RUNIC_UPDATE_GOLDEN=1 rewrites both.
 test("fields named like a descriptor's own members compile under --strict", () => {
   const fixture = fileURLToPath(new URL("./fixtures/field-names", import.meta.url));
   const directory = join(fixture, "generated");
   const files = generate(readJson(join(fixture, "invoice.ir.json")) as ContractIr, { outputDirectory: directory });
-  if (process.env.RUNIC_UPDATE_GOLDEN === "1") for (const [name, text] of files) writeFileSync(join(directory, name), text);
-  const names = [...new Set([...files.keys(), ...readdirSync(directory)])].sort();
-  const differences = names.map(name => difference(name, files.get(name),
-    existsSync(join(directory, name)) ? readFileSync(join(directory, name), "utf8") : undefined)).filter(item => item !== null);
-  assert.deepEqual(differences, [], "test/fixtures/field-names/generated is stale; run with RUNIC_UPDATE_GOLDEN=1");
+  const react = fileURLToPath(new URL("../../react/test/fixtures/field-names/generated", import.meta.url));
+  for (const [target, label] of [[directory, "test/fixtures/field-names/generated"], [react, "packages/web/react/test/fixtures/field-names/generated"]] as const) {
+    if (process.env.RUNIC_UPDATE_GOLDEN === "1") for (const [name, text] of files) writeFileSync(join(target, name), text);
+    const names = [...new Set([...files.keys(), ...readdirSync(target)])].sort();
+    const differences = names.map(name => difference(name, files.get(name),
+      existsSync(join(target, name)) ? readFileSync(join(target, name), "utf8") : undefined)).filter(item => item !== null);
+    assert.deepEqual(differences, [], `${label} is stale; run with RUNIC_UPDATE_GOLDEN=1`);
+  }
   const client = files.get("invoice.ts")!;
   assert.ok(client.includes("    name: fieldPath<") && client.includes("    [fieldMembers]: {"), client);
   assert.deepEqual(compile(files), []);
