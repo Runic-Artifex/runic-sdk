@@ -220,7 +220,7 @@ internal sealed partial record DoctorFrontendGraph(
 /// <summary>
 /// The doctor checks of the frontend's JavaScript workspace and the packages that the page depends on
 /// (devtools-library-dx §6, S6): <c>frontend-workspace</c>, <c>package-manager-agreement</c> and
-/// <c>frontend-dependencies</c>, and the <c>windows-targeting</c> advice of split CI (D082 S4).
+/// <c>frontend-dependencies</c> (with <see cref="DoctorModuleChecks"/>' <c>client-modules</c> and <c>views-dedupe</c>), and the <c>windows-targeting</c> advice of split CI (D082 S4).
 /// </summary>
 internal static class DoctorWorkspaceChecks
 {
@@ -244,6 +244,8 @@ internal static class DoctorWorkspaceChecks
         checks.Add(CheckWorkspace(project));
         checks.Add(CheckPackageManagerAgreement(project));
         if (project.FrontendGraph is { } graph) checks.Add(CheckDependencies(graph));
+        if (DoctorModuleChecks.CheckClientModules(project) is { } modules) checks.Add(modules);
+        if (DoctorModuleChecks.CheckViewsDedupe(project) is { } dedupe) checks.Add(dedupe);
     }
 
     /// <summary>The lock files in <paramref name="folder"/>, with the manager each belongs to.</summary>

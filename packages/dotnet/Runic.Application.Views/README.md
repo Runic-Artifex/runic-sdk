@@ -1837,6 +1837,8 @@ because nothing installs the examples' frontends inside the SDK repository.
   ```ts
   export default defineConfig({ resolve: { dedupe: ["@runic-artifex/views"] } });
   ```
+  `dotnet runic doctor` asks for it (its `views-dedupe` check), and its
+  `client-modules` check resolves each `Specifier` from the frontend.
 - The application's frontend build reruns when its generated files change, which
   covers a rebuilt library, and when a file of a package that its frontend
   depends on changes: the build adds the folder of each referenced client

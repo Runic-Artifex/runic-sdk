@@ -1154,6 +1154,9 @@ imports the library's `runic-clients.ts`: a package export such as
 `@acme/shared-ui/generated`, or an alias of the frontend's tsconfig `paths` and
 bundler. Keep one item per assembly. See
 [MSBuild properties](msbuild.md#runicapplicationviews).
+`dotnet runic doctor` resolves each `Specifier` from the frontend, as Vite
+does, as its [`client-modules`](../tools/dotnet-runic/README.md#client-modules)
+check.
 
 ### RUNICBRIDGE083
 
@@ -1476,6 +1479,11 @@ with HTTP 500 twice, such as for an import that Vite cannot resolve, and the
 message carries Vite's own error. When the import names a frontend package that the
 page depends on, it also says whether that package has been built. A server that
 exits before it is ready reports the first error line of its output.
+`dotnet runic doctor` resolves the page's imports of library and workspace
+packages without starting Vite, as its
+[`client-modules`](../tools/dotnet-runic/README.md#client-modules) check, and
+its [`views-dedupe`](../tools/dotnet-runic/README.md#views-dedupe) check asks
+for `resolve.dedupe` of `@runic-artifex/views` when a linked package imports it.
 
 For Vite, the application entry must come back as a JavaScript module. Vite
 answers a path that is not below its `root` with its `index.html` fallback, so
