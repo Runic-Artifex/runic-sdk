@@ -22,7 +22,7 @@ Each repository gets one input:
 | --- | --- |
 | `published` | The newest version on nuget.org (of `Runic.CommandLine`, `Runic.Translations`, `Runic.Application.Views`) |
 | `published:<version>` | That version on nuget.org. A package on its own prerelease line joins with its newest prerelease of that release (`Runic.Application.Views.CsWebUi` 0.17.1-preview.1 for 0.17.1). |
-| `run@<commit>` | The package artifact of the newest successful `ci.yml` run on `main` at or after that commit (a full SHA) |
+| `run@<commit>` | The package artifact of the newest successful `ci.yml` run on `main` at or after that commit (a full SHA); for Command Line and Translations a full run (below) |
 | `run:<ci run id>` | The package artifact of that successful `ci.yml` run |
 | `run` | The package artifact of the newest successful `ci.yml` run on `main`, whatever commit it built. Only for the nightly N-main row and custom runs: the rows T, P-tr and P-sdk refuse it. |
 | `local:<dir>` | Packages packed in a checkout (`bun eng/run.mjs pack` writes `artifacts/packages`, with `nuget/` and `npm/`); for a local run before CI. Its result names no CI run, so no publish workflow accepts it. |
@@ -47,10 +47,19 @@ under a busy merge queue no push run finishes for hours (I6). `run@<commit>` (`s
    reaches `main`. A push run that its queue run covered runs nothing and uploads no artifact
    ([eng/ci/README.md](../ci/README.md), "Merge queue"), so its queue run is the one taken. The train feed also
    needs the pinned version in it.
+   - **Command Line and Translations: a full run only.** Their `ci.yml` runs the macOS jobs on an ordinary push to
+     `main` only when the push changes a macOS path; nightly and dispatched runs and the push run of a version or
+     release commit run every job and upload the `ci-full-run` marker artifact (their `CONTRIBUTING.md`, "CI triggers
+     and macOS jobs"). `fullRunVerdict()` takes a run with the marker, or one whose jobs all succeeded with none
+     skipped (every run from before the marker), and passes over the rest as `not a full run`. During a train the
+     frozen release commit's push run is full, and so is every nightly. runic-sdk's own runs are not checked.
 3. Without one, fail with an error that names X and every run considered and why it was passed over (`not a
-   success`, `behind`/`diverged`, no artifact, a queue run of a commit not on `main`, another version). Usually X
-   has not merged yet, or its queue run failed; once it merges its queue run is there. Otherwise dispatch `ci.yml`
-   on `main` once, let it finish, and run the step again.
+   success`, `behind`/`diverged`, no artifact, `not a full run`, a queue run of a commit not on `main`, another
+   version). Usually X has not merged yet, or its queue run failed; once it merges its queue run is there. Otherwise
+   dispatch `ci.yml` on `main` once (for Command Line or Translations: `gh workflow run ci.yml -R
+   Runic-Artifex/<repository> --ref main`, which runs every job), let it finish, and run the step again. The gate,
+   the train feed and the feed exit don't dispatch it themselves: their tokens (a caller's `GITHUB_TOKEN`, the train
+   App of E1) have no `actions: write` on the upstream repositories.
 
 `run` (the N-main row) takes the newest such run with an artifact, a queue run of a commit on `main` included, and
 `run:<id>` also accepts a merge queue run, which is what runic-sdk's publish passes when the release's queue run is

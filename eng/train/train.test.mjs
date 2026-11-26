@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareVersions, lineUpperBound, parseRange, rangeContains, sameLine } from './versions.mjs';
 import { nugetConfig, parseNuspec, repoOf } from './nuget.mjs';
-import { followsMain, isNamedCiRun, parseSpec, selectRunAtOrAfter, successfulMainRuns, upstreamMovement, versionForRelease } from './sources.mjs';
+import { FULL_RUN_ARTIFACT, followsMain, isNamedCiRun, parseSpec, selectRunAtOrAfter, successfulMainRuns, upstreamMovement, versionForRelease } from './sources.mjs';
 import { refuseFollowingMain } from './gate.mjs';
 import { repos as allRepos } from './nuget.mjs';
 import { keyCoverage, keysFromJson, keysFromMarkdown, lintLockstep, lintRanges, lintTemplatePins, lintToolPins, rmf2MessageNames } from './checks.mjs';
@@ -222,9 +222,8 @@ test('run@<commit> names a full commit; a bare run follows main and only informa
 });
 
 // A fake GitHub API: run listings of ci.yml, compare results by head commit and artifacts by run id.
-function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [], onMain = [] }) {
+function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [], onMain = [], repo = allRepos.sdk, marked = [], jobs = {} }) {
   const requests = [];
-  const repo = allRepos.sdk;
   const fetchImpl = async url => {
     requests.push(url);
     const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -245,7 +244,15 @@ function fakeGitHub({ runs, ahead = null, artifacts = {}, missing = [], onMain =
     const artifact = /\/actions\/runs\/(\d+)\/artifacts$/.exec(pathname);
     if (artifact) {
       const id = Number(artifact[1]);
+      // `marked` lists the runs that uploaded the ci-full-run marker (Command Line and Translations full runs).
+      if (searchParams.get('name') === FULL_RUN_ARTIFACT)
+        return reply({ artifacts: marked.includes(id) ? [{ id: id * 10 + 1, name: FULL_RUN_ARTIFACT, expired: false }] : [] });
       return reply({ artifacts: artifacts[id] === false ? [] : [{ id: id * 10, name: repo.artifact(id), expired: false }] });
+    }
+    const listedJobs = /\/actions\/runs\/(\d+)\/jobs$/.exec(pathname);
+    if (listedJobs) {
+      const list = jobs[Number(listedJobs[1])] ?? [];
+      return reply({ total_count: list.length, jobs: list });
     }
     return reply({ message: 'Not Found' }, 404);
   };
@@ -301,6 +308,34 @@ test('without a run at or after the commit the error names the commit and every 
   const unknown = fakeGitHub({ runs: [{ id: 20, head_sha: later, status: 'completed', conclusion: 'success' }] });
   await expect(selectRunAtOrAfter(unknown.repo, pinned, { fetchImpl: unknown.fetchImpl })).rejects.toThrow(`has no commit ${pinned}`);
   await expect(selectRunAtOrAfter(unknown.repo, 'a1', { fetchImpl: unknown.fetchImpl })).rejects.toThrow('Expected a full commit SHA');
+});
+
+// Command Line and Translations skip their macOS jobs on an ordinary push to main; a train input of theirs is a full run.
+test('a Command Line or Translations input takes only a full run: marked, or every job passed', async () => {
+  const pinned = sha('a1'), later = sha('b2');
+  const job = (name, conclusion = 'success') => ({ name, status: 'completed', conclusion });
+  // Run 50 is an ordinary push that skipped the macOS jobs; run 40, the nightly of the same commit, is marked full.
+  const nightly = fakeGitHub({ repo: allRepos.translations, ahead: { [later]: 'ahead' }, marked: [40],
+    runs: [{ id: 50, head_sha: later, status: 'completed', conclusion: 'success' },
+      { id: 40, head_sha: later, status: 'completed', conclusion: 'success', event: 'schedule' },
+      { id: 20, head_sha: pinned, status: 'completed', conclusion: 'success' }],
+    jobs: { 50: [job('Build and test'), job('Localized formatting / macOS', 'skipped'), job('verify')] } });
+  expect((await selectRunAtOrAfter(nightly.repo, pinned, { fetchImpl: nightly.fetchImpl })).id).toBe(40);
+  // A run from before the marker existed ran every job: it counts when every job succeeded.
+  const before = fakeGitHub({ repo: allRepos.cli, ahead: {}, runs: [{ id: 20, head_sha: pinned, status: 'completed', conclusion: 'success' }],
+    jobs: { 20: [job('managed-and-pack'), job('managed-macos'), job('native-aot-macos'), job('verify')] } });
+  expect((await selectRunAtOrAfter(before.repo, pinned, { fetchImpl: before.fetchImpl })).id).toBe(20);
+  // Without a full run the error says why each run was passed over and how to start one.
+  const partial = fakeGitHub({ repo: allRepos.cli, ahead: {}, runs: [{ id: 30, head_sha: pinned, status: 'completed', conclusion: 'success' }],
+    jobs: { 30: [job('managed-and-pack'), job('managed-macos', 'skipped'), job('native-aot-macos', 'skipped'), job('verify')] } });
+  const error = await selectRunAtOrAfter(partial.repo, pinned, { fetchImpl: partial.fetchImpl }).catch(caught => caught);
+  expect(error.message).toContain('30 (a10000000, push, completed/success): not a full run (no ci-full-run artifact; managed-macos skipped, native-aot-macos skipped)');
+  expect(error.message).toContain('Only a full run counts for Command Line');
+  expect(error.message).toContain('gh workflow run ci.yml -R Runic-Artifex/runic-cli-sdk --ref main');
+  // runic-sdk's own runs are not checked.
+  const sdk = fakeGitHub({ ahead: {}, runs: [{ id: 20, head_sha: pinned, status: 'completed', conclusion: 'success' }] });
+  expect((await selectRunAtOrAfter(sdk.repo, pinned, { fetchImpl: sdk.fetchImpl })).id).toBe(20);
+  expect(sdk.requests.some(url => url.includes('/jobs') || url.includes(FULL_RUN_ARTIFACT))).toBe(false);
 });
 
 // D077.22: the merge queue moves main to exactly the commit its run tested.

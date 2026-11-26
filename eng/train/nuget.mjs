@@ -6,11 +6,14 @@ export const repos = Object.freeze({
   cli: {
     key: 'cli', title: 'Command Line', repository: 'Runic-Artifex/runic-cli-sdk', anchor: 'Runic.CommandLine',
     artifact: () => 'command-line-packages', patterns: ['Runic.CommandLine', 'Runic.CommandLine.*'], npm: [],
+    // A train input takes only a full run of this repository's ci.yml (sources.mjs, fullRunVerdict).
+    fullRun: true,
   },
   translations: {
     key: 'translations', title: 'Translations', repository: 'Runic-Artifex/runic-translations-sdk', anchor: 'Runic.Translations',
     artifact: () => 'runic-translations-packages', patterns: ['Runic.Translations', 'Runic.Translations.*', 'dotnet-runic-translations'],
     npm: ['@runic-artifex/translations-svelte', '@runic-artifex/translations-sveltekit', '@runic-artifex/vite-plugin-runic-translations'],
+    fullRun: true,
   },
   sdk: {
     key: 'sdk', title: 'runic-sdk', repository: 'Runic-Artifex/runic-sdk', anchor: 'Runic.Application.Views',
