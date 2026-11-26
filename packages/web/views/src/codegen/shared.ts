@@ -109,7 +109,7 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
   const documentation = (member: (typeof client.members)[number], part: SharedPart) => {
     switch (part.key) {
       case "state": case "command": case "query": return member.doc ?? part.documentation;
-      case "setter": return (member.doc === undefined ? "" : member.doc + "\n\n") + `Calls the public C# setter of \`${member.name}\` of the implementing ViewModel.`;
+      case "setter": return (member.doc === undefined ? "" : member.doc + "\n\n") + `Calls the producer's setter of \`${member.name}\` on the implementing View.`;
       default: return part.documentation;
     }
   };

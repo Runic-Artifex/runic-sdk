@@ -21,9 +21,9 @@ export type ÜbersichtCommandName = "\u00FCbernehmen";
 export interface ÜbersichtClient extends ViewClient<ÜbersichtState> {
   /** Type-only: the client's commands, `ÜbersichtCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: ÜbersichtCommandName;
-  /** Calls the public C# setter of `ÜbersichtViewModel.Ärger`. */
+  /** Calls the producer's setter of `ärger`. */
   setÄrger(value: string): Promise<ÜbersichtState>;
-  /** Calls the public C# setter of `ÜbersichtViewModel.Letzte`. */
+  /** Calls the producer's setter of `letzte`. */
   setLetzte(value: Änderung | null): Promise<ÜbersichtState>;
   /** Writes `ärger` with an acknowledged field write, which reports whether the app committed it. */
   writeÄrger(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

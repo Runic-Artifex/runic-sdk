@@ -253,7 +253,7 @@ internal sealed class CodegenShapeTests
             ("documented.ts", documented, "  /** Switches to `layout`. */\n  changeLayout(layout: DocumentedLayout): Promise<DocumentedState>;"),
             // C# accessibility is the contract: a public setter, and only a
             // public setter, becomes a set… member that names it.
-            ("documented.ts", documented, "  /**\n   * The note being edited.\n   *\n   * Calls the public C# setter of `DocumentedViewModel.Note`.\n   */\n  setNote(value: string): Promise<DocumentedState>;"),
+            ("documented.ts", documented, "  /**\n   * The note being edited.\n   *\n   * Calls the producer's setter of `note`.\n   */\n  setNote(value: string): Promise<DocumentedState>;"),
             ("documented.ts", documented, "  readonly item: DocumentedItem;\n  /** Whether the note has `unsaved` changes. */\n  readonly isDirty: boolean;"),
             // C# `long` is a TypeScript bigint, and the generated comment says so.
             ("dataShape.ts", GeneratedClientSource.Read(directory, "dataShape").ReplaceLineEndings("\n"),
@@ -292,7 +292,7 @@ internal sealed class CodegenShapeTests
             "A Toolkit property with a private setter became settable from the web View.");
         // The summaries on [Reactive] and [ObservableProperty] partial properties are on their
         // defining parts, which the XML documentation file omits (runic-sdk #169).
-        Require(generatedReactive.Contains("  /**\n   * The name to save.\n   *\n   * Calls the public C# setter of `GeneratedReactiveViewModel.Name`.\n   */\n  setName(value: string)", StringComparison.Ordinal)
+        Require(generatedReactive.Contains("  /**\n   * The name to save.\n   *\n   * Calls the producer's setter of `name`.\n   */\n  setName(value: string)", StringComparison.Ordinal)
             && generatedReactive.Contains("  /** Whether the name changed since the last save. */\n  readonly isDirty: boolean;", StringComparison.Ordinal)
             && !generatedReactive.Contains("setIsDirty", StringComparison.Ordinal),
             $"A ReactiveUI [Reactive] property's setter accessibility did not decide its set… member:\n{generatedReactive}");

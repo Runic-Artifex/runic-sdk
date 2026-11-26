@@ -251,7 +251,8 @@ export function emitView(context: ViewContext, view: View): void {
   for (const member of settable.filter(member => values.get(member)!.nodes.some(node => node.kind === "upload")))
     record(member, { key: "upload", section: "client", declaration: UPLOAD_DECLARATION, documentation: UPLOAD_DOCUMENTATION });
   for (const member of settable) {
-    const setter = `Calls the public C# setter of \`${member.declaringType}.${member.name}\`.`;
+    // Neutral wording (R4c §1.3): no producer type or language, so the IR's declaringType is not used here.
+    const setter = `Calls the producer's setter of \`${member.wire}\`.`;
     const documentation = member.doc === undefined ? setter : member.doc + "\n\n" + setter;
     dts.doc("  ", developmentOnly(member) ? withNote(documentation, DEVELOPMENT_ONLY_CALL) : documentation);
     dts.line(`  set${member.name}(value: ${valueType(member)}): Promise<${shortName}State>;${mapped("setter", member.wire, `set${member.name}`)}`);

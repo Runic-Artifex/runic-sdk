@@ -46,7 +46,7 @@ export type ProjectCommandName = "rename" | "newWindow" | "chooseTheme" | "choos
 export interface ProjectClient extends ViewClient<ProjectState> {
   /** Type-only: the client's commands, `ProjectCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: ProjectCommandName;
-  /** Calls the public C# setter of `ProjectViewModel.Draft`. */
+  /** Calls the producer's setter of `draft`. */
   setDraft(value: string): Promise<ProjectState>;
   /** Writes `draft` with an acknowledged field write, which reports whether the app committed it. */
   writeDraft(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

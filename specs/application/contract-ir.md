@@ -101,7 +101,7 @@ A `value` or `selection` member may also have:
 
 | Member | Content |
 | --- | --- |
-| `settable` | The page sets it: the client has `set{Name}`. `declaringType` names the source type that declares the setter, for its documentation. |
+| `settable` | The page sets it: the client has `set{Name}`. `declaringType` names the source type that declares the setter. It is informational: the client's documentation names no source type, so that it fits a producer in any language. |
 | `checked` | A checked field ([protocol](README.md#checked-writes)): the client has `write{Name}` and a field descriptor |
 | `constraints` | Of a checked field: the [constraints](#constraints) a page may mirror on its input |
 | `fieldPaths` | The [field paths](#field-paths) below a settable object member, or below the rows of an editable collection |

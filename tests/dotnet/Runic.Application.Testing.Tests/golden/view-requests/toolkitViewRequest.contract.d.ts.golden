@@ -37,7 +37,7 @@ export interface ToolkitViewRequestClient extends ViewClient<ToolkitViewRequestS
   readonly [viewCommands]?: ToolkitViewRequestCommandName;
   readonly interactions: ToolkitViewRequestInteractions;
   readonly requests: ToolkitViewRequestViewRequests;
-  /** Calls the public C# setter of `ToolkitViewRequestViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<ToolkitViewRequestState>;
   /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

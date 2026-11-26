@@ -19,7 +19,7 @@ export type ImportResultCommandName = "retry";
 export interface ImportResultClient extends ViewClient<ImportResultState> {
   /** Type-only: the client's commands, `ImportResultCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: ImportResultCommandName;
-  /** Calls the public C# setter of `ImportResultViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<ImportResultState>;
   /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

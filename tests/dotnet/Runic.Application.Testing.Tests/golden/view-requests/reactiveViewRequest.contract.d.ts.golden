@@ -39,7 +39,7 @@ export interface ReactiveViewRequestClient extends ViewClient<ReactiveViewReques
   readonly [viewCommands]?: ReactiveViewRequestCommandName;
   readonly interactions: ReactiveViewRequestInteractions;
   readonly requests: ReactiveViewRequestViewRequests;
-  /** Calls the public C# setter of `ReactiveViewRequestViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<ReactiveViewRequestState>;
   /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

@@ -27,9 +27,9 @@ export type EditorCommandName = "save" | "saveCancel";
 export interface EditorClient extends ViewClient<EditorState> {
   /** Type-only: the client's commands, `EditorCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: EditorCommandName;
-  /** Calls the public C# setter of `EditorViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<EditorState>;
-  /** Calls the public C# setter of `EditorViewModel.Body`. */
+  /** Calls the producer's setter of `body`. */
   setBody(value: string): Promise<EditorState>;
   /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

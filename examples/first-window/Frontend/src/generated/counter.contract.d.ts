@@ -18,7 +18,7 @@ export type CounterCommandName = "increment";
 export interface CounterClient extends ViewClient<CounterState> {
   /** Type-only: the client's commands, `CounterCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: CounterCommandName;
-  /** Calls the public C# setter of `CounterViewModel.Step`. */
+  /** Calls the producer's setter of `step`. */
   setStep(value: number): Promise<CounterState>;
   /** Writes `step` with an acknowledged field write, which reports whether the app committed it. */
   writeStep(value: number, options: FieldWriteOptions<number>): Promise<FieldWriteReceipt<number>>;
