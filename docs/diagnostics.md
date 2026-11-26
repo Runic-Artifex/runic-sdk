@@ -1491,11 +1491,6 @@ code (130 for SIGINT, 143 for SIGTERM, 129, 131, or Windows' Ctrl+C status) as
 its own stop when its signal follows within 2 seconds, and ends with 130.
 Such an exit without the signal to `dev`, and every other exit, is
 `RAPPDEV1007`.
-`dotnet runic doctor` resolves the page's imports of library and workspace
-packages without starting Vite, as its
-[`client-modules`](../tools/dotnet-runic/README.md#client-modules) check, and
-its [`views-dedupe`](../tools/dotnet-runic/README.md#views-dedupe) check asks
-for `resolve.dedupe` of `@runic-artifex/views` when a linked package imports it.
 
 For Vite, the application entry must come back as a JavaScript module. Vite
 answers a path that is not below its `root` with its `index.html` fallback, so
