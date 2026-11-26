@@ -297,10 +297,10 @@
     "aot/assembly/Runic.Assets": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 17046,
-      "measured": [16234, 16234],
+      "limit": 24578,
+      "measured": [23407, 23407],
       "margin": 0.05,
-      "note": "mstat bytes owned by Runic.Assets (the frontend archive reader): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %. 14,910 B before the reader rules (sdk#1343: CRC-32 checked in eager and lazy reads, encrypted entries, cache modes by name only, duplicate manifest members and whole-manifest UTF-8 rejected): +1,324 B in every app. 13,742 B before content aliases in the archive (runic.assets.archive/2) — sdk#1122: ≈ −266 KB for an app whose entries share fonts/CSS, +1,168 B in every app"
+      "note": "mstat bytes owned by Runic.Assets (the frontend archive reader): methods, types, frozen objects and RVA data, without blobs or framework generics over its types; they do not move with section alignment. The limit is the larger plus 5 %. 16,234 B before the last reader rules (sdk#1373: local headers checked against the central directory, overlapping entries, methods 0 and 8 only, entries inflated from the archive's bytes to find data past `length`, lone surrogates in ignored members): +7,173 B in every app, while the executable shrinks by 12,304 B because Deflate64's managed inflater is no longer reachable. 14,910 B before the reader rules (sdk#1343: CRC-32 checked in eager and lazy reads, encrypted entries, cache modes by name only, duplicate manifest members and whole-manifest UTF-8 rejected): +1,324 B in every app. 13,742 B before content aliases in the archive (runic.assets.archive/2) — sdk#1122: ≈ −266 KB for an app whose entries share fonts/CSS, +1,168 B in every app"
     },
     "aot/desktop/executable-bytes": {
       "class": "total",

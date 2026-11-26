@@ -81,6 +81,84 @@ internal sealed class ArchiveVectorTests
         }
     }
 
+    // The vectors of the rules that the reader checks since 0.24 (#1373), each rejected for its own rule in both modes
+    // and by Inspect, with InvalidDataException.
+    [Test, DisplayName("archive vectors: the local-header, method, overrun and lone-surrogate cases fail for their rule")]
+    public async Task RuleMessages()
+    {
+        var rules = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["assets.crafted.deflate-long"] = "more bytes in its ZIP entry than its length 13",
+            ["assets.crafted.local-name-differs"] = "local header of entry 'assets/a.txt' has another name",
+            ["assets.crafted.local-method-differs"] = "local header of entry 'assets/a.txt' has another compression method",
+            ["assets.crafted.entries-overlap"] = "entries 'assets/a.txt' and 'assets/c.txt' overlap",
+            ["assets.crafted.compression-deflate64"] = "'assets/a.txt' has compression method 9",
+            ["assets.crafted.manifest-lone-surrogate-ignored-name"] = "lone surrogate",
+            ["assets.crafted.manifest-lone-surrogate-ignored-value"] = "lone surrogate",
+        };
+        var vectors = Cases().Where(vector => rules.ContainsKey(vector.Id)).ToDictionary(static vector => vector.Id);
+        Equal(rules.Count, vectors.Count);
+        foreach ((string id, string rule) in rules)
+        {
+            byte[] input = vectors[id].Input;
+            foreach ((string mode, Func<Task> read) in new (string, Func<Task>)[]
+            {
+                ("eager", () => Task.FromResult(AssetArchive.Read(new MemoryStream(input, writable: false)))),
+                ("inspect", () => Task.FromResult(AssetArchive.Inspect(new MemoryStream(input, writable: false)))),
+                ("lazy", async () =>
+                {
+                    AssetArchiveSource source = AssetArchive.ReadInPlace(new MemoryStream(input, writable: false), null);
+                    foreach (AssetDescriptor asset in source.Manifest.Assets)
+                    {
+                        await ReadAllAsync(source, asset.RelativePath).ConfigureAwait(false);
+                    }
+                }),
+            })
+            {
+                string? message = null;
+                try
+                {
+                    await read().ConfigureAwait(false);
+                }
+                catch (InvalidDataException exception)
+                {
+                    message = exception.Message;
+                }
+
+                True(message?.Contains(rule, StringComparison.Ordinal) == true, $"{id} ({mode}): '{message}' does not name '{rule}'.");
+            }
+        }
+    }
+
+    // One asset is bounded at int.MaxValue bytes whatever the options allow, and the reader says so as a limit.
+    [Test, DisplayName("an asset over 2^31-1 bytes exceeds the fixed asset-size limit")]
+    public async Task AssetSizeLimit()
+    {
+        using var archive = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(archive, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            System.IO.Compression.ZipArchiveEntry manifest = zip.CreateEntry("runic-assets.json");
+            await using Stream content = manifest.Open();
+            await content.WriteAsync(System.Text.Encoding.UTF8.GetBytes(
+                "{\"version\":\"runic.assets.archive/1\",\"assets\":[{\"path\":\"index.html\",\"mediaType\":\"text/html\","
+                + $"\"length\":{(long)int.MaxValue + 1},\"sha256\":\"{new string('0', 64)}\",\"entryPoint\":true,\"cacheMode\":\"Revalidate\"}}]}}"))
+                .ConfigureAwait(false);
+        }
+
+        var options = new AssetArchiveReadOptions { MaxArchiveBytes = long.MaxValue, MaxTotalUncompressedBytes = long.MaxValue };
+        string? message = null;
+        try
+        {
+            AssetArchive.Read(new MemoryStream(archive.ToArray(), writable: false), options);
+        }
+        catch (InvalidDataException exception)
+        {
+            message = exception.Message;
+        }
+
+        True(message?.Contains("exceeds the 2147483647 byte asset-size limit", StringComparison.Ordinal) == true, $"'{message}'");
+    }
+
     private static async Task RunAsync(bool lazy)
     {
         List<Vector> cases = Cases().ToList();

@@ -36,7 +36,7 @@ test("every archive vector file follows its schema, with unique case ids", () =>
   }
   const ids = cases.map(vector => vector.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(cases.length, 66);
+  assert.equal(cases.length, 73);
 });
 
 // The manifest entry of an archive, from its central directory (enough ZIP for the vectors): null for an archive
