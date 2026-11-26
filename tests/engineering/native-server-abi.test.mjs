@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { compare, listed } from "../../eng/native/symbols.mjs";
+import { compare, listed, names } from "../../eng/native/symbols.mjs";
 
 const root = resolve(import.meta.dir, "../..");
 const read = path => readFileSync(resolve(root, path), "utf8");
@@ -30,6 +30,11 @@ test("the header's and .NET's ABI versions agree with the library's, and .NET bi
   const bound = [...interop.matchAll(/EntryPoint = "(\w+)"/g)].map(match => match[1]);
   expect(bound.length).toBeGreaterThan(0);
   expect(bound.filter(name => !listed().includes(name))).toEqual([]);
+});
+
+test("a list with CRLF line ends, as a Windows checkout may have, reads the same names", () => {
+  expect(names("rax_server_a\r\nrax_server_b\r\n")).toEqual(["rax_server_a", "rax_server_b"]);
+  expect(compare("lib", ["rax_server_a", "rax_server_b"], names("rax_server_a\r\nrax_server_b\r\n"))).toEqual([]);
 });
 
 test("the check reports an unlisted export and a missing one", () => {

@@ -133,7 +133,9 @@ export function exported(path) {
   return [...names].sort();
 }
 
-export const listed = () => readFileSync(resolve(root, listPath), "utf8").split("\n").filter(line => line && !line.startsWith("#"));
+// The names of a symbol list's text. A checkout may have CRLF line ends (Windows, before .gitattributes' eol=lf).
+export const names = text => text.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith("#"));
+export const listed = () => names(readFileSync(resolve(root, listPath), "utf8"));
 
 // The differences between a library's exports and the list, as messages.
 export function compare(library, exports, expected = listed()) {
