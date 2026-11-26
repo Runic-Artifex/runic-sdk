@@ -8,6 +8,7 @@
   "sideEffects": false,
   "files": [
     "dist",
+    "frontend-graph",
     "README.md",
     "LICENSE"
   ],
@@ -62,6 +63,7 @@
       "import": "./dist/codegen/index.js",
       "default": "./dist/codegen/index.js"
     },
+    "./frontend-graph": "./frontend-graph/runic-frontend-graph.mjs",
     "./package.json": "./package.json"
   },
   "scripts": {

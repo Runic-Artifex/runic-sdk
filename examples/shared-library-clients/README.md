@@ -45,7 +45,7 @@ So the application finds `@acme/shared-ui` in its folder, through `paths` in
 [`App/Frontend/tsconfig.json`](App/Frontend/tsconfig.json) and an alias in
 [`App/Frontend/vite.config.ts`](App/Frontend/vite.config.ts).
 
-A real application installs the package instead. In a Bun or npm workspace,
+A real application installs the package instead. In a Bun, npm or pnpm workspace,
 list both folders in the root `package.json`, depend on the package, and
 delete the `paths` and the alias:
 
@@ -61,6 +61,13 @@ delete the `paths` and the alias:
   }
 }
 ```
+
+Run the package manager's install once at the root and commit its lock file
+(`bun.lock`, `package-lock.json` or `pnpm-lock.yaml`). From then on the build
+installs the workspace at its root, once for both folders, so a fresh clone
+needs no install step of its own; see
+[JavaScript workspaces](../../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+Don't set `RunicApplicationFrontendInstallEnabled` to `false` for a workspace.
 
 Keep `resolve.dedupe: ["@runic-artifex/views"]` in the Vite config: a linked
 package can resolve its own copy of the runtime, and the page must load one.

@@ -37,6 +37,8 @@
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE076;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE076</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE078;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE078</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE083;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE083</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE089;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE089</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE091;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE091</_RunicBridgeWarningsAsErrors>
     <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
@@ -432,28 +434,113 @@
     </Task>
   </UsingTask>
 
-  <!-- The frontend package manager follows package.json "packageManager",
-       then the committed lock file, then npm. It selects the default build
-       and install commands; set either command explicitly to override it. -->
-  <PropertyGroup Condition="'$(RunicApplicationFrontendPackageManager)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
-    <RunicApplicationFrontendPackageManager>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RunicApplicationFrontendDirectory)/package.json')), '(?&lt;="packageManager"\s*:\s*")(npm|pnpm|bun)(?=@)'))</RunicApplicationFrontendPackageManager>
+  <!-- devtools-library-dx M1: the frontend's JavaScript workspace. A frontend without a lock file of its own below a
+       folder that declares a workspace (package.json "workspaces", or pnpm-workspace.yaml) installs at that workspace
+       root, once for all its members, with the root's package manager and lock file: the nearest such folder above the
+       frontend, or RunicApplicationFrontendWorkspaceRoot (a folder, or none when the frontend is its own root).
+       Evaluation cannot expand the workspace's globs, so RunicViewsResolveFrontendWorkspace checks that the frontend is
+       a member before the install (RUNICBRIDGE087). The build looks for a workspace only when it installs the frontend
+       or the root is set: with RunicApplicationFrontendInstallEnabled=false whoever installs owns the workspace, and the
+       frontend folder alone selects the package manager, as before. -->
+  <!-- RunicApplicationFrontendInstallMode: Auto (the default) installs when the install's hash says so, Always on every
+       build, and Never leaves the install to you. Compared without case; another value is RUNICBRIDGE091 and builds as
+       Auto. RunicApplicationFrontendInstallEnabled=false, the older switch, is Never when the mode is not set; the mode
+       wins when both are set, also over a global InstallEnabled; these targets read the mode. Whenever the default install runs, it is the locked one (npm ci, or pnpm's and Bun's
+       frozen lock file), without install scripts. -->
+  <PropertyGroup>
+    <_RunicFrontendInstallMode>$(RunicApplicationFrontendInstallMode.Trim())</_RunicFrontendInstallMode>
+    <_RunicFrontendInstallModeInvalid Condition="'$(_RunicFrontendInstallMode)' != '' and '$(_RunicFrontendInstallMode)' != 'Auto' and '$(_RunicFrontendInstallMode)' != 'Always' and '$(_RunicFrontendInstallMode)' != 'Never'">true</_RunicFrontendInstallModeInvalid>
+    <_RunicFrontendInstallMode Condition="'$(_RunicFrontendInstallModeInvalid)' == 'true'">Auto</_RunicFrontendInstallMode>
+    <_RunicFrontendInstallMode Condition="'$(_RunicFrontendInstallMode)' == '' and '$(RunicApplicationFrontendInstallEnabled)' == 'false'">Never</_RunicFrontendInstallMode>
+    <_RunicFrontendInstallMode Condition="'$(_RunicFrontendInstallMode)' == ''">Auto</_RunicFrontendInstallMode>
+    <_RunicFrontendInstallAlways Condition="'$(_RunicFrontendInstallMode)' == 'Always'">true</_RunicFrontendInstallAlways>
+    <_RunicFrontendInstallAlways Condition="'$(_RunicFrontendInstallAlways)' == ''">false</_RunicFrontendInstallAlways>
+    <RunicApplicationFrontendInstallEnabled Condition="'$(_RunicFrontendInstallMode)' == 'Never'">false</RunicApplicationFrontendInstallEnabled>
+    <RunicApplicationFrontendInstallEnabled Condition="'$(_RunicFrontendInstallMode)' != 'Never'">true</RunicApplicationFrontendInstallEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+    <_RunicFrontendFullDirectory>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendDirectory)').TrimEnd('/').TrimEnd('\'))</_RunicFrontendFullDirectory>
+    <_RunicFrontendWorkspaceRoot>$(_RunicFrontendFullDirectory)</_RunicFrontendWorkspaceRoot>
+    <_RunicFrontendOwnLock Condition="Exists('$(_RunicFrontendFullDirectory)/bun.lock') or Exists('$(_RunicFrontendFullDirectory)/bun.lockb') or Exists('$(_RunicFrontendFullDirectory)/package-lock.json') or Exists('$(_RunicFrontendFullDirectory)/npm-shrinkwrap.json') or Exists('$(_RunicFrontendFullDirectory)/pnpm-lock.yaml')">true</_RunicFrontendOwnLock>
+    <_RunicFrontendSearchWorkspace Condition="'$(RunicApplicationFrontendWorkspaceRoot)' == '' and '$(_RunicFrontendOwnLock)' != 'true' and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == ''">true</_RunicFrontendSearchWorkspace>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_RunicFrontendSearchWorkspace)' == 'true'">
+    <_RunicFrontendParentDirectory>$([System.IO.Path]::GetDirectoryName('$(_RunicFrontendFullDirectory)'))</_RunicFrontendParentDirectory>
+    <!-- The nearest package.json above with "workspaces", passing up to three without, such as a library folder's. -->
+    <_RunicFrontendManifestAbove>$([MSBuild]::GetDirectoryNameOfFileAbove('$(_RunicFrontendParentDirectory)', 'package.json'))</_RunicFrontendManifestAbove>
+    <_RunicFrontendManifestWorkspace Condition="'$(_RunicFrontendManifestAbove)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendManifestAbove)/package.json')), '&quot;workspaces&quot;\s*:'))">true</_RunicFrontendManifestWorkspace>
+    <_RunicFrontendManifestNext Condition="'$(_RunicFrontendManifestAbove)' != '' and '$(_RunicFrontendManifestWorkspace)' != 'true'">$([System.IO.Path]::GetDirectoryName('$(_RunicFrontendManifestAbove)'))</_RunicFrontendManifestNext>
+    <_RunicFrontendManifestAbove Condition="'$(_RunicFrontendManifestAbove)' != '' and '$(_RunicFrontendManifestWorkspace)' != 'true' and '$(_RunicFrontendManifestNext)' != ''">$([MSBuild]::GetDirectoryNameOfFileAbove('$(_RunicFrontendManifestNext)', 'package.json'))</_RunicFrontendManifestAbove>
+    <_RunicFrontendManifestWorkspace Condition="'$(_RunicFrontendManifestAbove)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendManifestAbove)/package.json')), '&quot;workspaces&quot;\s*:'))">true</_RunicFrontendManifestWorkspace>
+    <_RunicFrontendManifestNext Condition="'$(_RunicFrontendManifestAbove)' != '' and '$(_RunicFrontendManifestWorkspace)' != 'true'">$([System.IO.Path]::GetDirectoryName('$(_RunicFrontendManifestAbove)'))</_RunicFrontendManifestNext>
+    <_RunicFrontendManifestAbove Condition="'$(_RunicFrontendManifestAbove)' != '' and '$(_RunicFrontendManifestWorkspace)' != 'true' and '$(_RunicFrontendManifestNext)' != ''">$([MSBuild]::GetDirectoryNameOfFileAbove('$(_RunicFrontendManifestNext)', 'package.json'))</_RunicFrontendManifestAbove>
+    <_RunicFrontendManifestWorkspace Condition="'$(_RunicFrontendManifestAbove)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendManifestAbove)/package.json')), '&quot;workspaces&quot;\s*:'))">true</_RunicFrontendManifestWorkspace>
+    <_RunicFrontendManifestNext Condition="'$(_RunicFrontendManifestAbove)' != '' and '$(_RunicFrontendManifestWorkspace)' != 'true'">$([System.IO.Path]::GetDirectoryName('$(_RunicFrontendManifestAbove)'))</_RunicFrontendManifestNext>
+    <_RunicFrontendManifestAbove Condition="'$(_RunicFrontendManifestAbove)' != '' and '$(_RunicFrontendManifestWorkspace)' != 'true' and '$(_RunicFrontendManifestNext)' != ''">$([MSBuild]::GetDirectoryNameOfFileAbove('$(_RunicFrontendManifestNext)', 'package.json'))</_RunicFrontendManifestAbove>
+    <_RunicFrontendManifestWorkspace Condition="'$(_RunicFrontendManifestAbove)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendManifestAbove)/package.json')), '&quot;workspaces&quot;\s*:'))">true</_RunicFrontendManifestWorkspace>
+    <_RunicFrontendManifestAbove Condition="'$(_RunicFrontendManifestWorkspace)' != 'true'"></_RunicFrontendManifestAbove>
+    <_RunicFrontendPnpmWorkspaceAbove>$([MSBuild]::GetDirectoryNameOfFileAbove('$(_RunicFrontendParentDirectory)', 'pnpm-workspace.yaml'))</_RunicFrontendPnpmWorkspaceAbove>
+    <_RunicFrontendWorkspaceRoot Condition="'$(_RunicFrontendManifestAbove)' != ''">$(_RunicFrontendManifestAbove.TrimEnd('/').TrimEnd('\'))</_RunicFrontendWorkspaceRoot>
+    <_RunicFrontendWorkspaceRoot Condition="'$(_RunicFrontendPnpmWorkspaceAbove)' != '' and ('$(_RunicFrontendManifestAbove)' == '' or $(_RunicFrontendPnpmWorkspaceAbove.Length) &gt; $(_RunicFrontendManifestAbove.Length))">$(_RunicFrontendPnpmWorkspaceAbove.TrimEnd('/').TrimEnd('\'))</_RunicFrontendWorkspaceRoot>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(RunicApplicationFrontendDirectory)/package.json') and '$(RunicApplicationFrontendWorkspaceRoot)' != '' and '$(RunicApplicationFrontendWorkspaceRoot)' != 'none'">
+    <_RunicFrontendWorkspaceRoot>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendWorkspaceRoot)').TrimEnd('/').TrimEnd('\'))</_RunicFrontendWorkspaceRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <_RunicFrontendInWorkspace Condition="'$(_RunicFrontendWorkspaceRoot)' != '' and '$(_RunicFrontendWorkspaceRoot)' != '$(_RunicFrontendFullDirectory)'">true</_RunicFrontendInWorkspace>
+    <!-- Where the install runs and the lock file must be: the workspace root, or the frontend directory. -->
+    <_RunicFrontendInstallDirectory>$(RunicApplicationFrontendDirectory)</_RunicFrontendInstallDirectory>
+    <_RunicFrontendInstallDirectory Condition="'$(_RunicFrontendInWorkspace)' == 'true'">$(_RunicFrontendWorkspaceRoot)</_RunicFrontendInstallDirectory>
+  </PropertyGroup>
+
+  <!-- The frontend package manager is RunicApplicationFrontendPackageManager, else the workspace root's package.json
+       "packageManager", then the root's lock file, else the frontend's own package.json "packageManager", then its
+       committed lock file, then npm. A member that declares another manager than its workspace's is RUNICBRIDGE089.
+       It selects the default build and install commands; set either command explicitly to override it.
+       _RunicFrontendPackageManagerSource says where it came from, for RUNICBRIDGE090. -->
+  <PropertyGroup Condition="Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+    <_RunicFrontendPackageManagerExplicit Condition="'$(RunicApplicationFrontendPackageManager)' != ''">true</_RunicFrontendPackageManagerExplicit>
+    <_RunicFrontendPackageManagerSource Condition="'$(RunicApplicationFrontendPackageManager)' != ''">RunicApplicationFrontendPackageManager</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendMemberPackageManager>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RunicApplicationFrontendDirectory)/package.json')), '(?&lt;="packageManager"\s*:\s*")(npm|pnpm|bun)(?=@)'))</_RunicFrontendMemberPackageManager>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_RunicFrontendInWorkspace)' == 'true' and '$(RunicApplicationFrontendPackageManager)' == ''">
+    <_RunicFrontendRootPackageManager Condition="Exists('$(_RunicFrontendWorkspaceRoot)/package.json')">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_RunicFrontendWorkspaceRoot)/package.json')), '(?&lt;="packageManager"\s*:\s*")(npm|pnpm|bun)(?=@)'))</_RunicFrontendRootPackageManager>
+    <_RunicFrontendPackageManagerSource Condition="'$(_RunicFrontendRootPackageManager)' != ''">packageManager in $(_RunicFrontendWorkspaceRoot)/package.json</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendPackageManagerSource Condition="'$(_RunicFrontendRootPackageManager)' == '' and Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-lock.yaml')">$(_RunicFrontendWorkspaceRoot)/pnpm-lock.yaml</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendRootPackageManager Condition="'$(_RunicFrontendRootPackageManager)' == '' and Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-lock.yaml')">pnpm</_RunicFrontendRootPackageManager>
+    <_RunicFrontendPackageManagerSource Condition="'$(_RunicFrontendRootPackageManager)' == '' and Exists('$(_RunicFrontendWorkspaceRoot)/bun.lock')">$(_RunicFrontendWorkspaceRoot)/bun.lock</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendPackageManagerSource Condition="'$(_RunicFrontendRootPackageManager)' == '' and !Exists('$(_RunicFrontendWorkspaceRoot)/bun.lock') and Exists('$(_RunicFrontendWorkspaceRoot)/bun.lockb')">$(_RunicFrontendWorkspaceRoot)/bun.lockb</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendRootPackageManager Condition="'$(_RunicFrontendRootPackageManager)' == '' and (Exists('$(_RunicFrontendWorkspaceRoot)/bun.lock') or Exists('$(_RunicFrontendWorkspaceRoot)/bun.lockb'))">bun</_RunicFrontendRootPackageManager>
+    <_RunicFrontendPackageManagerSource Condition="'$(_RunicFrontendRootPackageManager)' == '' and (Exists('$(_RunicFrontendWorkspaceRoot)/package-lock.json') or Exists('$(_RunicFrontendWorkspaceRoot)/npm-shrinkwrap.json'))">the npm lock file in $(_RunicFrontendWorkspaceRoot)</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendRootPackageManager Condition="'$(_RunicFrontendRootPackageManager)' == '' and (Exists('$(_RunicFrontendWorkspaceRoot)/package-lock.json') or Exists('$(_RunicFrontendWorkspaceRoot)/npm-shrinkwrap.json'))">npm</_RunicFrontendRootPackageManager>
+    <_RunicFrontendPackageManagerSource Condition="'$(_RunicFrontendRootPackageManager)' == '' and Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml')">$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml</_RunicFrontendPackageManagerSource>
+    <_RunicFrontendRootPackageManager Condition="'$(_RunicFrontendRootPackageManager)' == '' and Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml')">pnpm</_RunicFrontendRootPackageManager>
+    <RunicApplicationFrontendPackageManager>$(_RunicFrontendRootPackageManager)</RunicApplicationFrontendPackageManager>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendPackageManager)' == '' and '$(_RunicFrontendMemberPackageManager)' != ''">
+    <RunicApplicationFrontendPackageManager>$(_RunicFrontendMemberPackageManager)</RunicApplicationFrontendPackageManager>
+    <_RunicFrontendPackageManagerSource>packageManager in $(_RunicFrontendFullDirectory)/package.json</_RunicFrontendPackageManagerSource>
   </PropertyGroup>
   <PropertyGroup>
     <_RunicBridgeDefaultFrontendBuild Condition="'$(RunicApplicationFrontendBuildCommand)' == ''">true</_RunicBridgeDefaultFrontendBuild>
+    <_RunicFrontendPackageManagerSource Condition="'$(RunicApplicationFrontendPackageManager)' == '' and Exists('$(RunicApplicationFrontendDirectory)/pnpm-lock.yaml')">$(RunicApplicationFrontendDirectory)/pnpm-lock.yaml</_RunicFrontendPackageManagerSource>
     <RunicApplicationFrontendPackageManager Condition="'$(RunicApplicationFrontendPackageManager)' == '' and Exists('$(RunicApplicationFrontendDirectory)/pnpm-lock.yaml')">pnpm</RunicApplicationFrontendPackageManager>
-    <RunicApplicationFrontendPackageManager Condition="'$(RunicApplicationFrontendPackageManager)' == '' and Exists('$(RunicApplicationFrontendDirectory)/bun.lock')">bun</RunicApplicationFrontendPackageManager>
+    <_RunicFrontendPackageManagerSource Condition="'$(RunicApplicationFrontendPackageManager)' == '' and (Exists('$(RunicApplicationFrontendDirectory)/bun.lock') or Exists('$(RunicApplicationFrontendDirectory)/bun.lockb'))">the Bun lock file in $(RunicApplicationFrontendDirectory)</_RunicFrontendPackageManagerSource>
+    <RunicApplicationFrontendPackageManager Condition="'$(RunicApplicationFrontendPackageManager)' == '' and (Exists('$(RunicApplicationFrontendDirectory)/bun.lock') or Exists('$(RunicApplicationFrontendDirectory)/bun.lockb'))">bun</RunicApplicationFrontendPackageManager>
+    <_RunicFrontendPackageManagerSource Condition="'$(RunicApplicationFrontendPackageManager)' == ''">the default, as nothing declares a package manager</_RunicFrontendPackageManagerSource>
     <RunicApplicationFrontendPackageManager Condition="'$(RunicApplicationFrontendPackageManager)' == ''">npm</RunicApplicationFrontendPackageManager>
     <RunicApplicationFrontendBuildCommand Condition="'$(RunicApplicationFrontendBuildCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'pnpm'">pnpm run build</RunicApplicationFrontendBuildCommand>
     <RunicApplicationFrontendBuildCommand Condition="'$(RunicApplicationFrontendBuildCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'bun'">bun run --bun build</RunicApplicationFrontendBuildCommand>
     <RunicApplicationFrontendBuildCommand Condition="'$(RunicApplicationFrontendBuildCommand)' == ''">npm run build</RunicApplicationFrontendBuildCommand>
     <!-- A project may still set its own command after importing these targets. -->
     <_RunicBridgeDefaultFrontendBuildCommand Condition="'$(_RunicBridgeDefaultFrontendBuild)' == 'true'">$(RunicApplicationFrontendBuildCommand)</_RunicBridgeDefaultFrontendBuildCommand>
-    <!-- The default install is locked: without the package manager's lock file it is RUNICBRIDGE026, unless
-         RunicApplicationFrontendAllowUnlockedInstall=true allows resolving the declared ranges afresh. -->
+    <!-- The default install is locked: without the package manager's lock file in the install directory (the workspace
+         root in a workspace) it is RUNICBRIDGE026, unless RunicApplicationFrontendAllowUnlockedInstall=true allows
+         resolving the declared ranges afresh. -->
     <_RunicBridgeDefaultFrontendInstall Condition="'$(RunicApplicationFrontendInstallCommand)' == ''">true</_RunicBridgeDefaultFrontendInstall>
-    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'pnpm' and Exists('$(RunicApplicationFrontendDirectory)/pnpm-lock.yaml')">true</_RunicBridgeFrontendLocked>
-    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun' and (Exists('$(RunicApplicationFrontendDirectory)/bun.lock') or Exists('$(RunicApplicationFrontendDirectory)/bun.lockb'))">true</_RunicBridgeFrontendLocked>
-    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'npm' and (Exists('$(RunicApplicationFrontendDirectory)/package-lock.json') or Exists('$(RunicApplicationFrontendDirectory)/npm-shrinkwrap.json'))">true</_RunicBridgeFrontendLocked>
+    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'pnpm' and Exists('$(_RunicFrontendInstallDirectory)/pnpm-lock.yaml')">true</_RunicBridgeFrontendLocked>
+    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun' and (Exists('$(_RunicFrontendInstallDirectory)/bun.lock') or Exists('$(_RunicFrontendInstallDirectory)/bun.lockb'))">true</_RunicBridgeFrontendLocked>
+    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'npm' and (Exists('$(_RunicFrontendInstallDirectory)/package-lock.json') or Exists('$(_RunicFrontendInstallDirectory)/npm-shrinkwrap.json'))">true</_RunicBridgeFrontendLocked>
     <_RunicBridgeFrontendUnlockedInstall Condition="'$(_RunicBridgeFrontendLocked)' != 'true' and '$(RunicApplicationFrontendAllowUnlockedInstall)' == 'true'">true</_RunicBridgeFrontendUnlockedInstall>
     <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'pnpm' and '$(_RunicBridgeFrontendUnlockedInstall)' == 'true'">pnpm install --ignore-scripts</RunicApplicationFrontendInstallCommand>
     <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'pnpm'">pnpm install --frozen-lockfile --ignore-scripts</RunicApplicationFrontendInstallCommand>
@@ -473,6 +560,10 @@
     <!-- The TypeScript emitter (R7 G6): the launcher beside these targets, and the copy of @runic-artifex/views/codegen
          that the package bundles (in the repository, the one that the generator's build bundles beside it). -->
     <_RunicViewsCodegenLauncher>$(MSBuildThisFileDirectory)runic-views-codegen.mjs</_RunicViewsCodegenLauncher>
+    <!-- The workspace resolver (rax.frontend-graph/1): beside these targets in the package, and in the repository the
+         source that @runic-artifex/views exports as ./frontend-graph, so both are one file of one version. -->
+    <_RunicViewsFrontendGraphScript Condition="Exists('$(MSBuildThisFileDirectory)runic-frontend-graph.mjs')">$(MSBuildThisFileDirectory)runic-frontend-graph.mjs</_RunicViewsFrontendGraphScript>
+    <_RunicViewsFrontendGraphScript Condition="'$(_RunicViewsFrontendGraphScript)' == ''">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../web/views/frontend-graph/runic-frontend-graph.mjs'))</_RunicViewsFrontendGraphScript>
     <_RunicViewsBundledEmitter Condition="Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/codegen/index.js'))</_RunicViewsBundledEmitter>
     <_RunicViewsBundledEmitter Condition="!Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../tools/codegen/index.js'))</_RunicViewsBundledEmitter>
     <_RunicBridgeAotArgument Condition="'$(PublishAot)' == 'true'">--aot</_RunicBridgeAotArgument>
@@ -673,8 +764,11 @@
        for a frontend with a package.json that the build installs or builds with a default command. -->
   <Target Name="RunicViewsCheckFrontendPackageManager" BeforeTargets="PrepareForBuild"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <Warning Code="RUNICBRIDGE091" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge091"
+             Condition="'$(_RunicFrontendInstallModeInvalid)' == 'true'"
+             Text="RunicApplicationFrontendInstallMode is '$(RunicApplicationFrontendInstallMode)', which is not Auto, Always or Never, so the build uses Auto: it installs the frontend dependencies when the lock file, a package.json or the package manager changed, or node_modules is incomplete. Set Auto, Always or Never, or remove the property." />
     <Warning Code="RUNICBRIDGE029" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge029"
-             Condition="'$(RunicApplicationFrontendPackageManager)' != '' and '$(RunicApplicationFrontendPackageManager)' != 'npm' and '$(RunicApplicationFrontendPackageManager)' != 'pnpm' and '$(RunicApplicationFrontendPackageManager)' != 'bun' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json') and (('$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '') or '$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)')"
+             Condition="'$(RunicApplicationFrontendPackageManager)' != '' and '$(RunicApplicationFrontendPackageManager)' != 'npm' and '$(RunicApplicationFrontendPackageManager)' != 'pnpm' and '$(RunicApplicationFrontendPackageManager)' != 'bun' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json') and (('$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '') or '$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)')"
              Text="RunicApplicationFrontendPackageManager is '$(RunicApplicationFrontendPackageManager)', which is not npm, pnpm or bun, so the default frontend install and build commands use npm. Set it to npm, pnpm or bun, or remove it to follow package.json or the lock file. Another package manager needs RunicApplicationFrontendInstallCommand and RunicApplicationFrontendBuildCommand." />
   </Target>
 
@@ -1345,6 +1439,8 @@
       <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendDirectory)/**/*"
           Exclude="$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(_RunicApplicationFrontendOutputPath)**;$(RunicApplicationFrontendDirectory)/build/**;$(RunicApplicationFrontendDirectory)/bin/**;$(RunicApplicationFrontendDirectory)/obj/**;$(RunicApplicationFrontendDirectory)/.*/**" />
       <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendGeneratedDirectory)/*.ts;$(MSBuildProjectFullPath)" />
+      <!-- The install's stamp changes only when the install installed something else, which the page bundles. -->
+      <RunicApplicationFrontendInput Include="$(_RunicBridgeFrontendInstallStamp)" Condition="Exists('$(_RunicBridgeFrontendInstallStamp)')" />
       <!-- Registered on every build so IncrementalClean keeps them when the
            frontend target is skipped as up to date. -->
       <FileWrites Include="$(_RunicBridgeFrontendStamp);$(_RunicBridgeFrontendOutputsFile)" />
@@ -1391,28 +1487,349 @@
         Condition="Exists('$(_RunicBridgeFrontendStamp)') and (!Exists('$(_RunicBridgeFrontendOutputsFile)') or '@(_RunicBridgeFrontendMissingOutput)' != '')" />
   </Target>
 
-  <!-- A fresh clone or generated project has no node_modules yet, and a pull
-       can change the declared packages. Install with the selected package
-       manager when package.json or a lock file is newer than the install
-       stamp, or when declared packages have no node_modules, so plain
-       dotnet build and dotnet run work. A package.json without dependencies
-       needs no node_modules. Set RunicApplicationFrontendInstallEnabled=false when a
-       workspace install owns it. -->
+  <!-- devtools-library-dx M1: the frontend install, once per install directory (the workspace root, or the frontend
+       directory). The task hashes the install command and HashInputs (the lock file and the workspace's package.json
+       files) and skips the command when <install directory>/node_modules/.runic-install holds that hash, or, for a
+       frontend without dependencies, when StampFile does. A library and an application of one workspace may build in
+       parallel, so the check and the install run under a lock file in the temporary folder keyed by the install
+       directory: the second build waits and then finds the install current. The hash also covers the package manager's
+       executable (found on PATH, not run), and the manager's own record in node_modules must exist, so a no-change build
+       runs no process, and an upgraded manager or a half-written node_modules installs again. Always installs on every
+       build. ProbeCommand (the manager's version) runs
+       first, only when the install runs: a manager that does not run is ProbeFailed (RUNICBRIDGE090), and its output
+       is ProbeOutput (RUNICBRIDGE033 for an old Bun). The command runs in the shell, as Exec runs it, and its output is
+       logged as Exec logs it and returned in Lines for RunicViewsReportCommandResult. -->
+  <UsingTask TaskName="RunicViewsInstallFrontendOnce" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using Microsoft.Build.Framework;
+using Microsoft.Build.Utilities;
+
+public class RunicViewsInstallFrontendOnce : Task, ICancelableTask
+{
+  [Required] public string Command { get; set; }
+  [Required] public string WorkingDirectory { get; set; }
+  public ITaskItem[] HashInputs { get; set; }
+  public string StampFile { get; set; }
+  public bool RequiresNodeModules { get; set; }
+  public string ProbeCommand { get; set; }
+  public string Message { get; set; }
+  // The package manager's command name: its executable on PATH (path, size and time, read without running it) is part
+  // of the hash, so that an upgraded manager installs again.
+  public string PackageManager { get; set; }
+  // The manager's own record in node_modules (npm's .package-lock.json, pnpm's .modules.yaml), which a complete
+  // install writes: without it node_modules is not current.
+  public string NodeModulesRecord { get; set; }
+  // InstallMode Always: install on every build.
+  public bool Always { get; set; }
+  [Output] public int ExitCode { get; set; }
+  [Output] public bool Installed { get; set; }
+  [Output] public bool ProbeFailed { get; set; }
+  [Output] public string ProbeOutput { get; set; }
+  [Output] public ITaskItem[] Lines { get; set; }
+
+  private volatile bool canceled;
+  private Process running;
+
+  public void Cancel()
+  {
+    canceled = true;
+    try { Process process = running; if (process != null && !process.HasExited) process.Kill(); } catch { }
+  }
+
+  public override bool Execute()
+  {
+    Lines = new ITaskItem[0];
+    string directory = Path.GetFullPath(WorkingDirectory);
+    string modules = Path.Combine(directory, "node_modules");
+    string marker = Path.Combine(modules, ".runic-install");
+    string hash = Hash();
+    using (FileStream gate = Acquire(directory))
+    {
+      if (gate == null) return false;
+      bool recorded = string.IsNullOrEmpty(NodeModulesRecord) || File.Exists(Path.Combine(modules, NodeModulesRecord));
+      if (!Always && ((Directory.Exists(modules) && recorded && Read(marker) == hash) || (!RequiresNodeModules && Read(StampFile) == hash)))
+      {
+        Log.LogMessage(MessageImportance.Low, "The frontend install in " + directory + " is current.");
+        return true;
+      }
+      if (!string.IsNullOrEmpty(ProbeCommand))
+      {
+        var probe = new List<string>();
+        int probeExit = Run(ProbeCommand, directory, probe, false);
+        ProbeOutput = probe.Count > 0 ? probe[0].Trim() : "";
+        if (probeExit != 0) { ProbeFailed = true; ExitCode = probeExit; return !canceled; }
+      }
+      if (!string.IsNullOrEmpty(Message)) Log.LogMessage(MessageImportance.High, Message);
+      // An install that stops halfway leaves no record that it is current.
+      try { if (File.Exists(marker)) File.Delete(marker); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+      var lines = new List<string>();
+      ExitCode = Run(Command, directory, lines, true);
+      Installed = true;
+      var items = new List<ITaskItem>();
+      foreach (string line in lines) if (line.Trim().Length > 0) items.Add(new TaskItem(line.Replace("%", "%25").Replace(";", "%3B").Replace("@", "%40").Replace("$", "%24").Replace("'", "%27")));
+      Lines = items.ToArray();
+      if (canceled) return false;
+      if (ExitCode == 0)
+      {
+        if (Directory.Exists(modules)) File.WriteAllText(marker, hash);
+        // The stamp is an input of the frontend build: it changes only when what the install installed changed.
+        if (!string.IsNullOrEmpty(StampFile) && Read(StampFile) != hash)
+        {
+          Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(StampFile)));
+          File.WriteAllText(StampFile, hash);
+        }
+      }
+      return true;
+    }
+  }
+
+  private static string Read(string file)
+  {
+    try { return string.IsNullOrEmpty(file) || !File.Exists(file) ? null : File.ReadAllText(file).Trim(); } catch { return null; }
+  }
+
+  private string Hash()
+  {
+    var paths = new List<string>();
+    foreach (ITaskItem item in HashInputs ?? new ITaskItem[0]) paths.Add(Path.GetFullPath(item.ItemSpec));
+    paths.Sort(StringComparer.Ordinal);
+    using (SHA256 sha = SHA256.Create())
+    {
+      var text = new StringBuilder("runic-install/1\n").Append(Command).Append('\n').Append(Identity(PackageManager)).Append('\n');
+      string previous = null;
+      foreach (string path in paths)
+      {
+        if (path == previous) continue;
+        previous = path;
+        text.Append(path).Append('\n');
+        text.Append(File.Exists(path) ? Hex(sha.ComputeHash(File.ReadAllBytes(path))) : "missing").Append('\n');
+      }
+      return Hex(sha.ComputeHash(Encoding.UTF8.GetBytes(text.ToString())));
+    }
+  }
+
+  // The first executable of that name on PATH, as the shell finds it, with its size and time.
+  private static string Identity(string command)
+  {
+    if (string.IsNullOrEmpty(command)) return "";
+    bool windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    string[] extensions = windows ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").Split(';') : new[] { "" };
+    foreach (string folder in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+    {
+      if (folder.Length == 0) continue;
+      foreach (string extension in extensions)
+      {
+        string candidate;
+        try { candidate = Path.Combine(folder.Trim('"'), command + extension); } catch (ArgumentException) { continue; }
+        if (!File.Exists(candidate)) continue;
+        var file = new FileInfo(candidate);
+        return candidate + "|" + file.Length + "|" + file.LastWriteTimeUtc.Ticks;
+      }
+    }
+    return command + "|missing";
+  }
+
+  private static string Hex(byte[] bytes)
+  {
+    var text = new StringBuilder(bytes.Length * 2);
+    foreach (byte value in bytes) text.Append(value.ToString("x2"));
+    return text.ToString();
+  }
+
+  // One lock file per install directory, outside it: npm ci deletes node_modules, and Windows cannot delete an open file.
+  private FileStream Acquire(string directory)
+  {
+    string key = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? directory : directory.ToLowerInvariant();
+    string name;
+    using (SHA256 sha = SHA256.Create()) name = "runic-install-" + Hex(sha.ComputeHash(Encoding.UTF8.GetBytes(key))).Substring(0, 24) + ".lock";
+    string path = Path.Combine(Path.GetTempPath(), name);
+    bool reported = false;
+    DateTime deadline = DateTime.UtcNow.AddMinutes(30);
+    while (!canceled)
+    {
+      try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+      catch (IOException)
+      {
+        if (DateTime.UtcNow > deadline)
+        {
+          Log.LogError("Waited 30 minutes for another build's frontend install in " + directory + " (lock file " + path + ").");
+          return null;
+        }
+        if (!reported) Log.LogMessage(MessageImportance.High, "Waiting for another build's frontend install in " + directory + ".");
+        reported = true;
+        Thread.Sleep(200);
+      }
+    }
+    return null;
+  }
+
+  // As Exec runs a command: /bin/sh off Windows, cmd.exe on Windows.
+  private int Run(string command, string directory, List<string> lines, bool log)
+  {
+    bool windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    // Off Windows the command goes to /bin/sh in a file, as Exec does, so that no quoting of the shell is lost.
+    string script = null;
+    if (!windows)
+    {
+      script = Path.Combine(Path.GetTempPath(), "runic-install-" + Guid.NewGuid().ToString("N") + ".sh");
+      File.WriteAllText(script, command + "\n");
+    }
+    var start = new ProcessStartInfo(windows ? "cmd.exe" : "/bin/sh")
+    {
+      Arguments = windows ? "/d /s /c \"" + command + "\"" : "\"" + script + "\"",
+      WorkingDirectory = directory,
+      UseShellExecute = false,
+      RedirectStandardOutput = true,
+      RedirectStandardError = true,
+      CreateNoWindow = true,
+    };
+    var pending = new Queue<string>();
+    DataReceivedEventHandler collect = (sender, e) => { if (e.Data != null) lock (pending) pending.Enqueue(e.Data); };
+    using (var process = new Process { StartInfo = start })
+    {
+      process.OutputDataReceived += collect;
+      process.ErrorDataReceived += collect;
+      try { process.Start(); }
+      catch (Exception error) { lines.Add(error.Message); Delete(script); return windows ? 9009 : 127; }
+      running = process;
+      process.BeginOutputReadLine();
+      process.BeginErrorReadLine();
+      while (true)
+      {
+        bool exited = process.WaitForExit(100);
+        if (exited) process.WaitForExit();
+        lock (pending)
+        {
+          while (pending.Count > 0)
+          {
+            string line = pending.Dequeue();
+            lines.Add(line);
+            if (log) Log.LogMessage(MessageImportance.High, line);
+          }
+        }
+        if (exited) break;
+      }
+      running = null;
+      Delete(script);
+      return process.ExitCode;
+    }
+  }
+
+  private static void Delete(string file)
+  {
+    try { if (file != null) File.Delete(file); } catch { }
+  }
+}
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- A fresh clone or generated project has no node_modules yet, and a pull can change the declared packages, so the
+       build installs the frontend's dependencies with its package manager, and plain dotnet build and dotnet run work.
+       In a JavaScript workspace (M1, see _RunicFrontendWorkspaceRoot) the install runs once at the workspace root for
+       every member. RunicViewsInstallFrontendOnce runs it when the install command, the lock file or a package.json of
+       the workspace changed, or when node_modules is gone; a package.json without dependencies needs no node_modules.
+       Set RunicApplicationFrontendInstallEnabled=false when something else installs the dependencies. -->
+  <Target Name="_RunicViewsFrontendWorkspacePaths" DependsOnTargets="_RunicViewsIntermediatePaths">
+    <PropertyGroup>
+      <_RunicFrontendWorkspaceFile>$(_RunicBridgeBaseIntermediateDirectory)runic/frontend-workspace.txt</_RunicFrontendWorkspaceFile>
+      <_RunicFrontendGraphFile>$(_RunicBridgeBaseIntermediateDirectory)runic/frontend-graph.json</_RunicFrontendGraphFile>
+      <!-- The resolver runs on the frontend's runtime: Bun for a Bun workspace, else Node.js. -->
+      <_RunicFrontendScriptRuntime>node</_RunicFrontendScriptRuntime>
+      <_RunicFrontendScriptRuntime Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">bun</_RunicFrontendScriptRuntime>
+      <_RunicFrontendScriptRuntime Condition="'$(RunicApplicationFrontendCodegenRuntime)' != ''">$(RunicApplicationFrontendCodegenRuntime)</_RunicFrontendScriptRuntime>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicFrontendWorkspaceInput Include="$(_RunicFrontendWorkspaceRoot)/package.json;$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml;$(_RunicFrontendFullDirectory)/package.json"
+          Condition="Exists('%(Identity)')" />
+      <_RunicFrontendWorkspaceInput Include="$(_RunicViewsFrontendGraphScript);$(MSBuildThisFileFullPath)" />
+      <FileWrites Include="$(_RunicFrontendWorkspaceFile);$(_RunicFrontendGraphFile)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- RUNICBRIDGE087: the workspace root above the frontend must list it, or its install is not the workspace's. The
+       resolver (runic-frontend-graph.mjs, rax.frontend-graph/1) expands the workspace's globs, writes the graph to
+       obj/runic/frontend-graph.json and the facts the build needs to obj/runic/frontend-workspace.txt. It runs again
+       only when a package.json of the root or the frontend, pnpm-workspace.yaml or the script changed. -->
+  <Target Name="RunicViewsResolveFrontendWorkspace" DependsOnTargets="_RunicViewsFrontendWorkspacePaths"
+          Inputs="@(_RunicFrontendWorkspaceInput)" Outputs="$(_RunicFrontendWorkspaceFile)"
+          Condition="'$(_RunicFrontendInWorkspace)' == 'true'">
+    <Exec Command="&quot;$(_RunicFrontendScriptRuntime)&quot; &quot;$(_RunicViewsFrontendGraphScript)&quot; --frontend &quot;$(_RunicFrontendFullDirectory)&quot; --root &quot;$(_RunicFrontendWorkspaceRoot)&quot; --package-manager $(RunicApplicationFrontendPackageManager) --out &quot;$(_RunicFrontendGraphFile)&quot; --msbuild &quot;$(_RunicFrontendWorkspaceFile)&quot;"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicFrontendGraphExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicFrontendGraphOutputLine" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicFrontendRuntimeMissing Condition="'$(_RunicFrontendGraphExitCode)' == '127' or '$(_RunicFrontendGraphExitCode)' == '9009'">true</_RunicFrontendRuntimeMissing>
+      <_RunicFrontendRuntimeName Condition="'$(_RunicFrontendScriptRuntime)' == 'bun'">Bun $(_RunicMinimumBunVersion) or later</_RunicFrontendRuntimeName>
+      <_RunicFrontendRuntimeName Condition="'$(_RunicFrontendRuntimeName)' == ''">Node.js</_RunicFrontendRuntimeName>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE090" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge090"
+           Condition="'$(_RunicFrontendRuntimeMissing)' == 'true'"
+           Text="The frontend workspace $(_RunicFrontendWorkspaceRoot) uses $(RunicApplicationFrontendPackageManager) ($(_RunicFrontendPackageManagerSource)), and the build runs '$(_RunicFrontendScriptRuntime)' to resolve it, but '$(_RunicFrontendScriptRuntime)' did not run: it is not on PATH. Install $(_RunicFrontendRuntimeName), or set RunicApplicationFrontendPackageManager or RunicApplicationFrontendCodegenRuntime." />
+    <RunicViewsReportCommandResult Condition="'$(_RunicFrontendGraphExitCode)' != '0' and '$(_RunicFrontendRuntimeMissing)' != 'true'"
+        Lines="@(_RunicFrontendGraphOutputLine)" ExitCode="$(_RunicFrontendGraphExitCode)"
+        FailureCode="RUNICBRIDGE024" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The frontend workspace resolver exited with code $(_RunicFrontendGraphExitCode) while resolving the workspace of $(_RunicFrontendFullDirectory), an internal error. Its output is above; include it when you report the problem." />
+  </Target>
+
+  <Target Name="_RunicViewsReadFrontendWorkspace" DependsOnTargets="RunicViewsResolveFrontendWorkspace"
+          Condition="'$(_RunicFrontendInWorkspace)' == 'true'">
+    <ReadLinesFromFile File="$(_RunicFrontendWorkspaceFile)" Condition="Exists('$(_RunicFrontendWorkspaceFile)')">
+      <Output TaskParameter="Lines" ItemName="_RunicFrontendWorkspaceLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_RunicFrontendWorkspaceManifest Include="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').Substring(9))"
+          Condition="$([System.String]::Copy('%(_RunicFrontendWorkspaceLine.Identity)').StartsWith('manifest='))" />
+      <_RunicFrontendWorkspaceNonMember Include="@(_RunicFrontendWorkspaceLine)" Condition="'%(Identity)' == 'member=false'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicFrontendWorkspaceMembersFile Condition="Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml') and !$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendWorkspaceRoot)/package.json')), '&quot;workspaces&quot;\s*:'))">$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml's packages</_RunicFrontendWorkspaceMembersFile>
+      <_RunicFrontendWorkspaceMembersFile Condition="'$(_RunicFrontendWorkspaceMembersFile)' == ''">the workspaces of $(_RunicFrontendWorkspaceRoot)/package.json</_RunicFrontendWorkspaceMembersFile>
+    </PropertyGroup>
+    <!-- RUNICBRIDGE089: a workspace member that declares another package manager than its workspace's. The build uses
+         the workspace's: the member's own declaration would install with a manager that cannot read the root lock. -->
+    <Warning Code="RUNICBRIDGE089" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge089"
+             Condition="'$(_RunicFrontendInWorkspace)' == 'true' and '$(_RunicFrontendPackageManagerExplicit)' != 'true' and '$(_RunicFrontendMemberPackageManager)' != '' and '$(_RunicFrontendMemberPackageManager)' != '$(RunicApplicationFrontendPackageManager)'"
+             Text="$(_RunicFrontendFullDirectory)/package.json declares $(_RunicFrontendMemberPackageManager) (packageManager), but its workspace $(_RunicFrontendWorkspaceRoot) uses $(RunicApplicationFrontendPackageManager) ($(_RunicFrontendPackageManagerSource)), so the build installs and builds it with $(RunicApplicationFrontendPackageManager). Remove the member's packageManager or make it match the workspace's." />
+    <Error Code="RUNICBRIDGE087" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge087"
+           Condition="'@(_RunicFrontendWorkspaceNonMember)' != ''"
+           Text="The frontend $(_RunicFrontendFullDirectory) is below the $(RunicApplicationFrontendPackageManager) workspace at $(_RunicFrontendWorkspaceRoot), but $(_RunicFrontendWorkspaceMembersFile) do not include it, so the workspace's install would not install it. Add it to the workspace, or set RunicApplicationFrontendWorkspaceRoot=none to install it on its own with its own lock file." />
+  </Target>
+
+  <!-- The install's own condition: BeforeTargets runs this even when the install does not run. -->
   <Target Name="RunicViewsCollectFrontendInstallInputs" BeforeTargets="RunicViewsInstallFrontend"
-          DependsOnTargets="_RunicViewsIntermediatePaths"
-          Condition="'$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+          DependsOnTargets="_RunicViewsIntermediatePaths;_RunicViewsReadFrontendWorkspace"
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <PropertyGroup>
       <_RunicBridgeFrontendHasDependencies>false</_RunicBridgeFrontendHasDependencies>
       <_RunicBridgeFrontendHasDependencies Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(RunicApplicationFrontendDirectory)/package.json')), '&quot;(dependencies|devDependencies|optionalDependencies)&quot;\s*:\s*\{\s*&quot;'))">true</_RunicBridgeFrontendHasDependencies>
+      <_RunicBridgeFrontendHasDependencies Condition="'$(_RunicFrontendInWorkspace)' == 'true' and Exists('$(_RunicFrontendWorkspaceRoot)/package.json') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(_RunicFrontendWorkspaceRoot)/package.json')), '&quot;(dependencies|devDependencies|optionalDependencies)&quot;\s*:\s*\{\s*&quot;'))">true</_RunicBridgeFrontendHasDependencies>
+      <_RunicFrontendInstallFullDirectory>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(_RunicFrontendInstallDirectory)').TrimEnd('/').TrimEnd('\'))</_RunicFrontendInstallFullDirectory>
+      <!-- The manager's version runs before a default install (RUNICBRIDGE090, and RUNICBRIDGE033 for Bun). -->
+      <_RunicFrontendInstallManager Condition="'$(_RunicBridgeDefaultFrontendInstall)' == 'true' and ('$(RunicApplicationFrontendPackageManager)' == 'npm' or '$(RunicApplicationFrontendPackageManager)' == 'pnpm' or '$(RunicApplicationFrontendPackageManager)' == 'bun')">$(RunicApplicationFrontendPackageManager.ToLowerInvariant())</_RunicFrontendInstallManager>
+      <_RunicFrontendProbeCommand Condition="'$(_RunicFrontendInstallManager)' != ''">$(_RunicFrontendInstallManager) --version</_RunicFrontendProbeCommand>
+      <_RunicFrontendNodeModulesRecord Condition="'$(_RunicFrontendInstallManager)' == 'npm'">.package-lock.json</_RunicFrontendNodeModulesRecord>
+      <_RunicFrontendNodeModulesRecord Condition="'$(_RunicFrontendInstallManager)' == 'pnpm'">.modules.yaml</_RunicFrontendNodeModulesRecord>
     </PropertyGroup>
     <ItemGroup>
-      <_RunicBridgeFrontendInstallInput Include="$(RunicApplicationFrontendDirectory)/package.json" />
-      <_RunicBridgeFrontendInstallInput Include="$(RunicApplicationFrontendDirectory)/%(_RunicBridgeFrontendLockFile.Identity)"
-          Condition="Exists('$(RunicApplicationFrontendDirectory)/%(_RunicBridgeFrontendLockFile.Identity)')" />
+      <_RunicBridgeFrontendInstallInput Include="$(RunicApplicationFrontendDirectory)/package.json;@(_RunicFrontendWorkspaceManifest)" />
+      <_RunicBridgeFrontendInstallInput Include="$(_RunicFrontendInstallDirectory)/%(_RunicBridgeFrontendLockFile.Identity)"
+          Condition="Exists('$(_RunicFrontendInstallDirectory)/%(_RunicBridgeFrontendLockFile.Identity)')" />
+      <_RunicBridgeFrontendInstallInput Include="$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml"
+          Condition="'$(_RunicFrontendInWorkspace)' == 'true' and Exists('$(_RunicFrontendWorkspaceRoot)/pnpm-workspace.yaml')" />
+      <FileWrites Include="$(_RunicBridgeFrontendInstallStamp)" />
     </ItemGroup>
-    <!-- Deleted node_modules installs again even though its inputs are older. -->
-    <Delete Files="$(_RunicBridgeFrontendInstallStamp)"
-            Condition="'$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(RunicApplicationFrontendDirectory)/node_modules')" />
   </Target>
 
   <ItemGroup>
@@ -1492,33 +1909,59 @@
   </Target>
 
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend" DependsOnTargets="_RunicViewsIntermediatePaths"
-          Inputs="@(_RunicBridgeFrontendInstallInput)" Outputs="$(_RunicBridgeFrontendInstallStamp)"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(_RunicFrontendInstallMode)' != 'Never' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <!-- An install without a lock file resolves the declared version ranges afresh on every machine and build,
          so a newly published version, malicious or not, runs in the frontend build. -->
     <Error Code="RUNICBRIDGE026" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge026"
-           Condition="'$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(_RunicBridgeFrontendLocked)' != 'true' and '$(_RunicBridgeFrontendUnlockedInstall)' != 'true' and '$(_RunicBridgeFrontendHasDependencies)' == 'true'"
+           Condition="'$(_RunicFrontendInWorkspace)' != 'true' and '$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(_RunicBridgeFrontendLocked)' != 'true' and '$(_RunicBridgeFrontendUnlockedInstall)' != 'true' and '$(_RunicBridgeFrontendHasDependencies)' == 'true'"
            Text="$([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) declares dependencies but has no $(_RunicBridgeFrontendLockFileName), so the frontend install would not be locked. Create the lock file with '$(RunicApplicationFrontendPackageManager) install' and commit it, or set RunicApplicationFrontendAllowUnlockedInstall=true to install without one." />
-    <Message Importance="high"
-             Text="Installing frontend dependencies in $(RunicApplicationFrontendDirectory) with $(RunicApplicationFrontendPackageManager). Set RunicApplicationFrontendInstallEnabled=false to install them yourself." />
-    <Exec Command="$(RunicApplicationFrontendInstallCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
-          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
-      <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeFrontendInstallExitCode" />
-      <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeFrontendInstallOutputLine" />
-    </Exec>
+    <Error Code="RUNICBRIDGE026" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge026"
+           Condition="'$(_RunicFrontendInWorkspace)' == 'true' and '$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(_RunicBridgeFrontendLocked)' != 'true' and '$(_RunicBridgeFrontendUnlockedInstall)' != 'true'"
+           Text="The frontend $(_RunicFrontendFullDirectory) is a member of the $(RunicApplicationFrontendPackageManager) workspace at $(_RunicFrontendWorkspaceRoot), which has no $(_RunicBridgeFrontendLockFileName), so the workspace install would not be locked. Run '$(RunicApplicationFrontendPackageManager) install' in $(_RunicFrontendWorkspaceRoot) and commit $(_RunicBridgeFrontendLockFileName), or set RunicApplicationFrontendAllowUnlockedInstall=true to install without one." />
     <PropertyGroup>
-      <_RunicBridgeFrontendInstallDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendInstallOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendInstallDiagnostics>
+      <_RunicFrontendInstallMessage>Installing frontend dependencies in $(RunicApplicationFrontendDirectory) with $(RunicApplicationFrontendPackageManager). Set RunicApplicationFrontendInstallEnabled=false to install them yourself.</_RunicFrontendInstallMessage>
+      <_RunicFrontendInstallMessage Condition="'$(_RunicFrontendInWorkspace)' == 'true'">Installing the frontend workspace $(_RunicFrontendWorkspaceRoot) with $(RunicApplicationFrontendPackageManager), for $(_RunicFrontendFullDirectory). Set RunicApplicationFrontendInstallEnabled=false to install it yourself.</_RunicFrontendInstallMessage>
     </PropertyGroup>
-    <RunicViewsReportCommandResult Condition="'$(_RunicBridgeFrontendInstallExitCode)' != '0' or '$(_RunicBridgeFrontendInstallDiagnostics)' == 'true'"
+    <RunicViewsInstallFrontendOnce Command="$(RunicApplicationFrontendInstallCommand)" WorkingDirectory="$(_RunicFrontendInstallFullDirectory)"
+        HashInputs="@(_RunicBridgeFrontendInstallInput)" StampFile="$(_RunicBridgeFrontendInstallStamp)"
+        RequiresNodeModules="$(_RunicBridgeFrontendHasDependencies)" ProbeCommand="$(_RunicFrontendProbeCommand)"
+        PackageManager="$(_RunicFrontendInstallManager)" NodeModulesRecord="$(_RunicFrontendNodeModulesRecord)"
+        Always="$(_RunicFrontendInstallAlways)"
+        Message="$(_RunicFrontendInstallMessage)">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeFrontendInstallExitCode" />
+      <Output TaskParameter="Installed" PropertyName="_RunicBridgeFrontendInstalled" />
+      <Output TaskParameter="ProbeFailed" PropertyName="_RunicFrontendProbeFailed" />
+      <Output TaskParameter="ProbeOutput" PropertyName="_RunicFrontendProbeOutput" />
+      <Output TaskParameter="Lines" ItemName="_RunicBridgeFrontendInstallOutputLine" />
+    </RunicViewsInstallFrontendOnce>
+    <PropertyGroup>
+      <_RunicFrontendPackageManagerName Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">Bun $(_RunicMinimumBunVersion) or later</_RunicFrontendPackageManagerName>
+      <_RunicFrontendPackageManagerName Condition="'$(RunicApplicationFrontendPackageManager)' == 'pnpm'">pnpm</_RunicFrontendPackageManagerName>
+      <_RunicFrontendPackageManagerName Condition="'$(_RunicFrontendPackageManagerName)' == ''">Node.js, which includes npm</_RunicFrontendPackageManagerName>
+      <_RunicFrontendInstallScope>frontend $(_RunicFrontendFullDirectory)</_RunicFrontendInstallScope>
+      <_RunicFrontendInstallScope Condition="'$(_RunicFrontendInWorkspace)' == 'true'">frontend workspace $(_RunicFrontendWorkspaceRoot)</_RunicFrontendInstallScope>
+      <_RunicBunVersion Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun' and '$(_RunicFrontendProbeFailed)' != 'true' and '$(_RunicFrontendProbeOutput)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(_RunicFrontendProbeOutput)', '^\d+\.\d+\.\d+'))</_RunicBunVersion>
+      <_RunicFrontendPackageManagerProbed Condition="'$(_RunicFrontendProbeOutput)' != '' or '$(_RunicFrontendProbeFailed)' == 'true'">true</_RunicFrontendPackageManagerProbed>
+    </PropertyGroup>
+    <!-- F7: a missing manager fails before the install, naming where it was declared, instead of exit code 127. -->
+    <Error Code="RUNICBRIDGE090" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge090"
+           Condition="'$(_RunicFrontendProbeFailed)' == 'true'"
+           Text="The $(_RunicFrontendInstallScope) uses $(RunicApplicationFrontendPackageManager) ($(_RunicFrontendPackageManagerSource)), but '$(_RunicFrontendProbeCommand)' failed with exit code $(_RunicBridgeFrontendInstallExitCode): $(RunicApplicationFrontendPackageManager) is not on PATH or does not run. Install $(_RunicFrontendPackageManagerName), or set RunicApplicationFrontendPackageManager." />
+    <Warning Code="RUNICBRIDGE033" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge033"
+             Condition="'$(_RunicBunVersion)' != '' and $([MSBuild]::VersionLessThan('$(_RunicBunVersion)', '$(_RunicMinimumBunVersion)'))"
+             Text="Bun $(_RunicBunVersion) is older than $(_RunicMinimumBunVersion), the oldest Bun that this Runic release supports; 'dotnet runic doctor' rejects it. Install Bun $(_RunicMinimumBunVersion) or a newer 1.x release." />
+    <PropertyGroup>
+      <_RunicBridgeFrontendInstallDiagnostics Condition="'$(_RunicBridgeFrontendInstalled)' == 'true' and $([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendInstallOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendInstallDiagnostics>
+    </PropertyGroup>
+    <RunicViewsReportCommandResult Condition="'$(_RunicBridgeFrontendInstalled)' == 'true' and ('$(_RunicBridgeFrontendInstallExitCode)' != '0' or '$(_RunicBridgeFrontendInstallDiagnostics)' == 'true')"
         Lines="@(_RunicBridgeFrontendInstallOutputLine)" ExitCode="$(_RunicBridgeFrontendInstallExitCode)"
-        WorkingDirectory="$(RunicApplicationFrontendDirectory)"
+        WorkingDirectory="$(_RunicFrontendInstallFullDirectory)"
         FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
-        FailureText="The frontend install '$(RunicApplicationFrontendInstallCommand)' in $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) exited with code $(_RunicBridgeFrontendInstallExitCode). Its output is above. Run 'dotnet runic doctor' to check the package manager and lock file." />
+        FailureText="The frontend install '$(RunicApplicationFrontendInstallCommand)' in $(_RunicFrontendInstallFullDirectory) exited with code $(_RunicBridgeFrontendInstallExitCode). Its output is above. Run 'dotnet runic doctor' to check the package manager and lock file." />
+    <!-- npm installs a workspace's packages into the root's node_modules only, so the check is at the install directory. -->
     <Error Code="RUNICBRIDGE016" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge016"
-           Condition="'$(_RunicBridgeFrontendInstallExitCode)' == '0' and '$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(RunicApplicationFrontendDirectory)/node_modules')"
-           Text="'$(RunicApplicationFrontendInstallCommand)' did not create $(RunicApplicationFrontendDirectory)/node_modules. Install the frontend dependencies with $(RunicApplicationFrontendPackageManager), or run 'dotnet runic doctor' to check the package manager and lock file." />
-    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeFrontendInstallStamp)'))" />
-    <Touch Files="$(_RunicBridgeFrontendInstallStamp)" AlwaysCreate="true" />
+           Condition="'$(_RunicBridgeFrontendInstalled)' == 'true' and '$(_RunicBridgeFrontendInstallExitCode)' == '0' and '$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(_RunicFrontendInstallFullDirectory)/node_modules')"
+           Text="'$(RunicApplicationFrontendInstallCommand)' did not create $(_RunicFrontendInstallDirectory)/node_modules. Install the frontend dependencies with $(RunicApplicationFrontendPackageManager), or run 'dotnet runic doctor' to check the package manager and lock file." />
   </Target>
 
   <Target Name="RunicViewsBuildFrontend" AfterTargets="RunicViewsCollectFrontendInputs" DependsOnTargets="_RunicViewsIntermediatePaths"
@@ -1528,7 +1971,7 @@
          their codes and locations, and svelte-check errors with their
          locations; any other failure, such as a Vite error,
          gets one RUNICBRIDGE016 instead of MSB3073. -->
-    <Exec Command="bun --version" WorkingDirectory="$(RunicApplicationFrontendDirectory)" Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'"
+    <Exec Command="bun --version" WorkingDirectory="$(RunicApplicationFrontendDirectory)" Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun' and '$(_RunicFrontendPackageManagerProbed)' != 'true'"
           EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBunVersionExitCode" />
@@ -1549,7 +1992,23 @@
     <PropertyGroup>
       <_RunicBridgeFrontendBuildDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendBuildOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendBuildDiagnostics>
     </PropertyGroup>
-    <RunicViewsReportCommandResult Condition="'$(_RunicBridgeFrontendBuildExitCode)' != '0' or '$(_RunicBridgeFrontendBuildDiagnostics)' == 'true'"
+    <!-- F7: the shell's "command not found" (127, or 9009 from cmd.exe) is a missing package manager only when the
+         manager itself does not run; a build script's own missing tool exits with 127 too. -->
+    <Exec Command="$(RunicApplicationFrontendPackageManager) --version" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
+          Condition="('$(_RunicBridgeFrontendBuildExitCode)' == '127' or '$(_RunicBridgeFrontendBuildExitCode)' == '9009') and '$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)'"
+          EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicFrontendBuildManagerExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicFrontendBuildManagerMissing Condition="'$(_RunicFrontendBuildManagerExitCode)' != '' and '$(_RunicFrontendBuildManagerExitCode)' != '0'">true</_RunicFrontendBuildManagerMissing>
+      <_RunicFrontendPackageManagerName Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">Bun $(_RunicMinimumBunVersion) or later</_RunicFrontendPackageManagerName>
+      <_RunicFrontendPackageManagerName Condition="'$(RunicApplicationFrontendPackageManager)' == 'pnpm'">pnpm</_RunicFrontendPackageManagerName>
+      <_RunicFrontendPackageManagerName Condition="'$(_RunicFrontendPackageManagerName)' == ''">Node.js, which includes npm</_RunicFrontendPackageManagerName>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE090" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge090"
+           Condition="'$(_RunicFrontendBuildManagerMissing)' == 'true'"
+           Text="The frontend $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) uses $(RunicApplicationFrontendPackageManager) ($(_RunicFrontendPackageManagerSource)), but '$(RunicApplicationFrontendPackageManager) --version' failed: $(RunicApplicationFrontendPackageManager) is not on PATH or does not run, so the frontend build '$(RunicApplicationFrontendBuildCommand)' could not run. Install $(_RunicFrontendPackageManagerName), or set RunicApplicationFrontendPackageManager." />
+    <RunicViewsReportCommandResult Condition="'$(_RunicFrontendBuildManagerMissing)' != 'true' and ('$(_RunicBridgeFrontendBuildExitCode)' != '0' or '$(_RunicBridgeFrontendBuildDiagnostics)' == 'true')"
         Lines="@(_RunicBridgeFrontendBuildOutputLine)" ExitCode="$(_RunicBridgeFrontendBuildExitCode)"
         WorkingDirectory="$(RunicApplicationFrontendDirectory)"
         FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
