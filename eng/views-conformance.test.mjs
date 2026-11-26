@@ -488,6 +488,16 @@ test("vector files name the roles of their operations and commit the hello of th
       assert.deepEqual(readRequest(JSON.stringify(set.hello)), { result: "valid" }, `${set.id}: the hello is valid`);
       assert.ok(!(set.hello.features ?? []).includes("request-session/1"), `${set.id}: the hello's requests would need a session`);
     }
+    // A request of a kind that a feature defines requires that feature, which the file's hello lists.
+    const gated = { "view-requests": "view-requests/1", region: "region-collections/1", navigation: "navigation-path/1",
+      "client-error": "client-errors/1", presented: "presented/1", "closing-reply": "presented/1" };
+    for (const item of set.cases.filter(item => item.operation === "read-request")) {
+      let kind;
+      try { kind = JSON.parse(textOf(item.input))?.kind; } catch { kind = undefined; }
+      const feature = gated[kind];
+      assert.deepEqual(item.requires ?? [], feature ? [feature] : [], `${item.id}: requires`);
+      for (const name of item.requires ?? []) assert.ok(set.hello.features.includes(name), `${item.id}: the hello does not list ${name}`);
+    }
   }
 });
 

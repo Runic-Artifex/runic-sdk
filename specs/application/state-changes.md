@@ -172,14 +172,21 @@ time runs them without that interval.
 At publication time, for each member other than keyed collections and text fields, the producer compares the member's
 encoding with the encoding it last published on the route, by [canonical equality](values.md#canonical-equality).
 Every member that differs becomes a `set`, except that a text member may become splices (below). A checked field whose
-version changed is a `set` with the new version, even when its value is equal.
+version changed is a `set` with the new version, even when its value is equal. A string's encoding is equal exactly
+when the strings are equal, so a producer MAY compare text members as strings.
 
 A checked field's `version` ([checked writes](README.md#checked-writes)) counts the field's changes; it is not a
-revision. It starts at 0 when the producer starts serving the View, and takes 1 more for each change of the field that the
-model announces, also to an equal value, for each write the producer applies, and for a change it finds without an
-announcement when a write compares the field. A publication writes the version as it is then, so a unit with two
-announced changes of the field publishes one `set` whose version is 2 more than the last published one. A string's encoding is equal exactly
-when the strings are equal, so a producer MAY compare text members as strings.
+revision. It starts at 0 when the producer starts serving the View, and takes 1 more:
+
+- for each change of the field that the model announces, also to an equal value. A producer whose model has no change
+  notifications counts each change that its model API makes to the field, such as a setter call, as announced;
+- for each write the producer applies;
+- once when a write compares the field and finds a value that changed without an announcement. That write is a
+  `conflict` whose `incoming` snapshot has the new version.
+
+A publication never changes the version: it writes the version as it is then. So a unit with two announced changes of
+the field publishes one `set` whose version is 2 more than the last published one, and a change made without an
+announcement, which the publication finds by comparison, is published as a `set` with the version unchanged.
 
 A [query collection](README.md#query-collections)'s member is a value member like the others: its `query`, `total`
 and `version` are compared, and its rows, which the state never holds, are read with `query-rows`.

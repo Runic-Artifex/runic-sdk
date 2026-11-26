@@ -25,7 +25,7 @@ export const corpora: Record<string, CorpusModule> = {
   "views/4": {
     root: "specs/application/conformance",
     load: loadViewsCorpus,
-    run: (adapter, c, { supports, roles, timing }) => (c.kind === "vector" ? runVector(adapter, c.body, roles, c.roles) : runScenario(adapter, c.body, supports, timing, roles)),
+    run: (adapter, c, { supports, roles, timing }) => (c.kind === "vector" ? runVector(adapter, c.body, roles, c.roles, supports) : runScenario(adapter, c.body, supports, timing, roles)),
   },
 };
 

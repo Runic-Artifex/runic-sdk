@@ -42,7 +42,11 @@ as compact JSON, but its escaping may differ, so a case whose result depends on 
 `limits`, uses `utf8` or `base64`.
 
 `roles` names the runners that execute a file's cases, as a scenario's `roles` does; absent means both. A runner of
-another role reports the file's cases excluded:
+another role reports the file's cases excluded. A case's `requires`, like a scenario's
+([requirements](#requirements)), names the features it needs; a runner whose implementation does not list one reports
+the case unsupported. The request vectors of a kind that a feature defines require it: `view-requests` requires
+`view-requests/1`, `region` `region-collections/1`, `navigation` `navigation-path/1`, `client-error` `client-errors/1`,
+and `presented` and `closing-reply` `presented/1`.
 
 | Files | `roles` | Why |
 | --- | --- | --- |
@@ -85,12 +89,16 @@ the normal form.
 The cases check the message envelope only; whether a route or member exists is checked by scenarios. Replies and
 pushes are read as on a connection that uses every [feature](../README.md#features).
 
-A producer runner reads each `read-request` case in a **fresh window**, on a new connection:
+A producer runner reads each `read-request` case in a **fresh window**, on a new connection. The window serves no View,
+so every route is unknown and a request that names one is answered `released` once its envelope is valid. (An
+implementation that cannot open a window without a View may root it at the `list` View: no case names its route.)
 
 1. Unless the case is itself a `hello`, it first sends the `hello` of the case's file and requires that its reply is
    successful. That `hello` lists the features the cases' request kinds need (`text-splice/1`,
    `presentation-epoch/1`, `presented/1`, `view-requests/1`, `region-collections/1`, `client-errors/1` and
-   `navigation-path/1`), and not `request-session/1`, whose requests would have to name the session.
+   `navigation-path/1`), and not `request-session/1`, whose requests would have to name the session. A case is a
+   `hello` when its input bytes are one JSON object whose top-level `kind` is the string `"hello"`; input that is not
+   JSON, or not an object, is not a `hello`.
 2. It sends the case's bytes as one request, with failure detail off and, when the case has `limits.inputBytes`,
    that input limit.
 3. The request is **valid** when its reply is not `rejected` with the reason `invalid-request`, `invalid-input` or
@@ -427,7 +435,7 @@ Rules, in this order:
 
 | Rule | Holds | Otherwise |
 | --- | --- | --- |
-| `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, with the [`text`](../README.md#text) `{"version":2,"catalog":"conformance","contractFingerprint":"sha256:` and 64 zeros `","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}`, and in `nameErrors` |
+| `name` | while `name` has at most 8 UTF-16 code units | `Name must be at most 8 characters.` at the path `["name"]`, with the [`text`](../README.md#text) `{"version":2,"catalog":"conformance","contractFingerprint":"sha256:` and 64 zeros `","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}`, and in `nameErrors` |
 | `approval` | until a `rule` mutation changes it; initially it holds | `Approval is required.` at the path `[]`. The rule names no member: a change of it changes no other member and announces none. |
 
 `name` also has an asynchronous check ([`pending`](../README.md#pending), `validation-pending/1`): while a `check`
@@ -459,7 +467,9 @@ A View with field paths ([field paths](../README.md#field-paths), `field-paths/1
 | `address` | `{street: string, city: string}` | `{"street":"","city":""}`; settable, a checked field; its field paths are `["street"]` and `["city"]` |
 | `lines` | keyed collection of `{id: int32, label: string, quantity: int32}`, keyed by `id` | `[]`; its field paths are a row's `["label"]` and `["quantity"]` |
 
-Its `fields` are `{"address": {"version"}}`, starting at version 0. Its row editor replaces the row with the key and
+Its `fields` are `{"address": {"version"}}`, starting at version 0. The `address` setter announces a change only when
+the new address differs from the current one, compared by value (both members), so an `assign` of an equal address
+changes nothing, not even the version. Its row editor replaces the row with the key and
 refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address`, and
 `insert`, `replaceAt` and `removeAt` with `member` `lines`.
 

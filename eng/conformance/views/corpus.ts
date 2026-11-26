@@ -1,6 +1,6 @@
 // The Views protocol 4 corpus (specs/application/conformance) as a list of cases: one per vector case and per
 // scenario, in a stable order. A vector case has its file's roles, both when the file names none (README "Vectors");
-// a read-request case carries its file's hello, which is part of its hash.
+// a read-request case carries its file's hello, which is part of its hash, and a case may require features.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +19,7 @@ export function loadViewsCorpus(root: string): Case[] {
       const roles: string[] = vector.roles ?? ["producer", "client"];
       for (const c of vector.cases) {
         const body = c.operation === "read-request" ? { ...c, hello: vector.hello } : c;
-        cases.push({ id: c.id, kind: "vector", set: vector.id, file, roles, requires: [], sha256: hash(body), body });
+        cases.push({ id: c.id, kind: "vector", set: vector.id, file, roles, requires: c.requires ?? [], sha256: hash(body), body });
       }
     }
   }

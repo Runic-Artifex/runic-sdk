@@ -15,6 +15,7 @@ import { formatCases as coreFormatCases } from "./conformance/core/cases.ts";
 import { formatCases, loadViewsCorpus } from "./conformance/views/corpus.ts";
 import { Messages, ScenarioFailure, expand, valueEqual } from "./conformance/views/messages.ts";
 import { anchorExists } from "./conformance/cli.ts";
+import { runVector } from "./conformance/views/vectors.ts";
 
 const receipt = (results) => ({
   format: names.receipt,
@@ -131,6 +132,14 @@ test("in an unordered group, revisions first seen on different routes may map in
   shared.match({ kind: "frame", route: "a", revision: 1 }, { kind: "frame", route: "a", revision: 4 }, null);
   assert.throws(() => shared.match({ kind: "frame", route: "b", revision: 2 }, { kind: "frame", route: "b", revision: 4 }, null), ScenarioFailure);
   assert.throws(() => shared.match({ kind: "frame", route: "a", revision: 2 }, { kind: "frame", route: "a", revision: 3 }, null), ScenarioFailure);
+});
+
+test("a vector case whose requirement the implementation does not list is unsupported, before the adapter is asked", async () => {
+  const adapter = { call: async () => { throw new Error("the adapter was asked"); } };
+  const item = { id: "messages.requests.region", operation: "read-request", requires: ["region-collections/1"], input: { encoding: "json", value: {} }, expect: { result: "valid" } };
+  const outcome = await runVector(adapter, item, new Set(["producer"]), ["producer"], new Set(["text-splice/1"]));
+  assert.deepEqual(outcome, { outcome: "unsupported", detail: "requires region-collections/1", requires: ["region-collections/1"] });
+  assert.equal((await runVector(adapter, item, new Set(["client"]), ["producer"], new Set())).outcome, "excluded");
 });
 
 test("message matching compares members exactly, $any by type, and frame changes per field", () => {

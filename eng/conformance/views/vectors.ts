@@ -19,10 +19,13 @@ function inputBytes(input: any): Uint8Array {
 
 const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 
-// caseRoles are the roles of the case's file (README "Vectors"): an implementation with none of them excludes it.
-export async function runVector(adapter: Adapter, testCase: any, roles: Set<string>, caseRoles: string[]): Promise<Outcome> {
+// caseRoles are the roles of the case's file (README "Vectors"): an implementation with none of them excludes it. A
+// case that requires a feature the implementation does not list is unsupported, as a scenario is.
+export async function runVector(adapter: Adapter, testCase: any, roles: Set<string>, caseRoles: string[], supports: Set<string>): Promise<Outcome> {
   const { operation, input, expect } = testCase;
   if (!caseRoles.some((role) => roles.has(role))) return { outcome: "excluded", detail: `role:${caseRoles.join(",")}` };
+  const missing: string[] = (testCase.requires ?? []).filter((r: string) => !supports.has(r));
+  if (missing.length) return { outcome: "unsupported", detail: `requires ${missing.join(", ")}`, requires: missing };
   try {
     switch (operation) {
       case "canonicalize": {

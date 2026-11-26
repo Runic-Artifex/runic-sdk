@@ -410,7 +410,7 @@
     "edits.a-path-write-of-a-cell-changed-meanwhile-is-a-conflict.v1": {"status":"pass"},
     "edits.a-path-write-of-a-removed-row-is-rejected.v1": {"status":"pass"},
     "edits.a-path-write-retry-gets-the-original-receipt.v1": {"status":"pass"},
-    "edits.a-path-write-without-the-feature-is-invalid.v1": {"status":"pass"},
+    "edits.a-path-write-without-the-feature-is-invalid.v2": {"status":"pass"},
     "edits.a-row-added-again-under-its-key-is-a-new-row.v1": {"status":"pass"},
     "edits.a-row-editor-that-throws-rejects-the-write.v1": {"status":"pass"},
     "edits.a-splice-the-producer-refuses-is-sent-in-full.v1": {"status":"excluded","reason":"role:client"},
