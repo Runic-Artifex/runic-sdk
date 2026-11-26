@@ -53,7 +53,9 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendBuildCommand` | property | the package manager's `run build` | The production frontend build. An optimized build (`Optimize=true`: Release, `dotnet publish`) runs it with `NODE_ENV=production` unless the environment sets `NODE_ENV`, so Bun's bundler resolves the production build of `@runic-artifex/views`; a Debug build leaves `NODE_ENV` unset. |
 | `RunicApplicationFrontendInstallCommand` | property | the package manager's locked install | The install before the build. |
 | `RunicApplicationFrontendAllowUnlockedInstall` | property | `false` | Install without a lock file. |
-| `RunicApplicationFrontendInstallEnabled` | property | `true` | `false` when a workspace install owns the packages. |
+| `RunicApplicationFrontendInstallEnabled` | property | `true` | `false` when something else installs the packages, the same as `RunicApplicationFrontendInstallMode=Never`. A member of a JavaScript workspace installs once at the workspace root (0.24). |
+| `RunicApplicationFrontendInstallMode` | property | `Auto` | `Auto` installs the frontend packages when the lock file, a `package.json` or the package manager changed, or `node_modules` is incomplete; `Always` on every build; `Never` leaves it to you (0.24). |
+| `RunicApplicationFrontendWorkspaceRoot` | property | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The JavaScript workspace root where a frontend without its own lock file installs (0.24); `none` installs the frontend on its own. |
 | `RunicApplicationFrontendNodeModulesDirectory` | property | none | A `node_modules` installed elsewhere, such as by the Nix builder. |
 | `RunicApplicationFrontendBuildEnabled` | property | `true`, `false` in a client library | `false` when another tool builds the frontend. |
 | `RunicApplicationFrontendCopyEnabled` | property | `true`, `false` in a client library | Mirror the frontend output to the web root. |

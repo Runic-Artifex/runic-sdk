@@ -2415,7 +2415,7 @@ own code, while you type and in the build, so `#pragma warning disable` and
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076`, `078` and `083` are warnings; the ones the generator
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076`, `078`, `083`, `089` and `091` are warnings; the ones the generator
 reports itself (`020`, `072`, `076`, `078`, `083`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -2575,11 +2575,13 @@ an extension point.
 | `RunicApplicationFrontendDirectory` | `$(MSBuildProjectDirectory)/Frontend` | Frontend package directory. |
 | `RunicApplicationFrontendGeneratedDirectory` | `<frontend>/src/generated` | Generated TypeScript clients. |
 | `RunicApplicationFrontendCodegenRuntime` | the first of `node` and `bun` on `PATH` (`bun` first with the `bun` package manager) | The Node.js or Bun command that runs the TypeScript emitter (since 0.24, [Incremental generation](#incremental-generation)). |
-| `RunicApplicationFrontendPackageManager` | `packageManager` in `package.json`, then `pnpm-lock.yaml`, `bun.lock`, else `npm` | `npm`, `pnpm` or `bun`: selects the default build and install commands. Another value, such as `yarn`, uses the npm commands and warns with [`RUNICBRIDGE029`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge029) unless the project sets both commands. |
+| `RunicApplicationFrontendPackageManager` | in a [JavaScript workspace](#javascript-workspaces) the root's `packageManager`, then its lock file; else `packageManager` in the frontend's `package.json`, then `pnpm-lock.yaml`, `bun.lock` or `bun.lockb`, else `npm` | `npm`, `pnpm` or `bun`: selects the default build and install commands. Another value, such as `yarn`, uses the npm commands and warns with [`RUNICBRIDGE029`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge029) unless the project sets both commands. |
 | `RunicApplicationFrontendBuildCommand` | `npm run build`, `pnpm run build`, or `bun run --bun build` | Production frontend build. |
-| `RunicApplicationFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs before the frontend build when `package.json` or a lock file changed since the last install (stamp: `obj/runic-bridge-frontend-install.stamp`), or when declared dependencies have no `node_modules`. A `package.json` without dependencies needs no `node_modules`. |
+| `RunicApplicationFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs before the frontend build, in the frontend directory or, for a member of a [JavaScript workspace](#javascript-workspaces), once at the workspace root. It runs when the command, the lock file or a `package.json` changed since the last install (their hash is `node_modules/.runic-install`), or when `node_modules` is gone. A `package.json` without dependencies needs no `node_modules`. The package manager's `--version` runs first: one that does not run is [`RUNICBRIDGE090`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge090). |
 | `RunicApplicationFrontendAllowUnlockedInstall` | `false` | The default install is locked: when `package.json` declares dependencies and the package manager's lock file (`package-lock.json` or `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `bun.lock` or `bun.lockb`) is missing, the build fails with [`RUNICBRIDGE026`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge026) before installing. Set `true` to run `npm install`, `pnpm install` or `bun install` (with `--ignore-scripts`) without one instead. |
-| `RunicApplicationFrontendInstallEnabled` | `true` | Set `false` when a workspace install owns the frontend packages. |
+| `RunicApplicationFrontendInstallEnabled` | `true` | Set `false` when something else installs the frontend packages, such as a CI step; the build then also leaves the workspace alone and selects the package manager from the frontend's folder. A JavaScript workspace needs no `false`: the build installs it at its root. |
+| `RunicApplicationFrontendInstallMode` | `Auto` | When the build installs the frontend packages (since 0.24): `Auto` when the install's hash changed, `Always` on every build, `Never` not at all, as `RunicApplicationFrontendInstallEnabled=false`. See [Fast iteration](#fast-iteration). Another value is [`RUNICBRIDGE091`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge091). |
+| `RunicApplicationFrontendWorkspaceRoot` | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The [JavaScript workspace](#javascript-workspaces) root where a frontend without its own lock file installs (since 0.24). `none` makes the frontend its own root. |
 | `RunicApplicationFrontendNodeModulesDirectory` | none | A `node_modules` installed by something else, such as the [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md) from the lock file. The install does not run, and the frontend's `node_modules` becomes a symbolic link (a junction on Windows) to it; an existing `node_modules` that is not a link is `RUNICBRIDGE021`. |
 | `RunicApplicationFrontendBuildEnabled` | `true`, `false` in a client library | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicApplicationFrontendCopyEnabled` | `true`, `false` in a client library | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it, except in a client library that leaves this `false`. |
@@ -2596,6 +2598,77 @@ an extension point.
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
 | `RunicApplicationFrontendBootstrap` | set by the targets (read-only) | `true` only in the bootstrap pass (see below). A project reads it, for example to leave a reference out of that pass; it does not set it. |
+
+### JavaScript workspaces
+
+A frontend can be a member of a Bun, npm or pnpm workspace, for example with the
+frontend package of a [client library](#share-viewmodels-and-their-clients-through-a-library)
+beside it (since 0.24):
+
+```json
+{ "private": true, "workspaces": ["shared-ui", "App/Frontend"], "packageManager": "bun@1.4.4" }
+```
+
+The build finds the workspace root, the nearest folder above the frontend whose
+`package.json` has `workspaces` or that has `pnpm-workspace.yaml`, unless the
+frontend has a lock file of its own. Then:
+
+- **The install runs once, at the root**, with the root's lock file
+  (`--frozen-lockfile` or `npm ci`, with `--ignore-scripts`), for every member.
+  A library and an application of the workspace that build at the same time
+  wait for each other's install instead of installing twice, and a build with
+  nothing changed runs no install (the hash in `node_modules/.runic-install`).
+  npm installs every member's packages into the root's `node_modules` only,
+  which the build accepts.
+- **The package manager is the workspace's**: the root's `packageManager`, then
+  its lock file. A member that declares another manager is the warning
+  [`RUNICBRIDGE089`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge089).
+- **The lock file is the root's.** Create it with the manager's install at the
+  root and commit it; without it the build stops with
+  [`RUNICBRIDGE026`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge026),
+  which names the root.
+- **The workspace must list the frontend.** A frontend below a workspace root
+  whose patterns do not include it is
+  [`RUNICBRIDGE087`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge087).
+  The build expands the patterns with the workspace resolver
+  `runic-frontend-graph.mjs`, which writes `obj/runic/frontend-graph.json`
+  (`rax.frontend-graph/1`). The same script is the `@runic-artifex/views/frontend-graph`
+  export for other build tools.
+
+Set `RunicApplicationFrontendWorkspaceRoot` to another folder to name the root
+yourself, or to `none` to install the frontend on its own with its own lock
+file. With `RunicApplicationFrontendInstallEnabled=false` the build looks for no
+workspace, as before 0.24: whoever installs owns it.
+
+### Fast iteration
+
+A rebuild after a C# or frontend edit runs no package manager: the build installs
+the frontend packages only when what they depend on changed, and builds the
+frontend only when one of its inputs changed.
+
+- **The install** (`RunicApplicationFrontendInstallMode=Auto`, the default)
+  hashes the install command, the lock file, every `package.json` of the
+  workspace and the package manager's executable on `PATH` (its path, size and
+  time, read without starting it). It runs when that hash differs from the one
+  in `node_modules/.runic-install`, when `node_modules` is gone, or when the
+  manager's own record of a complete install is missing (npm's
+  `node_modules/.package-lock.json`, pnpm's `node_modules/.modules.yaml`), as
+  after an install that stopped halfway. A touched but unchanged lock file
+  installs nothing. `Always` installs on every build and `Never` never, as
+  `RunicApplicationFrontendInstallEnabled=false` does; the mode wins when both
+  are set. Whenever the default install runs it is the locked one (`npm ci`,
+  `--frozen-lockfile`), with `--ignore-scripts`.
+- **The frontend build** runs when a file of the frontend folder, the generated
+  clients, `RunicApplicationFrontendInput`, the project file or its build state
+  changed, when an install installed something else, or when a file it wrote to
+  its output directory is gone. A C#-only edit that changes no contract leaves
+  the generated clients, and so the frontend, alone. `-t:Rebuild` builds it
+  again.
+- **CI.** A fresh checkout has no `node_modules`, so `Auto` installs there, and a
+  restored `node_modules` cache is reused only when its hash matches the
+  checkout's lock file and `package.json` files. `ContinuousIntegrationBuild`
+  therefore does not switch to `Always`; set it yourself to install on every
+  build.
 
 The ReactiveUI flavor of the generated code is not a setting. The build infers it
 from the Runic ReactiveUI adapter the project compiles against, by package or
@@ -2891,9 +2964,9 @@ shared code or the Vite configuration reads as a
   declarations, and can report errors in them that the app's own check does
   not. Check the shared files in the app that owns them.
 - **Lock files.** The frontend has its own `package.json` and lock file unless
-  it joins the app's package manager workspace. In a workspace, set
-  `RunicApplicationFrontendInstallEnabled` to `false`, because the workspace
-  install owns `node_modules`.
+  it joins the app's package manager workspace. A workspace member has no lock
+  file of its own: the build installs the workspace once at its root, with the
+  root's lock file; see [JavaScript workspaces](#javascript-workspaces).
 - **Lists.** Tailwind removes list markers from every list, and Runic Desktop's
   WebKitGTK then no longer reports such a list as a list to a screen reader;
   see [Runic.Desktop accessibility](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop#accessibility).
@@ -5751,9 +5824,11 @@ and must return a task that covers all work requiring its resources.
   when `package.json` or a lock file changed since the last install, and when
   declared dependencies have no `node_modules`. If that install did not run or
   failed, install them with the frontend's package manager, or run
-  `dotnet runic doctor` to check the package manager and lock file. Set
-  `RunicApplicationFrontendInstallEnabled=false` when a workspace install owns
-  them.
+  `dotnet runic doctor` to check the package manager and lock file. In a
+  JavaScript workspace the install runs at the workspace root; see
+  [JavaScript workspaces](#javascript-workspaces). Set
+  `RunicApplicationFrontendInstallEnabled=false` only when something else
+  installs them.
 - **The build says only one ReactiveUI flavor can be used.**
   `Runic.Application.Views.ReactiveUI` and `Runic.Application.Views.ReactiveUI.Reactive`
   cannot both be referenced, and the `.Reactive` adapter needs

@@ -95,6 +95,8 @@ export const packageLayouts = {
       "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.dll", "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.CodeFixes.dll",
       // R7 G6: the TypeScript emitter's launcher and the bundled emitter for projects without a frontend.
       "buildTransitive/runic-views-codegen.mjs", "tools/codegen/index.js",
+      // The JavaScript workspace resolver (rax.frontend-graph/1), which @runic-artifex/views exports too.
+      "buildTransitive/runic-frontend-graph.mjs",
       // The old-name guards (D079.11), which Runic.Desktop ships too.
       "buildTransitive/Runic.Sdk.RenamedNames.targets"],
     rollForwardMajor: ["tools/net10.0/BridgeCodegen.runtimeconfig.json"],

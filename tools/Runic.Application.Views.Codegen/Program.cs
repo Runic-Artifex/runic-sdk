@@ -2081,7 +2081,7 @@ static class BridgeDiagnosticCodes
     internal const string NoBuildReuse = "RUNICBRIDGE022";
     /// <summary>The application references Runic ReactiveUI adapters of both ReactiveUI flavors.</summary>
     internal const string ReactiveUiFlavors = "RUNICBRIDGE023";
-    /// <summary>The frontend declares dependencies but has no lock file for the default install.</summary>
+    /// <summary>The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install.</summary>
     internal const string FrontendLock = "RUNICBRIDGE026";
     /// <summary>A RunicCommandKey declaration is misplaced, or its resolver is missing or has an unsupported shape.</summary>
     internal const string CommandKey = "RUNICBRIDGE027";
@@ -2164,6 +2164,14 @@ static class BridgeDiagnosticCodes
     internal const string FormerPackage = "RUNICBRIDGE085";
     /// <summary>An environment variable of a former name is set (old-name guards, D079.11; reported by Runic.Sdk.RenamedNames.targets).</summary>
     internal const string FormerEnvironmentVariable = "RUNICBRIDGE086";
+    /// <summary>The frontend is below a JavaScript workspace that does not list it (reported by the Views targets).</summary>
+    internal const string FrontendWorkspaceMember = "RUNICBRIDGE087";
+    /// <summary>A workspace member declares another package manager than its workspace (reported by the Views targets).</summary>
+    internal const string FrontendWorkspacePackageManager = "RUNICBRIDGE089";
+    /// <summary>The frontend's package manager or JavaScript runtime does not run (reported by the Views targets).</summary>
+    internal const string FrontendPackageManagerMissing = "RUNICBRIDGE090";
+    /// <summary>RunicApplicationFrontendInstallMode is not Auto, Always or Never (reported by the Views targets).</summary>
+    internal const string FrontendInstallMode = "RUNICBRIDGE091";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2195,7 +2203,7 @@ static class BridgeDiagnosticCodes
         (ReactiveUiFlavors, "error", "The application references Runic ReactiveUI adapters of both ReactiveUI flavors"),
         (Internal, "error", "An internal generator error"),
         (ReactiveUiAdapter, "error", "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"),
-        (FrontendLock, "error", "The frontend declares dependencies but has no lock file for the default install"),
+        (FrontendLock, "error", "The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install"),
         (CommandKey, "error", "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"),
         (OperationRetirement, "warning", "A [RunicOperationRetirement] declaration reaches no operation"),
         (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
@@ -2232,6 +2240,10 @@ static class BridgeDiagnosticCodes
         (ClientEmitter, "error", "The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views"),
         (FormerPackage, "error", "A package of a former ID is in the package graph"),
         (FormerEnvironmentVariable, "error", "An environment variable of a former name is set"),
+        (FrontendWorkspaceMember, "error", "The frontend is below a JavaScript workspace that does not list it"),
+        (FrontendWorkspacePackageManager, "warning", "A workspace member declares another package manager than its workspace"),
+        (FrontendPackageManagerMissing, "error", "The frontend's package manager or JavaScript runtime does not run"),
+        (FrontendInstallMode, "warning", "RunicApplicationFrontendInstallMode is not Auto, Always or Never"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
