@@ -20,7 +20,7 @@ const members: BridgeMemberDecoders<ShellState> = {
   main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === "document" ? pageDocument(reference.id) : reference.kind === "home" ? pageHome(reference.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(); },
   dialog: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === "confirmNavigation" ? pageConfirmNavigation(reference.id) : (() => { throw new BridgeError("failed", "Unknown dialog kind."); })(); },
 };
-const bridgeContract = "NotesWindowViews.ShellViewModel:503124E7D2896F72B4C54C5434C1C81A9DC6A93FF2FB0D06F4984A1241CB8F33";
+const bridgeContract = "NotesWindowViews.ShellViewModel:26D9AD8C50AB2E08E6429F66A83C23B687DBECB76614383891D0CA33F8CBC9F7";
 
 /**
  * Connects a Shell client. It waits up to `options.timeout` milliseconds (default 5000) for the

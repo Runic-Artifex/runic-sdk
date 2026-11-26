@@ -32,7 +32,7 @@ const members: BridgeMemberDecoders<ShellState> = {
   canRestorePinned: (wire: unknown) => bridgeWire.boolean(wire),
   isRestorePinnedExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesReactiveViews.ShellViewModel:2003C898D80FFD246E561B6473959610970CB9187AF7F6999D25A8B4AD1A0EEE";
+const bridgeContract = "NotesReactiveViews.ShellViewModel:95972AC7429F155F27626B22C15A70F6E548C5FC40F4331917162D468EDD27BD";
 const openHomeOperation: BridgeOperationCodec<NavigationOutcome> = { decode: value => bridgeWire.object<NavigationOutcome>(value, value => ({ kind: bridgeWire.enumName<NavigationOutcomeKind>(value["kind"], ["Committed", "Rejected", "Superseded", "Failed"]), rejection: (value["rejection"] === null ? null : bridgeWire.enumName<NavigationRejection>(value["rejection"], ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"])), arrival: bridgeWire.enumName<NavigationArrivalState>(value["arrival"], ["None", "Completed", "Failed", "Cancelled"])})) };
 const openDocumentOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const swapPinnedOperation: BridgeOperationCodec<void> = { decode: value => undefined };

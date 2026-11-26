@@ -205,7 +205,7 @@ function projection(types, view) {
   result.kinds = [...view.kinds].sort();
   result.members = view.members.map(member => {
     const item = positions(types, omit(member, ["name", "doc", "declaringType", "constraints", "defaultKey"]));
-    if (item.pages) item.pages = item.pages.map(page => omit(page, ["name"]));
+    if (item.pages) item.pages = item.pages.map(page => page.kind).sort().map(kind => ({ kind }));
     if (item.fieldPaths) item.fieldPaths = item.fieldPaths.map(path => omit(path, ["constraints"]));
     return item;
   });
@@ -289,6 +289,25 @@ test("the worked example of the fingerprint specification holds", () => {
   assert.equal(view.fingerprint, example.fingerprint);
   assert.equal(`${view.id}:${view.fingerprint}`, example.contracts.operation);
   assert.equal(view.interactions[0].contract, example.contracts.interaction);
+  for (const each of example.document.views) assert.equal(each.fingerprint, fingerprint(example.document, each), each.id);
+});
+
+test("a fingerprint names a presented View by its kind alone", () => {
+  const found = documents.flatMap(({ ir }) => ir.views.flatMap((view, index) =>
+    view.members.filter(member => (member.pages?.length ?? 0) > 1).map(member => ({ ir, index, wire: member.wire }))));
+  assert.ok(found.length > 0, "no corpus View has a slot that presents more than one View");
+  const { ir, index, wire } = found[0];
+  const base = fingerprint(ir, ir.views[index]);
+  const mutated = mutate => {
+    const copy = structuredClone(ir);
+    mutate(copy.views[index].members.find(member => member.wire === wire).pages);
+    return fingerprint(copy, copy.views[index]);
+  };
+  assert.equal(mutated(pages => { for (const page of pages) { page.view = `other::${page.view}`; page.name = "Other"; } }), base,
+    "a presented View's id or name changed the fingerprint");
+  assert.equal(mutated(pages => pages.reverse()), base, "the order of a slot's pages changed the fingerprint");
+  assert.notEqual(mutated(pages => { pages[0].kind += "X"; }), base, "another presented kind left the fingerprint as it was");
+  assert.notEqual(mutated(pages => { pages.pop(); }), base, "a slot that presents fewer kinds left the fingerprint as it was");
 });
 
 // The contract IR of the conformance test Views (specs/application/conformance/README.md, "Test Views"), which the
@@ -323,4 +342,36 @@ test("the conformance test Views' IR describes the Views of the corpus's README,
   const described = [...readme.slice(readme.indexOf("## Test Views")).matchAll(/^### `([a-z]+)`$/gm)].map(match => match[1]);
   assert.deepEqual(conformanceIr.views.map(view => view.route), described);
   for (const view of conformanceIr.views) assert.deepEqual(view.kinds, [view.route], `${view.id}: one kind, its route`);
+});
+
+test("producer ids enter no fingerprint: the conformance Views keep theirs under another producer's names", () => {
+  // Another producer names the same Views and types its own way, here as Rust paths; every fingerprint and derived
+  // contract stays, including those of the Views that present others (notes, tabs).
+  const rename = id => `conformance::${id.split(/[.+]/).at(-1).replace(/ViewModel$/, "")}`;
+  const ir = structuredClone(conformanceIr);
+  const renameType = type => {
+    if (type.kind === "named") type.ref = rename(type.ref);
+    if (type.element) renameType(type.element);
+    if (type.kind === "map") renameType(type.value);
+  };
+  const positions = owner => {
+    for (const name of ["value", "rows", "input", "result", "failure", "output"]) if (owner[name]) renameType(owner[name].type);
+  };
+  ir.types = Object.fromEntries(Object.entries(ir.types).map(([id, definition]) => {
+    for (const member of definition.members ?? []) renameType(member.type);
+    if (definition.kind === "union") for (const item of definition.cases) if (item.object !== null) item.object = rename(item.object);
+    return [rename(id), definition];
+  }));
+  for (const view of ir.views) {
+    view.id = rename(view.id);
+    for (const member of view.members) {
+      positions(member);
+      for (const page of member.pages ?? []) page.view = rename(page.view);
+    }
+    for (const item of [...view.commands, ...(view.interactions ?? []), ...(view.requests ?? [])]) positions(item);
+  }
+  assert.equal(new Set(Object.keys(ir.types)).size, Object.keys(conformanceIr.types).length, "the renaming merged two types");
+  assert.ok(ir.views.some(view => view.members.some(member => member.pages?.length)), "no conformance View presents another");
+  for (const [index, view] of ir.views.entries())
+    assert.equal(fingerprint(ir, view), conformanceIr.views[index].fingerprint, `${conformanceIr.views[index].id} under ${view.id}`);
 });

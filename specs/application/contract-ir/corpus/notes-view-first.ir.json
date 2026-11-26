@@ -10,7 +10,7 @@
       "id": "NotesWindowViews.ShellViewModel",
       "name": "Shell",
       "route": "shell",
-      "fingerprint": "503124E7D2896F72B4C54C5434C1C81A9DC6A93FF2FB0D06F4984A1241CB8F33",
+      "fingerprint": "26D9AD8C50AB2E08E6429F66A83C23B687DBECB76614383891D0CA33F8CBC9F7",
       "kinds": [
         "shell"
       ],
@@ -145,7 +145,7 @@
       "id": "NotesWindowViews.DocumentViewModel",
       "name": "Document",
       "route": "document",
-      "fingerprint": "4A038EF3D865C389A736165E55B2D7B59D270B369827312BA03EDA4B80CBB2BC",
+      "fingerprint": "C7DA9229D669BE0224BC595AD5B39D3B32429AAD3E13CBE7C228C622BE4A22E2",
       "kinds": [
         "document"
       ],

@@ -245,7 +245,12 @@ internal static class ContractIr
         {
             var member = (JsonObject)item!;
             foreach (var name in MemberOmitted) member.Remove(name);
-            foreach (var page in member["pages"]?.AsArray() ?? []) ((JsonObject)page!).Remove("name");
+            // A content reference carries only the presented kind on the wire ({kind, id}); the presented View's id is
+            // the producer's name, and its own contract is checked on its own route. So a page reference is its kind,
+            // and the pages are a set of kinds; their order (most specific first) only chooses the producer's match.
+            if (member["pages"] is JsonArray pages)
+                member["pages"] = new JsonArray([.. pages.Select(page => page!["kind"]!.GetValue<string>())
+                    .Order(StringComparer.Ordinal).Select(kind => (JsonNode)new JsonObject { ["kind"] = kind })]);
             foreach (var path in member["fieldPaths"]?.AsArray() ?? []) ((JsonObject)path!).Remove("constraints");
             ProjectPositions(member);
         }

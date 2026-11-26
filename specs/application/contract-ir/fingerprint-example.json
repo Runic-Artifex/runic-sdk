@@ -1,5 +1,5 @@
 {
-  "description": "A worked example of runic.views.fingerprint/1 (contract-ir.md, \"Fingerprint\"): an IR document of one View, the canonical form of the View's projection, its fingerprint, and the contracts derived from it.",
+  "description": "A worked example of runic.views.fingerprint/1 (contract-ir.md, \"Fingerprint\"): an IR document whose first View presents the second, the canonical form of the first View's projection, its fingerprint, and the contracts derived from it. The presented View appears in the projection by its kind alone.",
   "document": {
     "format": "runic.views.contract-ir/1",
     "producer": {
@@ -12,7 +12,7 @@
         "id": "demo::Counter",
         "name": "Counter",
         "route": "counter",
-        "fingerprint": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601",
+        "fingerprint": "AEE4E877A0801B169AF0DB7ECEF22B81F7607DDFD666B6EB32A8B7C92E580309",
         "kinds": [
           "counter"
         ],
@@ -44,6 +44,19 @@
             "settable": true,
             "declaringType": "Counter",
             "doc": "How it counts."
+          },
+          {
+            "name": "Detail",
+            "wire": "detail",
+            "kind": "content",
+            "pages": [
+              {
+                "view": "demo::Detail",
+                "name": "Detail",
+                "kind": "detail"
+              }
+            ],
+            "nullable": true
           }
         ],
         "commands": [
@@ -70,7 +83,7 @@
           {
             "name": "Confirm",
             "wire": "confirm",
-            "contract": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601:interaction:Confirm",
+            "contract": "AEE4E877A0801B169AF0DB7ECEF22B81F7607DDFD666B6EB32A8B7C92E580309:interaction:Confirm",
             "input": {
               "direction": "to-page",
               "type": {
@@ -85,6 +98,29 @@
             }
           }
         ]
+      },
+      {
+        "id": "demo::Detail",
+        "name": "Detail",
+        "route": "detail",
+        "fingerprint": "BAFC34818673975D1F34FA30F352F49639A176C3CBC6E66B7775B7FF0CA76C0C",
+        "kinds": [
+          "detail"
+        ],
+        "members": [
+          {
+            "name": "Text",
+            "wire": "text",
+            "kind": "value",
+            "value": {
+              "direction": "to-page",
+              "type": {
+                "kind": "string"
+              }
+            }
+          }
+        ],
+        "commands": []
       }
     ],
     "types": {
@@ -113,10 +149,10 @@
     },
     "sources": {}
   },
-  "canonical": "{\"format\":\"runic.views.fingerprint/1\",\"view\":{\"commands\":[{\"executionState\":true,\"name\":\"Increment\",\"wire\":\"increment\"},{\"async\":true,\"input\":{\"direction\":\"from-page\",\"type\":{\"kind\":\"int32\"}},\"name\":\"Add\",\"wire\":\"add\"}],\"interactions\":[{\"input\":{\"direction\":\"to-page\",\"type\":{\"kind\":\"string\"}},\"name\":\"Confirm\",\"output\":{\"direction\":\"from-page\",\"type\":{\"kind\":\"boolean\"}},\"wire\":\"confirm\"}],\"kinds\":[\"counter\"],\"members\":[{\"kind\":\"value\",\"value\":{\"direction\":\"to-page\",\"type\":{\"kind\":\"int32\"}},\"wire\":\"count\"},{\"kind\":\"value\",\"settable\":true,\"value\":{\"direction\":\"both\",\"type\":{\"definition\":{\"cases\":[{\"value\":\"0\",\"wire\":\"fast\"},{\"value\":\"1\",\"wire\":\"slow\"}],\"kind\":\"enum\"},\"kind\":\"named\",\"nullable\":true}},\"wire\":\"mode\"}],\"route\":\"counter\"}}",
-  "fingerprint": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601",
+  "canonical": "{\"format\":\"runic.views.fingerprint/1\",\"view\":{\"commands\":[{\"executionState\":true,\"name\":\"Increment\",\"wire\":\"increment\"},{\"async\":true,\"input\":{\"direction\":\"from-page\",\"type\":{\"kind\":\"int32\"}},\"name\":\"Add\",\"wire\":\"add\"}],\"interactions\":[{\"input\":{\"direction\":\"to-page\",\"type\":{\"kind\":\"string\"}},\"name\":\"Confirm\",\"output\":{\"direction\":\"from-page\",\"type\":{\"kind\":\"boolean\"}},\"wire\":\"confirm\"}],\"kinds\":[\"counter\"],\"members\":[{\"kind\":\"value\",\"value\":{\"direction\":\"to-page\",\"type\":{\"kind\":\"int32\"}},\"wire\":\"count\"},{\"kind\":\"value\",\"settable\":true,\"value\":{\"direction\":\"both\",\"type\":{\"definition\":{\"cases\":[{\"value\":\"0\",\"wire\":\"fast\"},{\"value\":\"1\",\"wire\":\"slow\"}],\"kind\":\"enum\"},\"kind\":\"named\",\"nullable\":true}},\"wire\":\"mode\"},{\"kind\":\"content\",\"nullable\":true,\"pages\":[{\"kind\":\"detail\"}],\"wire\":\"detail\"}],\"route\":\"counter\"}}",
+  "fingerprint": "AEE4E877A0801B169AF0DB7ECEF22B81F7607DDFD666B6EB32A8B7C92E580309",
   "contracts": {
-    "operation": "demo::Counter:3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601",
-    "interaction": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601:interaction:Confirm"
+    "operation": "demo::Counter:AEE4E877A0801B169AF0DB7ECEF22B81F7607DDFD666B6EB32A8B7C92E580309",
+    "interaction": "AEE4E877A0801B169AF0DB7ECEF22B81F7607DDFD666B6EB32A8B7C92E580309:interaction:Confirm"
   }
 }
