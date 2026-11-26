@@ -8,7 +8,7 @@ import { Emitter, arrowBody, type Graph, type Node } from "./graph.js";
 import { Import, Ref, Shorthand, mentions, declaredTopLevel, references, withoutComments } from "./bindings.js";
 import { ContractIrDiagnostic, REGION_COLLECTION_NAME } from "./diagnostics.js";
 import { NAMED_TYPE_IMPORTS, type Modules } from "./modules.js";
-import { Builder, csQuote, dotnetNumber, lowerFirst, relaxedQuote, tsAccess, tsLiteralKey, tsPropertyName, upperFirst, isTsIdentifier } from "./text.js";
+import { Builder, quote, dotnetNumber, lowerFirst, tsAccess, tsLiteralKey, tsPropertyName, upperFirst, isTsIdentifier } from "./text.js";
 import { emitMock } from "./mock.js";
 import { OWNER, PARAMETER, type SharedParts } from "./shared.js";
 
@@ -220,7 +220,7 @@ export function emitView(context: ViewContext, view: View): void {
   // #1317: the names of the commands, which injectCommands and useCommands read from the client's type. Type-only.
   if (commands.length > 0) {
     dts.doc("", `The names of the ${shortName} ViewModel's commands, whose handles \`injectCommands\` and \`useCommands\` make.`);
-    dts.line(`export type ${shortName}CommandName = ${commands.map(command => csQuote(command.wire)).join(" | ")};`);
+    dts.line(`export type ${shortName}CommandName = ${commands.map(command => quote(command.wire)).join(" | ")};`);
     dts.line();
   }
   dts.doc("", `A connected ${shortName} ViewModel. Dispose it when its presentation ends.` + (view.doc === undefined ? "" : "\n\n" + view.doc));
@@ -364,7 +364,7 @@ export function emitView(context: ViewContext, view: View): void {
   }
   const contentDecoder = (member: ContentBinding, ref: string) =>
     member.pages.map(page => `${ref}.kind === "${page.kind}" ? page${upperFirst(page.kind)}(${ref}.id)`).join(" : ")
-    + ` : (() => { throw new ${Ref("BridgeError")}("failed", ${csQuote(`Unknown ${member.wire} kind.`)}); })()`;
+    + ` : (() => { throw new ${Ref("BridgeError")}("failed", ${quote(`Unknown ${member.wire} kind.`)}); })()`;
   // A decoder is an expression of `wire`, or a block body.
   const memberDecoders: { member: string; decoder: string; block: boolean }[] = [];
   const developmentOnlyState = new Set<string>();
@@ -406,22 +406,22 @@ export function emitView(context: ViewContext, view: View): void {
   for (const { member, decoder, block } of memberDecoders)
     ts.line(block ? `  ${tsLiteralKey(member)}: (wire: unknown) => ${decoder},` : `  ${tsLiteralKey(member)}: (wire: unknown) => ${arrowBody(decoder)},`);
   ts.line("};");
-  ts.line(`const ${Ref("bridgeContract")} = "${fullName}:${view.fingerprint}";`);
+  ts.line(`const ${Ref("bridgeContract")} = ${quote(`${fullName}:${view.fingerprint}`)};`);
   if (interactions.length > 0) {
     ts.line(`const ${Ref("interactionDefinitions")} = ${Ref("defineInteractions")}({`);
     for (const { item, input, output } of interactions) {
       const typedValue = `(value as ${emitter.type(output.root)})`;
-      ts.line(`  ${item.wire}: { contract: "${item.contract}", decodeInput: (value: unknown) => ${arrowBody(emitter.decoder(input.root, "value"))}, encodeOutput: (value: unknown) => ${arrowBody(emitter.encoder(output.root, typedValue))} },`);
+      ts.line(`  ${item.wire}: { contract: ${quote(item.contract)}, decodeInput: (value: unknown) => ${arrowBody(emitter.decoder(input.root, "value"))}, encodeOutput: (value: unknown) => ${arrowBody(emitter.encoder(output.root, typedValue))} },`);
     }
     ts.line("});");
   }
   if (requests.length > 0) {
     ts.line(`const ${Ref("requestDefinitions")} = ${Ref("defineRequests")}({`);
     for (const { item, input } of requests)
-      ts.line(`  ${item.wire}: { contract: "${item.contract}", decodeInput: (value: unknown) => ${arrowBody(emitter.decoder(input.root, "value"))} },`);
+      ts.line(`  ${item.wire}: { contract: ${quote(item.contract)}, decodeInput: (value: unknown) => ${arrowBody(emitter.decoder(input.root, "value"))} },`);
     ts.line("});");
   }
-  if (needsCheckedWriter) ts.line(`const ${Ref("checkedFieldNames")} = [${checked.map(member => csQuote(member.wire)).join(", ")}];`);
+  if (needsCheckedWriter) ts.line(`const ${Ref("checkedFieldNames")} = [${checked.map(member => quote(member.wire)).join(", ")}];`);
   for (const operation of operations) {
     const failure = operation.decodeFailure === undefined ? "" : `, decodeFailure: value => ${arrowBody(operation.decodeFailure)}`;
     ts.line(`const ${Ref(operation.member + "Operation")}: ${Ref("BridgeOperationCodec")}<${typeArguments(operation)}> = { decode: value => ${arrowBody(operation.decodeResult)}${failure}${operation.isStream ? ", stream: true" : ""} };`);
@@ -449,8 +449,8 @@ export function emitView(context: ViewContext, view: View): void {
   const connectOptions = `contract: ${Ref("bridgeContract")}, route, ${Shorthand("members")}`
     + (hasDeltaFields ? `, collections: ${Ref("collectionDefinitions")}` : "")
     + (needsCheckedWriter ? `, checkedFields: ${Ref("checkedFieldNames")}` : "")
-    + (textMembers.length > 0 ? `, texts: [${textMembers.map(member => csQuote(member.wire)).join(", ")}]` : "")
-    + (scopedCommands.length > 0 ? `, scopedCommands: [${scopedCommands.map(member => csQuote(member)).join(", ")}]` : "")
+    + (textMembers.length > 0 ? `, texts: [${textMembers.map(member => quote(member.wire)).join(", ")}]` : "")
+    + (scopedCommands.length > 0 ? `, scopedCommands: [${scopedCommands.map(member => quote(member)).join(", ")}]` : "")
     + (interactions.length > 0 ? `, interactions: ${Ref("interactionDefinitions")}, handlers: options?.handlers` : "")
     + (requests.length > 0 ? `, requests: ${Ref("requestDefinitions")}` : "")
     + (operations.length > 0 ? `, operations: ${Ref("bridgeOperations")}` : "");
@@ -484,7 +484,7 @@ export function emitView(context: ViewContext, view: View): void {
   if (requests.length > 0) ts.line(`    requests: view.requests as unknown as ${shortName}ViewRequests,`);
   if (queries.length > 0)
     ts.line("    queries: { " + queries.map(({ member }) =>
-      `${tsLiteralKey(member.wire)}: view.queryCollection(${csQuote(member.wire)}, ${Ref("queryDefinitions")}[${csQuote(member.wire)}])`).join(", ") + " },");
+      `${tsLiteralKey(member.wire)}: view.queryCollection(${quote(member.wire)}, ${Ref("queryDefinitions")}[${quote(member.wire)}])`).join(", ") + " },");
   if (needsCheckedWriter)
     ts.line(`    fieldBaseline<K extends keyof ${shortName}CheckedFields>(field: K) { return view.fieldBaseline(field) as ${Ref("FieldBaseline")}<${shortName}CheckedFields[K]>; },`);
   if (hasFieldPaths) {
@@ -494,7 +494,7 @@ export function emitView(context: ViewContext, view: View): void {
   const isInt = (member: ValueMember) => member.value.type.kind === "int32" && member.value.type.nullable !== true;
   for (const member of settable) {
     // A setter sends the member's value as an edit.
-    const wire = csQuote(member.wire);
+    const wire = quote(member.wire);
     if (isInt(member)) ts.line(`    async set${member.name}(value) { if (!Number.isSafeInteger(value)) throw new RangeError("Value must be an integer."); return view.set(${wire}, value); },`);
     else ts.line(`    async set${member.name}(value) { return view.set(${wire}, ${emitter.encoder(values.get(member)!.root, "value")}); },`);
   }
@@ -510,11 +510,11 @@ export function emitView(context: ViewContext, view: View): void {
       : type.kind === "string" ? 'typeof value !== "string" || !baseline || typeof baseline.value !== "string"' : "!baseline";
     ts.line(`      if (${check} || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError("A checked field value and baseline are required.");`);
     const root = values.get(member)!.root;
-    ts.line(`      return view.write<${valueType(member)}>(${csQuote(member.wire)}, { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: ${emitter.encoder(root, "baseline.value")}, value: ${emitter.encoder(root, "value")} }, value => ${arrowBody(emitter.decoder(root, "value"))});`);
+    ts.line(`      return view.write<${valueType(member)}>(${quote(member.wire)}, { requestId: options.requestId, expectedVersion: baseline.version, expectedValue: ${emitter.encoder(root, "baseline.value")}, value: ${emitter.encoder(root, "value")} }, value => ${arrowBody(emitter.decoder(root, "value"))});`);
     ts.line("    },");
   }
   for (const command of commands) {
-    const member = csQuote(command.wire);
+    const member = quote(command.wire);
     const parameter = command.parameter ?? "input";
     const input = inputs.has(command) ? emitter.encoder(inputs.get(command)!.root, parameter) : command.input?.untyped ? parameter : null;
     const argument = input === null ? "" : `, ${input}`;
@@ -523,10 +523,10 @@ export function emitView(context: ViewContext, view: View): void {
       : `    async ${command.wire}(${hasArgument(command) ? parameter : ""}) { return view.command(${member}${argument}); },`);
     if (hasArgument(command)) ts.line(`    async can${command.name}(${parameter}) { return view.can(${member}${argument}); },`);
   }
-  for (const { member, method, action } of regionMethods) ts.line(`    async ${method}(key) { return view.region(${csQuote(member.wire)}, "${action}", key); },`);
+  for (const { member, method, action } of regionMethods) ts.line(`    async ${method}(key) { return view.region(${quote(member.wire)}, "${action}", key); },`);
   for (const operation of operations) {
     const parameter = operation.hasInput ? `${operation.inputName}: ${operation.inputType}, ` : "";
-    const member = csQuote(operation.member);
+    const member = quote(operation.member);
     ts.line(`    start${operation.name}(${parameter}options?: ${Ref("BridgeOperationStartOptions")}) { return view.start(${member}, options?.requestId ?? globalThis.crypto.randomUUID(), ${operation.hasInput ? operation.encodeInput : "undefined"}, ${Ref(operation.member + "Operation")}); },`);
     ts.line(`    recover${operation.name}(requestId: string) { return view.recover(${member}, requestId, ${Ref(operation.member + "Operation")}); },`);
   }
@@ -656,7 +656,7 @@ export function emitView(context: ViewContext, view: View): void {
     ts.line("} = {");
     for (const member of fieldMembers) {
       const wire = member.wire;
-      const name = csQuote(wire);
+      const name = quote(wire);
       const root = values.get(member)!.root;
       ts.line(`  ${tsLiteralKey(wire)}: {`);
       ts.line(`    name: ${name}, ${fieldTraits(root, member.constraints)},`);
@@ -678,7 +678,7 @@ export function emitView(context: ViewContext, view: View): void {
     for (const [member, list] of rowFieldPaths) {
       const wire = member.wire;
       const row = `row: { key, rows: state => ${tsAccess("state", wire)}, keyOf: item => String(${tsAccess("item", member.collectionKey!)}) }`;
-      ts.line(`  ${tsLiteralKey(wire)}: ${Ref("rowFields")}(${csQuote(wire)}, key => ({`);
+      ts.line(`  ${tsLiteralKey(wire)}: ${Ref("rowFields")}(${quote(wire)}, key => ({`);
       for (const line of leafValues(list, [], wire, row, emitter.type(values.get(member)!.root.element!))) ts.line("    " + line);
       ts.line("  })),");
     }
@@ -707,11 +707,11 @@ export function emitView(context: ViewContext, view: View): void {
         const optional = index > 0 && leaf.chain[index - 1]!.type.nullable;
         read = isTsIdentifier(step.wire) && step.wire !== "__proto__"
           ? `${read}${optional ? "?." : "."}${step.wire}`
-          : `${read}${optional ? "?." : ""}[${csQuote(step.wire)}]`;
+          : `${read}${optional ? "?." : ""}[${quote(step.wire)}]`;
       });
       if (leaf.chain.slice(0, -1).some(step => step.type.nullable)) read += ` as ${type}`;
-      const spec = `${Ref("fieldPath")}<${clientName}, ${shortName}State, ${type}, ${containerType}>({ member: ${csQuote(member)}, `
-        + `path: [${leaf.path.map(segment => csQuote(segment)).join(", ")}], ${locate}, `
+      const spec = `${Ref("fieldPath")}<${clientName}, ${shortName}State, ${type}, ${containerType}>({ member: ${quote(member)}, `
+        + `path: [${leaf.path.map(segment => quote(segment)).join(", ")}], ${locate}, `
         + `read: (value: ${containerType}) => ${read}, `
         + `encode: (value: ${type}) => ${arrowBody(emitter.encoder(node, "value"))}, `
         + `decode: (wire: unknown) => ${arrowBody(emitter.decoder(node, "wire"))}, `
@@ -758,7 +758,7 @@ function fieldTraits(root: Node, constraints: Constraints | undefined): string {
   if (root.kind === "offset-date-time") traits += ", offset: true";
   if (constraints) {
     const parts: string[] = [];
-    const bound = (value: number | string) => (typeof value === "number" ? dotnetNumber(value) : csQuote(value));
+    const bound = (value: number | string) => (typeof value === "number" ? dotnetNumber(value) : quote(value));
     if (constraints.required) parts.push("required: true");
     if (constraints.minLength !== undefined) parts.push(`minLength: ${constraints.minLength}`);
     if (constraints.maxLength !== undefined) parts.push(`maxLength: ${constraints.maxLength}`);
@@ -766,13 +766,13 @@ function fieldTraits(root: Node, constraints: Constraints | undefined): string {
     if (constraints.max !== undefined) parts.push(`max: ${bound(constraints.max)}`);
     if (constraints.minExclusive) parts.push("minExclusive: true");
     if (constraints.maxExclusive) parts.push("maxExclusive: true");
-    if (constraints.pattern !== undefined) parts.push(`pattern: ${relaxedQuote(constraints.pattern)}`);
+    if (constraints.pattern !== undefined) parts.push(`pattern: ${quote(constraints.pattern)}`);
     if (parts.length > 0) traits += `, constraints: { ${parts.join(", ")} }`;
   }
   if (root.kind === "enum") {
     const definition = root.definition as Extract<TypeDefinition, { kind: "enum" }>;
     const written = new Set<string>();
-    traits += `, choices: [${definition.cases.filter(item => !written.has(item.value) && written.add(item.value)).map(item => csQuote(item.wire)).join(", ")}]`;
+    traits += `, choices: [${definition.cases.filter(item => !written.has(item.value) && written.add(item.value)).map(item => quote(item.wire)).join(", ")}]`;
   }
   return traits;
 }

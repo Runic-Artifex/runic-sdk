@@ -1,0 +1,36 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "interactions.confirm-declined.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "interactions",
+  "roles": ["producer"],
+  "description": "confirmClear whose confirm interaction is answered with accepted false changes no row and replies ok after the frame of its end.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-notes": {"kind":"request"},
+    "command-request": {"kind":"request"},
+    "answer": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "confirmContract": {"kind":"provided"},
+    "interactionRequest": {"kind":"provided"},
+    "ownerEpoch": {"kind":"provided"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"}]}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"},"handlers":[{"name":"confirm","contract":{"$id":"confirmContract"}}]},"id":"open-notes"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"","priority":"Normal","due":null,"elapsed":"PT0S","rows":[{"id":1,"label":"one"}],"count":1,"summary":"rows: 1","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":true,"canTouch":true,"canSave":true,"canConfirmClear":true,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok","registration":"ok"},"replyTo":"open-notes"},
+    {"send":{"kind":"command","route":"notes","member":"confirmClear"},"id":"command-request"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"isConfirmClearExecuting","kind":"set","value":true},{"field":"canConfirmClear","kind":"set","value":false}]}},
+    {"receive":{"kind":"interaction","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"name":"confirm","contract":{"$id":"confirmContract"},"expiresAt":{"$any":"string","default":"2026-10-28T12:02:00Z"},"input":{"question":"Clear all rows?"}}},
+    {"send":{"kind":"interaction-reply","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"name":"confirm","contract":{"$id":"confirmContract"},"outcome":"answered","output":{"accepted":false}},"id":"answer"},
+    {"receive":{"ok":true,"result":"ok"},"replyTo":"answer","unordered":true},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"canConfirmClear","kind":"set","value":true},{"field":"isConfirmClearExecuting","kind":"set","value":false}]},"unordered":true},
+    {"receive":{"ok":true,"revision":2},"replyTo":"command-request"}
+  ]
+}

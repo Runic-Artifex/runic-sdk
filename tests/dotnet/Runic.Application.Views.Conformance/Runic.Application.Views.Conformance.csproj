@@ -22,6 +22,8 @@
   <ItemGroup>
     <!-- ValidationSignal of the form View. -->
     <Compile Include="../Runic.Application.Testing.Tests/ReactiveValidationFixture.cs" Link="Support/ReactiveValidationFixture.cs" />
+    <!-- The test Views' contract IR, from which ConformanceContracts derives their contracts. -->
+    <EmbeddedResource Include="../../../specs/application/conformance/views.ir.json" LogicalName="ConformanceViews.ir.json" Link="Conformance/views.ir.json" />
     <Compile Include="../Runic.Application.Testing.Tests/Conformance/*.cs" Exclude="../Runic.Application.Testing.Tests/Conformance/*Tests.cs" Link="Conformance/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>

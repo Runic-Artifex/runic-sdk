@@ -1,6 +1,6 @@
 // Value graphs and named types: BridgeTypeGraph's TypeScript half and TypeScriptNamedTypes, over the IR.
 import type { ContractIr, Direction, ObjectMember, NameHints, TypeDefinition, TypeRef, Value } from "./ir.js";
-import { Builder, NAME, WORD, csQuote, ordinal } from "./text.js";
+import { Builder, NAME, WORD, quote, ordinal } from "./text.js";
 import { declaredTopLevel } from "./bindings.js";
 
 export interface Node {
@@ -57,8 +57,8 @@ const jsonNull = (node: Node) => (node.typeRef as { jsonNull?: boolean }).jsonNu
 export const arrowBody = (expression: string) => (expression.trimStart().startsWith("{") ? `(${expression})` : expression);
 const arrayElement = (type: string) => (/[ |&{(<]/.test(type) ? `(${type})` : type);
 const propertyKey = (name: string) =>
-  name.length > 0 && /[\p{L}_$]/u.test(name[0]!) && /^[\p{L}\p{Nd}_$]*$/u.test(name.slice(1)) ? name : csQuote(name);
-const literalKey = (name: string) => (name === "__proto__" ? "[" + csQuote(name) + "]" : propertyKey(name));
+  name.length > 0 && /[\p{L}_$]/u.test(name[0]!) && /^[\p{L}\p{Nd}_$]*$/u.test(name.slice(1)) ? name : quote(name);
+const literalKey = (name: string) => (name === "__proto__" ? "[" + quote(name) + "]" : propertyKey(name));
 
 export class Emitter {
   readonly named: NamedTypes;
@@ -111,7 +111,7 @@ export class Emitter {
       case "duration": nonNull = `bridgeWire.duration(${expression})`; break;
       case "enum": {
         const cases = (node.definition as Extract<TypeDefinition, { kind: "enum" }>).cases;
-        nonNull = `bridgeWire.enumName<${this.named.reference(node)}>(${expression}, [${cases.map(item => csQuote(item.wire)).join(", ")}])`;
+        nonNull = `bridgeWire.enumName<${this.named.reference(node)}>(${expression}, [${cases.map(item => quote(item.wire)).join(", ")}])`;
         break;
       }
       case "list": nonNull = `bridgeWire.array(${expression}, item => ${arrowBody(this.decoder(node.element!, "item"))})`; break;
@@ -134,10 +134,10 @@ export class Emitter {
 
   private decodeMembers(node: Node, declared: Node, value: string, discriminator: string | null): string {
     const fields: string[] = [];
-    if (discriminator !== null) fields.push(`$case: ${csQuote(discriminator)}`);
+    if (discriminator !== null) fields.push(`$case: ${quote(discriminator)}`);
     let omits = false;
     for (const member of node.members) {
-      const access = value + "[" + csQuote(member.wire) + "]";
+      const access = value + "[" + quote(member.wire) + "]";
       const decoded = this.decoder(member.type, access);
       if (!mayBeMissing(member)) fields.push(literalKey(member.wire) + ": " + decoded);
       else if (member.type.nullable && !member.absent) fields.push(`${literalKey(member.wire)}: ${access} === undefined ? null : ${decoded}`);
@@ -152,7 +152,7 @@ export class Emitter {
 
   private decodeUnion(node: Node, expression: string): string {
     const value = `bridgeDecodedUnion${node.id}`;
-    const cases = node.cases.map(item => `case ${csQuote(item.tag)}: return ${this.decodeMembers(item.type, node, value, item.tag)};`).join(" ");
+    const cases = node.cases.map(item => `case ${quote(item.tag)}: return ${this.decodeMembers(item.type, node, value, item.tag)};`).join(" ");
     return `((): ${this.named.reference(node)} => { const ${value}: any = bridgeWire.union(${expression}); switch (${value}.$case) { ${cases} default: throw new RangeError("Unknown union case."); } })()`;
   }
 
@@ -170,7 +170,7 @@ export class Emitter {
       case "list": nonNull = `${value}.map(item => ${arrowBody(this.encoder(node.element!, "item"))})`; break;
       case "map": nonNull = `Object.fromEntries(Object.entries(${value}).map(([key, item]) => [key, ${this.encoder(node.value!, "item")}]))`; break;
       case "object":
-        nonNull = "{ " + node.members.map(member => "[" + csQuote(member.wire) + "]: " + this.encodeMember(member, value + "[" + csQuote(member.wire) + "]")).join(", ") + " }";
+        nonNull = "{ " + node.members.map(member => "[" + quote(member.wire) + "]: " + this.encodeMember(member, value + "[" + quote(member.wire) + "]")).join(", ") + " }";
         break;
       case "union": nonNull = this.encodeUnion(node, value); break;
       case "custom": nonNull = (node.typeRef as { typescript: { encode: string } }).typescript.encode.replaceAll("$value", value); break;
@@ -191,8 +191,8 @@ export class Emitter {
   private encodeUnion(node: Node, expression: string): string {
     const unionValue = `bridgeUnion${node.id}`;
     const cases = node.cases.map(item => {
-      const fields = item.type.members.map(member => "[" + csQuote(member.wire) + "]: " + this.encodeMember(member, unionValue + "[" + csQuote(member.wire) + "]")).join(", ");
-      return `case ${csQuote(item.tag)}: return { "$case": ${csQuote(item.tag)}${fields.length === 0 ? "" : ", " + fields} };`;
+      const fields = item.type.members.map(member => "[" + quote(member.wire) + "]: " + this.encodeMember(member, unionValue + "[" + quote(member.wire) + "]")).join(", ");
+      return `case ${quote(item.tag)}: return { "$case": ${quote(item.tag)}${fields.length === 0 ? "" : ", " + fields} };`;
     }).join(" ");
     return `(() => { const ${unionValue}: ${this.named.reference(node)} = ${expression}; bridgeWire.encodeUnion(${unionValue}); switch (${unionValue}.$case) { ${cases} default: throw new RangeError("Unknown union case."); } })()`;
   }
@@ -214,7 +214,7 @@ export class Emitter {
         const cases = definition.cases.filter(item => item.doc !== undefined).map(item => `- \`${item.wire}\`: ${item.doc!.replaceAll("\n", " ")}`);
         if (cases.length > 0) documentation = (documentation === null ? "" : documentation + "\n\n") + cases.join("\n");
         source.doc("", documentation);
-        source.line(`export type ${name} = ${definition.cases.length === 0 ? "never" : definition.cases.map(item => csQuote(item.wire)).join(" | ")};`);
+        source.line(`export type ${name} = ${definition.cases.length === 0 ? "never" : definition.cases.map(item => quote(item.wire)).join(" | ")};`);
         break;
       }
       case "object":
@@ -231,7 +231,7 @@ export class Emitter {
         source.doc("", definition.doc);
         source.line(`export type ${name} =`);
         node.cases.forEach((item, index) => {
-          const tag = `{ readonly $case: ${csQuote(item.tag)} }`;
+          const tag = `{ readonly $case: ${quote(item.tag)} }`;
           source.append("  | ").append(item.type.members.length === 0 ? tag : `(${tag} & ${this.named.reference(item.type)})`);
           source.line(index === node.cases.length - 1 ? ";" : "");
         });
@@ -384,7 +384,7 @@ export class NamedTypes {
       if (values !== null) {
         const definition = entry.node.definition as Extract<TypeDefinition, { kind: "enum" }>;
         const written = new Set<string>();
-        const names = definition.cases.filter(item => !written.has(item.value) && written.add(item.value)).map(item => csQuote(item.wire));
+        const names = definition.cases.filter(item => !written.has(item.value) && written.add(item.value)).map(item => quote(item.wire));
         source.line(`/** The values of {@link ${entry.name}} that .NET writes, in declaration order. */`);
         source.line(`export const ${values} = [${names.join(", ")}] as const satisfies readonly ${entry.name}[];`);
       }

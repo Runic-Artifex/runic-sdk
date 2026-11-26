@@ -122,7 +122,7 @@ internal sealed class TabsPageBridge(IBridgeTransport transport, TabsPageViewMod
     : ViewModelBridge(transport, vm, typeof(TabsPageViewModel), route,
         [new("title", ConformanceWire.Value<TabsPageViewModel>(model => model.Title))],
         [new("Title", "title", model => ((TabsPageViewModel)model).Title, null) { TextMember = true }],
-        [], [], "conformance-page", content);
+        [], [], ConformanceContracts.Fingerprint(typeof(TabsPageViewModel)), content);
 
 internal sealed class TabsBridge(IBridgeTransport transport, TabsViewModel vm, WindowContentSession content)
     : ViewModelBridge(transport, vm, typeof(TabsViewModel), "tabs",
@@ -134,7 +134,7 @@ internal sealed class TabsBridge(IBridgeTransport transport, TabsViewModel vm, W
             new("Documents", "documents", model => ((TabsViewModel)model).Documents, null, static model => ((TabsViewModel)model).Documents) { RegionCollection = true, RegionClose = true },
             new("Pinned", "pinned", model => ((TabsViewModel)model).Pinned, null, static model => ((TabsViewModel)model).Pinned) { RegionCollection = true, RegionClose = false },
         ],
-        [], [], "conformance-tabs", content)
+        [], [], ConformanceContracts.Fingerprint(typeof(TabsViewModel)), content)
 {
     // {regions: [{key, content}], selected}: each region's Current is presented like an item of a content collection,
     // so content that no region presents any more is pruned.

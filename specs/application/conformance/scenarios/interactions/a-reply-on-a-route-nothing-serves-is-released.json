@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "interactions.a-reply-on-a-route-nothing-serves-is-released.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "interactions",
+  "roles": ["producer"],
+  "description": "An interaction-reply that names a route the producer does not serve is answered released, as every request on such a route is, not stale.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "answer": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"interaction-reply","route":"gone","presentation":{"$id":"presentation"},"requestId":"r-1","ownerEpoch":1,"name":"confirm","contract":"x","outcome":"cancelled"},"id":"answer"},
+    {"receive":{"ok":false,"error":{"kind":"released","message":"This View was released."}},"replyTo":"answer"}
+  ]
+}

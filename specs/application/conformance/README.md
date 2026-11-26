@@ -132,7 +132,7 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `send` | delivers the request to the producer | requires that the client's next request on the connection equals the message |
 | `receive` | requires that the producer's next message on the connection equals the message | delivers the message: as the reply to the request `replyTo`, or as a push. With `drop: true` it does not deliver it. |
 | `advance` | advances the virtual clock by that many milliseconds | the same |
-| `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again. Only pushes are held; replies are always taken. The runner's transport lets the producer wait until it took a push, as the producer's [reply order](../README.md#reply-order) needs. | skips it |
+| `delivery` | `hold`: the transport stops taking pushes after the one being delivered, and when none is being delivered, it takes none, the next one included; `release`: it takes them again, in order. Only pushes are held; replies are always taken. The runner's transport lets the producer wait until it took a push, as the producer's [reply order](../README.md#reply-order) needs. | skips it |
 | `flushFields` | starts a [field flush](../README.md#field-flush) of the window and names it `id` | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
 | `setLocale` | sets the window's locale, a tag or `null` ([translated text](../README.md#translated-text)) | skips it |
@@ -330,6 +330,12 @@ code, is normative, and this section is all of it. Each root View is the root of
 name. Each window has failure detail off and publishes each mutation step as soon as it ran: it does not coalesce
 changes by time ([publication units](../state-changes.md#publication-units)).
 
+A test View's contract IR ([contract IR](../contract-ir.md)) has the View's name with an uppercase first letter as its
+`name` (`Notes`), its name as its `route` and only kind, and its members, commands, interactions and view requests in
+the order of the tables below; a member's or command's IR `name` is its wire name with an uppercase first letter.
+[`views.ir.json`](views.ir.json) is the IR of the .NET producer's test Views, from which its adapter derives their
+contracts; `ConformanceContractTests` checks it against them, and `eng/views-contract-ir.test.mjs` its fingerprints.
+
 ### Provided ids
 
 A `provided` id ([identifiers](#identifiers)) is a value the producer chooses. A runner asks the producer's adapter for
@@ -342,7 +348,7 @@ them:
 | `confirmContract` | string | The contract of the `notes` View's `confirm` interaction ([interactions](../README.md#interactions)). |
 | `focusContract`, `revealContract`, `toastContract` | string | The contracts of the `notes` View's view requests `focus`, `reveal` and `toast` ([view requests](../README.md#view-requests)). |
 | `interactionRequest` | string | The `requestId` of an interaction request the producer sends. |
-| `ownerEpoch` | number | The presentation epoch of the presentation an interaction request belongs to. |
+| `ownerEpoch` | number | The `ownerEpoch` the producer assigns to an interaction request ([interactions](../README.md#interactions)); not the presentation epoch. |
 | `flushId` | string | The `id` of a `flush` push ([field flush](../README.md#field-flush)). |
 
 A producer derives the contract ids from the `notes` View's fingerprint, `runic.views.fingerprint/1`
@@ -354,10 +360,16 @@ says:
 - `focusContract`, `revealContract` and `toastContract` are `{fingerprint}:request:Focus`, `…:Reveal` and `…:Toast`.
 
 The fingerprint depends only on the View's wire contract, so producers whose test Views describe the same contract
-compute the same one. `contract` still differs between producers by its View id. Runners take every contract id from
-the adapter, so this corpus does not check the derivation itself. The .NET adapter's test Views are hand-written Bridges
-with placeholder contracts (`conformance-notes`, `conformance.notes.confirm.v1` and the like), not derived ones;
-deriving them is a follow-up (R7 slice G9b).
+compute the same one, and the ids are comparable across producers: compare a producer's IR of the test Views with
+[`views.ir.json`](views.ir.json). Two parts still differ between producers by design:
+
+- `contract` contains the producer's View id (`Runic.Application.Testing.Tests.Conformance.NotesViewModel` in .NET);
+- the [projection](../contract-ir.md#projection) keeps the ids of the Views a member presents, so the fingerprint of a
+  View with a content member, `notes` (`detail`) and `tabs` (`page`), and with it `confirmContract`, `focusContract`,
+  `revealContract` and `toastContract`, contains the producer's id of the presented View.
+
+The other test Views' fingerprints are the same in every producer. Runners take every contract id from the adapter, so
+this corpus does not check the derivation itself.
 
 ### `list`
 
@@ -380,7 +392,7 @@ The model of the protocol-3 text fixtures. Members: `log`, a nullable append-onl
 | Member | Type | Default and behaviour |
 | --- | --- | --- |
 | `title` | `string` | `""`; settable; the setter trims whitespace |
-| `note` | `string` | `""`; a checked field, written with `write` or set by `assign` |
+| `note` | `string` | `""`; settable; a checked field, written with `write` or set by `set` and `assign` |
 | `priority` | enum `Low`, `Normal`, `High` | `Normal`; settable |
 | `due` | nullable `local-date` | `null`; settable |
 | `elapsed` | `duration` | `PT0S`; settable |
@@ -416,8 +428,8 @@ shows it no longer executing, and an operation's terminal status carries that fr
 | `touch` | none | always | appends `!` to `title` without announcing the change, then raises the `focus` view request |
 | `save` | none | always | fails with its declared failure `{"$case": "titleRequired"}` when `title` is empty; otherwise changes nothing |
 | `annotate` | `string` | always | sets the `detail` View's `lastAction` to the input; changes nothing in `notes` |
-| `slowImport` | `{source: string, limit: int32}` | while it is not executing | an operation; runs until a `finish` mutation, and ignores its input; reports each `progress` mutation's `value` (a number) as its progress, in the mutation's unit; `finish` with `rows` appends rows with those labels, with ids as `addRow` gives them, and succeeds with their number (`int32`); `finish` with `failure` fails with the declared failure `{"$case": "sourceMissing"}`; `finish` with `outcome: "cancelled"` ends cancelled after a `cancel`, and fails without one |
-| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts; an output of another shape fails the interaction |
+| `slowImport` | `{source: string, limit: int32}` | while it is not executing | an operation, or an asynchronous command when invoked with `command`; runs until a `finish` mutation, and ignores its input; reports each `progress` mutation's `value` (a number) as its progress, in the mutation's unit; `finish` with `rows` appends rows with those labels as one change (one `add` with all their keys), with ids as `addRow` gives them, and succeeds with their number (`int32`); `finish` with `failure` fails with the declared failure `{"$case": "sourceMissing"}`; `finish` with `outcome: "cancelled"` ends cancelled after a `cancel`, and fails without one |
+| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts. It succeeds without an effect when the output declines, or when no presentation of the invoking connection registered `confirm`. An output of another shape fails the interaction, and the command with `failed`, as a timeout or a `failed` or `cancelled` reply does; a request that ends because its presentation closed ends the command `cancelled` |
 
 The `confirm` interaction's contract is the provided id `confirmContract`; its input is `{question: string}` and its
 output `{accepted: boolean}`.

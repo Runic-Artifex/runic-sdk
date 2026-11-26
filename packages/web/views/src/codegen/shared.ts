@@ -5,7 +5,7 @@ import type { SharedClient, View } from "./ir.js";
 import { Import, Ref } from "./bindings.js";
 import { ContractIrDiagnostic, SHARED_CLIENT } from "./diagnostics.js";
 import { NAMED_TYPE_IMPORTS, type Modules } from "./modules.js";
-import { Builder, csQuote, lowerFirst, ordinal } from "./text.js";
+import { Builder, quote, lowerFirst, ordinal } from "./text.js";
 
 /** Stands for the View's own name in a recorded declaration. */
 export const OWNER = "\u000e";
@@ -146,7 +146,7 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
   append(body, "  ", "client");
   body.line("}");
   body.line();
-  const kindUnion = kinds.map(kind => csQuote(kind)).join(" | ");
+  const kindUnion = kinds.map(kind => quote(kind)).join(" | ");
   body.doc("", `The page reference of any View whose ViewModel implements \`${contract}\`. \`connect()\` returns the shared client;\n`
     + "each implementing ViewModel's own page reference extends this one, and a `ViewRegistry` accepts a component for it at each of its kinds.");
   body.line(`export interface ${reference} {`);
@@ -155,7 +155,7 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
   body.line("}");
   body.line();
   body.doc("", `Every kind of \`${reference}\`, for example to register one component for each with \`registryEntries\`.`);
-  body.line(`export const ${module}Kinds: readonly ${reference}["kind"][] = [${kinds.map(kind => csQuote(kind)).join(", ")}];`);
+  body.line(`export const ${module}Kinds: readonly ${reference}["kind"][] = [${kinds.map(kind => quote(kind)).join(", ")}];`);
 
   const text = body.toString();
   const publicTypes = ["ViewClient", "BridgeOutcome", "BridgeOperation", "BridgeStreamOperation", "BridgeOperationStartOptions",

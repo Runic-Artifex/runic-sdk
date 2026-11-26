@@ -65,20 +65,33 @@ Three kinds of names appear in the IR:
 | Member | Content |
 | --- | --- |
 | `id` | The View id |
-| `name` | The public name, such as `Counter` for `CounterViewModel`: letters and digits, starting with a letter. It prefixes the client's TypeScript names (`CounterState`, `CounterClient`). |
+| `name` | The public name, such as `Counter` for `CounterViewModel`: letters and digits, starting with a letter, unique in the unit. It prefixes the client's TypeScript names (`CounterState`, `CounterClient`). The producer chooses it ([below](#public-names)). |
 | `route` | The route prefix and module name: `name` with a lowercase first letter (`counter`, `counter.ts`) |
 | `fingerprint` | The View's [fingerprint](#fingerprint) (`runic.views.fingerprint/1`), a hash of the View's own contract. The emitter writes it into the client's contract string unread. |
 | `kinds` | The presentation kinds, one per View contract (`notes`, `notesCompact`); the first is the default |
 | `doc` | The View's documentation |
 | `developmentOnly` | A View that a trimmed or NativeAOT publish leaves out. Its client is the same in every configuration. |
 | `owner` | In application mode, the `unit` of the client library that owns the View's client |
-| `memberErrors` | Every state member has a `{wire}Errors` member (`INotifyDataErrorInfo`) |
+| `memberErrors` | The model reports errors per member (`INotifyDataErrorInfo`): each entry of `members`, of every `kind`, has the state member `{wire}Errors` ([protocol](README.md#nameerrors)), directly after it in the state. The availability members, the execution members and `validation` have none. |
 | `validation` | The View has the `validation` state member |
 | `uploads` | A command input or settable member takes an `upload`, so the client has `upload()` |
 | `sharedClients` | The ids of the shared clients the View implements |
 | `members` | The [state members](#state-members), in declaration order |
 | `commands` | The [commands](#commands), in declaration order |
 | `interactions`, `requests` | The [interactions and view requests](#interactions-and-view-requests) |
+
+### Public names
+
+A producer derives a View's `name` from its source name, and MAY let the source choose another one:
+
+- the .NET producer takes the ViewModel type's name without a trailing `ViewModel` (`CounterViewModel` is `Counter`,
+  `Settings` stays `Settings`);
+- a Rust producer takes the struct's name without a trailing `ViewModel` or `View` (`CounterView` is `Counter`), and
+  its `name` attribute replaces it.
+
+`route` is `name` with a lowercase first letter, and the [fingerprint](#fingerprint) covers it. Two producers that
+mean to describe the same View, such as the [conformance test Views](conformance/README.md#test-views), give it the same
+name, whatever their source names.
 
 ### State members
 
@@ -102,9 +115,9 @@ A `value` or `selection` member may also have:
 | Member | Content |
 | --- | --- |
 | `settable` | The page sets it: the client has `set{Name}`. `declaringType` names the source type that declares the setter. It is informational: the client's documentation names no source type, so that it fits a producer in any language. |
-| `checked` | A checked field ([protocol](README.md#checked-writes)): the client has `write{Name}` and a field descriptor |
+| `checked` | A checked field ([protocol](README.md#checked-writes)): the client has `write{Name}` and a field descriptor, which also sets the field with `set{Name}`. A checked field MUST be `settable`, and the schema requires it. The .NET producer makes every settable value member checked; another producer may have settable members that are not. |
 | `constraints` | Of a checked field: the [constraints](#constraints) a page may mirror on its input |
-| `fieldPaths` | The [field paths](#field-paths) below a settable object member, or below the rows of an editable collection |
+| `fieldPaths` | The [field paths](#field-paths) below a checked object member, or below the rows of a collection with `rowEditor` |
 | `text` | Its changes may be text splices (`text-splice/1`) |
 | `appendOnlyText` | Append-only text (`defineText`) |
 | `collectionKey` | A keyed collection: the `wire` of the row member that is its key |
@@ -116,7 +129,7 @@ A `value` or `selection` member may also have:
 | --- | --- |
 | `name`, `wire`, `doc` | As for members. The protocol's `can{Name}` and `is{Name}Executing` state members use `name`. |
 | `parameter` | The parameter name of the client's command method; present exactly when the command takes an argument |
-| `input` | The argument's value position. A keyed command's input is its key. `untyped: true` marks a legacy string argument without a typed input graph. |
+| `input` | The argument's value position. A keyed command's input is its key, typed as the key the producer resolves: the type its resolver takes (the .NET `RunicCommandKey` method's parameter), which need not be the type of a collection's key member. The conformance `notes` View's `removeRow` takes the string `"1"`, so its input is `string`. `untyped: true` marks a legacy string argument without a typed input graph. |
 | `result`, `failure` | The result and the declared failure ([protocol](README.md#commands-and-availability)) |
 | `async` | Also an operation: the client has `start{Name}` and `recover{Name}` |
 | `stream` | An operation that streams its result values |
@@ -156,7 +169,10 @@ A type is an object with a `kind` and `nullable: true` when `null` is a value:
 
 `types` holds one definition per source type **and member shape**: two uses of one generic type whose members differ in
 nullability (`Box<string>` and `Box<string?>`) are two definitions. An id is the producer's name for the type,
-followed by `#2`, `#3` for further shapes of the same type.
+followed by `#2`, `#3` for further shapes of the same type. A named type without a source type of its own, such as the
+object of a Rust enum variant's fields, is named after its owner: its id is `{owner}::{Variant}` (the enum's id, then
+the variant's source name), `source` the same, `base` the variant's name, and `qualifiers` the owner's name first, then
+the owner's qualifiers. Ids and name hints only name types: the fingerprint leaves them out.
 
 | Member | Content |
 | --- | --- |
@@ -178,11 +194,20 @@ wire-visible.
 
 ### Field paths
 
-`fieldPaths` lists the fields below a settable `object` member, and below the rows of a keyed collection with a row
+`fieldPaths` lists the fields below a checked `object` member, and below the rows of a keyed collection with a row
 editor (`field-paths/1`), as `{path, constraints}`. `path` is the list of `wire` names from the member's object (or
-the row) down to the field, at most three deep, in the order the client declares them; a path whose field is itself an
-object is followed by the paths below it. The type of each field is found by following the path through the named
-object types.
+the row) down to the field, at most three deep. The paths are in declaration order, depth first: a path whose field is
+itself an object is followed by the paths below it. The type of each field is found by following the path through the
+named object types.
+
+A field is a member of the object that the producer can change in a copy of the object. A path leaves out:
+
+- below a row, the row's key member (`collectionKey`), which a row editor never changes;
+- `absent` members;
+- members the producer cannot set in a copy (in .NET, members without a setter that a copy can use, and the members
+  of a class it cannot copy exactly), and members the source marks as no field (`[RunicNoField]`).
+
+A member without fields below it has no `fieldPaths`.
 
 ## Shared clients
 

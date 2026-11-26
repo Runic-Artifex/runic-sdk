@@ -68,4 +68,4 @@ internal sealed class FilesBridge(IBridgeTransport transport, FilesViewModel vm,
         [new("Avatar", "avatar", model => ((FilesViewModel)model).Avatar, null), new("LastUpload", "lastUpload", model => ((FilesViewModel)model).LastUpload, null)],
         [],
         [new CommandDescriptor("Attach", model => ((FilesViewModel)model).AttachCommand) { ReadInput = static element => BridgeWire.ReadUpload(element) }],
-        "conformance-files", content);
+        ConformanceContracts.Fingerprint(typeof(FilesViewModel)), content);

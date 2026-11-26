@@ -74,4 +74,4 @@ internal sealed class CatalogConformanceBridge(IBridgeTransport transport, Catal
             new("Rows", "rows", model => ((CatalogConformanceViewModel)model).Rows, null, static model => ((CatalogConformanceViewModel)model).Rows)
                 { QueryRowWriter = static (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!) },
         ],
-        [], [], "conformance-catalog", content);
+        [], [], ConformanceContracts.Fingerprint(typeof(CatalogConformanceViewModel)), content);
