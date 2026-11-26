@@ -16,7 +16,13 @@ or its directory, they evaluate the solution's projects and take its one Window
 project (`RunicApplicationFrontendWindowProject=true`), and `dev`, `size` and
 `package` print `Solution: …/Acme.slnx, whose one Window project is
 Acme.App/Acme.App.csproj`. With several Window projects they list them and stop
-(`RAPPDEV1002`); choose one with `--project`. `--configuration` (`-c`)
+(`RAPPDEV1002`); choose one with `--project`. At a solution root, `dotnet runic`
+needs a tool manifest there: the template writes `.config/dotnet-tools.json`
+into the project folder, and `dotnet` looks for one in the current folder and
+its parents only. Move it to the solution root, or run
+`dotnet new tool-manifest` and `dotnet tool install dotnet-runic`
+there, so `dotnet runic` works from the root and from each project folder.
+`--configuration` (`-c`)
 selects the build configuration. `dotnet runic <command> --help` describes
 every option.
 
@@ -769,6 +775,12 @@ the options that describe how `dev` starts the Window (`RAPPDEV1014`).
    IDE task. It prints `[dev] Ready` when the frontend is served.
 2. Start the Window with the IDE's debugger (F5) from a launch profile with
    `DOTNET_ENVIRONMENT=Development`.
+
+The Window gets the project's arguments and those of its launch profile, which
+each IDE combines in its own way. Set an argument for Debug builds only, such as
+`/mock`, in a Debug-conditioned `StartArguments`, which every IDE and `dev`
+read; [Arguments for Debug builds](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#arguments-for-debug-builds)
+shows how and lists which surface reads which.
 
 Since 0.20, projects from the `runic-app` template have that launch profile,
 named after the project, and with `--editor vscode` VS Code tasks and
