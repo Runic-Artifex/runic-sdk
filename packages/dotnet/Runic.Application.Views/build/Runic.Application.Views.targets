@@ -486,6 +486,11 @@
     <_RunicBridgeCodegenProject>$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj</_RunicBridgeCodegenProject>
     <_RunicBridgeCodegenDll Condition="Exists('$(_RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</_RunicBridgeCodegenDll>
     <_RunicBridgeCodegenDll Condition="!Exists('$(_RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../tools/net10.0/BridgeCodegen.dll</_RunicBridgeCodegenDll>
+    <!-- The TypeScript emitter (R7 G6): the launcher beside these targets, and the copy of @runic-artifex/views/codegen
+         that the package bundles (in the repository, the workspace build of packages/web/views). -->
+    <_RunicViewsCodegenLauncher>$(MSBuildThisFileDirectory)runic-views-codegen.mjs</_RunicViewsCodegenLauncher>
+    <_RunicViewsBundledEmitter Condition="Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../../../web/views/dist/codegen/index.js'))</_RunicViewsBundledEmitter>
+    <_RunicViewsBundledEmitter Condition="!Exists('$(_RunicBridgeCodegenProject)')">$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)../tools/codegen/index.js'))</_RunicViewsBundledEmitter>
     <_RunicBridgeAotArgument Condition="'$(PublishAot)' == 'true'">--aot</_RunicBridgeAotArgument>
     <_RunicBridgeCompositionArgument Condition="'$(RunicApplicationFrontendCompositionType)' != ''">--di-composition &quot;$(RunicApplicationFrontendCompositionType)&quot;</_RunicBridgeCompositionArgument>
   </PropertyGroup>
@@ -965,7 +970,7 @@
     <!-- The generator reports its diagnostics in canonical form. They are
          logged once with their codes (see RunicViewsReportCommandResult);
          a failure that reported none is RUNICBRIDGE024, an internal error. -->
-    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgeClientLibraryArgument) $(_RunicBridgeClientModuleArguments) $(_RunicBridgeAnalyzerWarningsArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgeClientLibraryArgument) $(_RunicBridgeClientModuleArguments) $(_RunicBridgeAnalyzerWarningsArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
           Condition="'$(_RunicBridgeReuseGenerated)' != 'true'">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeCodegenExitCode" />
@@ -1011,6 +1016,142 @@
       <!-- The library-mode marker, [assembly: AssemblyMetadata("Runic.Application.Views.ClientLibrary", "1")]. -->
       <Compile Include="$(_RunicBridgeGeneratedDir)RunicClientLibrary.g.cs" Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true' and '$(_RunicBridgeSkipped)' != 'true'" />
     </ItemGroup>
+  </Target>
+
+  <!-- R7 G6 (D080.5): the TypeScript clients. After the generator has written the contract IR
+       (obj/<configuration>/<framework>/runic-bridge/contract.ir.json), Node.js or Bun runs the Views TypeScript emitter,
+       @runic-artifex/views/codegen, through runic-views-codegen.mjs. The emitter is the frontend's, resolved from
+       RunicApplicationFrontendDirectory like an import, so the clients match the runtime they import; so the frontend is
+       installed first (RunicViewsInstallFrontend). The copy bundled with this package is used when there is no frontend
+       (no package.json there), as for a library or a test project, and when the build does not build the frontend
+       (RunicApplicationFrontendBuildEnabled=false) and the frontend has no @runic-artifex/views installed.
+
+       The runtime is RunicApplicationFrontendCodegenRuntime when set (a command or path, such as node or bun), else the
+       first of node and bun on PATH, bun first when the frontend's package manager is bun. Neither is RUNICBRIDGE084.
+
+       The emitter runs when the IR, the emitter, the frontend's package.json or lock file, or the generation settings
+       changed, or when a client it wrote is missing or was changed since (runic-bridge/typescript.outputs records each
+       file's SHA-256). It rewrites only the files whose content changed, so a C#-only edit does not rebuild the frontend,
+       and removes the generated files it no longer writes. Its errors (RUNICBRIDGE004, 036, 071) are reported at the C#
+       member that the IR's sources locate. Without Views, the clients it wrote are removed. -->
+  <Target Name="RunicViewsGenerateClients" AfterTargets="RunicViewsGenerateBridge"
+          DependsOnTargets="_RunicViewsClientsPaths;_RunicViewsRemoveClients;_RunicViewsEmitClients"
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(_RunicBridgeReuseGenerated)' != 'true'" />
+
+  <Target Name="_RunicViewsClientsPaths" DependsOnTargets="_RunicViewsIntermediatePaths">
+    <PropertyGroup>
+      <_RunicViewsClientsDirectory>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendGeneratedDirectory)').TrimEnd('/').TrimEnd('\'))</_RunicViewsClientsDirectory>
+      <_RunicViewsFrontendDirectory>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendDirectory)').TrimEnd('/').TrimEnd('\'))</_RunicViewsFrontendDirectory>
+      <_RunicViewsContractIr>$(_RunicBridgeGeneratedDir)contract.ir.json</_RunicViewsContractIr>
+      <_RunicViewsClientsOutputs>$(_RunicBridgeGeneratedDir)typescript.outputs</_RunicViewsClientsOutputs>
+      <_RunicViewsClientsEmitter>$(_RunicBridgeGeneratedDir)typescript.emitter</_RunicViewsClientsEmitter>
+      <_RunicViewsClientsState>$(_RunicBridgeGeneratedDir)typescript.state</_RunicViewsClientsState>
+      <_RunicViewsClientsStamp>$(_RunicBridgeGeneratedDir)typescript.stamp</_RunicViewsClientsStamp>
+    </PropertyGroup>
+    <ItemGroup>
+      <!-- Registered on every build so IncrementalClean keeps them when the emitter is up to date. -->
+      <FileWrites Include="$(_RunicViewsClientsOutputs);$(_RunicViewsClientsEmitter);$(_RunicViewsClientsState);$(_RunicViewsClientsStamp)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The files the emitter wrote, with the SHA-256 it wrote them with, and the ones missing or changed since. -->
+  <Target Name="_RunicViewsRecordedClients" DependsOnTargets="_RunicViewsClientsPaths">
+    <ReadLinesFromFile File="$(_RunicViewsClientsOutputs)" Condition="Exists('$(_RunicViewsClientsOutputs)')">
+      <Output TaskParameter="Lines" ItemName="_RunicViewsClientsRecord" />
+    </ReadLinesFromFile>
+    <ItemGroup Condition="'@(_RunicViewsClientsRecord)' != ''">
+      <_RunicViewsClientsWritten Include="$([System.String]::Copy('%(_RunicViewsClientsRecord.Identity)').Substring(65))"
+          RecordedHash="$([System.String]::Copy('%(_RunicViewsClientsRecord.Identity)').Substring(0, 64))" />
+    </ItemGroup>
+    <ItemGroup>
+      <_RunicViewsClientsMissing Include="@(_RunicViewsClientsWritten)" Condition="!Exists('%(Identity)')" />
+      <_RunicViewsClientsPresent Include="@(_RunicViewsClientsWritten)" Condition="Exists('%(Identity)')" />
+    </ItemGroup>
+    <!-- GetFileHash's default algorithm is the launcher's, SHA-256. -->
+    <GetFileHash Files="@(_RunicViewsClientsPresent)" HashEncoding="hex" Condition="'@(_RunicViewsClientsPresent)' != ''">
+      <Output TaskParameter="Items" ItemName="_RunicViewsClientsHashed" />
+    </GetFileHash>
+    <ItemGroup>
+      <!-- MSBuild compares strings without case, so the hex digits' case does not matter. -->
+      <_RunicViewsClientsChanged Include="@(_RunicViewsClientsHashed)" Condition="'%(FileHash)' != '%(RecordedHash)'" />
+      <_RunicViewsClientsUnchanged Include="@(_RunicViewsClientsHashed)" Condition="'%(FileHash)' == '%(RecordedHash)'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- A project without Views (the generator's no-Views marker) removes the clients the emitter wrote before, unless
+       they were changed since. -->
+  <Target Name="_RunicViewsRemoveClients" DependsOnTargets="_RunicViewsRecordedClients" Condition="'$(_RunicBridgeSkipped)' == 'true'">
+    <Delete Files="@(_RunicViewsClientsUnchanged);$(_RunicViewsClientsOutputs);$(_RunicViewsClientsEmitter);$(_RunicViewsClientsStamp)" />
+  </Target>
+
+  <Target Name="_RunicViewsClientsInputs" DependsOnTargets="_RunicViewsRecordedClients;RunicViewsInstallFrontend;RunicViewsLinkFrontendNodeModules"
+          Condition="'$(_RunicBridgeSkipped)' != 'true'">
+    <PropertyGroup>
+      <_RunicViewsFrontendUnbuiltArgument Condition="'$(RunicApplicationFrontendBuildEnabled)' == 'false'">--frontend-unbuilt</_RunicViewsFrontendUnbuiltArgument>
+      <_RunicViewsUsedEmitter Condition="Exists('$(_RunicViewsClientsEmitter)')">$([System.IO.File]::ReadAllText('$(_RunicViewsClientsEmitter)').Trim())</_RunicViewsUsedEmitter>
+    </PropertyGroup>
+    <!-- What the clients depend on besides the IR and the emitter; a change regenerates them. -->
+    <WriteLinesToFile File="$(_RunicViewsClientsState)" Overwrite="true" WriteOnlyWhenDifferent="true"
+        Lines="out=$(_RunicViewsClientsDirectory);frontend=$(_RunicViewsFrontendDirectory);unbuilt=$(_RunicViewsFrontendUnbuiltArgument);runtime=$(RunicApplicationFrontendCodegenRuntime);launcher=$(_RunicViewsCodegenLauncher);bundled=$(_RunicViewsBundledEmitter)" />
+    <ItemGroup>
+      <_RunicViewsClientsInput Include="$(_RunicViewsContractIr);$(_RunicViewsClientsState);$(_RunicViewsCodegenLauncher)" />
+      <_RunicViewsClientsInput Include="$(_RunicViewsUsedEmitter)" Condition="'$(_RunicViewsUsedEmitter)' != '' and Exists('$(_RunicViewsUsedEmitter)')" />
+      <_RunicViewsClientsInput Include="$(_RunicViewsFrontendDirectory)/package.json" Condition="Exists('$(_RunicViewsFrontendDirectory)/package.json')" />
+      <_RunicViewsClientsInput Include="$(_RunicViewsFrontendDirectory)/%(_RunicBridgeFrontendLockFile.Identity)"
+          Condition="Exists('$(_RunicViewsFrontendDirectory)/%(_RunicBridgeFrontendLockFile.Identity)')" />
+    </ItemGroup>
+    <Delete Files="$(_RunicViewsClientsStamp)"
+        Condition="Exists('$(_RunicViewsClientsStamp)') and (!Exists('$(_RunicViewsClientsOutputs)') or '@(_RunicViewsClientsMissing)' != '' or '@(_RunicViewsClientsChanged)' != '')" />
+  </Target>
+
+  <!-- Runs when the generator wrote the IR: it writes one, or the no-Views marker, after every successful run. -->
+  <Target Name="_RunicViewsEmitClients" DependsOnTargets="_RunicViewsClientsInputs"
+          Inputs="@(_RunicViewsClientsInput)" Outputs="$(_RunicViewsClientsStamp)"
+          Condition="'$(_RunicBridgeSkipped)' != 'true' and Exists('$(_RunicViewsContractIr)')">
+    <PropertyGroup>
+      <_RunicViewsCodegenFirst>node</_RunicViewsCodegenFirst>
+      <_RunicViewsCodegenSecond>bun</_RunicViewsCodegenSecond>
+      <_RunicViewsCodegenFirst Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">bun</_RunicViewsCodegenFirst>
+      <_RunicViewsCodegenSecond Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">node</_RunicViewsCodegenSecond>
+      <_RunicViewsCodegenFirst Condition="'$(RunicApplicationFrontendCodegenRuntime)' != ''">$(RunicApplicationFrontendCodegenRuntime)</_RunicViewsCodegenFirst>
+      <_RunicViewsCodegenSecond Condition="'$(RunicApplicationFrontendCodegenRuntime)' != ''"></_RunicViewsCodegenSecond>
+      <_RunicViewsCodegenRuntime></_RunicViewsCodegenRuntime>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_RunicViewsCodegenFirst)&quot; --version" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicViewsCodegenFirstExitCode" />
+    </Exec>
+    <Exec Command="&quot;$(_RunicViewsCodegenSecond)&quot; --version" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          Condition="'$(_RunicViewsCodegenFirstExitCode)' != '0' and '$(_RunicViewsCodegenSecond)' != ''">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicViewsCodegenSecondExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicViewsCodegenRuntime Condition="'$(_RunicViewsCodegenFirstExitCode)' == '0'">$(_RunicViewsCodegenFirst)</_RunicViewsCodegenRuntime>
+      <_RunicViewsCodegenRuntime Condition="'$(_RunicViewsCodegenRuntime)' == '' and '$(_RunicViewsCodegenSecondExitCode)' == '0'">$(_RunicViewsCodegenSecond)</_RunicViewsCodegenRuntime>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE084" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge084"
+           Condition="'$(_RunicViewsCodegenRuntime)' == '' and '$(RunicApplicationFrontendCodegenRuntime)' != ''"
+           Text="RunicApplicationFrontendCodegenRuntime is '$(RunicApplicationFrontendCodegenRuntime)', which does not run ('$(RunicApplicationFrontendCodegenRuntime) --version' failed). $(AssemblyName) declares Runic Views, and Node.js or Bun runs the TypeScript emitter that generates their clients. Set it to a Node.js or Bun executable, or remove it to use node or bun from PATH." />
+    <Error Code="RUNICBRIDGE084" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge084"
+           Condition="'$(_RunicViewsCodegenRuntime)' == '' and '$(RunicApplicationFrontendCodegenRuntime)' == ''"
+           Text="$(AssemblyName) declares Runic Views, whose TypeScript clients the Views emitter (@runic-artifex/views/codegen) generates with Node.js or Bun, but neither node nor bun is on PATH. Install Node.js or Bun, set RunicApplicationFrontendCodegenRuntime to one of them, or set RunicApplicationFrontendGenerationEnabled=false when another project generates the Bridges." />
+    <PropertyGroup>
+      <_RunicViewsSymbolsArgument Condition="Exists('$(_RunicBridgeGeneratedDir)client-symbols.json')">--symbols &quot;$(_RunicBridgeGeneratedDir)client-symbols.json&quot;</_RunicViewsSymbolsArgument>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_RunicViewsCodegenRuntime)&quot; &quot;$(_RunicViewsCodegenLauncher)&quot; --ir &quot;$(_RunicViewsContractIr)&quot; --out &quot;$(_RunicViewsClientsDirectory)&quot; --outputs &quot;$(_RunicViewsClientsOutputs)&quot; --used-emitter &quot;$(_RunicViewsClientsEmitter)&quot; --frontend &quot;$(_RunicViewsFrontendDirectory)&quot; $(_RunicViewsFrontendUnbuiltArgument) --bundled &quot;$(_RunicViewsBundledEmitter)&quot; $(_RunicViewsSymbolsArgument) --help-link-base &quot;$(_RunicDiagnosticsHelpLinkBase)&quot;"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="normal">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicViewsEmitterExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicViewsEmitterOutputLine" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicViewsEmitterDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicViewsEmitterOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicViewsEmitterDiagnostics>
+    </PropertyGroup>
+    <RunicViewsReportCommandResult Condition="'$(_RunicViewsEmitterExitCode)' != '0' or '$(_RunicViewsEmitterDiagnostics)' == 'true'"
+        Lines="@(_RunicViewsEmitterOutputLine)" ExitCode="$(_RunicViewsEmitterExitCode)"
+        FailureCode="RUNICBRIDGE024" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The Runic Views TypeScript emitter exited with code $(_RunicViewsEmitterExitCode) without reporting an error while generating the clients of $(AssemblyName), an internal error. Its output is above; include it when you report the problem." />
+    <Touch Files="$(_RunicViewsClientsStamp)" AlwaysCreate="true" Condition="'$(_RunicViewsEmitterExitCode)' == '0'" />
   </Target>
 
   <!-- WPF's temporary markup project is a copy of the project file, so it
@@ -1188,8 +1329,8 @@
        bundler that follows NODE_ENV, such as Bun's (Bun.build, bun build),
        bundles the production build of @runic-artifex/views and of React; a
        Debug build leaves NODE_ENV unset and gets the development build.
-       The generator rewrites TypeScript only when its content changes, so a
-       C#-only edit does not rebuild the frontend.
+       The emitter rewrites TypeScript only when its content changes, so a
+       C#-only edit does not rebuild the frontend (RunicViewsGenerateClients).
 
        RunicApplicationFrontendInput is the extension point for inputs outside
        the frontend directory, such as a monorepo's shared components that the
@@ -1199,7 +1340,7 @@
        the frontend build. A missing frontend is RUNICBRIDGE014 rather than a
        failed command. -->
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
-          DependsOnTargets="_RunicViewsIntermediatePaths;RunicViewsResolveHost"
+          DependsOnTargets="_RunicViewsIntermediatePaths;RunicViewsResolveHost;RunicViewsGenerateClients"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'">
     <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge014"
            Condition="!Exists('$(RunicApplicationFrontendDirectory)') or ('$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)' and !Exists('$(RunicApplicationFrontendDirectory)/package.json'))"

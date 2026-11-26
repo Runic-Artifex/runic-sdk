@@ -3,8 +3,9 @@ using Runic.Application.Views;
 
 /// <summary>
 /// One ViewModel's Bridge contract, discovered and validated (<c>PlanView</c> in Program.cs): its members, commands,
-/// interactions and view requests with their value graphs, and what the client offers for each. The C# and TypeScript
-/// emission (<c>EmitView</c>) and the contract IR (<see cref="ContractIr"/>) read it; planning writes no output.
+/// interactions and view requests with their value graphs, and what the client offers for each. The C# emission
+/// (<c>EmitView</c>) and the contract IR (<see cref="ContractIr"/>), from which the emitter writes the TypeScript, read
+/// it; planning writes no output.
 /// </summary>
 internal sealed class ViewPlan
 {

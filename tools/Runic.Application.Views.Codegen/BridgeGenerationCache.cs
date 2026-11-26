@@ -19,8 +19,9 @@ internal static class BridgeGenerationCache
     // so outputs recorded by earlier generators must regenerate. Version 4:
     // generated content failures name their type, and warnings are recorded. Version 5: the development source map
     // (sources.json) is an output. Version 6: each client has a contract .d.ts and its declaration map (#952). Version 7:
-    // the contract IR (contract.ir.json) is an output.
-    private const int SchemaVersion = 7;
+    // the contract IR (contract.ir.json) is an output. Version 8: the TypeScript is the emitter's (R7 G6), and the record
+    // of the assemblies without a PDB (ClientSymbols) is an output.
+    private const int SchemaVersion = 8;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -31,14 +32,14 @@ internal static class BridgeGenerationCache
     /// warnings the recorded generation reported so a skipped build repeats them.
     /// </summary>
     internal static bool TryHit(string modelAssemblyPath, string csharpOutputDirectory,
-        string typeScriptOutputDirectory, IEnumerable<string> outputAffectingArguments, out IReadOnlyList<string> warnings)
+        IEnumerable<string> outputAffectingArguments, out IReadOnlyList<string> warnings)
     {
         warnings = [];
         if (IsBypassed()) return false;
 
         try
         {
-            var roots = Roots.Create(csharpOutputDirectory, typeScriptOutputDirectory);
+            var roots = Roots.Create(csharpOutputDirectory);
             var manifestPath = Path.Combine(roots.CSharp, ManifestFileName);
             if (!File.Exists(manifestPath)) return false;
 
@@ -63,17 +64,16 @@ internal static class BridgeGenerationCache
 
     /// <summary>Persists a cache entry only after all generator writes succeed.</summary>
     internal static void Save(string modelAssemblyPath, string csharpOutputDirectory,
-        string typeScriptOutputDirectory, IEnumerable<string> outputAffectingArguments, IReadOnlyList<string> warnings)
+        IEnumerable<string> outputAffectingArguments, IReadOnlyList<string> warnings)
     {
         if (IsBypassed()) return;
 
-        var roots = Roots.Create(csharpOutputDirectory, typeScriptOutputDirectory);
+        var roots = Roots.Create(csharpOutputDirectory);
         var manifest = new Manifest
         {
             SchemaVersion = SchemaVersion,
             Fingerprint = ComputeFingerprint(modelAssemblyPath, roots, outputAffectingArguments),
             CSharpOutputs = CaptureOutputs(roots.CSharp, IsCSharpGeneratedFile),
-            TypeScriptOutputs = CaptureOutputs(roots.TypeScript, IsTypeScriptGeneratedFile),
             Warnings = [.. warnings],
         };
         WriteAtomically(Path.Combine(roots.CSharp, ManifestFileName),
@@ -102,7 +102,6 @@ internal static class BridgeGenerationCache
             $"schema:{SchemaVersion}",
             $"model:{fullModel}",
             $"csharp-output:{roots.CSharp}",
-            $"typescript-output:{roots.TypeScript}",
         };
         inputs.AddRange(outputAffectingArguments.Select(argument => "arg:" + argument));
 
@@ -113,7 +112,7 @@ internal static class BridgeGenerationCache
                      .Select(Path.GetFullPath).OrderBy(path => path, StringComparer.Ordinal))
             inputs.Add("model-directory:" + dependency + ":" + HashFile(dependency));
 
-        // Generated TypeScript copies XML documentation comments. A comment edit
+        // The contract IR copies XML documentation comments. A comment edit
         // does not necessarily change a deterministic assembly, so hash the
         // documentation files beside the assemblies as well.
         foreach (var documentation in Directory.EnumerateFiles(modelDirectory, "*.xml")
@@ -146,8 +145,7 @@ internal static class BridgeGenerationCache
     }
 
     private static bool VerifyOutputs(Roots roots, Manifest manifest) =>
-        VerifyOutputGroup(roots.CSharp, manifest.CSharpOutputs, IsCSharpGeneratedFile)
-        && VerifyOutputGroup(roots.TypeScript, manifest.TypeScriptOutputs, IsTypeScriptGeneratedFile);
+        VerifyOutputGroup(roots.CSharp, manifest.CSharpOutputs, IsCSharpGeneratedFile);
 
     private static bool VerifyOutputGroup(string root, IReadOnlyList<Output>? expected,
         Func<string, bool> include)
@@ -176,21 +174,19 @@ internal static class BridgeGenerationCache
             .ToList();
     }
 
+    // Every generated C# file, as the generator's stale-output removal sees one, so a stale or edited one regenerates;
+    // the composition stubs that other targets write beside them are not outputs.
     private static bool IsCSharpGeneratedFile(string path)
     {
         var fileName = Path.GetFileName(path);
-        return fileName.EndsWith(".Bridge.g.cs", StringComparison.Ordinal)
-            || fileName.EndsWith(".View.g.cs", StringComparison.Ordinal)
-            || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal)
-            || string.Equals(fileName, ClientModules.LibraryMarkerFile, StringComparison.Ordinal)
+        return (fileName.EndsWith(".g.cs", StringComparison.Ordinal)
+                && (!fileName.StartsWith("RunicBridgeComposition", StringComparison.Ordinal)
+                    || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal))
+                && GeneratedOutput.IsGenerated(path))
             || string.Equals(fileName, BridgeSourceMap.FileName, StringComparison.Ordinal)
-            || string.Equals(fileName, ContractIr.FileName, StringComparison.Ordinal);
+            || string.Equals(fileName, ContractIr.FileName, StringComparison.Ordinal)
+            || string.Equals(fileName, ClientSymbols.FileName, StringComparison.Ordinal);
     }
-
-    // The TypeScript directory can be application source. Hand-written modules
-    // beside generated ones must neither invalidate nor be recorded by the cache.
-    private static bool IsTypeScriptGeneratedFile(string path) =>
-        (path.EndsWith(".ts", StringComparison.Ordinal) && GeneratedOutput.IsGenerated(path)) || ClientDeclarationMap.IsGeneratedMap(path);
 
     private static string HashFile(string path)
     {
@@ -220,7 +216,6 @@ internal static class BridgeGenerationCache
         public int SchemaVersion { get; set; }
         public string Fingerprint { get; set; } = "";
         public List<Output>? CSharpOutputs { get; set; }
-        public List<Output>? TypeScriptOutputs { get; set; }
         public List<string>? Warnings { get; set; }
     }
 
@@ -230,9 +225,8 @@ internal static class BridgeGenerationCache
         public string Hash { get; set; } = "";
     }
 
-    private sealed record Roots(string CSharp, string TypeScript)
+    private sealed record Roots(string CSharp)
     {
-        internal static Roots Create(string csharp, string typeScript) =>
-            new(Path.GetFullPath(csharp), Path.GetFullPath(typeScript));
+        internal static Roots Create(string csharp) => new(Path.GetFullPath(csharp));
     }
 }

@@ -183,14 +183,21 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class OrdersView : RunicView<OrdersViewModel>;
                 """, "public interface IResultPage",
                 "IResultPage: the shared client name 'Result-Page' must contain only letters and digits and start with a letter.").ConfigureAwait(false);
-            // One build reports each implementing ViewModel's first problem: Notes cannot be collected, and Quotes differs
-            // from the others.
+            // The generator reports what .NET tells (Notes cannot be collected); once it has none, the emitter compares the
+            // clients (Quotes differs from the others), at the member that differs (R7 G6).
             var twoDrifts = await GenerateAsync(generator, temporaryRoot, "SharedTwoDrifts", SharedPreamble + Interface + Implementer("Orders")
                 + Implementer("Invoices") + Implementer("Quotes", title: "[System.Text.Json.Serialization.JsonPropertyName(\"heading\")] public string Title => \"\";")
                 + Implementer("Notes", title: "public string? Title => null;")).ConfigureAwait(false);
-            Require(twoDrifts.Contains("NotesViewModel.Title is string?, but IResultPage.Title of the shared client ResultPage is string.", StringComparison.Ordinal)
-                    && twoDrifts.Contains("QuotesViewModel.Title: every ViewModel that implements IResultPage.Title of the shared client ResultPage must publish it alike, but QuotesViewModel's client has `readonly heading: string;` where InvoicesViewModel and OrdersViewModel's clients have `readonly title: string;`", StringComparison.Ordinal),
-                $"One build did not report both drifting ViewModels.\n{twoDrifts}");
+            Require(twoDrifts.Contains("NotesViewModel.Title is string?, but IResultPage.Title of the shared client ResultPage is string.", StringComparison.Ordinal),
+                $"The build did not report the ViewModel that cannot be collected.\n{twoDrifts}");
+            var quotesSource = SharedPreamble + Interface + Implementer("Orders") + Implementer("Invoices")
+                + Implementer("Quotes", title: "[System.Text.Json.Serialization.JsonPropertyName(\"heading\")] public string Title => \"\";") + Implementer("Notes");
+            var drift = await GenerateAsync(generator, temporaryRoot, "SharedDrift", quotesSource).ConfigureAwait(false);
+            var quotesLine = quotesSource[..quotesSource.IndexOf("[System.Text.Json.Serialization.JsonPropertyName(\"heading\")]", StringComparison.Ordinal)]
+                .Count(character => character == '\n') + 1;
+            Require(drift.Split('\n').Any(text => text.StartsWith($"{Path.Combine(temporaryRoot, "SharedDrift", "Fixture.cs")}({quotesLine},", StringComparison.Ordinal)
+                    && text.Contains(": error RUNICBRIDGE036: QuotesViewModel.Title: every ViewModel that implements IResultPage.Title of the shared client ResultPage must publish it alike, but QuotesViewModel's client has `readonly heading: string;` where InvoicesViewModel, NotesViewModel and OrdersViewModel's clients have `readonly title: string;`", StringComparison.Ordinal)),
+                $"The emitter did not report the drifting ViewModel at its member.\n{drift}");
             // A member of a shared interface that another shared interface extends is reported once, not once per client.
             var extended = await GenerateAsync(generator, temporaryRoot, "SharedExtended", SharedPreamble + """
                 [RunicSharedClient]
@@ -229,7 +236,8 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class NotesView : RunicView<NotesViewModel>;
                 """).ConfigureAwait(false);
             static int Count(string text, string part) => text.Split(part).Length - 1;
-            Require(Count(extended, "NotesViewModel.Title is string?") == 1 && Count(extended, "QuotesViewModel.Title: every ViewModel") == 1,
+            // The emitter compares the clients only when the generator reported nothing, and stops at the first drift.
+            Require(Count(extended, "NotesViewModel.Title is string?") == 1,
                 $"A drift in an extended shared interface was not reported exactly once.\n{extended}");
             // A shared name whose page reference is a kind's: the hint names [RunicSharedClient(Name = …)].
             var kindCollision = await GenerateAsync(generator, temporaryRoot, "SharedKindCollision", Preamble + """

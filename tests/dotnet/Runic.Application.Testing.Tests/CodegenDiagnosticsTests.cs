@@ -1212,16 +1212,16 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(File.Exists(Path.Combine(skippedOutput, "RunicBridge.NoViews.marker"))
                     && Directory.GetFiles(skippedOutput, "*.g.cs").Length == 0,
                 "An optional generation without Windows or Views did not skip cleanly.");
-            // Views that were removed leave no stale generated C# or TypeScript.
+            // Views that were removed leave no stale generated C# or IR. The generator writes no TypeScript (R7 G6): the build
+            // removes the clients the emitter wrote (RunicViewsGenerateClients).
             var staleCs = await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + """
                 public sealed class StaleViewModel : FixtureModel { public string Title { get; } = ""; }
                 public sealed partial class StaleWindow : RunicWindow<StaleViewModel>;
                 """).ConfigureAwait(false);
-            var staleTs = Path.Combine(Path.GetDirectoryName(staleCs)!, "ts");
-            Require(Directory.GetFiles(staleCs, "*.g.cs").Length > 0 && Directory.GetFiles(staleTs, "*.ts").Length > 0,
+            Require(Directory.GetFiles(staleCs, "*.g.cs").Length > 0 && File.Exists(Path.Combine(staleCs, "contract.ir.json")),
                 "The stale-output fixture generated nothing to remove.");
             await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + NoViews, "--optional").ConfigureAwait(false);
-            Require(Directory.GetFiles(staleCs, "*.g.cs").Length == 0 && Directory.GetFiles(staleTs, "*.ts").Length == 0
+            Require(Directory.GetFiles(staleCs, "*.g.cs").Length == 0 && !File.Exists(Path.Combine(staleCs, "contract.ir.json"))
                     && File.Exists(Path.Combine(staleCs, "RunicBridge.NoViews.marker")),
                 "Optional generation without Views left stale generated output.");
             // Optional does not hide a model assembly that cannot be loaded.
@@ -1414,7 +1414,7 @@ internal sealed partial class CodegenDiagnosticsTests
             StartInfo = new ProcessStartInfo("dotnet")
             {
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
-                ArgumentList = { generator, "--generate", assembly, Path.Combine(directory, "cs"), Path.Combine(directory, "ts") },
+                ArgumentList = { generator, "--generate", assembly, Path.Combine(directory, "cs") },
             },
         };
         foreach (var option in options) process.StartInfo.ArgumentList.Add(option);
@@ -1440,7 +1440,9 @@ internal sealed partial class CodegenDiagnosticsTests
         var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
         Require(!text.Contains("Unhandled exception", StringComparison.Ordinal),
             $"{assembly}: the generator crashed instead of reporting a diagnostic.\n{text}");
-        return (process.ExitCode, text);
+        // The build runs the TypeScript emitter on the IR after the generator (R7 G6).
+        return await TypeScriptEmitterProcess.AfterGeneratorAsync((process.ExitCode, text), Path.Combine(directory, "cs"),
+            Path.Combine(directory, "ts")).ConfigureAwait(false);
     }
 
     // A generator call normally takes well under a second. The one dump of a stall (#348) showed a cold run on a

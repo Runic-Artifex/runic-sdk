@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text;
-using static TypeScriptModuleBindings;
 
 /// <summary>
 /// Emits the optional browser-facing half of an interaction (a ReactiveUI
@@ -177,7 +176,7 @@ internal static class InteractionCodeEmitter
         foreach (var command in commandProperties)
         {
             var name = command.Name[..^"Command".Length];
-            if (TypeScriptModules.ReservedClientMemberNames.TryGetValue(LowerFirst(name), out var reserved))
+            if (ClientMemberNames.ReservedClientMemberNames.TryGetValue(LowerFirst(name), out var reserved))
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                     $"{modelName}.{command.Name}: the generated client member '{LowerFirst(name)}' {reserved.Reason}. Rename the command, for example to {reserved.Suggestion}Command (client member '{LowerFirst(reserved.Suggestion)}').",
                     command);
@@ -244,39 +243,6 @@ internal static class InteractionCodeEmitter
             yield return $"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<{plan.Input.RootCSharpType()}>(\"{LowerFirst(plan.Property.Name)}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {plan.Property.Name}RequestInputCodec.Write(writer, input)))";
     }
 
-    /// <summary>Appends the public TypeScript view request types. <paramref name="mark"/> ends a member's line (#952).</summary>
-    internal static void AppendTypeScriptRequestSurface(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans,
-        string shortName, Func<string, string>? mark = null)
-    {
-        var all = plans.ToArray();
-        if (all.Length == 0) return;
-
-        source.AppendLine($"export type {shortName}ViewRequestContext = {Ref("BridgeViewRequestContext")};");
-        source.AppendLine($"export interface {shortName}ViewRequests {{");
-        foreach (var plan in all)
-        {
-            XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(plan.Property));
-            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{ handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}ViewRequestContext) => void | Promise<void>): () => void }};{mark?.Invoke(LowerFirst(plan.Property.Name))}");
-        }
-        source.AppendLine("}");
-        source.AppendLine();
-    }
-
-    /// <summary>
-    /// Appends the module-level <c>requestDefinitions</c> passed to <c>connectView</c>: each view request's contract
-    /// and its generated input decoder.
-    /// </summary>
-    internal static void AppendTypeScriptRequestDefinitions(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans)
-    {
-        var all = plans.ToArray();
-        if (all.Length == 0) return;
-
-        source.AppendLine($"const {Ref("requestDefinitions")} = {Ref("defineRequests")}({{");
-        foreach (var plan in all)
-            source.AppendLine($"  {LowerFirst(plan.Property.Name)}: {{ contract: \"{plan.ContractId}\", decodeInput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Input.EmitTypeScriptDecoder("value"))} }},");
-        source.AppendLine("});");
-    }
-
     /// <summary>
     /// Returns descriptor expressions for the <c>interactions:</c> base
     /// constructor argument. The library convention that recognised the
@@ -292,66 +258,6 @@ internal static class InteractionCodeEmitter
             var outputCodec = plan.Property.Name + "InteractionOutputCodec";
             yield return plan.Contract.Descriptor(plan, modelType, LowerFirst(plan.Property.Name), inputCodec, outputCodec);
         }
-    }
-
-    /// <summary>Appends the public TypeScript interaction types. <paramref name="mark"/> ends a member's line (#952).</summary>
-    internal static void AppendTypeScriptSurface(StringBuilder source, IEnumerable<GeneratedInteractionPlan> plans,
-        string shortName, Func<string, string>? mark = null)
-    {
-        var all = plans.ToArray();
-        if (all.Length == 0) return;
-
-        source.AppendLine($"export type {shortName}InteractionContext = {Ref("BridgeInteractionContext")};");
-        source.AppendLine($"export interface {shortName}Interactions {{");
-        foreach (var plan in all)
-        {
-            XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(plan.Property));
-            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{{mark?.Invoke(LowerFirst(plan.Property.Name))}");
-            source.AppendLine($"    handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}InteractionContext) => {plan.Output.TypeScriptType()} | Promise<{plan.Output.TypeScriptType()}>): () => void;");
-            source.AppendLine("  };");
-        }
-        source.AppendLine("}");
-        source.AppendLine();
-    }
-
-    /// <summary>
-    /// Appends the module-level <c>interactionDefinitions</c> passed to
-    /// <c>connectView</c>: each interaction's contract and its generated input
-    /// decoder and output encoder. The shared runtime owns the protocol and
-    /// advertises only active handlers, so an unrendered browser control
-    /// preserves normal .NET interaction fallback behavior.
-    /// </summary>
-    internal static void AppendTypeScriptDefinitions(StringBuilder source, IEnumerable<GeneratedInteractionPlan> plans)
-    {
-        var all = plans.ToArray();
-        if (all.Length == 0) return;
-
-        source.AppendLine($"const {Ref("interactionDefinitions")} = {Ref("defineInteractions")}({{");
-        foreach (var plan in all)
-        {
-            var typedValue = $"(value as {plan.Output.TypeScriptType()})";
-            source.AppendLine($"  {LowerFirst(plan.Property.Name)}: {{ contract: \"{plan.ContractId}\", decodeInput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Input.EmitTypeScriptDecoder("value"))}, encodeOutput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Output.EncodeTypeScript(typedValue))} }},");
-        }
-        source.AppendLine("});");
-    }
-
-    /// <summary>
-    /// Appends <c>{Name}ConnectOptions</c>: the connect options with typed interaction handlers, which the client
-    /// registers before <c>open</c> and sends with it.
-    /// </summary>
-    internal static void AppendConnectOptions(StringBuilder source, IEnumerable<GeneratedInteractionPlan> plans, string shortName)
-    {
-        source.AppendLine($"/** Options of `connect{shortName}`. */");
-        source.AppendLine($"export interface {shortName}ConnectOptions extends {Ref("BridgeConnectOptions")} {{");
-        source.AppendLine("  /**");
-        source.AppendLine("   * Interaction handlers, registered before the client opens the View, so .NET can ask them from the first");
-        source.AppendLine("   * request on. Handlers registered later through `interactions` replace them.");
-        source.AppendLine("   */");
-        source.AppendLine("  readonly handlers?: {");
-        foreach (var plan in plans)
-            source.AppendLine($"    readonly {LowerFirst(plan.Property.Name)}?: (input: {plan.Input.TypeScriptType()}, context: {shortName}InteractionContext) => {plan.Output.TypeScriptType()} | Promise<{plan.Output.TypeScriptType()}>;");
-        source.AppendLine("  };");
-        source.AppendLine("}");
     }
 
     private static string LowerFirst(string value) => value.Length == 0 ? value

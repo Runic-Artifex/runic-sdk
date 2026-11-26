@@ -851,9 +851,10 @@ verify_template() {
   test -f "$output/Frontend/src/generated/workspace.ts"
   test -f "$output/Frontend/src/generated/settings.ts"
   test -f "$output/Frontend/src/generated/preferences.ts"
-  # R7 G5 (D080): the TypeScript emitter of the @runic-artifex/views this frontend installed writes the clients that the
-  # .NET generator wrote for this variant's Views, byte for byte (eng/ci/views-dual-run.mjs).
-  bun "$repository_root/eng/ci/views-dual-run.mjs" --project "$output/$project_name.csproj" --configuration Release --emitter frontend
+  # R7 G6 (D080): the build wrote this variant's clients with the TypeScript emitter of the @runic-artifex/views its
+  # frontend installed, the packed one; the workspace's emitter, whose output the goldens pin, writes the same bytes
+  # (eng/ci/views-golden.mjs).
+  bun "$repository_root/eng/ci/views-golden.mjs" --project "$output/$project_name.csproj" --configuration Release
   # One frontend build runs on every host: the built page loads runic-views.js
   # and no host-specific script, such as the Runic Desktop bootstrap.
   grep -Eq '<script\s[^>]*src="(\./)?runic-views\.js"' "$output/Frontend/dist/index.html"

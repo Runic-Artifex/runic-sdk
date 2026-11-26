@@ -218,8 +218,8 @@ test("the output of the remaining surface compiles against the package's declara
   }
 });
 
-// R7 G5 (D080): the dual-run gate (eng/ci/views-dual-run.mjs) found these; the generator tests' dual-run goldens pin
-// the .NET output of the same fixtures.
+// R7 G5 (D080): the dual-run gate found these; the generator tests' dual-run goldens (DualRunFixture.cs) pin the same
+// fixtures' output.
 test("a numeric constraint bound is written as .NET writes a double", () => {
   const bounded = (wire: string, min: number, max: number) => ({ name: wire[0]!.toUpperCase() + wire.slice(1), wire, kind: "value" as const,
     value: { direction: "both" as const, type: { kind: "float64" as const } }, settable: true as const, declaringType: "Bounds", checked: true as const,
@@ -247,4 +247,28 @@ test("non-ASCII names are bound as the .NET generator binds them", () => {
     "export function connectGrößen(options?: BridgeConnectOptions)", "async function connectGrößenAt(route: string,",
     "import type { GrößenState, GrößenCheckedFields, GrößenClient, GrößenPageReference } from"])
     assert.ok(client.includes(expected), `${expected}\n${client}`);
+});
+
+// #1355 (R7 G6): a name may start with any letter. The scans read ÜbersichtState and ÜbersichtClient, so the client
+// imports and re-exports them; the generator tests type-check the client of DualRunFixture.cs's ÜbersichtViewModel.
+test("a View whose name starts with a non-ASCII letter imports and re-exports its types", () => {
+  const files = generate(document([view("Übersicht", {
+    members: [{ name: "Ärger", wire: "ärger", kind: "value", value: { direction: "both", type: { kind: "string" } }, settable: true,
+      declaringType: "Übersicht", checked: true }],
+    commands: [{ name: "Übernehmen", wire: "übernehmen" }],
+  })]), { outputDirectory: "/generated" });
+  const client = files.get("übersicht.ts")!;
+  for (const [name, text] of files) assert.ok(!/[\u0003-\u0006]/.test(text), `${name} keeps a binding marker`);
+  for (const expected of [
+    "import type { ÜbersichtState, ÜbersichtCheckedFields, ÜbersichtClient, ÜbersichtPageReference } from \"./übersicht.contract.js\";",
+    "export type { ÜbersichtState, ÜbersichtCheckedFields, ÜbersichtCommandName, ÜbersichtClient, ÜbersichtPageReference } from \"./übersicht.contract.js\";",
+    "export function connectÜbersicht(options?: BridgeConnectOptions)"])
+    assert.ok(client.includes(expected), `${expected}\n${client}`);
+});
+
+// The generated files of one unit are compared without case, as on Windows and macOS (RUNICBRIDGE004).
+test("two outputs that are one file without case are RUNICBRIDGE004", () => {
+  assert.throws(() => generate(document([view("Types")]), { outputDirectory: "/generated" }), (error: unknown) =>
+    error instanceof ContractIrDiagnostic && error.code === "RUNICBRIDGE004" && error.source === "app::Types"
+    && error.message === "RUNICBRIDGE004: generated file 'types.ts' would be written by app::Types and the generated named types. Rename one type.");
 });

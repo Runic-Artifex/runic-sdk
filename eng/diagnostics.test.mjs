@@ -122,14 +122,18 @@ test('the catalog sits where the help links point', () => {
 });
 
 // ViewsCodegen-09: one RUNICBRIDGE catalog. Its overview table lists every entry once with the severity that the
-// generator (Diagnostics.Warn, WarnAt) or the build targets (<Warning Code=...>) report, and the guide states the same warnings.
+// generator (Diagnostics.Warn, WarnAt), the TypeScript emitter's launcher (report("warning", …), R7 G6) or the build
+// targets (<Warning Code=...>) report, and the guide states the same warnings.
 test('the Bridge overview table matches the entries and the reported severities', () => {
   const generator = readdirSync(join(root, 'tools/Runic.Application.Views.Codegen')).filter(file => file.endsWith('.cs'))
     .map(file => readFileSync(join(root, 'tools/Runic.Application.Views.Codegen', file), 'utf8')).join('\n');
   const constants = new Map([...generator.matchAll(/internal const string (\w+) = "(RUNICBRIDGE\d+)"/g)].map(match => [match[1], match[2]]));
   const targets = readFileSync(join(root, 'packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets'), 'utf8');
+  const launcher = readFileSync(join(root, 'packages/dotnet/Runic.Application.Views/build/runic-views-codegen.mjs'), 'utf8');
+  const launcherConstants = new Map([...launcher.matchAll(/^const (\w+) = "(RUNICBRIDGE\d+)";$/gm)].map(match => [match[1], match[2]]));
   const warnings = new Set([
     ...[...generator.matchAll(/Diagnostics\.Warn(?:At)?\(BridgeDiagnosticCodes\.(\w+)/g)].map(match => constants.get(match[1])),
+    ...[...launcher.matchAll(/report\("warning", (\w+)/g)].map(match => launcherConstants.get(match[1])),
     ...[...targets.matchAll(/<Warning\b[^>]*\bCode="(RUNICBRIDGE\d+)"/g)].map(match => match[1]),
   ]);
   expect(warnings.size).toBeGreaterThan(0);

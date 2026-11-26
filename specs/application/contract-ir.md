@@ -8,9 +8,11 @@ checked against the same descriptions.
 
 The IR is a **build intermediate**. A producer writes one document per unit and build; it is never committed or
 published, and nothing reads it at run time. The .NET generator writes `contract.ir.json` beside the generated C# in
-`obj/<configuration>/<framework>/runic-bridge/`, after a generation without errors. The TypeScript emitter that reads
-it, `generate` of `@runic-artifex/views/codegen`, is internal: the build does not run it yet, so the generated
-TypeScript still comes from the .NET generator, and the emitter is checked against it through the [corpus](#corpus).
+`obj/<configuration>/<framework>/runic-bridge/`, after a generation without errors. Since 0.24 the build writes the
+generated clients from it with the TypeScript emitter, `generate` of `@runic-artifex/views/codegen`, which Node.js or
+Bun runs: the frontend's copy, or without a frontend the one bundled with `Runic.Application.Views`
+([Incremental generation](../../packages/dotnet/Runic.Application.Views/README.md#incremental-generation)). The .NET
+generator writes no TypeScript. The [corpus](#corpus) and the generator tests' goldens pin the emitter's output.
 
 | File | Content |
 | --- | --- |

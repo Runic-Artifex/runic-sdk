@@ -295,6 +295,11 @@
       "id": "RUNICBRIDGE083",
       "severity": "warning",
       "title": "A mapped client library declares no View, so its RunicApplicationFrontendClientModule item does nothing"
+    },
+    {
+      "id": "RUNICBRIDGE084",
+      "severity": "error",
+      "title": "The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views"
     }
   ]
 }

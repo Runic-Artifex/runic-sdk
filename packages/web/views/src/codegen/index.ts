@@ -1,7 +1,8 @@
 // The Views TypeScript emitter: the generated clients, contracts, declaration maps, mocks and named types of one producer
-// unit, from its contract IR (specs/application/contract-ir.md). Internal until the build runs it (R7 G6); the .NET
-// generator writes the same files today, byte for byte.
+// unit, from its contract IR (specs/application/contract-ir.md). The Runic.Application.Views build runs it after the .NET
+// generator has written the IR (R7 G6), with the copy of the frontend's @runic-artifex/views.
 import { CONTRACT_IR_FORMAT, type ContractIr, type View } from "./ir.js";
+import { ContractIrDiagnostic, NAME_COLLISION } from "./diagnostics.js";
 import { Emitter } from "./graph.js";
 import { CONTRACT_SUFFIX } from "./declmap.js";
 import { Modules, NAMED_TYPE_IMPORTS } from "./modules.js";
@@ -45,6 +46,7 @@ export function generate(ir: ContractIr, options: GenerateOptions): Map<string, 
   for (const view of ir.views) if (view.owner !== undefined) owners.set(view.route, specifierOf(view.owner));
   for (const client of ir.sharedClients ?? []) if (client.owner !== undefined) owners.set(lowerFirst(client.name), specifierOf(client.owner));
 
+  checkOutputs(ir);
   const emitter = new Emitter(ir);
   const modules = new Modules(owners);
   const sharedById = new Map((ir.sharedClients ?? []).map(client => [client.id, client]));
@@ -63,7 +65,7 @@ export function generate(ir: ContractIr, options: GenerateOptions): Map<string, 
     finally { modules.discarding = emitter.named.discarding = false; }
   }
   const views = new Map(ir.views.map(view => [view.id, view]));
-  for (const client of ir.sharedClients ?? []) emitSharedClient(client, views, parts, modules);
+  for (const client of ir.sharedClients ?? []) emitSharedClient(client, views, parts, modules, text => emitter.named.display(text));
 
   // TypeScriptModules.WriteAll: the named types, then each module with its named-type imports.
   const named = emitter.named;
@@ -93,6 +95,33 @@ export function generate(ir: ContractIr, options: GenerateOptions): Map<string, 
   if (ir.producer.clientLibrary) writeLibrary(ir, files, named.any);
   writeCheck(ir, files);
   return files;
+}
+
+/**
+ * RUNICBRIDGE004 when two of the unit's outputs would be one file, compared without case as on Windows and macOS: the
+ * modules of every View (also those a client library writes) and shared client, the named types, and the barrels or the
+ * check of imported contracts.
+ */
+function checkOutputs(ir: ContractIr): void {
+  const outputs: { path: string; owner: string; source?: string }[] = [];
+  for (const view of ir.views)
+    for (const suffix of [".ts", ".mock.ts", CONTRACT_SUFFIX]) outputs.push({ path: view.route + suffix, owner: view.id, source: view.id });
+  for (const client of ir.sharedClients ?? []) outputs.push({ path: `${lowerFirst(client.name)}.ts`, owner: client.id });
+  outputs.push({ path: `${NAMED_TYPES}.ts`, owner: "the generated named types" });
+  if (ir.producer.clientLibrary)
+    outputs.push({ path: `${CLIENTS_MODULE}.ts`, owner: "the client library barrel" }, { path: `${MOCKS_MODULE}.ts`, owner: "the client library mock barrel" });
+  if (ir.views.some(view => view.owner !== undefined)) outputs.push({ path: `${CHECK_MODULE}.ts`, owner: "the client module check" });
+  const byPath = new Map<string, typeof outputs>();
+  for (const output of outputs) {
+    const key = output.path.toLowerCase();
+    byPath.set(key, [...(byPath.get(key) ?? []), output]);
+  }
+  for (const group of byPath.values()) {
+    if (group.length < 2) continue;
+    throw new ContractIrDiagnostic(NAME_COLLISION,
+      `generated file '${group[0]!.path}' would be written by ${group.map(output => output.owner).join(" and ")}. Rename one type.`,
+      group.find(output => output.source !== undefined)?.source);
+  }
 }
 
 const contractOf = (view: View) => `${view.id}:${view.fingerprint}`;

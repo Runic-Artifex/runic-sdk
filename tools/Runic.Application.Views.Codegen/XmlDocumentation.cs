@@ -37,22 +37,6 @@ internal static partial class XmlDocumentation
         return null;
     }
 
-    /// <summary>Formats documentation text as a TSDoc block at the given indentation.</summary>
-    internal static void Append(StringBuilder source, string indent, string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return;
-        var lines = text.Replace("*/", "*\\/", StringComparison.Ordinal).Split('\n');
-        if (lines.Length == 1)
-        {
-            source.AppendLine($"{indent}/** {lines[0]} */");
-            return;
-        }
-        source.AppendLine($"{indent}/**");
-        foreach (var line in lines)
-            source.AppendLine(line.Length == 0 ? $"{indent} *" : $"{indent} * {line}");
-        source.AppendLine($"{indent} */");
-    }
-
     private static XElement? Find(MemberInfo member)
     {
         var type = member as Type ?? member.DeclaringType;

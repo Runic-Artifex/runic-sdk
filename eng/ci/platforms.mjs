@@ -202,8 +202,8 @@ export const platformRules = [
 export const neutralPaths = ["nix", "nixos", "flake.nix", "flake.lock", ".envrc", "eng/release", "eng/verify-packages.mjs",
   "RunicSdk.slnx", "RunicSdk.Core.slnx", "eng/generate-shipping-projects.mjs",
   "eng/ci/apt-install.sh", "eng/ci/permit-webkit-sandbox.sh", "eng/ci/test-managed.mjs",
-  // The Views generators' dual-run gate (R7 G5): the engineering job and the template lanes, Linux only.
-  "eng/ci/views-dual-run.mjs",
+  // The golden check of the Views TypeScript clients (R7 G5, G6): the engineering job and the template lanes, Linux only.
+  "eng/ci/views-golden.mjs",
   // The macOS job cap check: the coordinator's, and the feed exit's Linux job (train-feed-exit.yml).
   "eng/ci/runner-wait.py",
   // The coordinator's release-candidate feed for the editors checklist (eng/release/README.md); CI never runs it.

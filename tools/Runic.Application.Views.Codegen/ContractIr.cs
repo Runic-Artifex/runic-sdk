@@ -128,7 +128,7 @@ internal static class ContractIr
         _ => throw new InvalidOperationException($"The contract IR has no value kind for {kind}."),
     };
 
-    // One definition per .NET type and member shape, as TypeScriptNamedTypes keys its declarations (TypeNames.Shape):
+    // One definition per .NET type and member shape (TypeNames.Shape), as the emitter declares one TypeScript type each:
     // the type's name, then name#2, name#3 for further shapes of one type, in the order the IR first reaches them.
     private static string Named(BridgeTypeNode node)
     {
@@ -232,20 +232,10 @@ internal static class ContractIr
 
     /// <summary>
     /// Writes the IR to <paramref name="directory"/>, only when its content changed, as the development source map is.
-    /// The IR is a build intermediate that no build step reads yet, so an unwritable file does not fail the build.
+    /// The emitter writes the TypeScript from it, so an unwritable file is an error (RUNICBRIDGE001).
     /// </summary>
-    internal static void Write(string directory, string content)
-    {
-        var path = Path.Combine(directory, FileName);
-        try
-        {
-            GeneratedFile.WriteIfChanged(path, content);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            Console.WriteLine($"Runic Bridge: the contract IR {path} could not be written: {error.Message}");
-        }
-    }
+    internal static void Write(string directory, string content) =>
+        GeneratedFile.WriteIfChanged(Path.Combine(directory, FileName), content);
 
     /// <summary>Removes the IR of an earlier generation, for a project that no longer generates Bridges.</summary>
     internal static void Remove(string directory)

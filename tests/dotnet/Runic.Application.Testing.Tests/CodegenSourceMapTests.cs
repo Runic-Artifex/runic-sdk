@@ -251,8 +251,7 @@ internal sealed partial class CodegenDiagnosticsTests
             StartInfo = new System.Diagnostics.ProcessStartInfo("dotnet")
             {
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
-                ArgumentList = { generator, "--generate", Path.Combine(directory, "FixtureSourceMap.dll"), Path.Combine(directory, "cs"),
-                    Path.Combine(directory, "ts") },
+                ArgumentList = { generator, "--generate", Path.Combine(directory, "FixtureSourceMap.dll"), Path.Combine(directory, "cs") },
             },
         };
         foreach (var option in options ?? []) process.StartInfo.ArgumentList.Add(option);
@@ -264,7 +263,8 @@ internal sealed partial class CodegenDiagnosticsTests
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
-            return (process.ExitCode, await output.ConfigureAwait(false) + await error.ConfigureAwait(false));
+            return await TypeScriptEmitterProcess.AfterGeneratorAsync((process.ExitCode, await output.ConfigureAwait(false) + await error.ConfigureAwait(false)),
+                Path.Combine(directory, "cs"), Path.Combine(directory, "ts")).ConfigureAwait(false);
         }
         finally
         {
