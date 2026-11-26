@@ -61,6 +61,10 @@ internal sealed record DevProjectConfiguration(
         "RunCommand",
         // devtools-library-dx §3.4: 1 when the Views targets read RunicApplicationFrontendDevSessionProject.
         "_RunicViewsDevSessionProtocol",
+        // The frontend's JavaScript workspace and package manager (devtools-library-dx M1), for the development server.
+        "RunicApplicationFrontendWorkspaceRoot",
+        "RunicApplicationFrontendPackageManager",
+        "_RunicFrontendPackageManagerExplicit",
     ];
 
     internal bool IsViewsWindowProject { get; init; }
@@ -71,6 +75,28 @@ internal sealed record DevProjectConfiguration(
     /// targets, or for a project whose package targets restore has not imported yet.
     /// </summary>
     internal int DevSessionProtocol { get; init; }
+
+    /// <summary>
+    /// The root of the frontend's JavaScript workspace (<see cref="JavaScriptWorkspace.FindRoot"/>): the folder whose
+    /// package manager and lock file the frontend uses, or the frontend folder itself.
+    /// </summary>
+    internal string JavaScriptWorkspaceRoot { get; init; } = WorkspaceRoot;
+
+    /// <summary><c>RunicApplicationFrontendPackageManager</c> when the project sets it, else empty.</summary>
+    internal string PackageManagerName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The package manager that runs the frontend's scripts: the workspace's, as the build installs it, so a Bun
+    /// workspace member without its own <c>packageManager</c> runs <c>bun run dev</c>, not <c>npm run dev</c>.
+    /// </summary>
+    internal JavaScriptPackageManager PackageManager =>
+        JavaScriptPackageManager.Resolve(JavaScriptWorkspaceRoot, FrontendPackageDirectory, PackageManagerName);
+
+    /// <summary>
+    /// The frontend packages that the served frontend depends on (devtools-library-dx §2.1), which dev checks at the start,
+    /// watches and writes to the session file; empty until dev read them after the build.
+    /// </summary>
+    internal IReadOnlyList<FrontendDependency> FrontendDependencies { get; init; } = [];
 
     /// <summary>The directory of the dev session file: <c>runic</c> below the project's <c>BaseIntermediateOutputPath</c>.</summary>
     internal string SessionDirectory { get; init; } = Path.Combine(ProjectDirectory, "obj", "runic");
@@ -231,6 +257,8 @@ internal sealed record DevProjectConfiguration(
             NormalizeOptional(Value("RunicApplicationFrontendViteConfiguration"), frontend),
             viteRoot);
 
+        int devSessionProtocol = int.TryParse(Value("_RunicViewsDevSessionProtocol"), out int protocol) ? protocol : 0;
+        string explicitRoot = Value("RunicApplicationFrontendWorkspaceRoot").Trim();
         var evaluated = new DevProjectConfiguration(
             evaluatedProject,
             evaluatedDirectory,
@@ -270,7 +298,13 @@ internal sealed record DevProjectConfiguration(
                 ? Path.Combine(intermediate, "runic-bridge", "sources.json")
                 : string.Empty,
             ViteRoot = viteRoot,
-            DevSessionProtocol = int.TryParse(Value("_RunicViewsDevSessionProtocol"), out int protocol) ? protocol : 0,
+            DevSessionProtocol = devSessionProtocol,
+            JavaScriptWorkspaceRoot = JavaScriptWorkspace.FindRoot(frontend,
+                explicitRoot.Length == 0 || explicitRoot.Equals("none", StringComparison.OrdinalIgnoreCase)
+                    ? explicitRoot
+                    : Path.GetFullPath(explicitRoot, evaluatedDirectory)),
+            PackageManagerName = ExplicitPackageManager(devSessionProtocol, Value("RunicApplicationFrontendPackageManager"),
+                Value("_RunicFrontendPackageManagerExplicit"), File.Exists(NormalizeOptional(Value("ProjectAssetsFile"), evaluatedDirectory))),
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
@@ -285,10 +319,21 @@ internal sealed record DevProjectConfiguration(
     }
 
     /// <summary>
-    /// The dev session protocol after restore: an unrestored project has not imported the Views package's targets, so
-    /// its first evaluation reads none.
+    /// <c>RunicApplicationFrontendPackageManager</c> when the project sets it. Targets of dev session protocol 1 say so
+    /// (<c>_RunicFrontendPackageManagerExplicit</c>); an unrestored project has not imported the targets, so the
+    /// property is the project's own. Older restored targets infer it from the frontend folder alone, which is wrong in a
+    /// workspace, so dev finds the workspace's itself.
     /// </summary>
-    internal static async System.Threading.Tasks.Task<int> EvaluateDevSessionProtocolAsync(
+    internal static string ExplicitPackageManager(int protocol, string value, string explicitFlag, bool restored) =>
+        protocol >= 1 ? (string.Equals(explicitFlag, "true", StringComparison.OrdinalIgnoreCase) ? value.Trim() : string.Empty)
+        : restored ? string.Empty
+        : value.Trim();
+
+    /// <summary>
+    /// The dev session protocol after restore, and the package manager the project sets: an unrestored project has not
+    /// imported the Views package's targets, so its first evaluation reads neither.
+    /// </summary>
+    internal static async System.Threading.Tasks.Task<DevProjectConfiguration> EvaluateDevSessionProtocolAsync(
         string dotnetHost,
         DevProjectConfiguration configuration,
         string buildConfiguration,
@@ -297,9 +342,27 @@ internal sealed record DevProjectConfiguration(
         CommandResult result = await CommandRunner.RunAsync(
             dotnetHost,
             configuration.ProjectDirectory,
-            ["msbuild", configuration.ProjectPath, "-nologo", $"-property:Configuration={buildConfiguration}", "-getProperty:_RunicViewsDevSessionProtocol"],
+            ["msbuild", configuration.ProjectPath, "-nologo", $"-property:Configuration={buildConfiguration}",
+                "-getProperty:_RunicViewsDevSessionProtocol,RunicApplicationFrontendPackageManager,_RunicFrontendPackageManagerExplicit"],
             cancellationToken).ConfigureAwait(false);
-        return result.ExitCode == 0 && int.TryParse(result.StandardOutput.Trim(), out int protocol) ? protocol : 0;
+        if (result.ExitCode != 0) return configuration;
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
+            JsonElement properties = document.RootElement.GetProperty("Properties");
+            string Value(string name) => properties.TryGetProperty(name, out JsonElement value) ? value.GetString() ?? string.Empty : string.Empty;
+            int protocol = int.TryParse(Value("_RunicViewsDevSessionProtocol"), out int parsed) ? parsed : 0;
+            return configuration with
+            {
+                DevSessionProtocol = protocol,
+                PackageManagerName = ExplicitPackageManager(protocol, Value("RunicApplicationFrontendPackageManager"),
+                    Value("_RunicFrontendPackageManagerExplicit"), restored: true),
+            };
+        }
+        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return configuration;
+        }
     }
 
     internal static IReadOnlyList<string> CreateEvaluationArguments(string project, string configuration) =>

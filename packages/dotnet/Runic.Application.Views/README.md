@@ -2730,6 +2730,13 @@ frontend only when one of its inputs changed.
   second start with nothing changed installs nothing; before, it ran the
   package manager's install (`npm ci`, which reinstalls everything) on every
   start.
+- **Library packages under `dev`.** While `dotnet runic dev` runs, it watches
+  the compiled packages that the page depends on (since 0.24). It runs a
+  package's `watch` script, or else reruns its `build` when one of its files
+  changes, and Vite reloads the page. A rebuild that fails prints `RAPPDEV1018`,
+  and `dev` puts the package's last good output back, so the page keeps working. A
+  package that fails at the start stops `dev` with its build's error. See
+  [Library packages under dev](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md#library-packages-under-dev).
 - **CI.** A fresh checkout has no `node_modules`, so `Auto` installs there, and a
   restored `node_modules` cache is reused only when its hash matches the
   checkout's lock file and `package.json` files. `ContinuousIntegrationBuild`
