@@ -22,6 +22,15 @@ try
         if (args.Length == 2) File.WriteAllText(args[1], list);
         else Console.Out.Write(list);
     }
+    // D082: the web bundle that a build writes for another machine's publish, and that publish's check of it.
+    else if (args.Length == 2 && args[0] == "--web-bundle-write")
+    {
+        WebBundle.Write(args[1]);
+    }
+    else if (args.Length == 2 && args[0] == "--web-bundle-check")
+    {
+        WebBundle.Check(args[1]);
+    }
     else if (args.Length >= 1 && args[0] == "--generate")
     {
         var aot = false;
@@ -2174,6 +2183,16 @@ static class BridgeDiagnosticCodes
     internal const string FrontendPackageManagerMissing = "RUNICBRIDGE090";
     /// <summary>RunicApplicationFrontendInstallMode is not Auto, Always or Never (reported by the Views targets).</summary>
     internal const string FrontendInstallMode = "RUNICBRIDGE091";
+    /// <summary>A web bundle cannot be written: the frontend build is off, or the prebuilt input is set too (D082).</summary>
+    internal const string WebBundleWrite = "RUNICBRIDGE092";
+    /// <summary>The prebuilt frontend directory cannot be used: no manifest, no entry, or a page other than recorded (D082).</summary>
+    internal const string WebBundleInput = "RUNICBRIDGE093";
+    /// <summary>A prebuilt frontend was built from other Views than the build's contract IR (D082).</summary>
+    internal const string WebBundleContract = "RUNICBRIDGE094";
+    /// <summary>A prebuilt frontend was built for another host than the build runs it on (D082).</summary>
+    internal const string WebBundleHost = "RUNICBRIDGE095";
+    /// <summary>Warning: an optimized build takes a development build of a prebuilt frontend (D082).</summary>
+    internal const string WebBundleDevelopment = "RUNICBRIDGE096";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2247,6 +2266,11 @@ static class BridgeDiagnosticCodes
         (FrontendWorkspacePackageManager, "warning", "A workspace member declares another package manager than its workspace"),
         (FrontendPackageManagerMissing, "error", "The frontend's package manager or JavaScript runtime does not run"),
         (FrontendInstallMode, "warning", "RunicApplicationFrontendInstallMode is not Auto, Always or Never"),
+        (WebBundleWrite, "error", "A web bundle cannot be written for a project whose frontend build is off"),
+        (WebBundleInput, "error", "The prebuilt frontend directory has no usable entry for the project"),
+        (WebBundleContract, "error", "A prebuilt frontend was built from other Views than the build's"),
+        (WebBundleHost, "error", "A prebuilt frontend was built for another host"),
+        (WebBundleDevelopment, "warning", "An optimized build takes a development build of a prebuilt frontend"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
