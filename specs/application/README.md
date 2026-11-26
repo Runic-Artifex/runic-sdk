@@ -479,7 +479,10 @@ change of the field. States carry them beside the state as `fields: {<member>: {
 The reply to a request that changes state is sent after every push that the producer had to publish, before the reply
 was ready, on any route of the window. A command often changes another route as well, such as its shell, so a client
 cannot know which routes to wait for. The wait is bounded to 5 seconds; after that the producer sends the reply, and the
-pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
+pushes follow. The 5 seconds are real time: a producer measures them on the system clock, not on a clock it gives its
+window for timers and deadlines, so a conformance runner's virtual clock (`advance`) does not end the wait; a held
+delivery that resumes does. A reply that waits includes one waiting for pushes that the transport has not taken because
+delivery is held. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
 `interactions`, `interaction-reply`, `presented`, `closing-reply`, `query-rows`, `query-index` and `client-error` do not wait.
 
 A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
@@ -875,8 +878,11 @@ path.
 - A command that fails with its **declared failure** replies `domain-failed` with `failure` (the encoded value) and
   `revision`, and never `detail`. A declared failure that cannot be encoded, or whose encoding is larger than 4 KiB of
   UTF-8, is `failed` instead. Any other failure is `failed`, with `revision` when the command had already run.
-- An asynchronous command keeps the request open until it completes. A window runs at most 64 such calls at once;
-  another one is `rejected` with `capacity` and runs nothing.
+- An asynchronous command keeps the request open until it completes, also when the page invokes it with `command`
+  rather than as an [operation](#operations); its reply follows the frame of its end, which carries its effects and
+  its execution member. A window runs at most 64 such calls at once; another one is `rejected` with `capacity` and
+  runs nothing. The capacity is checked last, after availability ([order of checks](#presentation-epochs)), so a
+  command that is not available answers `unavailable` also when the window is at capacity.
 - **Key commands.** A command may take a key that the producer resolves to an object before it runs. A key that
   resolves to nothing is `rejected` with `unresolved-key` and runs nothing; `can` answers `false` for it; `start`
   rejects it with the reason `unresolved-key`. The operation identity uses the key as the input.
@@ -1688,6 +1694,16 @@ find again, for example after a reload.
   with `unavailable`.
 - A start reply with an `admission` always carries `revision`, the route's last published revision when nothing
   changed.
+- **Order of checks.** A producer checks a `start` in this order and answers the first that fails: the envelope and
+  the contract (`invalid-request`, below; also an `input` that the command does not take, or a missing one); an
+  input that is not valid JSON of the [profile](values.md#json-profile) (`rejected` admission, `invalid-input`); the
+  window's close (`owner-closing`, or `owner-disposed` once it is gone); the operation id (`duplicate`,
+  `identity-conflict`, `expired`); the window's operation capacity (`capacity`: it retains 64 operations); then the
+  input's decoding (`invalid-input`), the key (`unresolved-key`) and availability (`unavailable`). Unlike `command`'s,
+  a `start`'s capacity comes before availability.
+- A `start`, `status`, `watch`, `unwatch`, `cancel` or `stream` whose `member` is not an asynchronous command of the
+  route, such as a synchronous command, is `rejected` with `invalid-request`, without `admission` or `revision`, and
+  starts nothing.
 - A `start` whose `contract` is not the contract of the route's View comes from a generated client of another build. It
   is answered `{"ok":false,"error":{"kind":"rejected","reason":"invalid-request",…}}`, without `admission` or
   `revision`, and starts nothing; the other requests find no operation under that contract (`unknown`).
@@ -1733,7 +1749,11 @@ A status is an object with `kind`:
   have passed since the previous `operation` push of the watch, and otherwise pushes the latest progress 100 ms after
   the previous push. A terminal status is pushed at once and replaces a pending progress push.
 - A connection holds at most 64 watches; another is `rejected` with `capacity`. Watching an operation that the
-  connection already watches does not add a watch.
+  connection already watches does not add a watch. Only a running operation is watched: `watch` of an operation that
+  is terminal, expired or unknown answers its status and adds no watch, so the limit counts running operations.
+- `unwatch` answers the current status and ends the connection's watch, if it has one; the producer pushes nothing more
+  for it. `cancel` of an operation that is not running answers `not-running` (`expired` or `unknown` for those
+  statuses) and changes nothing.
 - A `stream` page is `{kind, cursor, completed, items:[{sequence, value}], delivery?}`: `kind` is the operation's
   status kind, `items` the values from `cursor` on, and `cursor` the cursor of the next page. A stream operation that
   fails as declared keeps the values it published; its pages have `kind: "domain-failed"` and `completed: true`.

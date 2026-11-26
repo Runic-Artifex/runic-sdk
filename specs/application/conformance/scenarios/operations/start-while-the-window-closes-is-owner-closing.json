@@ -1,0 +1,41 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "operations.start-while-the-window-closes-is-owner-closing.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "operations",
+  "roles": ["producer"],
+  "description": "While the window closes and waits for a running operation, a start is rejected with owner-closing and an asynchronous command answers released.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-notes": {"kind":"request"},
+    "start-request": {"kind":"request"},
+    "second-start": {"kind":"request"},
+    "command-request": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "operation": {"kind":"wire","value":"op-1"},
+    "contract": {"kind":"provided"},
+    "second": {"kind":"wire","value":"op-2"},
+    "close": {"kind":"close"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok"},"replyTo":"open-notes"},
+    {"send":{"kind":"start","route":"notes","member":"slowImport","operation":{"$id":"operation"},"contract":{"$id":"contract"},"input":{"source":"a","limit":2}},"id":"start-request"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"isSlowImportExecuting","kind":"set","value":true}]}},
+    {"receive":{"ok":true,"revision":1,"admission":"accepted","status":{"kind":"running"}},"replyTo":"start-request"},
+    {"closeWindow":{"id":"close","timeout":60000}},
+    {"send":{"kind":"start","route":"notes","member":"slowImport","operation":{"$id":"second"},"contract":{"$id":"contract"},"input":{"source":"b","limit":1}},"id":"second-start"},
+    {"receive":{"ok":true,"revision":1,"admission":"rejected","reason":"owner-closing"},"replyTo":"second-start"},
+    {"send":{"kind":"command","route":"notes","member":"confirmClear"},"id":"command-request"},
+    {"receive":{"ok":false,"error":{"kind":"released","message":{"$any":"string"}}},"replyTo":"command-request"},
+    {"mutate":[{"op":"finish","member":"slowImport","rows":["x","y"]}]},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"rows","kind":"add","index":0,"oldIndex":-1,"keys":["1","2"],"items":[{"id":1,"label":"x"},{"id":2,"label":"y"}]},{"field":"count","kind":"set","value":2},{"field":"summary","kind":"set","value":"rows: 2"},{"field":"canClear","kind":"set","value":true},{"field":"canConfirmClear","kind":"set","value":true},{"field":"isSlowImportExecuting","kind":"set","value":false}]}}
+  ]
+}
