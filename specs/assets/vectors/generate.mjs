@@ -29,7 +29,10 @@ const crc32 = bytes => {
 // A ZIP of stored entries, enough to craft manifests and directories; deflated entries come from the packer archives,
 // except a few hand-written deflate streams. An entry's options override what its record says:
 // - method: the compression method (0 by default) in both headers, and payload: the bytes written as its data;
-// - crc: the CRC-32 (that of the entry's bytes by default), and size: the uncompressed size (their length).
+// - crc: the CRC-32 (that of the entry's bytes by default), and size: the uncompressed size (their length);
+// - localName and localMethod: the name and the method in the local header, when they differ from the central record's;
+// - within: an earlier entry's name. The entry has no local record of its own: its central record gives the offset of
+//   that entry's data, which must hold the local record (localRecord below).
 // A Zip's own options: prefix, bytes before the first entry, with offsets from the start of the file unless
 // relativeOffsets; zip64: "end-record" (a ZIP64 end record and locator, the classic fields at their markers) or
 // "extra-fields" (ZIP64 extra fields for every entry's sizes and offset, the classic fields at their markers).
@@ -55,22 +58,28 @@ class Zip {
     const u64 = v => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(v)); return b; };
     const extra = this.zip64 === "extra-fields";
     const version = this.zip64 ? 45 : 20;
-    for (const [name, data, { method = 0, payload = data, crc: entryCrc, size = data.length }] of this.entries) {
+    const dataOffsets = new Map();
+    for (const [name, data, options] of this.entries) {
+      const { method = 0, payload = data, crc: entryCrc, size = data.length, localName = name, localMethod = method, within } = options;
       const nameBytes = utf8(name);
+      const localNameBytes = utf8(localName);
+      const entryOffset = within === undefined ? offset : dataOffsets.get(within);
       const crc = this.crcOverride?.[0] === name ? this.crcOverride[1] : entryCrc ?? crc32(data);
       const flags = this.flags | (/^[\x00-\x7f]*$/.test(name) ? 0 : 0x0800);
       const field = value => (extra ? 0xffffffff : value);
       const localExtra = extra ? Buffer.concat([u16(1), u16(16), u64(size), u64(payload.length)]) : Buffer.alloc(0);
-      const centralExtra = extra ? Buffer.concat([u16(1), u16(24), u64(size), u64(payload.length), u64(offset)]) : Buffer.alloc(0);
+      const centralExtra = extra ? Buffer.concat([u16(1), u16(24), u64(size), u64(payload.length), u64(entryOffset)]) : Buffer.alloc(0);
       const local = Buffer.concat([
-        u32(0x04034b50), u16(version), u16(flags), u16(method), u16(0), u16(0x0021), u32(crc), u32(field(payload.length)),
-        u32(field(size)), u16(nameBytes.length), u16(localExtra.length), nameBytes, localExtra, payload,
+        u32(0x04034b50), u16(version), u16(flags), u16(localMethod), u16(0), u16(0x0021), u32(crc), u32(field(payload.length)),
+        u32(field(size)), u16(localNameBytes.length), u16(localExtra.length), localNameBytes, localExtra, payload,
       ]);
       central.push(Buffer.concat([
         u32(0x02014b50), u16(version), u16(version), u16(flags), u16(method), u16(0), u16(0x0021), u32(crc),
         u32(field(payload.length)), u32(field(size)), u16(nameBytes.length), u16(centralExtra.length), u16(0), u16(0),
-        u16(0), u32(0), u32(field(offset)), nameBytes, centralExtra,
+        u16(0), u32(0), u32(field(entryOffset)), nameBytes, centralExtra,
       ]));
+      if (within !== undefined) continue;
+      dataOffsets.set(name, offset + 30 + localNameBytes.length + localExtra.length);
       out.push(local);
       offset += local.length;
     }
@@ -101,6 +110,9 @@ const storedBlock = bytes => {
   header.writeUInt16LE(~bytes.length & 0xffff, 3);
   return Buffer.concat([header, bytes]);
 };
+
+// The local record (header and data) of a stored entry `name` with `bytes`, as Zip writes it.
+const localRecord = (name, bytes) => new Zip().add(name, bytes).bytes().subarray(0, 30 + utf8(name).length + bytes.length);
 
 const INDEX = utf8("<!doctype html><title>corpus</title>\n");
 const A = utf8("same content\n");
@@ -318,6 +330,8 @@ const withA = options => new Zip().add("runic-assets.json", v1([index(), a])).ad
   .add("assets/a.txt", A, options);
 add("compression-bzip2", "a.txt has compression method 12 (BZip2): readers read methods 0 and 8 only.",
   withA({ method: 12 }), invalid("zip-invalid"));
+add("compression-deflate64", "a.txt has compression method 9 (Deflate64), whose stored block reads as deflate's: readers read methods 0 and 8 only.",
+  withA({ method: 9, payload: storedBlock(A) }), invalid("zip-invalid"));
 add("deflate-invalid", "a.txt's deflate data has the reserved block type 3, so it does not inflate.",
   withA({ method: 8, payload: Buffer.alloc(A.length, 0xff) }), invalid("zip-invalid"));
 add("deflate-truncated", "a.txt's deflate stream ends inside its stored block.",
@@ -326,10 +340,21 @@ add("deflate-short", "a.txt's complete deflate stream inflates to 12 bytes, whos
   new Zip().add("runic-assets.json", v1([index(), replaceOnce(a, sha(A), sha(A.subarray(0, 12)))])).add("assets/index.html", INDEX)
     .add("assets/a.txt", A, { method: 8, payload: storedBlock(A.subarray(0, 12)), crc: crc32(A.subarray(0, 12)) }),
   invalid("length-mismatch"));
+add("deflate-long", "a.txt's complete deflate stream inflates to 14 bytes: its 13 bytes, which its CRC-32 and digest match, and one more.",
+  withA({ method: 8, payload: storedBlock(Buffer.concat([A, utf8("!")])) }), invalid("length-mismatch"));
 add("stored-size-short", "a.txt is stored with 12 bytes of data, whose CRC-32 and digest it records, and an uncompressed size of 13, its length.",
   new Zip().add("runic-assets.json", v1([index(), replaceOnce(a, sha(A), sha(A.subarray(0, 12)))])).add("assets/index.html", INDEX)
     .add("assets/a.txt", A, { payload: A.subarray(0, 12), crc: crc32(A.subarray(0, 12)) }),
   invalid("length-mismatch"));
+add("local-name-differs", "a.txt's local header names assets/b.txt, not the central record's assets/a.txt.",
+  withA({ localName: "assets/b.txt" }), invalid("zip-invalid"));
+add("local-method-differs", "a.txt is stored (method 0) in its central record, and its local header says method 8.",
+  withA({ localMethod: 8 }), invalid("zip-invalid"));
+add("entries-overlap", "c.txt's local header and data lie inside a.txt's data, which holds them: two entries' bytes overlap.", (() => {
+  const inner = localRecord("assets/c.txt", C);
+  return new Zip().add("runic-assets.json", v1([index(), asset("a.txt", inner, false), asset("c.txt", C, false)]))
+    .add("assets/index.html", INDEX).add("assets/a.txt", inner).add("assets/c.txt", C, { within: "assets/a.txt" });
+})(), invalid("zip-invalid"));
 add("length-negative", "A negative length.", simple(v1([index(), replaceOnce(a, '"length":13', '"length":-13')])),
   invalid("asset-invalid"));
 add("path-no-break-space", "A path that starts with U+00A0, which is white space.",
@@ -340,6 +365,10 @@ add("media-type-ideographic-space", "A media type that ends in U+3000, which is 
   simple(v1([index(), replaceOnce(a, "text/plain", "text/plain\u3000")])), invalid("asset-invalid"));
 add("manifest-lone-surrogate", "A path with a lone surrogate escape.",
   simple(v1([index(), replaceOnce(a, '"a.txt"', '"a\\ud800.txt"')])), invalid("manifest-not-json"));
+add("manifest-lone-surrogate-ignored-name", "The name of a member that readers ignore has a lone surrogate escape.",
+  simple(v1([index(), replaceOnce(a, '"cacheMode"', '"x\\udc00":1,"cacheMode"')])), invalid("manifest-not-json"));
+add("manifest-lone-surrogate-ignored-value", "The value of a member that readers ignore has a lone surrogate escape.",
+  simple(v1([index(), replaceOnce(a, '"cacheMode"', '"note":"\\ud800","cacheMode"')])), invalid("manifest-not-json"));
 
 // The packer's archives. What a reader reports is their manifest's metadata, once this script has inflated every entry
 // and checked its CRC-32, its length and its digest against the manifest itself.

@@ -148,6 +148,63 @@ public sealed class BridgeHandshakeTests
     }
 
     [Test]
+    public async Task AnOpenReturnsOnlyAfterThePageConnectedEvent()
+    {
+        // #1383: the token reply used to end the open's wait, and the Connected event followed on a thread-pool thread,
+        // so on a busy machine the open could return with ConnectionCount 0. A Connected handler that is held here stands
+        // in for that delay: the open must keep waiting until the event has been raised, and return with the page counted.
+        await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 10, handshakeTimeout: TimeSpan.FromSeconds(10));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var raised = 0;
+        using var observation = fixture.Window.ObserveConnections(connection =>
+        {
+            if (connection.EventType != WebUiEventType.Connected) return;
+            entered.TrySetResult();
+            release.Task.Wait(fixture.Timeout);
+            Interlocked.Increment(ref raised);
+        });
+        // What the open's caller sees when it continues, recorded as the open completes.
+        var atReturn = fixture.Showing.ContinueWith(
+            _ => (Count: fixture.Window.ConnectedSessionCount, Raised: Volatile.Read(ref raised)),
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+        using var socket = await ConnectAsync(fixture.Url, fixture.Cookies, fixture.Timeout);
+        try
+        {
+            await SendCheckTokenAsync(socket, fixture.Token, fixture.Timeout);
+            await entered.Task.WaitAsync(fixture.Timeout);
+            var first = await Task.WhenAny(fixture.Showing, Task.Delay(TimeSpan.FromMilliseconds(500), fixture.Timeout));
+            Assert.False(ReferenceEquals(first, fixture.Showing), "The open returned before the page's Connected event was raised.");
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
+        await fixture.Showing.WaitAsync(fixture.Timeout);
+        var (count, observed) = await atReturn.WaitAsync(fixture.Timeout);
+        Assert.Equal(1, count);
+        Assert.Equal(1, observed);
+    }
+
+    [Test]
+    public async Task AnOpenReturnsWhenAConnectedHandlerFails()
+    {
+        // A failing Connected handler still raised the event; the open does not wait for a connection that has happened.
+        await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 10, handshakeTimeout: TimeSpan.FromSeconds(10));
+        using var observation = fixture.Window.ObserveConnections(connection =>
+        {
+            if (connection.EventType == WebUiEventType.Connected) throw new InvalidOperationException("The handler failed.");
+        });
+
+        using var socket = await ConnectAsync(fixture.Url, fixture.Cookies, fixture.Timeout);
+        await SendCheckTokenAsync(socket, fixture.Token, fixture.Timeout);
+        await fixture.Showing.WaitAsync(fixture.Timeout);
+        Assert.Equal(1, fixture.Window.ConnectedSessionCount);
+    }
+
+    [Test]
     public async Task APageThatStopsAfterItsFirstRequestTimesOutAWholeTimeoutLater()
     {
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromSeconds(10));
