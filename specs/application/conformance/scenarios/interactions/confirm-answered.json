@@ -1,10 +1,10 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "interactions.confirm-answered.v1",
+  "id": "interactions.confirm-answered.v2",
   "contract": {"id":"runic.views","version":4},
   "set": "interactions",
   "roles": ["producer","client"],
-  "description": "A command asks the presentation's confirm handler; the answer is accepted once and a repeat of it is already-completed.",
+  "description": "A command asks the presentation's confirm handler; the answer is accepted once and a repeat of it is already-completed. The reply to the answer, a request admitted after the command, is not ordered with the frame or the command's reply (reply order).",
   "view": "notes",
   "ids": {
     "c1": {"kind":"connection"},
@@ -142,7 +142,7 @@
       },
       "unordered": true
     },
-    {"receive":{"ok":true,"revision":2},"replyTo":"command-request"},
+    {"receive":{"ok":true,"revision":2},"replyTo":"command-request","unordered":true},
     {"expect":{"call":{"id":"confirm-clear","resolved":null}}},
     {
       "send": {

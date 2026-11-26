@@ -76,6 +76,11 @@ builds it, copies the contract declarations beside the compiled clients and
 checks the exports; see
 [Library packages](../../packages/dotnet/Runic.Application.Views/README.md#library-packages).
 
+[`fresh-clone-smoke.mjs`](fresh-clone-smoke.mjs) does exactly this for a Bun, npm
+and pnpm workspace with a compiled package, outside the repository, and checks
+that a fresh clone reaches Ready under `dotnet runic dev` and builds with
+`dotnet build`, with no install step of its own.
+
 Keep `resolve.dedupe: ["@runic-artifex/views"]` in the Vite config: a linked
 package can resolve its own copy of the runtime, and the page must load one.
 Replace the `ProjectReference` and `Import` lines of both projects with package

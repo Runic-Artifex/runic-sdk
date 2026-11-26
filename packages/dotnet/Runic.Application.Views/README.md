@@ -2600,6 +2600,7 @@ returns an application's frontend packages as data ([Library packages](#library-
 | `RunicApplicationFrontendGenerationEnabled` | see below | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
+| `RunicApplicationFrontendDevSessionProject` | none | Set by `dotnet runic dev` (since 0.24), as a global property: the project whose frontend its development server serves. Only that project skips its production frontend build and copy; it still installs the frontend packages and builds the [packages its frontend depends on](#library-packages). |
 | `RunicApplicationFrontendBootstrap` | set by the targets (read-only) | `true` only in the bootstrap pass (see below). A project reads it, for example to leave a reference out of that pass; it does not set it. |
 
 ### JavaScript workspaces
@@ -2725,6 +2726,17 @@ frontend only when one of its inputs changed.
   the generated clients, and so the frontend, alone. `-t:Rebuild` builds it
   again. The [packages it depends on](#library-packages) are built the same
   way, each only when its own files changed.
+- **`dotnet runic dev`** leaves the install to the build since 0.24, so its
+  second start with nothing changed installs nothing; before, it ran the
+  package manager's install (`npm ci`, which reinstalls everything) on every
+  start.
+- **Library packages under `dev`.** While `dotnet runic dev` runs, it watches
+  the compiled packages that the page depends on (since 0.24). It runs a
+  package's `watch` script, or else reruns its `build` when one of its files
+  changes, and Vite reloads the page. A rebuild that fails prints `RAPPDEV1018`,
+  and `dev` puts the package's last good output back, so the page keeps working. A
+  package that fails at the start stops `dev` with its build's error. See
+  [Library packages under dev](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md#library-packages-under-dev).
 - **CI.** A fresh checkout has no `node_modules`, so `Auto` installs there, and a
   restored `node_modules` cache is reused only when its hash matches the
   checkout's lock file and `package.json` files. `ContinuousIntegrationBuild`
@@ -5447,7 +5459,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2030 | `DesktopHostedRegionAppearanceUnavailable` | Warning | The host gave a region window an appearance override (`RunicHostedRegionOptions.Appearance`, `RunicHostedRegion.SetAppearanceAsync`), but the guest does not implement `region-appearance/1`, such as a 0.18 guest: the window shows the desktop's appearance. Once per window. | `Name`, `Region` |
 | 2031 | `DesktopHostedRegionRetryRefused` | Warning | The host page asked for a failed region again (`hosted-region-retry`) more than 3 times within a minute; the region stays failed until the application calls `RunicHostedRegion.RetryAsync`. | `Region` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
-| 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `24c7d196e` (CsWebUi 2.5.0-beta.4.10). Once per process, before the first window opens. | `Path` |
+| 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `8a55352c2` (CsWebUi 2.5.0-beta.4.11). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
 | 2103 | `CsWebUiBlobEndpointPortsHeld` | Warning | Another process held, or answered on, one loopback address of `localhost` (`Address`) on `Count` of the `Tried` ports a CS-WebUI Window's blob endpoint tried, so the endpoint gave up `Host`. On Windows, where http.sys refuses to listen on a port that another socket holds, `Address` is `localhost` when no single address shows which socket holds it. Its URLs then fall back to `127.0.0.1`, whose loads the page makes cross-site and the endpoint refuses; on Windows, which has no fallback, the Window opens without blobs and uploads (event 1207). | `Address`, `Count`, `Tried`, `Host` |
 | 2104 | `CsWebUiBlobEndpointPortsReserved` | Warning | On Windows, URL reservations of http.sys (`Reservations`, the reserved URL prefixes) named `Count` of the `Tried` ports a CS-WebUI Window's blob endpoint tried for `Host`, so the endpoint gave up `Host`. A reservation lets the users that its access list names register URLs under the endpoint's, so the endpoint does not use a port that one names, whatever its host or path. The Window then opens without blobs and uploads (event 1207). | `Reservations`, `Count`, `Tried`, `Host` |
@@ -5765,9 +5777,14 @@ each watched entry, so a link replaced by a rename is seen in its parent, and
 shares one watcher per directory across the process. It also watches that
 directory's parent: inotify and FSEvents keep a watch on a deleted directory
 and report nothing for a new directory of the same name, so the watcher
-compares the directory's identity (device, inode and birth time, since ext4
-reuses a freed inode at once, or volume and file index on Windows) when the parent reports it, on each read and when another watcher
-joins, and starts a new watch when it was replaced. `PathWatcherTests` run the
+compares the directory's identity when the parent reports it, on each read
+and when another watcher joins, and starts a new watch when it was replaced.
+The identity is the device, inode and birth time on Linux and macOS (ext4
+reuses a freed inode at once; Linux reads the birth time with `statx`), and
+the volume and file index on Windows. Writes inside the directory leave it
+unchanged. On a Linux file system that records no birth time, the identity
+takes the change time instead. A replacement is still found, but each entry
+created, renamed or deleted in the directory then restarts its watch. `PathWatcherTests` run the
 first five rows on Linux, Windows and macOS in CI, and check that an event,
 not a poll, reported each change; the network and limit rows follow the
 platforms' documentation.

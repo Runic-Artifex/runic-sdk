@@ -1461,6 +1461,12 @@ loads. The message names the page and the server's response.
 check that the configured dev script starts with the frontend's own command,
 such as `npm run dev`.
 
+Since 0.24, `dev` stops waiting at once when Vite answers the application entry
+with HTTP 500 twice, such as for an import that Vite cannot resolve, and the
+message carries Vite's own error. When the import names a frontend package that the
+page depends on, it also says whether that package has been built. A server that
+exits before it is ready reports the first error line of its output.
+
 For Vite, the application entry must come back as a JavaScript module. Vite
 answers a path that is not below its `root` with its `index.html` fallback, so
 `dev` stops at once when the entry's content type is not JavaScript (since
@@ -1489,11 +1495,13 @@ up to three times, and fails with this diagnostic only if every port was taken.
 
 ### RAPPDEV1008
 
-`--no-restore` was given but the frontend packages are not installed. Exit
-code 1.
+`--no-restore` was given but the frontend packages are not installed, or
+`--no-build` was given and no build has installed them yet (since 0.24 the build
+installs them, and `--no-build` runs no build). A `node_modules` at the
+JavaScript workspace root above the frontend counts. Exit code 1.
 
-**Fix:** install them with the frontend's package manager, or omit
-`--no-restore`.
+**Fix:** install them with the frontend's package manager (at the workspace
+root in a workspace), build the project once, or omit the option.
 
 ### RAPPDEV1009
 
@@ -1583,6 +1591,42 @@ Exit code 1. Since 0.21.
 **Fix:** stop the process that holds 9222, or run `dev` with
 `--no-debug-endpoint`. See
 [Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux).
+
+### RAPPDEV1018
+
+A frontend package that the page depends on failed (since 0.24): a client
+library's package, or a workspace package that no .NET project owns.
+
+- **At the start**, `dev` stops with exit code 1 when the package's build fails in
+  its initial build. The message quotes the build's error, such as
+  `shared-ui/src/index.ts(3,1): error TS1005`. It also stops when a compiled
+  package's exported file is missing after the build. The message names the file
+  and the reason: the package's build is off in its project
+  (`RunicApplicationFrontendBuildEnabled=false`), its build did not write the file,
+  or `--no-build` ran no build.
+- **While `dev` runs**, a rebuild that fails, a located error from the package's
+  watch script, or a watch script that exits is a line in MSBuild's form:
+  `<owner project> : error RAPPDEV1018: [shared-ui] …`. `dev` keeps running. After a
+  failed rebuild it puts the package's last good output folders back, so the page
+  keeps working, and the next change rebuilds the package.
+
+**Fix:** fix the package's error, shown in the output above the line. For a missing
+export, make the package's `build` script write every file that its `package.json`
+`exports`, or turn its build on. See
+[Library packages under dev](../tools/dotnet-runic/README.md#library-packages-under-dev).
+
+### RAPPDEV1019
+
+A warning from `dev` (since 0.24): the project's `Runic.Application.Views` build
+targets are older than the tool, so they do not read
+`RunicApplicationFrontendDevSessionProject`. `dev` falls back to the old
+behaviour: it installs the frontend packages itself and passes
+`RunicApplicationFrontendBuildEnabled=false` to every project it builds, so a
+client library's compiled frontend package is not built and the page can fail
+to resolve it.
+
+**Fix:** update the project's Runic packages to the tool's version. See
+[Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
 
 ### RAPPPKG1001
 
