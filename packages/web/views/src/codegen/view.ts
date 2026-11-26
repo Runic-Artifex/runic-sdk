@@ -570,6 +570,7 @@ export function emitView(context: ViewContext, view: View): void {
   if (regionCollections.length > 0) runtimeImports.push(Import("regionCollection"));
   if (hasValidation && fieldMembers.length > 0) runtimeImports.push(Import("fieldErrors"), Import("fieldValidating"));
   // In this order, so that a client without development-only members imports as before.
+  if (fieldMembers.length > 0) runtimeImports.push(Import("fieldMembers"));
   if (fieldMembers.some(member => nestedPaths.has(member)) || rowFieldPaths.length > 0) runtimeImports.push(Import("fieldPath"));
   if (hasFieldPaths) runtimeImports.push("type " + Import("BridgeFieldWriteRequest"));
   if (rowFieldPaths.length > 0) runtimeImports.push(Import("rowFields"));
@@ -641,7 +642,8 @@ export function emitView(context: ViewContext, view: View): void {
   modules.add(`${module}.mock.ts`, emitMock(emitter, view, { values, inputs, results, failures, interactions, requests, queries, fieldPaths: mockFieldPaths }), fullName);
 
   // Field descriptors (F1): one BridgeField per checked member, which useField, injectField and createFieldController
-  // bind an input to, and the descriptors of the field paths below members and rows (field-paths/1).
+  // bind an input to, and the descriptors of the field paths below members and rows (field-paths/1). A descriptor's own
+  // members are under the fieldMembers symbol, and the descriptors below it under their wire names (#1395).
   function appendFieldDescriptors(): void {
     if (fieldMembers.length === 0 && rowFieldPaths.length === 0) return;
     ts.line();
@@ -658,16 +660,19 @@ export function emitView(context: ViewContext, view: View): void {
       const wire = member.wire;
       const name = quote(wire);
       const root = values.get(member)!.root;
+      // The descriptor's own members are under a symbol, so the fields below the member (billing.name) can take any name.
       ts.line(`  ${tsLiteralKey(wire)}: {`);
-      ts.line(`    name: ${name}, ${fieldTraits(root, member.constraints)},`);
-      ts.line(`    read: state => ${tsAccess("state", wire)},`);
-      ts.line(`    write: (client, value) => client.set${member.name}(value),`);
-      ts.line(`    checked: (client, value, options) => client.write${member.name}(value, options),`);
-      ts.line(`    baseline: client => client.fieldBaseline(${name}),`);
+      ts.line(`    [${Ref("fieldMembers")}]: {`);
+      ts.line(`      name: ${name}, ${fieldTraits(root, member.constraints)},`);
+      ts.line(`      read: state => ${tsAccess("state", wire)},`);
+      ts.line(`      write: (client, value) => client.set${member.name}(value),`);
+      ts.line(`      checked: (client, value, options) => client.write${member.name}(value, options),`);
+      ts.line(`      baseline: client => client.fieldBaseline(${name}),`);
       if (hasValidation) {
-        ts.line(`    errors: state => ${Ref("fieldErrors")}(state.validation, ${name}${hasErrors ? ", " + tsAccess("state", wire + "Errors") : ""}),`);
-        ts.line(`    validating: state => ${Ref("fieldValidating")}(state.validation, ${name}),`);
+        ts.line(`      errors: state => ${Ref("fieldErrors")}(state.validation, ${name}${hasErrors ? ", " + tsAccess("state", wire + "Errors") : ""}),`);
+        ts.line(`      validating: state => ${Ref("fieldValidating")}(state.validation, ${name}),`);
       }
+      ts.line("    },");
       const nested = nestedPaths.get(member);
       if (nested)
         for (const line of leafValues(nested, [], wire, `container: state => ${tsAccess("state", wire)}`,
@@ -696,7 +701,7 @@ export function emitView(context: ViewContext, view: View): void {
   }
 
   // field-paths/1: the descriptors below prefix, one fieldPath per path; a path with paths below it spreads its
-  // descriptor and adds theirs.
+  // descriptor, whose own members are under the fieldMembers symbol, and adds theirs.
   function leafValues(list: readonly Leaf[], prefix: readonly string[], member: string, locate: string, containerType: string): string[] {
     const lines: string[] = [];
     for (const leaf of list.filter(leaf => leaf.path.length === prefix.length + 1 && startsWith(leaf.path, prefix))) {

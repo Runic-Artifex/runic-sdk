@@ -52,7 +52,7 @@ export function viewOf(client: FakeEditor): {
   return view;
 }
 
-/** Field definitions of the shape the generator emits as `{View}Fields`. */
+/** Field definitions with the members of a generated `{View}Fields` descriptor (`descriptor[fieldMembers]`). */
 export const Fields = {
   title: {
     name: "title", kind: "text" as const,

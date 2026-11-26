@@ -209,6 +209,10 @@ A field is a member of the object that the producer can change in a copy of the 
 
 A member without fields below it has no `fieldPaths`.
 
+No field name is reserved. The TypeScript client keeps a field descriptor's own members (`name`, `read`, `write`,
+`checked`, `errors` and the others) under the runtime's `fieldMembers` symbol, and the descriptors of the fields below
+the member under their wire names, so a field named `name` or `read` is a field like any other (sdk#1395).
+
 ## Shared clients
 
 A shared client is one client type for the Views that implement a common interface (`[RunicSharedClient]` in .NET), so

@@ -93,7 +93,7 @@ export {
   type ViewSource,
 } from "./controller.js";
 export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
-export type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
+export { fieldMembers, type BridgeField, type BridgeFieldConstraints, type BridgeFieldKind, type BridgeFieldMembers } from "./field.js";
 export { fieldErrorsAt, fieldValidatingAt, type BridgeRowFields } from "./field-paths.js";
 export {
   createLatestOperationController,
@@ -145,6 +145,7 @@ export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSur
 export {
   commitAllFields,
   createFieldController,
+  fieldDefinition,
   FieldError,
   type FieldCommit,
   type FieldController,

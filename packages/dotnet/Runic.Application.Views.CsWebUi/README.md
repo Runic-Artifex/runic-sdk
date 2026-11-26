@@ -79,7 +79,7 @@ Frames queue in the bridge, which sends a recovery state once the queue is
 full, and the window's other clients wait for the same write. Other CS-WebUI windows are not held back:
 WebUI before nightly `9264f7ae9` (webui-dev/webui#723) wrote every WebSocket
 frame under one process-wide lock, so one stalled client delayed every window in
-the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.10, the lowest
+the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.11, the lowest
 version this package accepts, includes the fix.
 
 ## What a window opens
@@ -511,13 +511,15 @@ requests can reach WebUI at once. Runic relies on WebUI's fix for concurrent cal
 two calls that arrive together. One call could then run with the other's
 arguments or receive the other's reply, and one of them could receive no reply
 at all. The fix is in WebUI nightly `efac0e24d` and in every CsWebUi since
-2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.10, the lowest version this package
-accepts, bundles WebUI nightly `24c7d196edc63f5b777d465063c3d26731f52dea`,
-which also removes the process-wide send lock (webui-dev/webui#723) and gives
-navigation events their URL argument (webui-dev/webui#724). An application that
-loads its own WebUI through `CSWEBUI_NATIVE_LIBRARY` or
-`WebUiNativeLibrary.SetLibraryPath` needs `efac0e24d` or later for concurrent
-calls, and `2b35db13f` or later for the behaviour this package is tested with.
+2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.11, the lowest version this package
+accepts, bundles WebUI nightly `8a55352c2d7b6c0be9a149af417373714a390cb8`,
+which also removes the process-wide send lock (webui-dev/webui#723), gives
+navigation events their URL argument (webui-dev/webui#724) and keeps the query
+string when it redirects `/` or a folder to its index file (webui-dev/webui#729,
+cs-webui#33). An application that loads its own WebUI through
+`CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath` needs
+`efac0e24d` or later for concurrent calls, and `8a55352c2` or later for the
+behaviour this package is tested with.
 WebUI reports no version or commit that Runic could check, so the host logs
 event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before the first
 window opens, when such a library is configured.
@@ -698,7 +700,7 @@ decisions:
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
   with an older WebUI, Bridge calls that arrive together can run with each
   other's arguments or receive each other's replies. Runic is tested with
-  `24c7d196e`, which CsWebUi 2.5.0-beta.4.10 bundles (see above). Runic cannot
+  `8a55352c2`, which CsWebUi 2.5.0-beta.4.11 bundles (see above). Runic cannot
   check a custom build, so the host logs event 2101 when one is configured.
 
 - **Embedded frontends and file handlers.** WebUI turns its authentication

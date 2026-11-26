@@ -3,7 +3,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
-import { FieldError, useField, useForm, type BridgeField, type FieldHandle, type FormHandle } from "../src/views/index.js";
+import { FieldError, fieldMembers, useField, useForm, type BridgeField, type BridgeFieldMembers, type FieldHandle, type FormHandle } from "../src/views/index.js";
 import FieldOwner from "./fixtures/FieldOwner.svelte";
 import OnBlurOwner from "./fixtures/OnBlurOwner.svelte";
 import RadioOwner from "./fixtures/RadioOwner.svelte";
@@ -43,15 +43,18 @@ function fakeClient(initial: Partial<State> = {}) {
 type Client = ReturnType<typeof fakeClient>;
 
 function descriptor<K extends "title" | "step" | "done", TValue extends State[K]>(
-  name: K, kind: BridgeField<Client, State, TValue>["kind"], extra: Partial<BridgeField<Client, State, TValue>> = {},
+  name: K, kind: BridgeFieldMembers<Client, State, TValue>["kind"], extra: Partial<BridgeFieldMembers<Client, State, TValue>> = {},
 ): BridgeField<Client, State, TValue> {
+  // As generated: the descriptor's own members are under `fieldMembers` (#1395).
   return {
-    name, kind,
-    read: state => state[name] as TValue,
-    write: (client, value) => client.write(name, value, false),
-    checked: (client, value, _options: FieldWriteOptions<TValue>) => client.write(name, value, true) as Promise<FieldWriteReceipt<TValue>>,
-    baseline: client => client.baseline(name) as { value: TValue; version: number },
-    ...extra,
+    [fieldMembers]: {
+      name, kind,
+      read: state => state[name] as TValue,
+      write: (client, value) => client.write(name, value, false),
+      checked: (client, value, _options: FieldWriteOptions<TValue>) => client.write(name, value, true) as Promise<FieldWriteReceipt<TValue>>,
+      baseline: client => client.baseline(name) as { value: TValue; version: number },
+      ...extra,
+    },
   };
 }
 const Fields = {
@@ -288,7 +291,7 @@ describe("useField", () => {
   test("a field path (checkedOnly) writes with its checked write, without the checked option", async () => {
     const client = fakeClient({ title: "x" });
     // As InvoiceFields.lines.at(key).quantity: no setter of its own, only the checked write.
-    const cell = { ...Fields.title, checkedOnly: true };
+    const cell = { [fieldMembers]: { ...Fields.title[fieldMembers], checkedOnly: true } };
     let field!: FieldHandle<string>;
     const destroy = $effect.root(() => { field = useField(() => ({ state: client.snapshot, client }), cell); });
     flushSync();

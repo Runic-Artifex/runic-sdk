@@ -6,7 +6,7 @@ import {
   createFieldController,
   createTextFieldController,
   FieldError,
-  type BridgeField,
+  type BridgeFieldMembers,
   type FieldBaseline,
   type FieldWriteOptions,
   type FieldWriteReceipt,
@@ -39,7 +39,7 @@ function call(client: Client, kind: Call["kind"], value: unknown, options?: Fiel
   return new Promise((resolve, reject) => client.calls.push({ kind, value, ...(options ? { options } : {}), resolve, reject }));
 }
 
-const title: BridgeField<Client, State, string> = {
+const title: BridgeFieldMembers<Client, State, string> = {
   name: "title", kind: "text",
   read: state => state.title,
   write: (client, value) => call(client, "set", value),
@@ -47,7 +47,7 @@ const title: BridgeField<Client, State, string> = {
   baseline: client => client.fieldBaseline("title"),
   errors: state => state.titleErrors,
 };
-const step: BridgeField<Client, State, number> = {
+const step: BridgeFieldMembers<Client, State, number> = {
   name: "step", kind: "number", integer: true,
   read: state => state.step,
   write: (client, value) => call(client, "set", value),
@@ -57,7 +57,7 @@ const step: BridgeField<Client, State, number> = {
 
 const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
-function setup<T>(field: BridgeField<Client, State, T>, options: Parameters<typeof createFieldController>[1] = {}) {
+function setup<T>(field: BridgeFieldMembers<Client, State, T>, options: Parameters<typeof createFieldController>[1] = {}) {
   const client = fakeClient({ title: "Draft", step: 1, titleErrors: [] });
   const controller = createFieldController(field, options);
   controller.setSource({ state: client.snapshot, client });
@@ -162,7 +162,7 @@ test("a conflict whose incoming value is the value sent is an applied write", as
 });
 
 test("committed-with-error drops the draft and reports the error; applied.validation is errors without a state source", async () => {
-  const noStateErrors: BridgeField<Client, State, string> = { ...title };
+  const noStateErrors: BridgeFieldMembers<Client, State, string> = { ...title };
   delete (noStateErrors as { errors?: unknown }).errors;
   const { client, controller } = setup(noStateErrors, { checked: true });
   controller.inputText("Half");
@@ -328,7 +328,7 @@ test("a number field parses its text, keeps text that does not parse, and shows 
 
 test("choice, boolean and nullable fields parse their text forms", () => {
   type Mode = "plain" | "fancy";
-  const parseWith = <T>(field: Partial<BridgeField<Client, State, T>>, text: string): unknown => {
+  const parseWith = <T>(field: Partial<BridgeFieldMembers<Client, State, T>>, text: string): unknown => {
     const values: unknown[] = [];
     const controller = createFieldController<State, Client, T>({ read: () => undefined as T, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...field });
     controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
@@ -369,7 +369,7 @@ test("a checked field against the mock bridge: applied, then a conflict with ano
   bridge.view("form", { state: { title: "a" }, checkedFields: ["title"] });
   type FormState = { readonly title: string };
   const view = await connectView<FormState>({ contract: "Tests.Form:fp", route: "form", members: { title: wire.string }, checkedFields: ["title"] });
-  const field: BridgeField<typeof view, FormState, string> = {
+  const field: BridgeFieldMembers<typeof view, FormState, string> = {
     name: "title", kind: "text", read: state => state.title,
     write: (client, value) => client.set("title", value),
     checked: (client, value, options) => client.write("title", {
@@ -446,7 +446,7 @@ test("with notifications paced by animation frames, a settled write drops the dr
     bridge.view("frames", { state: { title: "a" }, set: { title: (_state, value) => ({ title: (value as string).trim() }) } });
     type FramesState = { readonly title: string };
     const view = await connectView<FramesState>({ contract: "Tests.Frames:fp", route: "frames", members: { title: wire.string } });
-    const field: BridgeField<typeof view, FramesState, string> = {
+    const field: BridgeFieldMembers<typeof view, FramesState, string> = {
       name: "title", kind: "text", read: state => state.title, write: (client, value) => client.set("title", value),
     };
     const controller = createFieldController(field, { commit: "pause", delay: 10_000 });
@@ -467,7 +467,7 @@ test("with notifications paced by animation frames, a settled write drops the dr
 });
 
 test("locale-aware text forms (C1): numbers, decimals and whole numbers read and show the locale's separators", () => {
-  const field = <T>(definition: Partial<BridgeField<Client, State, T>>, options: Parameters<typeof createFieldController<State, Client, T>>[1] = {}) => {
+  const field = <T>(definition: Partial<BridgeFieldMembers<Client, State, T>>, options: Parameters<typeof createFieldController<State, Client, T>>[1] = {}) => {
     const values: unknown[] = [];
     let shown = undefined as T;
     const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false, ...options });
@@ -520,7 +520,7 @@ test("locale-aware text forms (C1): numbers, decimals and whole numbers read and
 });
 
 test("date, time and datetime fields read and show the forms of native date inputs (C1)", () => {
-  const field = <T>(definition: Partial<BridgeField<Client, State, T>>, initial: T) => {
+  const field = <T>(definition: Partial<BridgeFieldMembers<Client, State, T>>, initial: T) => {
     const values: unknown[] = [];
     let shown = initial;
     const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false });
@@ -685,7 +685,7 @@ test("a DateTimeOffset edit keeps the value's offset: unchanged text, and a loca
   process.env["TZ"] = "Europe/Berlin";
   try {
     assert.equal(new Date(Date.UTC(2026, 9, 25, 1, 30)).getHours(), 2, "the runtime follows TZ");
-    const field = <T>(definition: Partial<BridgeField<Client, State, T>>, initial: T) => {
+    const field = <T>(definition: Partial<BridgeFieldMembers<Client, State, T>>, initial: T) => {
       const values: unknown[] = [];
       let shown = initial;
       const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false });

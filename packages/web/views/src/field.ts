@@ -49,11 +49,28 @@ export interface BridgeFieldConstraints {
 }
 
 /**
- * A generated descriptor of one settable View member, such as `EditorFields.title`: how a field reads it from the
- * View's state, writes it, and finds its validation messages. The framework bindings' `useField` / `injectField`
- * and `createFieldController` take it.
+ * The key of a field descriptor's own members ({@link BridgeFieldMembers}). A symbol, so that no field name takes it:
+ * the descriptors of the fields below a member are the descriptor's string-keyed properties, such as
+ * `InvoiceFields.billing.name` for the `name` of a checked `billing` (`field-paths/1`). `Symbol.for`, so that two
+ * copies of this package in one page agree on it.
+ */
+export const fieldMembers: unique symbol = Symbol.for("runic-artifex.views.field-members");
+
+/**
+ * A generated descriptor of one settable View member, such as `EditorFields.title`. The framework bindings'
+ * `useField` / `injectField`, `bindField` and `createFieldController` take it. What it knows of the member is under
+ * the {@link fieldMembers} key, `EditorFields.title[fieldMembers].kind`, or `fieldDefinition(EditorFields.title)`;
+ * its other properties are the descriptors of the fields below the member (`InvoiceFields.address.street`).
  */
 export interface BridgeField<TClient, TState, TValue> {
+  readonly [fieldMembers]: BridgeFieldMembers<TClient, TState, TValue>;
+}
+
+/**
+ * What a field descriptor knows of its member (`descriptor[fieldMembers]`): how a field reads it from the View's
+ * state, writes it, and finds its validation messages.
+ */
+export interface BridgeFieldMembers<TClient, TState, TValue> {
   /** The member's wire name. */
   readonly name: string;
   readonly kind: BridgeFieldKind;
@@ -99,7 +116,7 @@ const cache = new WeakMap<object, Map<string, {
 
 /**
  * Whether the validation of the member `name`, or of a value below it, is in progress in `validation` (generated code
- * calls it for `BridgeField.validating`): a `validation.pending` path starts with `[name]`. `false` for a producer
+ * calls it for a descriptor's `validating`): a `validation.pending` path starts with `[name]`. `false` for a producer
  * before 0.16, which reports no pending validation.
  */
 export function fieldValidating(validation: BridgeValidationState | undefined, name: string): boolean {
@@ -108,7 +125,7 @@ export function fieldValidating(validation: BridgeValidationState | undefined, n
 }
 
 /**
- * The validation messages of the member `name` (generated code calls it for `BridgeField.errors`): the member's own
+ * The validation messages of the member `name` (generated code calls it for a descriptor's `errors`): the member's own
  * messages, `own` (its `{name}Errors`) when the View has them and none of the `validation` messages at `[name]` has
  * a text reference, and otherwise the `validation` messages at `[name]`,
  * followed by the `validation` messages whose path continues below `[name]`, in `validation` order. A message with a

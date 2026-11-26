@@ -29,6 +29,12 @@ public sealed partial class BridgeLimitsViewModel : ObservableObject
         await _release.Task;
     }
 
+    // An awaited command that is never available: at capacity it still answers unavailable.
+    [RelayCommand(CanExecute = nameof(CanLock))]
+    private Task LockAsync() => Task.CompletedTask;
+
+    private static bool CanLock() => false;
+
     [RelayCommand]
     private void Echo(string value) => Text = value;
 

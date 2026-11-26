@@ -150,7 +150,7 @@ the member's kind, setter, checked write and validation. The handle is `reactive
 
 ```vue
 <script setup lang="ts">
-import { useField, useView } from "@runic-artifex/vue";
+import { fieldDefinition, useField, useView } from "@runic-artifex/vue";
 import { EditorFields, type EditorPageReference } from "./generated/editor.js";
 
 const props = defineProps<{ page: EditorPageReference }>();
@@ -159,6 +159,7 @@ const title = useField(editor, EditorFields.title, { commit: "pause", checked: t
 const step = useField(editor, EditorFields.step);
 const done = useField(editor, EditorFields.done);
 const mode = useField(editor, EditorFields.mode);
+const modes = fieldDefinition(EditorFields.mode).choices ?? [];
 </script>
 
 <template>
@@ -170,7 +171,7 @@ const mode = useField(editor, EditorFields.mode);
   </p>
   <input type="number" v-model="step.text" @blur="step.commit">
   <input type="checkbox" v-model="done.value">
-  <select v-model="mode.value"><option v-for="choice in EditorFields.mode.choices" :key="choice">{{ choice }}</option></select>
+  <select v-model="mode.value"><option v-for="choice in modes" :key="choice">{{ choice }}</option></select>
 </template>
 ```
 
@@ -200,7 +201,7 @@ is written. A string set on `value` of a field that is not text is taken as its 
 
 `errors` holds the member's validation messages from the descriptor (`[]` when valid), `error` why the latest write
 or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `conflict`, `committed-with-error` or
-`invalid-text`). `FieldError`, `FieldOptions`, `FieldState` and `BridgeField` are exported from this package. See the
+`invalid-text`). `FieldError`, `FieldOptions`, `FieldState`, `BridgeField`, `fieldMembers` and `fieldDefinition` are exported from this package. See the
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
 and text forms. An `invalid-text` error has a `reason` and `arguments`: render `useText(() => title.error)` after
 `configureFieldErrorText` to show your own text for it in the window's language
