@@ -348,7 +348,7 @@ them:
 | `confirmContract` | string | The contract of the `notes` View's `confirm` interaction ([interactions](../README.md#interactions)). |
 | `focusContract`, `revealContract`, `toastContract` | string | The contracts of the `notes` View's view requests `focus`, `reveal` and `toast` ([view requests](../README.md#view-requests)). |
 | `interactionRequest` | string | The `requestId` of an interaction request the producer sends. |
-| `ownerEpoch` | number | The presentation epoch of the presentation an interaction request belongs to. |
+| `ownerEpoch` | number | The `ownerEpoch` the producer assigns to an interaction request ([interactions](../README.md#interactions)); not the presentation epoch. |
 | `flushId` | string | The `id` of a `flush` push ([field flush](../README.md#field-flush)). |
 
 A producer derives the contract ids from the `notes` View's fingerprint, `runic.views.fingerprint/1`
@@ -429,7 +429,7 @@ shows it no longer executing, and an operation's terminal status carries that fr
 | `save` | none | always | fails with its declared failure `{"$case": "titleRequired"}` when `title` is empty; otherwise changes nothing |
 | `annotate` | `string` | always | sets the `detail` View's `lastAction` to the input; changes nothing in `notes` |
 | `slowImport` | `{source: string, limit: int32}` | while it is not executing | an operation, or an asynchronous command when invoked with `command`; runs until a `finish` mutation, and ignores its input; reports each `progress` mutation's `value` (a number) as its progress, in the mutation's unit; `finish` with `rows` appends rows with those labels as one change (one `add` with all their keys), with ids as `addRow` gives them, and succeeds with their number (`int32`); `finish` with `failure` fails with the declared failure `{"$case": "sourceMissing"}`; `finish` with `outcome: "cancelled"` ends cancelled after a `cancel`, and fails without one |
-| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts; an output of another shape fails the interaction |
+| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts. It succeeds without an effect when the output declines, or when no presentation of the invoking connection registered `confirm`. An output of another shape fails the interaction, and the command with `failed`, as a timeout or a `failed` or `cancelled` reply does; a request that ends because its presentation closed ends the command `cancelled` |
 
 The `confirm` interaction's contract is the provided id `confirmContract`; its input is `{question: string}` and its
 output `{accepted: boolean}`.
