@@ -123,6 +123,32 @@ async function runArtifact(repo, run, options) {
   return live.length === 1 ? live[0] : null;
 }
 
+// Command Line and Translations run their macOS jobs on an ordinary push to main only when the push changes a path
+// those jobs exercise. Nightly and dispatched runs and the push run of a version or release commit run every job, and
+// every run that runs every job uploads the ci-full-run marker artifact (their CONTRIBUTING.md, "CI triggers and
+// macOS jobs"). A train input of those repositories (`fullRun` in nuget.mjs) takes only a full run. A run without the
+// marker counts as full when every one of its jobs succeeded and none was skipped: the runs from before the marker
+// existed all ran every job, and a run that skipped its macOS jobs is never taken. runic-sdk's own runs are not
+// checked; its plan and the merge queue decide their coverage (D077.22).
+export const FULL_RUN_ARTIFACT = 'ci-full-run';
+export async function fullRunVerdict(repo, run, options = {}) {
+  if (!repo.fullRun) return { full: true };
+  const base = `${GITHUB}/repos/${repo.repository}/actions/runs/${run.id}`;
+  const { artifacts = [] } = await json(`${base}/artifacts?name=${FULL_RUN_ARTIFACT}&per_page=10`, options);
+  if (artifacts.some(item => item.name === FULL_RUN_ARTIFACT)) return { full: true, marked: true };
+  const jobs = [];
+  for (let page = 1; page <= 5; page++) {
+    const listed = await json(`${base}/jobs?filter=latest&per_page=100&page=${page}`, options);
+    jobs.push(...(listed.jobs ?? []));
+    if (!listed.jobs?.length || jobs.length >= (listed.total_count ?? 0)) break;
+  }
+  const incomplete = jobs.filter(job => job.conclusion !== 'success').map(job => `${job.name} ${job.conclusion ?? job.status}`);
+  if (jobs.length && !incomplete.length) return { full: true, marked: false };
+  return { full: false, reason: `not a full run (no ${FULL_RUN_ARTIFACT} artifact; ${incomplete.length ? incomplete.join(', ') : 'no jobs listed'})` };
+}
+
+const dispatchFullRun = repo => `gh workflow run ci.yml -R ${repo.repository} --ref main`;
+
 // Downloads and unpacks a CI artifact. A refusal is reported as an access failure (D061.12): the gate then needs a
 // read-only token or GitHub App, which only the maintainer can provide.
 export async function downloadArtifact(repo, artifact, directory, options = {}) {
@@ -235,7 +261,8 @@ async function atOrAfter(repo, commit, head, options, cache) {
 
 // The selection rule for a train input (H2; the lessons' C6: "the newest green main run at or after commit X"):
 // among the ci.yml runs on main and the merge queue runs of commits on main, newest first, the first that completed
-// successfully, whose head is `commit` or a descendant of it, that has its package artifact and that `accept` takes. `accept(run, artifact)` returns
+// successfully, whose head is `commit` or a descendant of it, that has its package artifact, that is a full run for a
+// repository that needs one (fullRunVerdict) and that `accept` takes. `accept(run, artifact)` returns
 // `{ value }` or `{ reason }` (a rejection, reported with the others). The listing is unfiltered (see above) plus the
 // runs of `commit` itself, so neither GitHub's status filter nor a busy main pushes the commit's own run out of it.
 // Without such a run the error names the commit and every run it considered.
@@ -253,13 +280,18 @@ export async function selectRunAtOrAfter(repo, commit, options = {}, accept = as
     if (!await onMain(repo, run, options, cache)) { seen.push(`${describeRun(run)}: a merge queue run of a commit not on main`); continue; }
     const artifact = await runArtifact(repo, run, options);
     if (!artifact) { seen.push(`${describeRun(run)}: no unexpired ${repo.artifact(run.id)} artifact`); continue; }
+    const scope = await fullRunVerdict(repo, run, options);
+    if (!scope.full) { seen.push(`${describeRun(run)}: ${scope.reason}`); continue; }
     const verdict = await accept(run, artifact);
     if ('value' in verdict) return verdict.value;
     seen.push(`${describeRun(run)}: ${verdict.reason}`);
   }
   throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main (or merge queue run of a commit on main) at or after ${commit}. ` +
     `Runs found: ${seen.length ? seen.slice(0, 12).join('; ') + (seen.length > 12 ? `; and ${seen.length - 12} more` : '') : 'none'}. ` +
-    'If the commit is on main, dispatch ci.yml on main once and let it finish (eng/train/README.md, "Choreography").');
+    (repo.fullRun
+      ? `Only a full run counts for ${repo.title} (every job, the macOS jobs included: a nightly or dispatched run, or the push run of a version or release commit). ` +
+        `If the commit is on main, dispatch ci.yml on main once (\`${dispatchFullRun(repo)}\`), let it finish and run this step again (eng/train/README.md, "Run selection by commit").`
+      : 'If the commit is on main, dispatch ci.yml on main once and let it finish (eng/train/README.md, "Choreography").'));
 }
 
 // A CI run's package artifact of one repository (exported for eng/ci/train-feed.mjs).
