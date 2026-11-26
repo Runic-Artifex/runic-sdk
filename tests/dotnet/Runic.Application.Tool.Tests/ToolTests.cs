@@ -1615,11 +1615,29 @@ internal sealed partial class ToolTests
             DoctorCommandResult.CreateDiagnostics(report, new Runic.CommandLine.CommandPath(["doctor"]), DoctorStatus.Failure)[0].Severity);
     }
 
-    [Test, DisplayName("dev keeps MSBuild from installing frontend packages")]
+    [Test, DisplayName("dev leaves the frontend install to the build, and --no-restore turns it off")]
+    public void BuildInstallsFrontendPackages()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite") with { DevSessionProtocol = 1 };
+        var noRestore = new DevOptions(null, "Debug", false, true, true, false, []);
+        string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, noRestore));
+        Contains(build, "-property:RunicApplicationFrontendInstallMode=Never");
+        DoesNotContain(build, "RunicApplicationFrontendInstallEnabled");
+        Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, noRestore)),
+            "--property:RunicApplicationFrontendInstallMode=Never");
+        // With a restore, the build installs incrementally: no install property at all.
+        var restore = new DevOptions(null, "Debug", true, true, true, false, []);
+        DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, restore)), "RunicApplicationFrontendInstall");
+        DoesNotContain(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, restore)), "RunicApplicationFrontendInstall");
+    }
+
+    [Test, DisplayName("dev keeps MSBuild from installing frontend packages with older Views targets")]
     public void NoRestoreSkipsFrontendInstall()
     {
         using var workspace = new TestWorkspace();
         var configuration = CreateConfiguration(workspace, "vite");
+        Equal(0, configuration.DevSessionProtocol);
         var noRestore = new DevOptions(null, "Debug", false, true, true, false, []);
         string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, noRestore));
         Contains(build, "-property:RunicApplicationFrontendInstallEnabled=false");
@@ -2404,6 +2422,51 @@ internal sealed partial class ToolTests
         var staticFrontend = new DevOptions(null, "Debug", true, false, true, false, []);
         DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, staticFrontend)),
             "RunicApplicationFrontendBuildEnabled");
+    }
+
+    [Test, DisplayName("dev names the project it serves, so referenced libraries still build their packages")]
+    public void DevelopmentServerNamesItsProject()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite") with { DevSessionProtocol = 1 };
+        var watching = new DevOptions(null, "Debug", true, true, true, false, []);
+        string served = $"RunicApplicationFrontendDevSessionProject={Path.GetFullPath(configuration.ProjectPath)}";
+        string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, watching));
+        Contains(build, "-property:" + served);
+        DoesNotContain(build, "RunicApplicationFrontendBuildEnabled");
+        DoesNotContain(build, "RunicApplicationFrontendCopyEnabled");
+        Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, watching)), "--property:" + served);
+        Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, watching)), "-property:" + served);
+        var staticFrontend = new DevOptions(null, "Debug", true, false, true, false, []);
+        DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, staticFrontend)), "DevSessionProject");
+
+        // RAPPDEV1019: older targets get the old properties, with a warning in MSBuild's canonical form.
+        string warning = DevApplication.LegacyTargetsWarning("/work/App/App.csproj");
+        True(System.Text.RegularExpressions.Regex.IsMatch(warning,
+            @"^/work/App/App\.csproj : warning RAPPDEV1019: The project's Runic\.Application\.Views build targets are older than dotnet-runic \d+\.\d+\.\d+: they do not read RunicApplicationFrontendDevSessionProject"), warning);
+    }
+
+    [Test, DisplayName("--no-build requires the frontend packages a build installed, also at a workspace root")]
+    public void NoBuildRequiresInstalledPackages()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite") with { DevSessionProtocol = 1 };
+        Write(Path.Combine(configuration.FrontendPackageDirectory, "package.json"), """{"devDependencies":{"vite":"8.3.2"}}""");
+        try
+        {
+            DevApplication.RequireInstalledFrontendPackages(configuration, "--no-build");
+            throw new InvalidOperationException("A missing node_modules was accepted with --no-build.");
+        }
+        catch (DevDevelopmentException error)
+        {
+            Equal("RAPPDEV1008", error.Code);
+            Contains(error.Message, "--no-build needs the frontend packages that a build installs");
+        }
+        // npm installs a workspace member's packages at the workspace root only.
+        string root = Path.GetDirectoryName(configuration.FrontendPackageDirectory)!;
+        Write(Path.Combine(root, "package.json"), """{"private":true,"workspaces":["*"]}""");
+        Directory.CreateDirectory(Path.Combine(root, "node_modules"));
+        DevApplication.RequireInstalledFrontendPackages(configuration, "--no-build");
     }
 
     private sealed class FakeDoctorRuntime(CompatibilityToolchain toolchain) : IDoctorRuntime

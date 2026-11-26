@@ -286,6 +286,8 @@ internal static class DevApplication
             {
                 RequireInstalledFrontendPackages(configuration);
             }
+            // Before the restore writes it: an unrestored project's evaluation could not read the Views targets.
+            bool restoredBefore = File.Exists(configuration.ProjectAssetsFile);
             // --no-build implies no .NET restore, as for dotnet run; the frontend packages still follow --no-restore.
             if (options.Restore && options.Build)
             {
@@ -295,13 +297,33 @@ internal static class DevApplication
                     "RAPPDEV1006", "The .NET restore failed:", CommandRunner.DoctorHint(configuration.ProjectPath), stop.Token).ConfigureAwait(false);
                 phase.Complete();
             }
-            if (configuration.NodeEnabled)
+            // devtools-library-dx §3.4: an unrestored project's first evaluation did not import the Views package's
+            // targets, so their dev session protocol is read again after the restore.
+            if (configuration.NodeEnabled && configuration.DevSessionProtocol == 0 && options.Build && !restoredBefore)
             {
+                configuration = await DevProjectConfiguration
+                    .EvaluateDevSessionProtocolAsync(dotnetHost, configuration, options.Configuration, stop.Token)
+                    .ConfigureAwait(false);
+            }
+            if (configuration.NodeEnabled && configuration.DevSessionProtocol == 0)
+            {
+                // Older targets: dev installs the frontend packages itself and turns every project's frontend build off.
+                Console.Error.WriteLine(LegacyTargetsWarning(configuration.ProjectPath));
                 await InstallFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
             }
-            // Before the build, so a missing window entry fails without waiting for it.
-            if (options.WatchFrontend && configuration.DevelopmentServerKind == "vite" &&
-                !configuration.HasFrontendCompiler)
+            else if (configuration.NodeEnabled && !options.Build && options.Restore)
+            {
+                // The build installs the frontend packages incrementally; --no-build runs none, so the last build's
+                // install must be there.
+                RequireInstalledFrontendPackages(configuration, "--no-build");
+            }
+            // Before the build, so a missing window entry fails without waiting for it; the probe loads Vite, so on a
+            // fresh clone, whose build installs the frontend packages, it runs after the build.
+            bool readsViteInputs = options.WatchFrontend && configuration.DevelopmentServerKind == "vite" &&
+                !configuration.HasFrontendCompiler;
+            bool viteInputsAfterBuild = readsViteInputs && options.Build && configuration.DevSessionProtocol >= 1 &&
+                !HasNodeModules(configuration.FrontendPackageDirectory);
+            if (readsViteInputs && !viteInputsAfterBuild)
             {
                 configuration = await ViteBuildInputs.ApplyAsync(configuration, stop.Token)
                     .ConfigureAwait(false);
@@ -312,6 +334,28 @@ internal static class DevApplication
             {
                 await BuildAsync(dotnetHost, configuration, options, stop.Token)
                     .ConfigureAwait(false);
+            }
+            if (viteInputsAfterBuild)
+            {
+                configuration = await ViteBuildInputs.ApplyAsync(configuration, stop.Token)
+                    .ConfigureAwait(false);
+                DevProjectConfiguration withPages = configuration;
+                WriteSession(() => session.Update(withPages));
+            }
+            // devtools-library-dx §3.5: the frontend packages that the page depends on. A compiled one without its
+            // exports stops dev now (RAPPDEV1018, D081.6), not Vite's unresolved import later.
+            if (configuration.NodeEnabled && configuration.DevSessionProtocol >= 1)
+            {
+                configuration = configuration with
+                {
+                    FrontendDependencies = await FrontendDependencies
+                        .ReadAsync(dotnetHost, configuration, options.Configuration, stop.Token).ConfigureAwait(false),
+                };
+                bool watching = options.WatchFrontend;
+                DevProjectConfiguration withDependencies = configuration;
+                WriteSession(() => session.Dependencies(withDependencies.FrontendDependencies,
+                    dependency => DependencyState.Initial(dependency, watching)));
+                FrontendDependencies.RequireBuilt(configuration.FrontendDependencies, options.Build);
             }
             if (!options.StartWindow)
             {
@@ -392,6 +436,7 @@ internal static class DevApplication
             options.WatchFrontend && !useDevelopmentServer && configuration.HasFrontendWatcher
                 ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
                 : null;
+        await using DependencyWatchers? dependencies = StartDependencyWatchers(configuration, options, session, cancellationToken);
         if (frontend is not null)
         {
             WriteSession(() => session.PublishFrontend([]));
@@ -485,7 +530,7 @@ internal static class DevApplication
                     ? $"The native host process ('{(options.WatchHost ? "dotnet watch" : "dotnet run")}') exited unexpectedly with code {exitCode}."
                     : completed == developmentServer?.Completion
                         ? $"The {configuration.DevelopmentServerKind} development server " +
-                          $"exited unexpectedly with code {exitCode}."
+                          $"exited unexpectedly with code {exitCode}{ServerError(developmentServer)}"
                         : $"The frontend watcher exited unexpectedly with code {exitCode}.",
                 completed == host.Completion
                     ? CommandRunner.LocalDetail(configuration.ProjectDirectory, CommandRunner.DoctorHint(configuration.ProjectPath))
@@ -544,6 +589,7 @@ internal static class DevApplication
         await using RunningProcess? frontend = developmentServer is null
             ? StartFrontendWatcher(dotnetHost, configuration, options.Configuration)
             : null;
+        await using DependencyWatchers? dependencies = StartDependencyWatchers(configuration, options, session, cancellationToken);
         WriteSession(() => session.FrontendReady(
             developmentServer?.Origin,
             developmentServer is not null && ViteDevelopmentServer.ConfirmsSession(configuration)));
@@ -573,7 +619,7 @@ internal static class DevApplication
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
                 developmentServer is not null
-                    ? $"The {configuration.DevelopmentServerKind} development server exited unexpectedly with code {exitCode}."
+                    ? $"The {configuration.DevelopmentServerKind} development server exited unexpectedly with code {exitCode}{ServerError(developmentServer)}"
                     : $"The frontend watcher exited unexpectedly with code {exitCode}.");
         }
         finally
@@ -583,6 +629,20 @@ internal static class DevApplication
             await portWatch.ConfigureAwait(false);
         }
     }
+
+    /// <summary>": the first error line" of a Vite server's output, or ".".</summary>
+    private static string ServerError(IFrontendDevelopmentServer? server) =>
+        server is ViteDevelopmentServer { FirstError: { } error } ? $": {error}" : ".";
+
+    /// <summary>
+    /// Watches the compiled frontend packages that the page depends on while dev serves the frontend
+    /// (<see cref="DependencyWatchers"/>); null without any, or with <c>--no-frontend-watch</c>.
+    /// </summary>
+    private static DependencyWatchers? StartDependencyWatchers(
+        DevProjectConfiguration configuration, DevOptions options, DevSession session, CancellationToken cancellationToken) =>
+        options.WatchFrontend && configuration.FrontendDependencies.Any(static dependency => dependency.IsBuilt)
+            ? DependencyWatchers.Start(configuration, (dependency, state) => WriteSession(() => session.DependencyChanged(dependency, state)), cancellationToken)
+            : null;
 
     /// <summary>Writes the session file; a failure is reported once per write but does not stop dev.</summary>
     private static void WriteSession(Action write)
@@ -608,9 +668,7 @@ internal static class DevApplication
         CancellationToken cancellationToken)
     {
         using PhaseTimer phase = PhaseTimer.Start("Installing Views Window frontend dependencies");
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
         if (installDependencies)
         {
             await RequireSuccessAsync(
@@ -626,27 +684,51 @@ internal static class DevApplication
     }
 
     /// <summary>
-    /// With --no-restore nothing installs the frontend packages, so a missing
-    /// node_modules would only surface later as a confusing build failure.
+    /// With --no-restore nothing installs the frontend packages, and with --no-build the build that installs them does
+    /// not run, so a missing node_modules would only surface later as a confusing build or Vite failure. A JavaScript
+    /// workspace installs at its root (npm only there), so a node_modules in a folder above the frontend counts.
     /// </summary>
-    internal static void RequireInstalledFrontendPackages(DevProjectConfiguration configuration)
+    internal static void RequireInstalledFrontendPackages(DevProjectConfiguration configuration, string option = "--no-restore")
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        if (Directory.Exists(Path.Combine(configuration.FrontendPackageDirectory, "node_modules")) ||
-            (!string.IsNullOrWhiteSpace(configuration.WorkspaceRoot) &&
-             Directory.Exists(Path.Combine(configuration.WorkspaceRoot, "node_modules"))) ||
+        if (HasNodeModules(configuration.FrontendPackageDirectory) ||
+            Directory.Exists(Path.Combine(configuration.JavaScriptWorkspaceRoot, "node_modules")) ||
             !DeclaresDependencies(Path.Combine(configuration.FrontendPackageDirectory, "package.json")))
         {
             return;
         }
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
+        string message = option == "--no-build"
+            ? "--no-build needs the frontend packages that a build installs; build the project once (dotnet build) or omit --no-build."
+            : $"--no-restore needs installed frontend packages; run '{packageManager.Name} install' in the frontend directory (or the workspace root) or omit --no-restore.";
         throw new DevDevelopmentException(
             "RAPPDEV1008",
-            $"--no-restore needs installed frontend packages; run '{packageManager.Name} install' in the frontend directory or omit --no-restore.",
+            message,
             $"Frontend directory: {configuration.FrontendPackageDirectory}\n", category: CommandExitCategory.Unavailable);
     }
+
+    /// <summary>The frontend's node_modules, or that of the nearest JavaScript workspace root above it.</summary>
+    private static bool HasNodeModules(string directory)
+    {
+        if (Directory.Exists(Path.Combine(directory, "node_modules"))) return true;
+        for (DirectoryInfo? folder = new DirectoryInfo(directory).Parent; folder is not null; folder = folder.Parent)
+        {
+            if (JavaScriptWorkspace.DeclaresWorkspace(folder.FullName)) return Directory.Exists(Path.Combine(folder.FullName, "node_modules"));
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// RAPPDEV1019: the project's Views targets are older than the tool (no <c>_RunicViewsDevSessionProtocol</c>), so dev
+    /// falls back to turning the frontend build off for every project of the build, client libraries included.
+    /// </summary>
+    internal const string LegacyTargetsCode = "RAPPDEV1019";
+
+    internal static string LegacyTargetsWarning(string project) =>
+        $"{project} : warning {LegacyTargetsCode}: The project's Runic.Application.Views build targets are older than dotnet-runic " +
+        $"{typeof(DevApplication).Assembly.GetName().Version?.ToString(3)}: they do not read RunicApplicationFrontendDevSessionProject, so dev " +
+        "installs the frontend packages itself and turns the frontend build off for every project it builds, and a client " +
+        "library's compiled frontend package is not built. Update the project's Runic packages to the tool's version.";
 
     /// <summary>
     /// A package.json without dependencies installs no node_modules, so there
@@ -724,9 +806,7 @@ internal static class DevApplication
 
         if (configuration.HasNodeWorkspace)
         {
-            JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-                configuration.WorkspaceRoot,
-                configuration.FrontendPackageDirectory);
+            JavaScriptPackageManager packageManager = configuration.PackageManager;
             return RunningProcess.Start(
                 "frontend",
                 packageManager.Executable,
@@ -831,7 +911,13 @@ internal static class DevApplication
             "RAPPDEV1006",
             "The initial build failed:",
             CommandRunner.DoctorHint(configuration.ProjectPath),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            // D081.6: a frontend package that the page depends on failed to build, so dev stops with its error.
+            result => FrontendDependencies.FindPackageFailure(result.CombinedOutput, configuration.ProjectPath, configuration.FrontendPackageDirectory) is { } failure
+                ? new DevDevelopmentException(FrontendDependencies.FailureCode,
+                    $"A frontend package that the page depends on failed to build, so dev did not start: {failure}",
+                    CommandRunner.LocalDetail(configuration.ProjectDirectory, CommandRunner.DoctorHint(configuration.ProjectPath)))
+                : null).ConfigureAwait(false);
         phase.Complete();
     }
 
@@ -871,18 +957,24 @@ internal static class DevApplication
     /// the production frontend build nor copy dist/ over the development
     /// document in the runtime web root. Generated TypeScript is still written.
     /// </summary>
+    /// <remarks>
+    /// devtools-library-dx §3.4: with targets of dev session protocol 1 (0.24), one global property names the served
+    /// project, and only it skips its frontend build and copy; referenced projects, such as a client library whose
+    /// package the page imports, build as usual. Older targets get the old global properties, which reach every project.
+    /// </remarks>
     internal static IReadOnlyList<string> CreateDevelopmentServerProperties(
         DevProjectConfiguration configuration,
         DevOptions options,
         string prefix) =>
-        options.WatchFrontend && configuration.HasDevelopmentServer
-            ? [$"{prefix}RunicApplicationFrontendBuildEnabled=false", $"{prefix}RunicApplicationFrontendCopyEnabled=false"]
-            : [];
+        !(options.WatchFrontend && configuration.HasDevelopmentServer) ? []
+        : configuration.DevSessionProtocol >= 1 ? [$"{prefix}RunicApplicationFrontendDevSessionProject={Path.GetFullPath(configuration.ProjectPath)}"]
+        : [$"{prefix}RunicApplicationFrontendBuildEnabled=false", $"{prefix}RunicApplicationFrontendCopyEnabled=false"];
 
     /// <summary>
-    /// Development server properties plus <c>RunicApplicationFrontendInstallEnabled=false</c>:
-    /// dev installs the frontend packages itself before the build, and with
-    /// <c>--no-restore</c> nothing installs them behind the caller's back.
+    /// Development server properties plus the install: the build installs the frontend packages incrementally (protocol 1),
+    /// and with <c>--no-restore</c> <c>RunicApplicationFrontendInstallMode=Never</c> keeps every project's build from
+    /// installing them behind the caller's back. With older targets dev installs them itself before the build and passes
+    /// <c>RunicApplicationFrontendInstallEnabled=false</c>.
     /// <c>RunicApplicationFrontendDelivery=Files</c>: dev serves the frontend from its development server or its
     /// output directory, beside the host scripts in <c>www/</c>, never from an embedded archive.
     /// </summary>
@@ -895,7 +987,11 @@ internal static class DevApplication
         {
             $"{prefix}RunicApplicationFrontendDelivery=Files",
         };
-        if (!options.Restore || configuration.NodeEnabled)
+        if (configuration.DevSessionProtocol >= 1)
+        {
+            if (!options.Restore) properties.Add($"{prefix}RunicApplicationFrontendInstallMode=Never");
+        }
+        else if (!options.Restore || configuration.NodeEnabled)
         {
             properties.Add($"{prefix}RunicApplicationFrontendInstallEnabled=false");
         }
@@ -928,7 +1024,8 @@ internal static class DevApplication
         string code,
         string message,
         string remediation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<CommandResult, DevDevelopmentException?>? classify = null)
     {
         CommandResult result = await CommandRunner
             .RunAsync(executable, workingDirectory, arguments, cancellationToken)
@@ -945,6 +1042,7 @@ internal static class DevApplication
 
         if (result.ExitCode != 0)
         {
+            if (classify?.Invoke(result) is { } classified) throw classified;
             throw new DevDevelopmentException(
                 code,
                 $"{message} {CommandRunner.DescribeFailure(executable, arguments, result.ExitCode)}",

@@ -10,7 +10,7 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
 
 test("every entry resolves for types, the development build, import and require-style default", () => {
   for (const [entry, target] of Object.entries(manifest.exports)) {
-    if (entry === "./package.json") continue;
+    if (entry === "./package.json" || entry === "./frontend-graph") continue;
     assert.equal(typeof target, "object", entry);
     const conditions = target as Record<string, string>;
     // `development` before `import` and `default`, which resolve the production build; one set of declarations.
@@ -20,7 +20,18 @@ test("every entry resolves for types, the development build, import and require-
     assert.equal(conditions["types"], conditions["default"]!.replace(/\.js$/, ".d.ts"), `${entry}: types`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
-    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./codegen", "./package.json"]);
+    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./codegen", "./frontend-graph", "./package.json"]);
+});
+
+// The JavaScript workspace resolver is a Node.js and Bun script, not a page module: one file, which the
+// Runic.Application.Views NuGet package ships beside its targets (buildTransitive/runic-frontend-graph.mjs).
+test("./frontend-graph is the workspace resolver that the Views targets run", async () => {
+  assert.equal(manifest.exports["./frontend-graph"], "./frontend-graph/runic-frontend-graph.mjs");
+  const graph = await import("@runic-artifex/views/frontend-graph") as { SCHEMA: string; resolveFrontendGraph: unknown };
+  assert.equal(graph.SCHEMA, "rax.frontend-graph/1");
+  assert.equal(typeof graph.resolveFrontendGraph, "function");
+  const project = readFileSync(new URL("../../../dotnet/Runic.Application.Views/Runic.Application.Views.csproj", import.meta.url), "utf8");
+  assert.match(project, /Include="\.\.\/\.\.\/web\/views\/frontend-graph\/runic-frontend-graph\.mjs" Pack="true" PackagePath="buildTransitive\/runic-frontend-graph\.mjs"/);
 });
 
 test("binding and generator APIs are not in the application entries; graduated APIs are", async () => {

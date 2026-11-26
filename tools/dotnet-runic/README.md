@@ -18,19 +18,30 @@ every option.
 host. It restores the .NET and JavaScript dependencies, builds the project, and
 runs the native Window alongside the frontend's Vite or Angular development
 server. While the development server runs, the build skips the production
-frontend build and leaves the development document in `www/`
-(`RunicApplicationFrontendBuildEnabled=false`, `RunicApplicationFrontendCopyEnabled=false`); the Views
-MSBuild targets still generate the typed TypeScript clients. `dotnet watch`
+frontend build of the project it serves and leaves the development document in
+`www/`: `dev` passes `RunicApplicationFrontendDevSessionProject` with the
+project's path, and only that project skips its frontend build and copy. The
+Views MSBuild targets still generate the typed TypeScript clients, and the
+projects it references, such as a client library, build their frontend packages,
+so a page that imports a compiled library package works from a fresh clone
+(since 0.24). While it runs, `dev` rebuilds those packages when they change, and
+keeps the page's last good build when one fails
+([Library packages under dev](#library-packages-under-dev)). `dotnet watch`
 restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
 `--no-dotnet-watch`, and `--dry-run` select parts of that loop; `--no-window`
 runs only the frontend, for a Window that your IDE starts under its debugger
-([Debug the Window in your IDE](#debug-the-window-in-your-ide)). `dev` installs
-the frontend packages itself and passes
-`RunicApplicationFrontendInstallEnabled=false`, so the build does not install
-them a second time (and `RunicApplicationFrontendDelivery=Files`, so a project
-that embeds its frontend serves it live while developing); with `--no-restore` nothing
-installs them, and a frontend that declares dependencies but has no
-`node_modules` stops with `RAPPDEV1008`. When `dotnet watch` restarts or `dev`
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). The build
+installs the frontend packages, at the JavaScript workspace root for a workspace
+member, only when the lock file, a `package.json` or the package manager changed,
+so a second `dev` start runs no install
+([Fast iteration](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#fast-iteration)).
+`dev` also passes `RunicApplicationFrontendDelivery=Files`, so a project that
+embeds its frontend serves it live while developing. With `--no-restore` nothing
+installs them (`RunicApplicationFrontendInstallMode=Never`), and with
+`--no-build` no build runs to install them; then a frontend that declares
+dependencies but has no `node_modules`, in its folder or at its workspace root,
+stops with `RAPPDEV1008`. With Views targets older than the tool, `dev` warns
+with `RAPPDEV1019` and installs the packages itself, as before 0.24. When `dotnet watch` restarts or `dev`
 stops the Window, the application's expected exit code after SIGTERM or Ctrl+C
 (143, 130) is not reported; any other exit code still is. Application
 arguments after `--` are passed to the Window process. When a restore, install
@@ -539,6 +550,66 @@ toolchain that a Native AOT publish needs.
 
 With `--runtime`: the native runtime that target machines need for the host's
 window.
+
+## Library packages under dev
+
+A page can import frontend packages of other projects: a client library's package
+(`RunicApplicationFrontendClientLibrary`) or a JavaScript workspace package that
+no .NET project owns. `dev`'s build builds them, as `dotnet build` does
+([Library packages](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#library-packages)).
+After the build, `dev` reads them with `dotnet msbuild <project>
+-getTargetResult:RunicViewsGetFrontendDependencies` and the build's
+`obj/runic/frontend-graph.json`. It runs that query only when the build listed
+packages in `obj/runic/frontend-dependencies.txt`. Since 0.24:
+
+- **At the start**, a package build that fails stops `dev` with `RAPPDEV1018` and the
+  build's error, such as `shared-ui/src/index.ts(3,1): error TS1005`. So does a
+  compiled package whose exported files are missing after the build. The message
+  names the missing file and why it is missing: the package's build is off
+  (`RunicApplicationFrontendBuildEnabled=false`), its build didn't write the file,
+  or `--no-build` ran no build.
+- **While `dev` runs**, it watches each compiled package whose build is on:
+  - A package with a `watch` script runs it (`bun run --bun watch`), with its
+    output prefixed by the package's folder name (`[shared-ui]`).
+  - Otherwise, `dev` reruns the package's build (`bun run --bun build`). It runs
+    300 ms after a file of the package stops changing. `node_modules`, `bin`, `obj`,
+    hidden folders, the package's output folders and `*.tsbuildinfo` files don't
+    count.
+
+  Vite sees the new output and reloads the page. A source package (no `build`
+  script) needs no watcher, because Vite follows the workspace link and watches its
+  sources.
+- **A failed rebuild keeps the page.** `dev` copies the package's output folders
+  (its `exports` outside `src/`, such as `dist/`) aside before a rebuild. When the
+  build fails or doesn't write an exported file, `dev` prints
+  `<owner project> : error RAPPDEV1018: [shared-ui] …` and puts that copy back, so
+  the page keeps the last good build. The next change rebuilds the package. A watch
+  script writes its own output, so `dev` can only report it: a located error in
+  its output (`src/x.ts(3,1): error TS1005: …`) is a `RAPPDEV1018` line. The
+  package counts as built again once its outputs change with no new error. With
+  `tsc -w`, set `noEmitOnError` to keep its last good output. A watch script that
+  exits is reported the same way, and `dev` then reruns the package's build on
+  changes instead.
+- **Fail fast.** When the Vite development server answers the application entry
+  with HTTP 500 twice, `dev` stops at once with `RAPPDEV1007` and Vite's error, for
+  example `[vite:import-analysis] Failed to resolve import "@acme/shared-ui" from
+  "src/main.ts"`. When the import names a dependency package, `dev` adds the
+  package's state: "@acme/shared-ui is the frontend package of SharedUi: it has not
+  been built (shared-ui/dist/index.js is missing)". A development server that exits
+  reports the first error line of its output.
+- **Repeated lines.** The development server's output and the package watchers'
+  output show each line once per 10 s, ignoring a leading clock time and colours.
+  Every 2 s, `dev` prints how often each held-back line came, for example
+  `[vite] (repeated 1,106 more times) [vite] Internal server error: …`.
+- **The package manager** of the development server is the workspace's, as in the
+  build: `RunicApplicationFrontendPackageManager`, else the `packageManager` of
+  the workspace root (the nearest folder above the frontend whose `package.json` has
+  `workspaces`, or that has `pnpm-workspace.yaml`), then the root's lock file, then
+  the frontend's own. A frontend with a lock file of its own, or
+  `RunicApplicationFrontendWorkspaceRoot=none`, is its own root.
+
+The [session file](#session-file) lists the packages and their state as
+`dependencies`.
 
 ## Debug the Window in your IDE
 
@@ -1318,7 +1389,25 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   // The unpacked Runic DevTools extension beside this tool, for Load unpacked or a browser's --load-extension;
   // null when the tool has none. Since 0.21.
   "devtoolsExtension": "/home/me/.nuget/packages/dotnet-runic/0.21.0/tools/net10.0/any/devtools-extension",
-  "devtoolsExtensionId": "cddbfcinbkaindmfgcfdgapddkjeadgh" // its fixed id, null without the extension; since 0.21
+  "devtoolsExtensionId": "cddbfcinbkaindmfgcfdgapddkjeadgh", // its fixed id, null without the extension; since 0.21
+  // Since 0.24: the frontend packages that the page depends on, dependencies first (Library packages under dev).
+  // Empty until dev has read them after the build, and for a page that imports none.
+  "dependencies": [
+    {
+      "package": "@acme/shared-ui",          // its package.json name, or null
+      "directory": "/path/to/shared-ui",
+      "kind": "compiled",                    // "compiled" (it has a build script) or "source"
+      "owner": "/path/to/SharedUi/SharedUi.csproj", // the .NET project that owns it, or null for a workspace package
+      "ownerName": "SharedUi",
+      "specifier": "@acme/shared-ui/generated", // what a RunicApplicationFrontendClientModule maps to it, or null
+      "buildCommand": "bun run --bun build", // null when dev does not build it
+      "watchCommand": null,                  // its watch script's command, when dev runs it
+      "exports": ["/path/to/shared-ui/dist/index.js"],
+      "state": "built",   // "built", "building", "failed", "missing-output", "source" or "not-built" (its build is off)
+      "watch": "rebuild", // "script" (its watch script), "rebuild" (dev reruns its build), "vite" (a source package) or "none"
+      "message": null     // the last failure while state is "failed"
+    }
+  ]
 }
 ```
 
@@ -1328,7 +1417,7 @@ gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
 added the `webkitgtk` endpoints, `devtoolsExtension`, `devtoolsExtensionId`, `browser` and, with
 `--no-window` on Linux, `WEBKIT_INSPECTOR_SERVER` in `window.environment`; 0.22 added the `chromium` endpoint and
-`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` in `window.environment`. 0.23 added `browser.codeFile` and is the one exception
+`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` in `window.environment`; 0.24 added `dependencies`. 0.23 added `browser.codeFile` and is the one exception
 to the rule: within `/1` it changed `browser.url` and `browser.windows[].url` from addresses
 (`http://127.0.0.1:9224/`) to `*` patterns of the per-session origin (`http://*.localhost:9224/`, D077.15). The address
 is secret since 0.23, so the file cannot hold it, and the old value would no longer open the page: a reader opens
