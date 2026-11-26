@@ -1519,7 +1519,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal bool IsExecutingCallback => ReferenceEquals(CallbackWindow.Value, this);
 
-    internal void NotifyAuthenticated() => _browserConnected.TrySetResult();
+    internal void NotifyPageConnected() => _browserConnected.TrySetResult();
 
     internal BridgeHandshakeLog HandshakeLog => Volatile.Read(ref _handshakeLog);
 
@@ -4110,8 +4110,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // runic-host/1 hosted mode: a host application's window loads this surface through a one-time launch code, as a
     // browser Runic launched does (BrowserLaunchBinding), so its page is admitted through the client cookie and the
-    // surface's credential never leaves this process. A new launch replaces an earlier code.
-    internal Uri BeginHostedLaunch()
+    // surface's credential never leaves this process. A new launch replaces an earlier code. connection completes after
+    // the page's Connected event, as a shown window's does (#1383); a launch conflict faults it, and a wait that nothing
+    // awaits, as a region window's, is observed.
+    internal Uri BeginHostedLaunch(out Task connection)
     {
         var url = Url ?? throw new InvalidOperationException("The surface must be started before a hosted launch.");
         if (_embeddedHost is not null)
@@ -4119,7 +4121,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (!BindsBrowserLaunch)
             throw new InvalidOperationException(
                 "A hosted launch needs the session credential, client cookies and a single client (DesktopSecurityPolicy).");
-        return new Uri(url, $"{BrowserLaunchBinding.PathSegment.TrimStart('/')}/{_launchBinding.Begin(GetBrowserUrl(url))}");
+        var launch = new Uri(url, $"{BrowserLaunchBinding.PathSegment.TrimStart('/')}/{_launchBinding.Begin(GetBrowserUrl(url))}");
+        var completion = NewCompletionSource();
+        Volatile.Write(ref _browserConnected, completion);
+        connection = completion.Task;
+        ObserveAbandoned(connection);
+        return launch;
     }
 
     // runic-host/1 region/1: the window shows in a region of a host page instead of a window of its own. Its window-mode

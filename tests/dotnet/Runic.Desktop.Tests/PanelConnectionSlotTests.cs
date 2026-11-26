@@ -156,7 +156,7 @@ public sealed class PanelConnectionSlotTests
     {
         await using var window = await Window.StartAsync();
         var surface = window.Surface;
-        _ = surface.BeginHostedLaunch();
+        _ = surface.BeginHostedLaunch(out _);
         Assert.Throws<InvalidOperationException>(() => surface.OpenSidePanelSlot());
     }
 
