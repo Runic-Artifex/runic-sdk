@@ -24,6 +24,9 @@ public sealed class BridgeDispatcherTests
         Require(implementation.GetProperty("name").GetString() == "Runic.Application.Views"
             && implementation.GetProperty("version").GetString() is { Length: > 0 } version && !version.Contains('+'),
             $"The implementation identity is {implementation}.");
+        // The Runic release, for the client's version diagnostic: the package version, without build metadata.
+        Require(reply.GetProperty("release").GetString() == implementation.GetProperty("version").GetString(),
+            $"The hello reply's release is {reply}.");
     }
 
     [Test]

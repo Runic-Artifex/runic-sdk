@@ -39,7 +39,7 @@ internal sealed class NativeExchange : PresentationExchange, IDisposable, IThrea
 
     internal ulong Id { get; }
 
-    // blobs/1: the request body, read chunk by chunk from the library (runic_server_read).
+    // blobs/1: the request body, read chunk by chunk from the library (rax_server_read).
     internal override Stream RequestBody => _requestBody ??= new RequestBodyStream(this);
     private RequestBodyStream? _requestBody;
     private TaskCompletionSource<byte[]?>? _bodyRead;
@@ -121,7 +121,7 @@ internal sealed class NativeExchange : PresentationExchange, IDisposable, IThrea
     }
 
     // Copies the request out of the library's memory; null when its target cannot be represented (400).
-    internal static unsafe NativeExchange? Create(NativePresentationServer server, RunicRequest* request)
+    internal static unsafe NativeExchange? Create(NativePresentationServer server, RaxRequest* request)
     {
         var target = Encoding.ASCII.GetString(request->Target.Span);
         if (!NativeRequestTarget.TryParse(target, out var path, out var query))

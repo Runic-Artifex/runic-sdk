@@ -198,6 +198,7 @@ The first request on each connection is `hello`:
 | `protocol` | The protocol version the sender implements: `4`. |
 | `session` | An identifier the client chooses for this connection. A client MUST send a new session for each connection. |
 | `client`, `implementation` | `{name, version}`: the name of the client or producer implementation (1 to 128 characters) and its version (1 to 64 characters, SemVer without build metadata recommended). They are informational. |
+| `release` | Optional, in a reply: the Runic release the producer belongs to, the version of the release train whose packages it ships with, such as `0.24.0` (1 to 64 characters, SemVer without build metadata). A Runic producer in any language sends it; another producer omits it. Since 0.24. |
 | `features` | Optional: the [features](#features) the sender implements, in the request and in a successful reply. Absent means none. |
 | `languages` | Optional, in the request, with [`client-languages/1`](#client-languages): the page's preferred languages. |
 
@@ -239,10 +240,13 @@ Client rules:
   `failed` error whose message names both versions and the fix (use the producer and client of one release, rebuild so
   the generated clients are regenerated, and reload). It reports this with one diagnostic with code `protocol`, once per
   page, and with no other diagnostic, and sends no request after the reply.
-- A client MAY compare `implementation.version` with its own release when `implementation.name` names the producer it
-  is released with. `@runic-artifex/views` reports a diagnostic with code `version` when `implementation.name` is
-  `Runic.Application.Views` and the version differs from its own, once per page, and keeps working. It reports no
-  version diagnostic for other producers.
+- A client of a Runic release MAY compare the reply's `release` with its own release. Without `release`, it MAY
+  compare `implementation.version` when `implementation.name` names the producer it is released with.
+  `@runic-artifex/views` reports a diagnostic with code `version` once per page, and keeps working, when the reply's
+  `release` differs from its own release, whatever `implementation.name` is, or when the reply has no `release`,
+  `implementation.name` is `Runic.Application.Views` and the version differs from its own. It reports no version
+  diagnostic for other producers. (The client half of `release` is tracked in
+  [#1361](https://github.com/Runic-Artifex/runic-sdk/issues/1361).)
 
 ## Features
 
@@ -427,6 +431,8 @@ change of the field. States carry them beside the state as `fields: {<member>: {
 
 - Each window has one revision counter. Each published change of any route of the window takes the next value, so a
   route's revisions only increase, including when the route is attached to a new View, but they are not contiguous.
+  When one unit changes several routes, each route's state or frame takes its own value, and a publication withheld
+  for invalid keys takes one too ([publication units](state-changes.md#publication-units)).
 - A **published change** is one unit of change that the producer publishes together: one `state` or `frame` push. The
   producer decides what a unit contains ([publication units](state-changes.md#publication-units)).
 - **Inclusion rule.** When a reply carries `revision` R for a route, every state or frame that the producer publishes
@@ -474,7 +480,7 @@ on, which the producer takes when it starts serving the route, whether or not a 
 | --- | --- | --- |
 | `state` | `route`, `revision`, `state`, `fields?`, `epoch?` | A full state. `epoch`: [presentation epochs](#presentation-epochs). |
 | `frame` | `route`, `baseRevision`, `revision`, `changes` | Changes on top of the state at `baseRevision`. See [state changes](state-changes.md). |
-| `failure` | `route`, `revision`, `error` | A publication was withheld because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). `revision` is the producer's current revision; it does not change the client's. |
+| `failure` | `route`, `revision`, `error` | A publication was withheld because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). `revision` is the revision the withheld publication took; it does not change the client's. |
 
 **Order of pushes.** On each connection, the producer sends the `state`, `frame` and `failure` pushes that a window
 turn published before the `operation` and `interaction` pushes that the same turn caused. So the terminal status of an
@@ -2108,4 +2114,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`, and 0.23 the feature `open-ended-interactions/1`, and 0.24 the feature `view-contract/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`, and 0.23 the feature `open-ended-interactions/1`, and 0.24 the feature `view-contract/1` and the `hello` reply's `release` member. |

@@ -38,7 +38,7 @@ Adapters live in each repository's test tree and are never shipped (R7 T1-17).
 
 | op | args | ok |
 | --- | --- | --- |
-| `describe` | — | `{protocol, implementation: {id, name, version}, corpora: ["views/4", …], roles: [...], features: [...], capabilities: [...]}`. `features` are what the implementation lists in its own handshake; the .NET adapter reads its producer's `hello` reply. `capabilities` are the runner capabilities of the corpus's requirements, such as `virtual-clock` and `held-delivery`. The driver sends `describe` first and stops if `protocol` is not this protocol. |
+| `describe` | — | `{protocol, implementation: {id, name, version}, corpora: ["views/4", …], roles: [...], features: [...], capabilities: [...]}`. `features` are what the implementation lists in its own handshake, never a hand-kept list: a producer adapter reads its producer's `hello` reply to a client that lists every feature name, and a client adapter the `hello` its client sends. The driver reports a scenario that requires a feature not in this list `unsupported`. `capabilities` are the runner capabilities of the corpus's requirements, such as `virtual-clock` and `held-delivery`. The driver sends `describe` first and stops if `protocol` is not this protocol. |
 | `shutdown` | — | `{}`; the adapter exits after answering. |
 
 ## Views protocol 4 (`views/4`)
@@ -51,7 +51,7 @@ The corpus is [`specs/application/conformance`](../../specs/application/conforma
 | --- | --- | --- | --- |
 | `views.canonicalize` | producer | `{input}` | `{output: text}`, or `{error: code}` with a code of README "Canonical form" |
 | `views.decode` | both | `{type, parameters, input}` | `{value: text}`: the normal form the implementation writes after reading the input; or `{error: "invalid-value"}`. The driver checks both directions by sending the normal form back. |
-| `views.readRequest` | producer | `{input, inputBytes}` | `{result: "valid"}` or `{result: "invalid", kind, reason}`, after the README's setup: a fresh window, and a hello with every feature first unless the case is a hello |
+| `views.readRequest` | producer | `{input, inputBytes, hello}` | `{result: "valid"}` or `{result: "invalid", kind, reason}`, after the README's setup (README "Messages"): a fresh window, and `hello` (base64, the `hello` of the case's file) sent first unless the case is a hello |
 | `views.readPush` | client | `{input}` | `{result: "valid" \| "ignored" \| "invalid"}` |
 | `views.readReply` | client | `{request, input}` | `{result: "valid" \| "invalid"}` |
 

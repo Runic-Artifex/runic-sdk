@@ -9,12 +9,12 @@ namespace Runic.Application.Testing.Tests.Conformance;
 
 // The read-request message vectors of the Views protocol 4 conformance corpus
 // (specs/application/conformance/vectors/messages, README "Messages"): the dispatcher's envelope checks. Each case runs
-// in a fresh window, after a valid hello unless the case is a hello itself. A valid request is not rejected for its
+// in a fresh window, after the file's hello unless the case is a hello itself. A valid request is not rejected for its
 // envelope; a route nothing serves answers released, which is fine here because scenarios check routes and members.
 public sealed class MessageVectorTests
 {
-    // The requests are read as on a connection that uses every feature (README "Messages").
-    private const string Hello = """{"kind":"hello","protocol":4,"session":"s-vector","client":{"name":"conformance-client","version":"1.0.0"},"features":["text-splice/1","presentation-epoch/1","presented/1","view-requests/1","region-collections/1","client-errors/1","navigation-path/1"]}""";
+    // The requests are read on a connection whose hello is the file's hello (README "Messages").
+    private static readonly string Hello = ConformanceCorpus.RequestHello();
     private static readonly string[] EnvelopeReasons = ["invalid-request", "invalid-input", "no-hello"];
     private static readonly JsonSerializerOptions WriteOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 

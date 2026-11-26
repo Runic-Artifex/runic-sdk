@@ -1,6 +1,6 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "edits.a-path-write-without-the-feature-is-invalid.v1",
+  "id": "edits.a-path-write-without-the-feature-is-invalid.v2",
   "contract": {
     "id": "runic.views",
     "version": 4
@@ -11,7 +11,7 @@
   ],
   "description": "A write with a path on a connection that does not use field-paths/1 is rejected with invalid-request, and nothing runs.",
   "view": "invoice",
-  "requires": [],
+  "requires": ["field-paths/1"],
   "ids": {
     "c1": {
       "kind": "connection"

@@ -135,17 +135,20 @@ jobs:
           RUNIC_CARGO_BUILD: ${{ matrix.zig && 'cargo zigbuild' || 'cargo build' }}
           RUNIC_GLIBC: "2.28"
         run: eng/native/build-runic-server.sh ${{ matrix.rid }}
+      # The shared library exports exactly the C functions of native/runic-server/abi/rax_server.symbols (R1 §5).
+      - name: Check the exported symbols
+        run: node eng/native/symbols.mjs check artifacts/native/runic-server/${{ matrix.rid }}
       # The linker signs the dylib ad hoc. dotnet runic package macos signs every nested library again with the
       # application's identity and the hardened runtime (MacOSBundleLayout; ci.yml's macOS packaging leg checks nested
       # libraries); this checks that the library takes that signature. NativeAOT links the static library instead.
       - name: Check the macOS library's signature
         if: runner.os == 'macOS'
         run: |
-          library=artifacts/native/runic-server/${{ matrix.rid }}/librunic_server.dylib
+          library=artifacts/native/runic-server/${{ matrix.rid }}/librax_server.dylib
           codesign --verify --strict --verbose=2 "$library"
           codesign --display --verbose=2 "$library" 2>&1 | tee "$RUNNER_TEMP/linker-signature.txt"
           grep -Eq 'flags=0x[0-9a-f]+\((adhoc|linker-signed)' "$RUNNER_TEMP/linker-signature.txt"
-          signed="$RUNNER_TEMP/librunic_server.dylib"
+          signed="$RUNNER_TEMP/librax_server.dylib"
           cp "$library" "$signed"
           codesign --force --sign - --options runtime --timestamp=none "$signed"
           codesign --verify --strict --verbose=2 "$signed"

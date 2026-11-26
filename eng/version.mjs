@@ -37,10 +37,10 @@ const sdkVersion = /(<RunicSdkVersion>)([^<]*)(<\/RunicSdkVersion>)/;
 // The browser runtime reports a .NET Runic.Application.Views of another release (D02).
 const viewsVersionFile = "packages/web/views/src/version.ts";
 const viewsVersion = /^(export const viewsVersion = ")([^"]*)(";)$/m;
-// The native Desktop server (Runic.Desktop.NativeServer) builds the runic-server crate.
+// The native Desktop server (Runic.Desktop.NativeServer) builds the runic-artifex-server crate (native/runic-server).
 const cargoCopies = {
   "native/Cargo.toml": [/^(\[workspace\.package\]\nversion = ")([^"]*)(")$/m, "[workspace.package] version"],
-  "native/Cargo.lock": [/^(name = "runic-server"\nversion = ")([^"]*)(")$/m, "runic-server entry"],
+  "native/Cargo.lock": [/^(name = "runic-artifex-server"\nversion = ")([^"]*)(")$/m, "runic-artifex-server entry"],
 };
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
 // The eng/Versions.props property that carries each separately versioned package's version.

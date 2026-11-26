@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("../..", import.meta.url)), "artifacts/native/runic-server");
 export const runtimes = ["linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "win-x64", "win-arm64", "osx-arm64"];
-export const libraries = rid => rid.startsWith("win-") ? ["runic_server.dll", "runic_server.lib"]
-  : rid.startsWith("osx-") ? ["librunic_server.dylib", "librunic_server.a"] : ["librunic_server.so", "librunic_server.a"];
+export const libraries = rid => rid.startsWith("win-") ? ["rax_server.dll", "rax_server.lib"]
+  : rid.startsWith("osx-") ? ["librax_server.dylib", "librax_server.a"] : ["librax_server.so", "librax_server.a"];
 
 const downloaded = join(root, "downloaded");
 if (existsSync(downloaded)) {

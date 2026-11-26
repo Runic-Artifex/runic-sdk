@@ -83,7 +83,8 @@ internal static class AdapterProgram
             case "views.decode":
                 return Decode(Str(args, "type"), args["parameters"] as JsonObject, Convert.FromBase64String(Str(args, "input")));
             case "views.readRequest":
-                return await ReadRequestAsync(Convert.FromBase64String(Str(args, "input")), args["inputBytes"]?.GetValue<int>()).ConfigureAwait(false);
+                return await ReadRequestAsync(Convert.FromBase64String(Str(args, "input")), args["inputBytes"]?.GetValue<int>(),
+                    Convert.FromBase64String(Str(args, "hello"))).ConfigureAwait(false);
             case "views.open":
                 s_state?.Dispose();
                 s_state = ScenarioState.Open(Str(args, "view"), (args["model"] as JsonObject) ?? [], args["inputBytes"]?.GetValue<int>());
@@ -187,15 +188,14 @@ internal static class AdapterProgram
         }
     }
 
-    // MessageVectorTests' setup: a fresh window, a hello with every feature first unless the case is a hello itself.
-    private const string Hello = """{"kind":"hello","protocol":4,"session":"s-vector","client":{"name":"conformance-client","version":"1.0.0"},"features":["text-splice/1","presentation-epoch/1","presented/1","view-requests/1","region-collections/1","client-errors/1","navigation-path/1"]}""";
+    // README "Messages": a fresh window, and the file's hello first unless the case is a hello itself.
     private static readonly string[] EnvelopeReasons = ["invalid-request", "invalid-input", "no-hello"];
 
-    private static async Task<JsonObject> ReadRequestAsync(byte[] input, int? inputBytes)
+    private static async Task<JsonObject> ReadRequestAsync(byte[] input, int? inputBytes, byte[] hello)
     {
         using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { MaximumInputBytes = inputBytes, IncludeFailureDetail = false });
-        if (Kind(input) != "hello" && JsonNode.Parse(transport.Request(Hello))!["ok"]!.GetValue<bool>() is false)
+        if (Kind(input) != "hello" && JsonNode.Parse(transport.Request(Encoding.UTF8.GetString(hello)))!["ok"]!.GetValue<bool>() is false)
             throw new AdapterFailure("failed", "The hello before the request failed.");
         var reply = await BridgeDispatcher.For(transport)
             .HandleAsync(new BridgeRequest(input, InMemoryBridgeTransport.DefaultClientKey, InMemoryBridgeTransport.DefaultConnectionKey), CancellationToken.None)

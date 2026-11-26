@@ -1,0 +1,76 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.keys-a-withheld-publication-takes-a-revision.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer"],
+  "description": "A publication withheld for invalid keys takes the next revision, which its failure push carries, although no state or frame has it. Once the keys are valid again, the next publication takes a later revision: a frame on the last published revision whose collection is a set of its field (state-changes.md, \"Invalid keys\").",
+  "view": "list",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"}],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["text-splice/1"]}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {"$any":"string","default":"conformance-producer"},
+          "version": {"$any":"string","default":"1.0.0"}
+        },
+        "features": {"$any":"array","default":["text-splice/1"]}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {"ok":true,"revision":0,"state":{"rows":[{"id":1,"label":"one"}],"title":"rows"},"presentation":"ok"},
+      "replyTo": "open-list-request"
+    },
+    {"mutate":[{"op":"insert","index":0,"item":{"id":1,"label":"again"}}],"units":"each"},
+    {
+      "receive": {
+        "kind": "failure",
+        "route": "list",
+        "revision": 1,
+        "error": {
+          "kind": "failed",
+          "message": {
+            "$any": "string",
+            "default": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection."
+          }
+        }
+      }
+    },
+    {"mutate":[{"op":"removeAt","index":0}],"note":"The keys are valid again."},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "list",
+        "baseRevision": 0,
+        "revision": 2,
+        "changes": [{"field":"rows","kind":"set","value":[{"id":1,"label":"one"}]}]
+      },
+      "note": "The withheld unit took revision 1, so this one takes 2; its base is the last published revision, 0."
+    },
+    {"send":{"kind":"snapshot","route":"list"},"id":"final-read"},
+    {"receive":{"ok":true,"revision":2,"state":{"rows":[{"id":1,"label":"one"}],"title":"rows"}},"replyTo":"final-read"}
+  ]
+}

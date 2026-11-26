@@ -53,7 +53,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
         _dispatch = dispatch;
         _admission = admission;
         _self = GCHandle.Alloc(this);
-        var options = new RunicServerOptions
+        var options = new RaxServerOptions
         {
             AbiVersion = NativeServerInterop.AbiVersion,
             Flags = address.Equals(IPAddress.Any) ? FlagAllInterfaces
@@ -151,7 +151,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
         (NativePresentationServer)GCHandle.FromIntPtr((nint)context).Target!;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe void OnRequest(void* context, RunicRequest* request)
+    private static unsafe void OnRequest(void* context, RaxRequest* request)
     {
         try
         {
@@ -323,7 +323,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     {
         using var encoded = new EncodedHeaders(headers, filePath);
         fixed (byte* bytes = encoded.Bytes)
-        fixed (RunicHeader* list = encoded.Headers)
+        fixed (RaxHeader* list = encoded.Headers)
         {
             encoded.Bind(bytes, list);
             return NativeServerInterop.Respond(Handle, id, checked((ushort)status), list, (nuint)encoded.Count, body,
@@ -336,7 +336,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     {
         using var encoded = new EncodedHeaders(headers, protocol);
         fixed (byte* bytes = encoded.Bytes)
-        fixed (RunicHeader* list = encoded.Headers)
+        fixed (RaxHeader* list = encoded.Headers)
         {
             encoded.Bind(bytes, list);
             return NativeServerInterop.AcceptWebSocket(Handle, id, encoded.Extra(bytes), list, (nuint)encoded.Count);
@@ -348,7 +348,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
 internal readonly struct EncodedHeaders : IDisposable
 {
     private readonly byte[] _bytes;
-    private readonly NativeServerInterop.RunicHeader[] _headers;
+    private readonly NativeServerInterop.RaxHeader[] _headers;
     private readonly (int Name, int NameLength, int Value, int ValueLength)[] _spans;
     private readonly int _extra;
     private readonly int _extraLength;
@@ -364,7 +364,7 @@ internal readonly struct EncodedHeaders : IDisposable
             size += utf8.GetByteCount(name) + utf8.GetByteCount(value);
         }
         _bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(Math.Max(size, 1));
-        _headers = System.Buffers.ArrayPool<NativeServerInterop.RunicHeader>.Shared.Rent(Math.Max(pairs.Count, 1));
+        _headers = System.Buffers.ArrayPool<NativeServerInterop.RaxHeader>.Shared.Rent(Math.Max(pairs.Count, 1));
         _spans = new (int, int, int, int)[pairs.Count];
         var offset = 0;
         for (var index = 0; index < pairs.Count; index++)
@@ -384,27 +384,27 @@ internal readonly struct EncodedHeaders : IDisposable
 
     internal byte[] Bytes => _bytes;
 
-    internal NativeServerInterop.RunicHeader[] Headers => _headers;
+    internal NativeServerInterop.RaxHeader[] Headers => _headers;
 
-    internal unsafe void Bind(byte* bytes, NativeServerInterop.RunicHeader* list)
+    internal unsafe void Bind(byte* bytes, NativeServerInterop.RaxHeader* list)
     {
         for (var index = 0; index < Count; index++)
         {
             var (name, nameLength, value, valueLength) = _spans[index];
-            list[index] = new NativeServerInterop.RunicHeader
+            list[index] = new NativeServerInterop.RaxHeader
             {
-                Name = new NativeServerInterop.RunicStr { Pointer = bytes + name, Length = (nuint)nameLength },
-                Value = new NativeServerInterop.RunicStr { Pointer = bytes + value, Length = (nuint)valueLength },
+                Name = new NativeServerInterop.RaxStr { Pointer = bytes + name, Length = (nuint)nameLength },
+                Value = new NativeServerInterop.RaxStr { Pointer = bytes + value, Length = (nuint)valueLength },
             };
         }
     }
 
-    internal unsafe NativeServerInterop.RunicStr Extra(byte* bytes) =>
+    internal unsafe NativeServerInterop.RaxStr Extra(byte* bytes) =>
         new() { Pointer = bytes + _extra, Length = (nuint)_extraLength };
 
     public void Dispose()
     {
         System.Buffers.ArrayPool<byte>.Shared.Return(_bytes);
-        System.Buffers.ArrayPool<NativeServerInterop.RunicHeader>.Shared.Return(_headers);
+        System.Buffers.ArrayPool<NativeServerInterop.RaxHeader>.Shared.Return(_headers);
     }
 }

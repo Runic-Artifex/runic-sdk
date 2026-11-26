@@ -14,6 +14,8 @@
 *.map text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# The exported-symbol lists (eng/native/symbols.mjs), compared with each OS's library by name.
+*.symbols text eol=lf
 # Unified diffs preserve upstream whitespace, including context prefixes.
 eng/ci/*.patch text eol=lf -whitespace
 # Recorded `git diff -U0` output of real commits (eng/ci/plan.test.mjs, diffKind); the gzipped one is binary.

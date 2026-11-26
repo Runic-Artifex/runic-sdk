@@ -54,14 +54,14 @@ read -r -a build <<<"${RUNIC_CARGO_BUILD:-cargo build}"
 # rustup finds native/rust-toolchain.toml from the working directory, not from --manifest-path.
 cd "$root/native"
 if [[ "$triple" == "$host" && -z "${RUNIC_CARGO_BUILD:-}" ]]; then
-  "${build[@]}" --manifest-path "$root/native/Cargo.toml" --locked --release -p runic-server
+  "${build[@]}" --manifest-path "$root/native/Cargo.toml" --locked --release -p runic-artifex-server
   output="$root/native/target/release"
 else
   target="$triple"
   if [[ "$triple" == *-linux-gnu && -n "${RUNIC_GLIBC:-}" ]]; then
     target="$triple.$RUNIC_GLIBC"
   fi
-  "${build[@]}" --manifest-path "$root/native/Cargo.toml" --locked --release -p runic-server --target "$target"
+  "${build[@]}" --manifest-path "$root/native/Cargo.toml" --locked --release -p runic-artifex-server --target "$target"
   output="$root/native/target/$triple/release"
 fi
 
@@ -69,8 +69,8 @@ destination="$root/artifacts/native/runic-server/$rid"
 rm -rf "$destination"
 mkdir -p "$destination"
 case "$rid" in
-  win-*) cp "$output/runic_server.dll" "$output/runic_server.lib" "$destination/" ;;
-  osx-*) cp "$output/librunic_server.dylib" "$output/librunic_server.a" "$destination/" ;;
-  *) cp "$output/librunic_server.so" "$output/librunic_server.a" "$destination/" ;;
+  win-*) cp "$output/rax_server.dll" "$output/rax_server.lib" "$destination/" ;;
+  osx-*) cp "$output/librax_server.dylib" "$output/librax_server.a" "$destination/" ;;
+  *) cp "$output/librax_server.so" "$output/librax_server.a" "$destination/" ;;
 esac
 ls -l "$destination"

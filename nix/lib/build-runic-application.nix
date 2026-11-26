@@ -502,7 +502,7 @@ buildDotnetModule (
     dotnetFlags =
       dotnetFlags
       ++ lib.optional nativeAot "-p:CustomAfterDirectoryBuildProps=${nativeAotProps}"
-      # The package's targets link lib/librunic_server.a (NativeAOT) or copy lib/librunic_server.so instead of theirs.
+      # The package's targets link lib/librax_server.a (NativeAOT) or copy lib/librax_server.so instead of theirs.
       ++ lib.optional nativeServer' "-p:RunicDesktopNativeServerLibraryDirectory=${runicServer'}/lib"
       ++ lib.optionals (frontend' != null && frontend'.nodeModules != null) [
         "-p:RunicApplicationFrontendNodeModulesDirectory=${frontend'.nodeModules}/node_modules"
