@@ -51,8 +51,7 @@ accept only schema 1.
 These rules decide whether an archive is valid and what a reader reports for it (since 0.24). An archive that breaks
 one is invalid, and the reader serves none of it, except as [lazy reading](#eager-and-lazy-reading) allows. Each rule
 names the error code that the [vectors](vectors/README.md) use for it. The vectors have an archive for every code
-except `limit-exceeded`, whose limits are configurable. Split archives and nesting depth have none, and neither have
-the rules that the .NET reader does not check yet ([Notes for .NET](#notes-for-net)).
+except `limit-exceeded`, whose limits are configurable. Split archives and nesting depth have none.
 
 Archives that `runic.assets.archive` writers produce satisfy every rule. Some were added in 0.24 for archives that no
 writer produces: the CRC-32 check, the encryption flag, cache modes by name only, the JSON profile (duplicate member
@@ -225,15 +224,12 @@ deterministic validated manifest report of the canonical form: the schema and
 schema-1 archive that stores duplicate content twice reports schema 2.
 
 `AssetArchive.Read`, `ReadAsync`, `ReadEmbedded` and `Inspect` report every broken rule as `InvalidDataException`,
-with no error code; `AssetArchiveReadOptions` sets the limits. The reader reads the ZIP container with
-`System.IO.Compression.ZipArchive`, which takes the data offset from each local header and finds an entry of an
-unsupported method only when it opens it, so `ReadEmbedded` reports such an entry when its asset is first opened.
+with no error code; `AssetArchiveReadOptions` sets the limits. The reader reads the end records and the central
+directory with `System.IO.Compression.ZipArchive`, reads them again for the local header offsets, which `ZipArchive`
+does not expose, and checks the local headers, overlaps and compression methods before it returns, in both modes. It
+inflates each entry from the archive's bytes itself, reading on past `length`.
 
-The .NET reader bounds one asset at 2³¹−1 bytes, a fixed limit, and the central directory only through the archive
-size. It does not check these rules yet, so the vectors have no case for them:
-
-- local headers: it reads an entry whose local header has another name or method, and entries that overlap;
-- compression: it reads method 9 (Deflate64);
-- content: it reads an entry whose data holds more bytes than `length` as its first `length` bytes;
-- lone surrogates: it reads one in the value of a member that it ignores, and one in an ignored member's name fails
-  with `InvalidOperationException` instead of `InvalidDataException`.
+The .NET reader bounds one asset at 2³¹−1 bytes, the largest .NET array, a fixed limit that `AssetArchiveReadOptions`
+does not raise; a larger asset fails as a limit (`limit-exceeded`). It bounds the central directory only through the
+archive size. It checks every rule above; until 0.24 it read entries whose local header had another name or method,
+overlapping entries, method 9 (Deflate64), and deflate data longer than `length` as its first `length` bytes.
