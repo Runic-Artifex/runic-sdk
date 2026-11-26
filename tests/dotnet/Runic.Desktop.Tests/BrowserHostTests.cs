@@ -159,17 +159,28 @@ public sealed class BrowserHostTests
         // I-180) can still finish the handshake. Within them, a Bridge
         // WebSocket that sends no token check is closed after 10 seconds and the page
         // reconnects; that is written to the test output too.
-        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(110));
-        WebUiApplication.SetConnectionTimeout((nuint)TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds);
+        //
+        // Neither limit is scaled by RUNIC_TEST_TIMEOUT_SCALE (#1347). The connection
+        // timeout is product timing: it is when a stalled launch is relaunched, and
+        // scaled to 150 s (win-x64) or 180 s (win-arm64) the relaunch came after the
+        // case's unscaled two-minute limit. The 110 seconds are the case's own budget
+        // inside that limit, so that its cancellation, not the limit, ends a stalled
+        // run and names the phase. The phases are logged as they happen.
+        using var phases = new PhaseLog(output, "Chromium ownership");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));
+        WebUiApplication.SetConnectionTimeout(30);
         WebUiApplication.SetBrowserLaunchAttempts(2);
-        using var relaunches = new StalledLaunchListener(output);
+        using var relaunches = new StalledLaunchListener(phases.Note);
         Trace.Listeners.Add(relaunches);
         await using var window = new WebUiWindow();
+        phases.Describe(() => $"browser process {ProcessIdOf(window)}");
         window.SetHidden(true);
         window.SetBrowserArguments("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
         try
         {
+            phases.Enter($"starting the server; {browser.Value} is {WebUiBrowserDiscovery.Find(browser.Value, customFolder: null)?.ExecutablePath}");
             var serverOnlyUrl = await window.StartServerAsync(Page("server-only"), timeout.Token);
+            phases.Enter("showing the first page: launching the browser and waiting for its connection");
             var shownUrl = await window.ShowInBrowserAsync(Page("first"), browser.Value, timeout.Token);
             Assert.Equal(serverOnlyUrl, shownUrl);
             var firstProcessId = checked((int)window.BrowserProcessId);
@@ -182,8 +193,10 @@ public sealed class BrowserHostTests
                 Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(firstProfile));
             }
             Assert.True(window.IsShown);
+            phases.Enter($"connected to browser process {firstProcessId} with profile {firstProfile}; navigating to the updated page");
 
             await window.ShowInBrowserAsync(Page("updated"), browser.Value, timeout.Token);
+            phases.Enter("waiting for the updated page's title");
             string? title = null;
             // A navigation tears down the authenticated session before Chromium
             // reconnects. Bound readiness by time, not 100 fast disconnected polls
@@ -208,24 +221,35 @@ public sealed class BrowserHostTests
             }
             Assert.Equal("updated", title);
 
+            phases.Enter("closing the window");
             await window.CloseAsync(timeout.Token);
+            phases.Enter($"waiting for browser process {firstProcessId} to exit");
             await WaitForProcessExitAsync(firstProcessId, timeout.Token);
             AssertProfileDeleted(window, firstProfile);
             Assert.Equal((nuint)0, window.BrowserProcessId);
 
+            phases.Enter("showing the second page: launching the browser again and waiting for its connection");
             await window.ShowInBrowserAsync(Page("second"), browser.Value, timeout.Token);
             var secondProcessId = checked((int)window.BrowserProcessId);
             var secondProfile = window.GeneratedProfilePath;
             Assert.NotEqual(firstProfile, secondProfile);
+            phases.Enter($"connected to browser process {secondProcessId} with profile {secondProfile}; killing it");
             using (var secondProcess = Process.GetProcessById(secondProcessId))
             {
                 // Exercise parent exit without macOS's unsafe recursive kill path.
                 secondProcess.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
             }
 
+            phases.Enter("waiting for the application to end after the browser's exit");
             await WebUiApplication.WaitAsync(timeout.Token);
             Assert.Null(window.Url);
             AssertProfileDeleted(window, secondProfile);
+            phases.Enter("done");
+        }
+        catch (Exception exception)
+        {
+            phases.Note($"failed: {exception.GetType().Name}: {exception.Message.Split('\n', 2)[0]}");
+            throw;
         }
         finally
         {
@@ -236,7 +260,7 @@ public sealed class BrowserHostTests
 
     // Records each browser-launch-stalled and bridge-handshake-expired warning and
     // writes it to the test output.
-    private sealed class StalledLaunchListener(TestOutput output) : TraceListener
+    private sealed class StalledLaunchListener(Action<string> output) : TraceListener
     {
         public ConcurrentQueue<string> Messages { get; } = new();
 
@@ -248,8 +272,93 @@ public sealed class BrowserHostTests
                 || message?.StartsWith(WebUiWindow.BridgeHandshakeExpiredCode, StringComparison.Ordinal) == true)
             {
                 Messages.Enqueue(message);
-                output.WriteLine(message);
+                output(message);
             }
+        }
+    }
+
+    // #1347: a case's phases, with the time since it started, in its output and at once in the job's log, as the
+    // default-browser smoke logs its phases (#1301). A case that reaches the two-minute limit, or a session that is
+    // cancelled, does not print its output, so the job's log shows what it was waiting for. Every 20 seconds of one
+    // phase, a heartbeat logs it again with the window's state.
+    private sealed class PhaseLog : IDisposable
+    {
+        private static readonly Lock StandardOutput = new();
+        private static readonly TimeSpan HeartbeatPeriod = TimeSpan.FromSeconds(20);
+        private readonly TestOutput _output;
+        private readonly string _name;
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly Timer _heartbeat;
+        private string _phase = "starting";
+        private TimeSpan _entered;
+        private Func<string>? _state;
+
+        public PhaseLog(TestOutput output, string name)
+        {
+            _output = output;
+            _name = name;
+            _heartbeat = new Timer(_ => Heartbeat(), null, HeartbeatPeriod, HeartbeatPeriod);
+        }
+
+        // What the heartbeat reports besides the phase.
+        public void Describe(Func<string> state) => Volatile.Write(ref _state, state);
+
+        public void Enter(string phase)
+        {
+            Volatile.Write(ref _phase, phase);
+            _entered = _clock.Elapsed;
+            Write(phase + ".");
+        }
+
+        public void Note(string message) => Write(message);
+
+        public void Dispose() => _heartbeat.Dispose();
+
+        private void Heartbeat()
+        {
+            string state;
+            try
+            {
+                state = Volatile.Read(ref _state)?.Invoke() ?? "";
+            }
+            catch (Exception exception)
+            {
+                state = $"state unavailable ({exception.GetType().Name})";
+            }
+            Write($"still {Volatile.Read(ref _phase)} after {(_clock.Elapsed - _entered).TotalSeconds:0} s{(state.Length == 0 ? "" : "; " + state)}.");
+        }
+
+        private void Write(string message)
+        {
+            var line = $"[{_clock.Elapsed.TotalSeconds:0.0} s] {_name}: {message}";
+            _output.WriteLine(line);
+            // Test frameworks capture Console per case; the process's own output reaches the log as it is written.
+            var bytes = System.Text.Encoding.UTF8.GetBytes($"{Environment.NewLine}{line}{Environment.NewLine}");
+            lock (StandardOutput)
+            {
+                try
+                {
+                    using var standardOutput = Console.OpenStandardOutput();
+                    standardOutput.Write(bytes);
+                    standardOutput.Flush();
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
+    }
+
+    // The owned browser's process, or why there is none, for the heartbeat; read from a timer thread.
+    private static string ProcessIdOf(WebUiWindow window)
+    {
+        try
+        {
+            return window.BrowserProcessId is var id and not 0 ? id.ToString(System.Globalization.CultureInfo.InvariantCulture) : "none running";
+        }
+        catch (InvalidOperationException)
+        {
+            return "being replaced";
         }
     }
 
@@ -263,7 +372,7 @@ public sealed class BrowserHostTests
         var launches = Path.Combine(folder.FullName, "launches");
         var time = new ManualTime();
         var window = StallWindow(folder.FullName, TimeSpan.FromSeconds(1), attempts: 3, time);
-        using var relaunches = new StalledLaunchListener(output);
+        using var relaunches = new StalledLaunchListener(output.WriteLine);
         Trace.Listeners.Add(relaunches);
         try
         {

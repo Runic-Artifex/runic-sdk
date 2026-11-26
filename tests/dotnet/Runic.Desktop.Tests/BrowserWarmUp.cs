@@ -38,7 +38,9 @@ public static class BrowserWarmUp
     }
 
     // Starts the browser at a loopback address and stops it once its first request arrives, the moment the cases
-    // wait for, or after a minute.
+    // wait for, or after a minute. The minute is not scaled by RUNIC_TEST_TIMEOUT_SCALE: its end fails nothing, and
+    // the warm-up runs inside the session's limit (--timeout in ci.yml). Scaled to 300 s, a Chrome that requested its
+    // page after 113 s left 31 s of the 3-minute session for the cases (#1347, win-x64).
     private static async Task StartOnceAsync(string executable)
     {
         var profile = Directory.CreateTempSubdirectory("runic-desktop-warm-up-");
@@ -69,7 +71,7 @@ public static class BrowserWarmUp
             string outcome;
             try
             {
-                using var accepted = await listener.AcceptTcpClientAsync().WaitScaledAsync(TimeSpan.FromSeconds(60));
+                using var accepted = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(60));
                 outcome = "requested its page";
             }
             catch (TimeoutException)
