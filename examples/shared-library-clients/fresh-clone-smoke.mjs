@@ -46,7 +46,8 @@ function freshClone(folder) {
   for (const entry of readdirSync(folder, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const path = join(folder, entry.name);
-    if (["node_modules", "bin", "obj", "dist", "generated"].includes(entry.name)) rmSync(path, { recursive: true, force: true });
+    // Retries, as a build server that outlives its build may still be closing a file there.
+    if (["node_modules", "bin", "obj", "dist", "generated"].includes(entry.name)) rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     else freshClone(path);
   }
 }
@@ -113,20 +114,25 @@ function workspace(manager, packs, archives) {
   return repo;
 }
 
-// dev --no-window until "[dev] Ready"; a failure or 180 s without it fails.
+// dev --no-window until "[dev] Ready"; a failure or 180 s without it fails. It returns once dev has exited, as dev
+// still writes below obj/ while it stops, and the next step deletes obj/.
 function devReady(repo) {
   return new Promise((resolvePromise, reject) => {
     const started = Date.now();
     const child = spawn("dotnet", [tool, "dev", "--no-window", "--configuration", configuration, "--project", "App"],
       { cwd: repo, detached: process.platform !== "win32" });
+    const exited = new Promise(resolveExit => child.once("exit", resolveExit));
     let output = "", settled = false;
-    const finish = error => {
+    const finish = async error => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      const seconds = (Date.now() - started) / 1000;
       try { process.platform === "win32" ? spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]) : process.kill(-child.pid, "SIGTERM"); } catch {}
+      const stopped = await Promise.race([exited.then(() => true), new Promise(resolveWait => setTimeout(resolveWait, 60_000, false))]);
+      if (!error && !stopped) error = "dev did not exit within 60 s of SIGTERM.";
       if (error) reject(new Error(`${error}\n${tail(output)}`));
-      else resolvePromise((Date.now() - started) / 1000);
+      else resolvePromise(seconds);
     };
     const timer = setTimeout(() => finish("dev did not reach Ready in 180 s."), 180_000);
     const read = chunk => { output += chunk; if (output.includes("[dev] Ready")) finish(); };
