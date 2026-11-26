@@ -394,12 +394,14 @@ diagnostics are warnings. The envelope replaces the message and drops the
 `arguments` (`[id]`) of a diagnostic whose text contains a path, but it never
 redacts the message key, which always names the check. `payload.checks` is the
 complete list.
-Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `views-window`, `javascript-runtime`,
-`package-manager`, `lock-file`, `compatibility-set`, `views-package-versions`,
+Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `windows-targeting`, `views-window`, `javascript-runtime`,
+`package-manager`, `lock-file`, `frontend-workspace`, `package-manager-agreement`,
+`frontend-dependencies`, `compatibility-set`, `views-package-versions`,
 `application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
 `browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
 `platform-services`; `views-package-versions` and `application-id` were added
-in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later releases. With `--runtime`, the payload also lists
+in 0.11, `dotnet-runtime` in 0.18, and `windows-targeting`, `frontend-workspace`,
+`package-manager-agreement` and `frontend-dependencies` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
@@ -407,6 +409,19 @@ in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later relea
 
 Each check has a section here; `helpUri` in the JSON payload links it at the
 release, with the check identifier as the anchor.
+
+#### `windows-targeting`
+
+Only for a project of a Windows target framework, such as a WPF project on
+`net10.0-windows`, when doctor runs on Linux or macOS. The .NET SDK builds such
+a project there only with `EnableWindowsTargeting=true`; without it the restore
+fails with `NETSDK1100`. Fails without the property, with this line for the
+application's `Directory.Build.props` (or its project file) as the fix, and
+passes with it. Either way the application runs only on Windows. Added in 0.24.
+
+```xml
+<EnableWindowsTargeting Condition="'$(EnableWindowsTargeting)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))">true</EnableWindowsTargeting>
+```
 
 #### `views-window`
 
@@ -428,21 +443,66 @@ project is self-contained or rolls forward to a newer major version. Added in
 
 #### `javascript-runtime`
 
-Node.js, or Bun for a Bun frontend: fails when it is missing or older than the
-certified version, and warns for a newer release, Node 26 included.
+Node.js, or Bun for a Bun frontend or workspace: fails when it is missing or
+older than the certified version, and warns for a newer release, Node 26
+included.
 
 #### `package-manager`
 
-The package manager that the frontend's `packageManager` field or lock file
-selects (npm, pnpm or Bun): fails when it is unavailable or outside the
-supported range, and warns for another supported version. The supported range
+The package manager that installs and builds the frontend (npm, pnpm or Bun),
+chosen as the build chooses it: `RunicApplicationFrontendPackageManager`, then
+the JavaScript workspace root's `packageManager` field or lock file, then the
+frontend's own, then npm. Before 0.24 doctor read only the frontend's folder,
+so a member of a Bun workspace was checked for npm. Fails when the manager is
+unavailable or outside the supported range, and warns for another supported
+version or one other than the version that `packageManager` declares. The supported range
 is the certified version or a later release of its major version; for npm also
 npm 11.12.1 or a later npm 11, the npm that Node 24 and 26 ship (0.22).
 
 #### `lock-file`
 
 Fails when the frontend has no lock file of its package manager, which
-reproducible installs need.
+reproducible installs need. In a JavaScript workspace the lock file is the
+root's, where the build's install runs.
+
+#### `frontend-workspace`
+
+The JavaScript workspace that installs the frontend: the nearest folder above
+it whose `package.json` has `workspaces`, or that has `pnpm-workspace.yaml`, or
+`RunicApplicationFrontendWorkspaceRoot`, as the build finds it (see
+[JavaScript workspaces](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces)).
+Passes for a member of the workspace, and for a frontend that is its own root.
+Fails when the root's workspaces leave the frontend out, which the build
+reports as `RUNICBRIDGE087`. Warns for a frontend with its own lock file below
+a workspace, which installs on its own (unless
+`RunicApplicationFrontendWorkspaceRoot=none` says so), and when doctor could
+not read the workspace, for example before the first restore of a project that
+takes the Views targets from its packages. Added in 0.24.
+
+#### `package-manager-agreement`
+
+That one package manager is named throughout: the workspace root's
+`packageManager` and its lock files, `RunicApplicationFrontendPackageManager`,
+and the `packageManager` of the frontend, the workspace's members and the
+packages that the page depends on. Fails when `packageManager` names another
+manager than the root's only lock file, and when a member declares another
+manager than the workspace's (the build's `RUNICBRIDGE089`). Warns for lock
+files of several managers at the root, for a property that differs from the
+workspace's manager, and for a member with a lock file of its own, which the
+workspace's install does not read. Added in 0.24.
+
+#### `frontend-dependencies`
+
+The frontend packages that the page depends on: client libraries' packages and
+workspace packages that no .NET project owns, read without a build from
+`RunicViewsGetFrontendDependencies` and the frontend graph it resolves, as
+`dev` reads them. Passes when every compiled package's `exports` exist and
+every source package's do. Warns for a compiled package (one with a `build`
+script) that is not built yet, since `dotnet build` and `dev` build it. Fails
+when a compiled package is missing its exports and its build is off
+(`RunicApplicationFrontendBuildEnabled=false`) or has no command, and when a
+source package exports a file that does not exist, since nothing writes it.
+Warns when doctor could not read the packages. Added in 0.24.
 
 #### `compatibility-set`
 

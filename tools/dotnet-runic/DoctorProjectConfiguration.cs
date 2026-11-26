@@ -91,6 +91,40 @@ internal sealed record DoctorProjectConfiguration(
     internal IReadOnlyList<string> DirectReferences { get; init; } = [];
 
     /// <summary>
+    /// The frontend's JavaScript workspace root, found as the Views targets find it (<see cref="JavaScriptWorkspace"/>);
+    /// empty means the frontend directory, which is then its own root.
+    /// </summary>
+    internal string JavaScriptWorkspaceRoot { get; init; } = string.Empty;
+
+    /// <summary>The workspace root, or the frontend directory when the frontend is its own root.</summary>
+    internal string EffectiveWorkspaceRoot => JavaScriptWorkspaceRoot.Length == 0 ? FrontendPackageDirectory : JavaScriptWorkspaceRoot;
+
+    /// <summary><c>RunicApplicationFrontendWorkspaceRoot</c> as the project sets it: a folder, <c>none</c>, or empty.</summary>
+    internal string WorkspaceRootSetting { get; init; } = string.Empty;
+
+    /// <summary><c>RunicApplicationFrontendPackageManager</c> when the project sets it, else empty.</summary>
+    internal string PackageManagerName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The package manager that installs and builds the frontend, as the build chooses it: the property, then the
+    /// workspace root's <c>packageManager</c> and lock file, then the frontend's own, then npm.
+    /// </summary>
+    internal (JavaScriptPackageManager Manager, string Source) ResolvePackageManager() =>
+        JavaScriptPackageManager.ResolveWithSource(EffectiveWorkspaceRoot, FrontendPackageDirectory, PackageManagerName);
+
+    /// <summary>TargetPlatformIdentifier, such as <c>windows</c> for net10.0-windows; empty for a portable framework.</summary>
+    internal string TargetPlatformIdentifier { get; init; } = string.Empty;
+
+    /// <summary>EnableWindowsTargeting, which lets the .NET SDK build a Windows target framework on Linux and macOS.</summary>
+    internal bool EnableWindowsTargeting { get; init; }
+
+    /// <summary>
+    /// The frontend packages that the page depends on and the workspace facts of the frontend graph, read without a
+    /// build; null when the project has no frontend package.json.
+    /// </summary>
+    internal DoctorFrontendGraph? FrontendGraph { get; init; }
+
+    /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
     /// SelfContained for the --aot, --no-aot, --self-contained and --no-self-contained switches.
     /// </summary>
@@ -125,6 +159,9 @@ internal sealed record DoctorProjectConfiguration(
             ? value.GetString() ?? string.Empty
             : string.Empty;
         IReadOnlyList<string> references = ReferenceIdentities(document.RootElement);
+        DoctorFrontendGraph? graph = await DoctorFrontendGraph.ReadAsync(dotnetHost, development, configuration,
+            NormalizeScript(Value("_RunicViewsFrontendGraphScript"), development.ProjectDirectory), Value("RunicApplicationFrontendCodegenRuntime").Trim(),
+            cancellationToken).ConfigureAwait(false);
         return new(
             development.ProjectPath,
             development.ProjectDirectory,
@@ -152,8 +189,17 @@ internal sealed record DoctorProjectConfiguration(
             UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
             DirectReferences = references,
             ApplicationId = Value("ApplicationId"),
+            JavaScriptWorkspaceRoot = development.JavaScriptWorkspaceRoot,
+            WorkspaceRootSetting = development.WorkspaceRootSetting,
+            PackageManagerName = development.PackageManagerName,
+            TargetPlatformIdentifier = Value("TargetPlatformIdentifier"),
+            EnableWindowsTargeting = IsTrue(Value("EnableWindowsTargeting")),
+            FrontendGraph = graph,
         };
     }
+
+    private static string NormalizeScript(string value, string directory) =>
+        string.IsNullOrWhiteSpace(value) ? string.Empty : Path.GetFullPath(value.Trim(), directory);
 
     private static bool IsTrue(string value) => value.Equals("true", StringComparison.OrdinalIgnoreCase);
 
@@ -219,7 +265,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));

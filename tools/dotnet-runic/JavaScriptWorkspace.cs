@@ -39,9 +39,12 @@ internal static class JavaScriptWorkspace
         Array.Exists(LockFiles, name => File.Exists(Path.Combine(folder, name)));
 
     /// <summary>Whether <paramref name="folder"/> declares a workspace: pnpm-workspace.yaml, or package.json "workspaces".</summary>
-    internal static bool DeclaresWorkspace(string folder)
+    internal static bool DeclaresWorkspace(string folder) =>
+        File.Exists(Path.Combine(folder, "pnpm-workspace.yaml")) || DeclaresPackageJsonWorkspaces(folder);
+
+    /// <summary>Whether <paramref name="folder"/>'s package.json has <c>workspaces</c>.</summary>
+    internal static bool DeclaresPackageJsonWorkspaces(string folder)
     {
-        if (File.Exists(Path.Combine(folder, "pnpm-workspace.yaml"))) return true;
         string manifest = Path.Combine(folder, "package.json");
         if (!File.Exists(manifest)) return false;
         try
