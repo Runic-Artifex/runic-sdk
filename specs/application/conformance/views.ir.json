@@ -91,7 +91,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.NotesViewModel",
       "name": "Notes",
       "route": "notes",
-      "fingerprint": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3",
+      "fingerprint": "08582D6B9897E42B12A7BD6A7131C765F247FCE1D9642149E668D16A9789E383",
       "kinds": [
         "notes"
       ],
@@ -311,7 +311,7 @@
         {
           "name": "Confirm",
           "wire": "confirm",
-          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:interaction:Confirm",
+          "contract": "08582D6B9897E42B12A7BD6A7131C765F247FCE1D9642149E668D16A9789E383:interaction:Confirm",
           "input": {
             "direction": "to-page",
             "type": {
@@ -332,7 +332,7 @@
         {
           "name": "Focus",
           "wire": "focus",
-          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:request:Focus",
+          "contract": "08582D6B9897E42B12A7BD6A7131C765F247FCE1D9642149E668D16A9789E383:request:Focus",
           "input": {
             "direction": "to-page",
             "type": {
@@ -344,7 +344,7 @@
         {
           "name": "Reveal",
           "wire": "reveal",
-          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:request:Reveal",
+          "contract": "08582D6B9897E42B12A7BD6A7131C765F247FCE1D9642149E668D16A9789E383:request:Reveal",
           "input": {
             "direction": "to-page",
             "type": {
@@ -356,7 +356,7 @@
         {
           "name": "Toast",
           "wire": "toast",
-          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:request:Toast",
+          "contract": "08582D6B9897E42B12A7BD6A7131C765F247FCE1D9642149E668D16A9789E383:request:Toast",
           "input": {
             "direction": "to-page",
             "type": {
@@ -534,7 +534,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.TabsViewModel",
       "name": "Tabs",
       "route": "tabs",
-      "fingerprint": "34B63104800558898403889079D9C9929627D592DFF2B077DABF81C302228773",
+      "fingerprint": "FA1407D7714F9C446AE2070EEF2B204F1F4F9F620F776D7955CF6F79D4E2498B",
       "kinds": [
         "tabs"
       ],

@@ -343,3 +343,35 @@ test("the conformance test Views' IR describes the Views of the corpus's README,
   assert.deepEqual(conformanceIr.views.map(view => view.route), described);
   for (const view of conformanceIr.views) assert.deepEqual(view.kinds, [view.route], `${view.id}: one kind, its route`);
 });
+
+test("producer ids enter no fingerprint: the conformance Views keep theirs under another producer's names", () => {
+  // Another producer names the same Views and types its own way, here as Rust paths; every fingerprint and derived
+  // contract stays, including those of the Views that present others (notes, tabs).
+  const rename = id => `conformance::${id.split(/[.+]/).at(-1).replace(/ViewModel$/, "")}`;
+  const ir = structuredClone(conformanceIr);
+  const renameType = type => {
+    if (type.kind === "named") type.ref = rename(type.ref);
+    if (type.element) renameType(type.element);
+    if (type.kind === "map") renameType(type.value);
+  };
+  const positions = owner => {
+    for (const name of ["value", "rows", "input", "result", "failure", "output"]) if (owner[name]) renameType(owner[name].type);
+  };
+  ir.types = Object.fromEntries(Object.entries(ir.types).map(([id, definition]) => {
+    for (const member of definition.members ?? []) renameType(member.type);
+    if (definition.kind === "union") for (const item of definition.cases) if (item.object !== null) item.object = rename(item.object);
+    return [rename(id), definition];
+  }));
+  for (const view of ir.views) {
+    view.id = rename(view.id);
+    for (const member of view.members) {
+      positions(member);
+      for (const page of member.pages ?? []) page.view = rename(page.view);
+    }
+    for (const item of [...view.commands, ...(view.interactions ?? []), ...(view.requests ?? [])]) positions(item);
+  }
+  assert.equal(new Set(Object.keys(ir.types)).size, Object.keys(conformanceIr.types).length, "the renaming merged two types");
+  assert.ok(ir.views.some(view => view.members.some(member => member.pages?.length)), "no conformance View presents another");
+  for (const [index, view] of ir.views.entries())
+    assert.equal(fingerprint(ir, view), conformanceIr.views[index].fingerprint, `${conformanceIr.views[index].id} under ${view.id}`);
+});
