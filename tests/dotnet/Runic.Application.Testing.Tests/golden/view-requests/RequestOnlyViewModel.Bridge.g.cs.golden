@@ -14,6 +14,7 @@ internal sealed class RequestOnlyBridge : global::Runic.Application.Views.Genera
         Interactions,
         dataSubscriptions: Table.Data, collections: Table.Collections)
     {
+        ContractShape = "<fingerprint>";
         global::System.ArgumentNullException.ThrowIfNull(content);
         _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation("requestOnly") : null;
     }

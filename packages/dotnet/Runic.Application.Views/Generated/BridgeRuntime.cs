@@ -648,6 +648,7 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         _checkedProperties = [];
         _commands = commands;
         _contractFingerprint = contractFingerprint;
+        if (contractFingerprint is not null) BridgeContractFingerprints.Record(modelType, contractFingerprint);
         _errors = vm as INotifyDataErrorInfo;
         _validationReader = validationReader;
         foreach (var descriptor in _incrementalCollections) _incrementalMembers.Add(descriptor.Name);
@@ -951,6 +952,14 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         }
     });
 
+    /// <summary>
+    /// The reflection shape hash of the ViewModel's assembly when the Bridge was generated (<see cref="BridgeContractShape"/>),
+    /// which Hot Reload recomputes after an edit: a different hash means the edit changed the generated contract. The
+    /// generated Bridge sets it; the contract fingerprint itself is a hash of the View's contract IR, which the running
+    /// application cannot recompute. <see langword="null"/> skips the check.
+    /// </summary>
+    protected string? ContractShape { get; init; }
+
     Type IHotReloadableBridge.ContractModelType => _modelType;
 
     Microsoft.Extensions.Logging.ILogger IHotReloadableBridge.Logger => _logger;
@@ -964,8 +973,10 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         // The SDK ships as a Release library, so this follows whether the
         // application process can apply edits rather than how the SDK was built.
         if (!System.Reflection.Metadata.MetadataUpdater.IsSupported) return null;
-        if (_contractFingerprint is not null &&
-            !string.Equals(_contractFingerprint, BridgeContractShape.Compute(_modelType), StringComparison.Ordinal))
+        // The generated fingerprint hashes the View's contract IR, which only the generator has; the generated Bridge
+        // also carries the reflection shape hash, which can be recomputed here.
+        if (ContractShape is not null &&
+            !string.Equals(ContractShape, BridgeContractShape.Compute(_modelType), StringComparison.Ordinal))
             return $"{_modelType.FullName} changed its generated Bridge contract. Rebuild and restart the .NET app.";
         return null;
     }

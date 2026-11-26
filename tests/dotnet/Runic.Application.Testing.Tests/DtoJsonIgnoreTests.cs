@@ -80,10 +80,11 @@ internal sealed partial class CodegenDiagnosticsTests
         Require(BridgeContractShape.Compute(offModel) != BridgeContractShape.Compute(onModel), "Opted-in DTO exclusion did not change its fingerprint.");
         foreach (var (assembly, directory, optedIn) in new[] { (offAssembly, off, false), (onAssembly, on, true) })
         {
-            var fingerprint = BridgeContractShape.Compute(assembly.GetType("Fixture.JsonIgnoreViewModel")!);
-            var client = File.ReadAllText(Path.Combine(Path.GetDirectoryName(directory)!, "ts", "jsonIgnore.ts"));
-            Require(client.Contains($"Fixture.JsonIgnoreViewModel:{fingerprint}", StringComparison.Ordinal),
-                "The generated contract fingerprint differs from runtime reflection.");
+            // Hot Reload recomputes the shape hash the generated Bridge carries.
+            var shape = BridgeContractShape.Compute(assembly.GetType("Fixture.JsonIgnoreViewModel")!);
+            Require(File.ReadAllText(Path.Combine(directory, "Fixture.JsonIgnoreViewModel.Bridge.g.cs"))
+                    .Contains($"ContractShape = \"{shape}\";", StringComparison.Ordinal),
+                "The generated contract shape differs from runtime reflection.");
             using var result = JsonDocument.Parse((string)assembly.GetType("Fixture.JsonIgnoreProbe")!.GetMethod("Run")!.Invoke(null, null)!);
             foreach (var stateName in new[] { "initial", "updated" })
             {
@@ -152,9 +153,9 @@ internal sealed partial class CodegenDiagnosticsTests
         foreach (var member in new[] { ".IsFiltered", ".HasErrors", ".Hidden", ".Unknown", ".Extra" })
             Require(!generated.Contains(member, StringComparison.Ordinal), $"The shared DTO codec or validation metadata read ignored member {member}.");
         var assembly = CompileGeneratedDtoFixture("IndependentJsonIgnoreConsumer", source, cs, IndependentJsonIgnoreProbe, references);
-        var fingerprint = BridgeContractShape.Compute(assembly.GetType("Fixture.IndependentViewModel")!);
-        Require(File.ReadAllText(Path.Combine(directory, "ts", "independent.ts")).Contains(fingerprint, StringComparison.Ordinal),
-            "Independent nested DTO fingerprints disagree between generator and runtime.");
+        var shape = BridgeContractShape.Compute(assembly.GetType("Fixture.IndependentViewModel")!);
+        Require(File.ReadAllText(Path.Combine(cs, "Fixture.IndependentViewModel.Bridge.g.cs")).Contains($"ContractShape = \"{shape}\";", StringComparison.Ordinal),
+            "Independent nested DTO contract shapes disagree between generator and runtime.");
         using var result = JsonDocument.Parse((string)assembly.GetType("Fixture.IndependentJsonIgnoreProbe")!.GetMethod("Run")!.Invoke(null, null)!);
         var state = result.RootElement.GetProperty("state");
         foreach (var query in new[] { state.GetProperty("query"), state.GetProperty("queries")[0], state.GetProperty("lookup").GetProperty("key") })
@@ -205,7 +206,9 @@ internal sealed partial class CodegenDiagnosticsTests
         {
             var model = assembly.GetType(typeName) ?? Assembly.LoadFrom(modelPath).GetType(typeName)!;
             var client = GeneratedClientSource.Read(Path.Combine(directory, "ts"), module);
-            Require(client.Contains(BridgeContractShape.Compute(model), StringComparison.Ordinal), "A mixed-policy fingerprint disagrees with runtime reflection.");
+            Require(File.ReadAllText(Path.Combine(directory, "cs", $"{typeName}.Bridge.g.cs"))
+                    .Contains($"ContractShape = \"{BridgeContractShape.Compute(model)}\";", StringComparison.Ordinal),
+                "A mixed-policy contract shape disagrees with runtime reflection.");
             var dtoName = System.Text.RegularExpressions.Regex.Match(client, @"readonly value: ([A-Za-z0-9_]+);").Groups[1].Value;
             Require(dtoName.Length > 0, "The mixed-policy client omitted its named DTO.");
             var declaration = System.Text.RegularExpressions.Regex.Match(types, @"export interface " + dtoName + @" \{([^}]+)\}").Groups[1].Value;

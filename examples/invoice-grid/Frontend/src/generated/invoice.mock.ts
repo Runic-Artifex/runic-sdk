@@ -34,7 +34,7 @@ export interface InvoiceMock extends MockTypedView<InvoiceMockState, InvoiceClie
 const spec: MockTypedViewSpec = {
   kind: "invoice",
   route: "invoice",
-  contract: "InvoiceGrid.InvoiceViewModel:F408C558ACE53AE2C58577D42C1413EC9B87B79B6A588FA8F617066757875891",
+  contract: "InvoiceGrid.InvoiceViewModel:D607D48AEAEEAD6D46DD2A49CC6C7E9768FAD6CC33CAB19FB5FB9934278B7EAE",
   fields: {
     address: { encode: (value: unknown) => { const typed = value as InvoiceAddress; return { ["street"]: typed["street"], ["postalCode"]: typed["postalCode"], ["city"]: typed["city"] }; }, decode: (wire: unknown) => bridgeWire.object<InvoiceAddress>(wire, value => ({ street: bridgeWire.string(value["street"]), postalCode: bridgeWire.string(value["postalCode"]), city: bridgeWire.string(value["city"])})) },
     lines: { encode: (value: unknown) => { const typed = value as readonly InvoiceLine[]; return typed.map(item => ({ ["id"]: item["id"], ["product"]: item["product"], ["quantity"]: item["quantity"], ["price"]: item["price"] })); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<InvoiceLine>(item, value => ({ id: bridgeWire.integer(value["id"], -2147483648, 2147483647), product: bridgeWire.string(value["product"]), quantity: bridgeWire.integer(value["quantity"], -2147483648, 2147483647), price: bridgeWire.decimal(value["price"])}))) },

@@ -114,6 +114,31 @@ public sealed class OperationProtocolTests
             $"The stream page of an unknown operation was not empty: {page}");
     }
 
+    // An upgrade changes the View's contract fingerprint (0.24: runic.views.fingerprint/1). A page that recovers an
+    // operation under the contract of the build that started it finds nothing under the new contract: every request
+    // about it answers unknown, also when an operation of the same id runs under the current contract.
+    [Test]
+    public async Task AnOperationOfAnotherContractIsUnknownAsync()
+    {
+        using var window = new OperationWindow();
+        // The same View under the fingerprint of the build before the upgrade.
+        var previous = $"{typeof(ImportModel).FullName}:{new string('0', 64)}";
+        Require(window.Start("op-1", "\"a\"")["admission"]!.GetValue<string>() == "accepted", "The start was not accepted.");
+        foreach (var kind in new[] { "status", "watch", "unwatch" })
+        {
+            var reply = window.Request(OperationWindow.Operation(kind, "op-1", contract: previous));
+            Require(reply["status"]!.ToJsonString() == """{"kind":"unknown"}""",
+                $"A {kind} under the previous build's contract found the operation: {reply}");
+        }
+        Require(window.Request(OperationWindow.Operation("cancel", "op-1", contract: previous))["cancellation"]!.GetValue<string>() == "unknown",
+            "A cancel under the previous build's contract did not answer unknown.");
+        var page = window.Request(OperationWindow.Operation("stream", "op-1", contract: previous, cursor: 0));
+        Require(page["page"]!["kind"]!.GetValue<string>() == "unknown", $"A stream under the previous build's contract found the operation: {page}");
+        Require(window.Request(OperationWindow.Operation("status", "op-1"))["status"]!["kind"]!.GetValue<string>() == "running",
+            "The operation under the current contract was disturbed.");
+        await window.Model.FinishAsync(1);
+    }
+
     [Test]
     public async Task CancelRequestsCancellationAndTheOperationEndsCancelledAsync()
     {

@@ -10,7 +10,7 @@
       "id": "NotesWindowViews.ShellViewModel",
       "name": "Shell",
       "route": "shell",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "503124E7D2896F72B4C54C5434C1C81A9DC6A93FF2FB0D06F4984A1241CB8F33",
       "kinds": [
         "shell"
       ],
@@ -67,7 +67,7 @@
       "id": "NotesWindowViews.SidebarViewModel",
       "name": "Sidebar",
       "route": "sidebar",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "76FB7D1FEC29F45E82831C2D1D1F586704E3856CB7E6C9C3F1207E240C430A87",
       "kinds": [
         "sidebar"
       ],
@@ -104,7 +104,7 @@
       "id": "NotesWindowViews.HomeViewModel",
       "name": "Home",
       "route": "home",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "EEBA37723FB5418D70BEEB05FB9CB841A42F92C03D2221BF2B2C31E7680DC64E",
       "kinds": [
         "home"
       ],
@@ -145,7 +145,7 @@
       "id": "NotesWindowViews.DocumentViewModel",
       "name": "Document",
       "route": "document",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "4A038EF3D865C389A736165E55B2D7B59D270B369827312BA03EDA4B80CBB2BC",
       "kinds": [
         "document"
       ],
@@ -202,7 +202,7 @@
       "id": "NotesWindowViews.EditorViewModel",
       "name": "Editor",
       "route": "editor",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "9CFA827CD622A829D2535D72EC4F52350409FD89C122425F53EEAE14C93577A8",
       "kinds": [
         "editor"
       ],
@@ -282,7 +282,7 @@
       "id": "NotesWindowViews.PreviewViewModel",
       "name": "Preview",
       "route": "preview",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "509F3DEB37CF6110D0D426310C1DE68636CD2F927B1A4E037FC6252B19C079D5",
       "kinds": [
         "preview"
       ],
@@ -318,7 +318,7 @@
       "id": "NotesWindowViews.ConfirmNavigationViewModel",
       "name": "ConfirmNavigation",
       "route": "confirmNavigation",
-      "fingerprint": "B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+      "fingerprint": "E98F128D2EDFC0470871AEFE9771573346C654BB114D191973F20A1F7E3D00AF",
       "kinds": [
         "confirmNavigation"
       ],

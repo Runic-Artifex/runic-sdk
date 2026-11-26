@@ -28,9 +28,9 @@ export type FailureReactiveCommandName = "save" | "import";
 export interface FailureReactiveClient extends ViewClient<FailureReactiveState> {
   /** Type-only: the client's commands, `FailureReactiveCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: FailureReactiveCommandName;
-  /** Calls the public C# setter of `FailureReactiveViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<FailureReactiveState>;
-  /** Writes `FailureReactiveViewModel.Title` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof FailureReactiveCheckedFields>(field: K): FieldBaseline<FailureReactiveCheckedFields[K]>;

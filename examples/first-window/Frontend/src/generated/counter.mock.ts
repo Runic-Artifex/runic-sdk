@@ -25,7 +25,7 @@ export interface CounterMock extends MockTypedView<CounterMockState, CounterClie
 const spec: MockTypedViewSpec = {
   kind: "counter",
   route: "counter",
-  contract: "FirstWindow.CounterViewModel:EE069E606CEB12AB893E2F2BA03D2E9AEA82E654B2A56498191DDB2F6649D735",
+  contract: "FirstWindow.CounterViewModel:30290E998AE62616763B2E6C6BFBD3047E5432B62B7D7EF4391417129987F188",
   fields: {
     count: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },
     step: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },

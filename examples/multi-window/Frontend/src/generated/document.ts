@@ -14,7 +14,7 @@ const members: BridgeMemberDecoders<DocumentState> = {
   canClose: (wire: unknown) => bridgeWire.boolean(wire),
   isCloseExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "MultiWindow.DocumentViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A";
+const bridgeContract = "MultiWindow.DocumentViewModel:51CD18A466BC35A16E398B5AE4D0C48FE4F4F452C91A83DB3336829853D66B5A";
 const closeOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

@@ -12,7 +12,7 @@ const members: BridgeMemberDecoders<SupportState> = {
   reportsSent: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647),
   canReportProblem: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "SharedUi.SupportViewModel:F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD";
+const bridgeContract = "SharedUi.SupportViewModel:62C6585AA56B889E10B9B0D69FF89D4D62ECC940429BC3D488A9BD7B2A697503";
 
 /**
  * Connects a Support client. It waits up to `options.timeout` milliseconds (default 5000) for the

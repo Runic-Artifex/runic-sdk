@@ -10,7 +10,7 @@
       "id": "CounterTool.CounterViewModel",
       "name": "Counter",
       "route": "counter",
-      "fingerprint": "696E3FD9B1158A19E43080BD57AC0CA7C04424D69421BEE6D2842876440CDC06",
+      "fingerprint": "F28B03851430FD59F25B4D9AE84DFAFB8396F7E77EAB21D1945939152BE42E59",
       "kinds": [
         "counter"
       ],

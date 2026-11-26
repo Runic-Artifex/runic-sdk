@@ -2,10 +2,13 @@
 // - every corpus document against the JSON Schema, and the references the schema cannot express (named types, pages,
 //   owners, shared clients, keys, sources);
 // - that the corpus covers every example that commits generated clients, and that the contract of each View is the
-//   one its example's committed clients carry, so a contract change that leaves the corpus behind fails.
+//   one its example's committed clients carry, so a contract change that leaves the corpus behind fails;
+// - each View's fingerprint against runic.views.fingerprint/1 (contract-ir.md, "Fingerprint"), computed here from the
+//   IR alone, and the contracts derived from it.
 // RUNIC_UPDATE_CONTRACT_IR_CORPUS=1 first copies each example's contract.ir.json from its obj directory into the corpus,
 // with its sources relative to the corpus; build the examples before.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
@@ -161,4 +164,114 @@ test("the corpus sources point into their examples", () => {
     for (const location of Object.values(ir.sources))
       assert.ok(relative(root, resolve(corpus, location.file)).replaceAll("\\", "/").startsWith(`${example}/`), `${entry.ir}: ${location.file}`);
   }
+});
+
+// runic.views.fingerprint/1 (specs/application/contract-ir.md, "Fingerprint"), written from the specification alone.
+const omit = (object, names) => Object.fromEntries(Object.entries(object).filter(([name]) => !names.includes(name)));
+function projectType(types, type) {
+  if (type.kind === "named") return { ...omit(type, ["ref"]), definition: projectDefinition(types, type.ref) };
+  if (type.kind === "list") return { ...type, element: projectType(types, type.element) };
+  if (type.kind === "map") return { ...type, value: projectType(types, type.value) };
+  return type;
+}
+function projectDefinition(types, id) {
+  const definition = omit(types[id], ["name", "doc"]);
+  if (definition.kind === "enum") definition.cases = definition.cases.map(item => omit(item, ["doc"]));
+  if (definition.kind === "object")
+    definition.members = definition.members.map(member => ({ ...omit(member, ["doc"]), type: projectType(types, member.type) }));
+  if (definition.kind === "union")
+    definition.cases = definition.cases.map(item => ({ ...item, object: item.object === null ? null : projectDefinition(types, item.object) }));
+  return definition;
+}
+const positions = (types, owner) => Object.fromEntries(Object.entries(owner).map(([name, value]) =>
+  [name, ["value", "rows", "input", "result", "failure", "output"].includes(name) ? { ...value, type: projectType(types, value.type) } : value]));
+function projection(types, view) {
+  const result = omit(view, ["id", "name", "fingerprint", "doc", "owner", "sharedClients"]);
+  result.kinds = [...view.kinds].sort();
+  result.members = view.members.map(member => {
+    const item = positions(types, omit(member, ["name", "doc", "declaringType", "constraints", "defaultKey"]));
+    if (item.pages) item.pages = item.pages.map(page => omit(page, ["name"]));
+    if (item.fieldPaths) item.fieldPaths = item.fieldPaths.map(path => omit(path, ["constraints"]));
+    return item;
+  });
+  result.commands = view.commands.map(command => positions(types, omit(command, ["doc", "parameter"])));
+  for (const section of ["interactions", "requests"])
+    if (view[section]) result[section] = view[section].map(item => positions(types, omit(item, ["doc", "contract"])));
+  return { format: "runic.views.fingerprint/1", view: result };
+}
+// RFC 8785 for values without numbers: members sorted by UTF-16 code units, JSON.stringify's strings, no whitespace.
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value !== null && typeof value === "object")
+    return `{${Object.keys(value).sort().map(name => `${JSON.stringify(name)}:${canonical(value[name])}`).join(",")}}`;
+  assert.notEqual(typeof value, "number", "the projection holds no numbers");
+  return JSON.stringify(value);
+}
+const fingerprint = (ir, view) => createHash("sha256").update(canonical(projection(ir.types, view)), "utf8").digest("hex").toUpperCase();
+
+test("each corpus View's fingerprint is runic.views.fingerprint/1 of its IR", () => {
+  for (const { entry, ir } of documents)
+    for (const view of ir.views) {
+      assert.equal(view.fingerprint, fingerprint(ir, view), `${entry.ir}: ${view.id}`);
+      for (const [section, kind] of [["interactions", "interaction"], ["requests", "request"]])
+        for (const item of view[section] ?? [])
+          assert.equal(item.contract, `${view.fingerprint}:${kind}:${item.name}`, `${entry.ir}: ${view.id} ${kind} ${item.name}`);
+    }
+});
+
+test("a View has one fingerprint in every corpus document that describes it", () => {
+  const seen = new Map();
+  for (const { entry, ir } of documents)
+    for (const view of ir.views) {
+      const first = seen.get(view.id);
+      if (first) assert.equal(view.fingerprint, first.fingerprint, `${view.id}: ${first.ir} and ${entry.ir}`);
+      else seen.set(view.id, { fingerprint: view.fingerprint, ir: entry.ir });
+    }
+});
+
+test("a fingerprint covers what crosses the wire, and nothing the client alone names", () => {
+  const { ir } = documents.find(({ entry }) => entry.ir === "invoice-grid.ir.json");
+  const index = ir.views.findIndex(view => view.members.some(member => member.value?.type.kind === "named" && ir.types[member.value.type.ref].kind === "object"));
+  assert.ok(index >= 0, "invoice-grid has no View with an object member");
+  const base = fingerprint(ir, ir.views[index]);
+  const changed = mutate => {
+    const copy = structuredClone(ir);
+    mutate(copy, copy.views[index]);
+    return fingerprint(copy, copy.views[index]) !== base;
+  };
+  const objectMember = view => view.members.find(member => member.value?.type.kind === "named" && ir.types[member.value.type.ref].kind === "object");
+  const unchanged = {
+    "the View's documentation and public name": (_, view) => { view.doc = "Other text."; view.name = "Other"; },
+    "a member's documentation and name": (_, view) => { view.members[0].doc = "Other text."; view.members[0].name = "Other"; },
+    "a named type's id and name hints": (copy, view) => {
+      const member = objectMember(view);
+      const id = member.value.type.ref;
+      copy.types["Other.Id"] = { ...copy.types[id], name: { source: "Other.Id", base: "Other", qualifiers: [] } };
+      member.value.type.ref = "Other.Id";
+    },
+    "the owner and the shared clients": (_, view) => { view.owner = "Other"; view.sharedClients = ["Other"]; },
+  };
+  const different = {
+    "a member's wire name": (_, view) => { view.members[0].wire += "X"; },
+    "the member order": (_, view) => { view.members.reverse(); },
+    "a field of a named type": (copy, view) => { copy.types[objectMember(view).value.type.ref].members[0].wire += "X"; },
+    "a nullable position": (_, view) => { const type = view.members[0].value?.type ?? view.members[0].rows.type; type.nullable = !type.nullable; },
+    "the route": (_, view) => { view.route += "X"; },
+  };
+  for (const [name, mutate] of Object.entries(unchanged)) assert.ok(!changed(mutate), `${name} changed the fingerprint`);
+  const withKinds = kinds => { const copy = structuredClone(ir); copy.views[index].kinds = kinds; return fingerprint(copy, copy.views[index]); };
+  assert.equal(withKinds(["a", "b"]), withKinds(["b", "a"]), "the order of the kinds changed the fingerprint");
+  assert.notEqual(withKinds(["a", "b"]), withKinds(["a"]), "another kind left the fingerprint as it was");
+  for (const [name, mutate] of Object.entries(different)) assert.ok(changed(mutate), `${name} left the fingerprint as it was`);
+});
+
+test("the worked example of the fingerprint specification holds", () => {
+  const example = readJson(join(specs, "fingerprint-example.json"));
+  assert.deepEqual(validate(schema, example.document), [], "the example document does not match the schema");
+  const [view] = example.document.views;
+  assert.equal(canonical(projection(example.document.types, view)), example.canonical);
+  assert.equal(fingerprint(example.document, view), example.fingerprint);
+  assert.equal(view.fingerprint, example.fingerprint);
+  assert.equal(`${view.id}:${view.fingerprint}`, example.contracts.operation);
+  assert.equal(view.interactions[0].contract, example.contracts.interaction);
 });

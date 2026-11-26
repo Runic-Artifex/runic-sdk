@@ -23,7 +23,7 @@ const members: BridgeMemberDecoders<InstallerState> = {
   isRestartCheckExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   isChooseDesignExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "HostedInstaller.InstallerViewModel:FCDD6F4E08352ACB1E87AC946615016973FEBE8B25E1CC5D28BDC9EF82AA5CE5";
+const bridgeContract = "HostedInstaller.InstallerViewModel:85C584E4B356B6CD3D79ED42AF5DDAD740FF7C1A944E7ECD62F9DD907EEF750D";
 const nextOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const backOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const restartCheckOperation: BridgeOperationCodec<void> = { decode: value => undefined };

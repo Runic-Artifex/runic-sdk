@@ -31,7 +31,7 @@ export interface DocumentedClient extends ViewClient<DocumentedState> {
   /**
    * The note being edited.
    *
-   * Calls the public C# setter of `DocumentedViewModel.Note`.
+   * Calls the producer's setter of `note`.
    */
   setNote(value: string): Promise<DocumentedState>;
   /** The note being edited. */

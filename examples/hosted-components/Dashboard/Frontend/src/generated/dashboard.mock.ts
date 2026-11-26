@@ -31,7 +31,7 @@ export interface DashboardMock extends MockTypedView<DashboardMockState, Dashboa
 const spec: MockTypedViewSpec = {
   kind: "dashboard",
   route: "dashboard",
-  contract: "HostedDashboard.DashboardViewModel:370987FD959BE413FDA3602B2DBFFAF6EDC1E77AFC15EEA657636593482F1ADA",
+  contract: "HostedDashboard.DashboardViewModel:130972536EDC6F6AD52BE42D4A897A01CAB80EFB29615374568FA55174C00800",
   fields: {
     indexer: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     sync: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

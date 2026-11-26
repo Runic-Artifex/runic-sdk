@@ -19,7 +19,7 @@ const members: BridgeMemberDecoders<DocumentState> = {
   canShowDetails: (wire: unknown) => bridgeWire.boolean(wire),
   isShowDetailsExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "DocumentTabs.DocumentViewModel:FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5";
+const bridgeContract = "DocumentTabs.DocumentViewModel:605BFB3E839F9488947D7DFE86E76C4F046663DA41A8545D9879B8A4529392DE";
 const checkedFieldNames = ["title", "body"];
 const showDetailsOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

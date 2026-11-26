@@ -37,7 +37,7 @@ export interface InstallerMock extends MockTypedView<InstallerMockState, Install
 const spec: MockTypedViewSpec = {
   kind: "installer",
   route: "installer",
-  contract: "HostedInstaller.InstallerViewModel:FCDD6F4E08352ACB1E87AC946615016973FEBE8B25E1CC5D28BDC9EF82AA5CE5",
+  contract: "HostedInstaller.InstallerViewModel:85C584E4B356B6CD3D79ED42AF5DDAD740FF7C1A944E7ECD62F9DD907EEF750D",
   fields: {
     design: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     step: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

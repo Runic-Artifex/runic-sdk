@@ -61,6 +61,9 @@ internal static class RunicMembers
 
     internal static string LowerFirst(string value) => value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value[1..];
 
+    // The contract IR's UpperCamelCase name of a member, which interaction and view request contracts end with.
+    internal static string UpperFirst(string value) => value.Length == 0 ? value : char.ToUpperInvariant(value[0]) + value[1..];
+
     // `[RunicCollection]` fields of a ViewModel and the wire name of each row key.
     internal static IReadOnlyDictionary<string, string> CollectionKeys(Type model)
     {

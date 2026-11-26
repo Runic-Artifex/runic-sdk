@@ -18,7 +18,7 @@ const members: BridgeMemberDecoders<CounterState> = {
   canOpenDocumentation: (wire: unknown) => bridgeWire.boolean(wire),
   isOpenDocumentationExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "CounterTool.CounterViewModel:696E3FD9B1158A19E43080BD57AC0CA7C04424D69421BEE6D2842876440CDC06";
+const bridgeContract = "CounterTool.CounterViewModel:F28B03851430FD59F25B4D9AE84DFAFB8396F7E77EAB21D1945939152BE42E59";
 const incrementOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const resetOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const openDocumentationOperation: BridgeOperationCodec<void> = { decode: value => undefined };

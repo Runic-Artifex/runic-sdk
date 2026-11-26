@@ -21,7 +21,7 @@ export interface SupportMock extends MockTypedView<SupportMockState, SupportClie
 const spec: MockTypedViewSpec = {
   kind: "support",
   route: "support",
-  contract: "SharedUi.SupportViewModel:F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD",
+  contract: "SharedUi.SupportViewModel:62C6585AA56B889E10B9B0D69FF89D4D62ECC940429BC3D488A9BD7B2A697503",
   fields: {
     reportsSent: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },
   },

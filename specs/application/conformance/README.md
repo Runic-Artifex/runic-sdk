@@ -345,10 +345,19 @@ them:
 | `ownerEpoch` | number | The presentation epoch of the presentation an interaction request belongs to. |
 | `flushId` | string | The `id` of a `flush` push ([field flush](../README.md#field-flush)). |
 
-The contract ids are the producer's own today. In .NET they are `{type}:{fingerprint}` strings derived from .NET type
-names (`contract`) or constants of the test View (the others). A language-neutral derivation of operation and
-interaction contracts from the View's contract IR, so that a producer in another language gives the same value, is R7
-slice G7's (the per-View IR fingerprint); until then each producer provides its own.
+A producer derives the contract ids from the `notes` View's fingerprint, `runic.views.fingerprint/1`
+([contract IR, Fingerprint](../contract-ir.md#fingerprint)), as [derived contracts](../contract-ir.md#derived-contracts)
+says:
+
+- `contract` is `{view}:{fingerprint}`, with the producer's View id;
+- `confirmContract` is `{fingerprint}:interaction:Confirm`;
+- `focusContract`, `revealContract` and `toastContract` are `{fingerprint}:request:Focus`, `…:Reveal` and `…:Toast`.
+
+The fingerprint depends only on the View's wire contract, so producers whose test Views describe the same contract
+compute the same one. `contract` still differs between producers by its View id. Runners take every contract id from
+the adapter, so this corpus does not check the derivation itself. The .NET adapter's test Views are hand-written Bridges
+with placeholder contracts (`conformance-notes`, `conformance.notes.confirm.v1` and the like), not derived ones;
+deriving them is a follow-up (R7 slice G9b).
 
 ### `list`
 

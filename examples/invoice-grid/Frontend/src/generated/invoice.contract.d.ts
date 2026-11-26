@@ -27,9 +27,9 @@ export type InvoiceCommandName = "addLine" | "removeLine";
 export interface InvoiceClient extends ViewClient<InvoiceState> {
   /** Type-only: the client's commands, `InvoiceCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: InvoiceCommandName;
-  /** Calls the public C# setter of `InvoiceViewModel.Address`. */
+  /** Calls the producer's setter of `address`. */
   setAddress(value: InvoiceAddress): Promise<InvoiceState>;
-  /** Writes `InvoiceViewModel.Address` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `address` with an acknowledged field write, which reports whether the app committed it. */
   writeAddress(value: InvoiceAddress, options: FieldWriteOptions<InvoiceAddress>): Promise<FieldWriteReceipt<InvoiceAddress>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof InvoiceCheckedFields>(field: K): FieldBaseline<InvoiceCheckedFields[K]>;

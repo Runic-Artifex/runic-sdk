@@ -33,7 +33,7 @@ const members: BridgeMemberDecoders<ProjectState> = {
   canChooseAccount: (wire: unknown) => bridgeWire.boolean(wire),
   isChooseAccountExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "MultiWindow.ProjectViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A";
+const bridgeContract = "MultiWindow.ProjectViewModel:A78CC1928F70569A1AE74680DB48F11DC4574EACA71A8734EB13687A437DC6F7";
 const checkedFieldNames = ["draft"];
 const renameOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const newWindowOperation: BridgeOperationCodec<void> = { decode: value => undefined };

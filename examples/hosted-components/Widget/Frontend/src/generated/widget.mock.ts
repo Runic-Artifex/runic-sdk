@@ -27,7 +27,7 @@ export interface WidgetMock extends MockTypedView<WidgetMockState, WidgetClient,
 const spec: MockTypedViewSpec = {
   kind: "widget",
   route: "widget",
-  contract: "WidgetTool.WidgetViewModel:68E3A43F7F17BB041BFE2D58E6EF989AB473EDBCA8689D93A167FF3C8E8ABDFA",
+  contract: "WidgetTool.WidgetViewModel:A96BA96D3910F8471340B59BC0ECCB157A8B2D5E9CEEE0E05D6030CDB2DBD359",
   fields: {
     name: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     processId: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },

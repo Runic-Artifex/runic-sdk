@@ -39,9 +39,9 @@ export type TypedReactiveCommandName = "save" | "multiResult" | "lastResult" | "
 export interface TypedReactiveClient extends ViewClient<TypedReactiveState> {
   /** Type-only: the client's commands, `TypedReactiveCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: TypedReactiveCommandName;
-  /** Calls the public C# setter of `TypedReactiveViewModel.SaveEnabled`. */
+  /** Calls the producer's setter of `saveEnabled`. */
   setSaveEnabled(value: boolean): Promise<TypedReactiveState>;
-  /** Writes `TypedReactiveViewModel.SaveEnabled` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `saveEnabled` with an acknowledged field write, which reports whether the app committed it. */
   writeSaveEnabled(value: boolean, options: FieldWriteOptions<boolean>): Promise<FieldWriteReceipt<boolean>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof TypedReactiveCheckedFields>(field: K): FieldBaseline<TypedReactiveCheckedFields[K]>;
