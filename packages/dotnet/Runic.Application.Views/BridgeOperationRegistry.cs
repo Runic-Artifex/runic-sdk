@@ -176,12 +176,14 @@ internal sealed class BridgeOperationRegistry : IDisposable
                     ? new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "identity-conflict")
                     : new(requestId, BridgeOperationAdmissionKind.Expired, BridgeOperationStatusKind.Expired, "expired");
 
+            // The command's own checks (input, key, availability) come before the window's capacity, as a command's do
+            // (#1370): a start that could not run anyway is told why, not that the window is full.
+            if (refusal?.Invoke() is { } reason)
+                return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, reason);
+
             TrimTerminalEntries(preferCapacity: true);
             if (_operations.Count >= _maximumOperations)
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "capacity");
-
-            if (refusal?.Invoke() is { } reason)
-                return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, reason);
 
             // A stream can retain values while work is still running. Reserve
             // its declared maximum before execution so concurrent producers

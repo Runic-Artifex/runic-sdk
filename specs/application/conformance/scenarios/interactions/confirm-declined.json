@@ -1,10 +1,10 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "interactions.confirm-declined.v1",
+  "id": "interactions.confirm-declined.v2",
   "contract": {"id":"runic.views","version":4},
   "set": "interactions",
   "roles": ["producer"],
-  "description": "confirmClear whose confirm interaction is answered with accepted false changes no row and replies ok after the frame of its end.",
+  "description": "confirmClear whose confirm interaction is answered with accepted false changes no row and replies ok with the revision of the frame of its end. The reply to the answer, a request admitted after the command, is not ordered with the frame or the command's reply (reply order).",
   "view": "notes",
   "ids": {
     "c1": {"kind":"connection"},
@@ -31,6 +31,6 @@
     {"send":{"kind":"interaction-reply","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"name":"confirm","contract":{"$id":"confirmContract"},"outcome":"answered","output":{"accepted":false}},"id":"answer"},
     {"receive":{"ok":true,"result":"ok"},"replyTo":"answer","unordered":true},
     {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"canConfirmClear","kind":"set","value":true},{"field":"isConfirmClearExecuting","kind":"set","value":false}]},"unordered":true},
-    {"receive":{"ok":true,"revision":2},"replyTo":"command-request"}
+    {"receive":{"ok":true,"revision":2},"replyTo":"command-request","unordered":true}
   ]
 }

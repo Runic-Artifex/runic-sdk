@@ -478,7 +478,7 @@ static int ProbeCloseGuard()
             entry.EventId is { Id: 2101, Name: "CsWebUiNativeLibraryUnchecked" } &&
             entry.Message.Contains(nativeLibrary, StringComparison.Ordinal) &&
             entry.Message.Contains("efac0e24", StringComparison.Ordinal) &&
-            entry.Message.Contains("24c7d196e", StringComparison.Ordinal)))
+            entry.Message.Contains("8a55352c2", StringComparison.Ordinal)))
         throw new InvalidOperationException("The WebUI library from CSWEBUI_NATIVE_LIBRARY was not logged once as event 2101:\n" +
             string.Join('\n', entries.Select(static entry => entry.ToString())));
     Console.WriteLine("FIRST_WINDOW_CLOSE_GUARD_OK");

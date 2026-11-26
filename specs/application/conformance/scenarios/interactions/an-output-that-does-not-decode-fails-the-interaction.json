@@ -1,10 +1,10 @@
 {
   "format": "runic.views.scenario/1",
-  "id": "interactions.an-output-that-does-not-decode-fails-the-interaction.v1",
+  "id": "interactions.an-output-that-does-not-decode-fails-the-interaction.v2",
   "contract": {"id":"runic.views","version":4},
   "set": "interactions",
   "roles": ["producer"],
-  "description": "An interaction-reply whose output does not decode as the output type answers invalid-output and fails the waiting interaction: confirmClear fails without clearing, and a repeat of the reply is already-completed.",
+  "description": "An interaction-reply whose output does not decode as the output type answers invalid-output and fails the waiting interaction: confirmClear fails without clearing, and a repeat of the reply is already-completed. The reply to the answer, a request admitted after the command, is not ordered with the frame or the command's reply (reply order).",
   "view": "notes",
   "ids": {
     "c1": {"kind":"connection"},
@@ -32,7 +32,7 @@
     {"send":{"kind":"interaction-reply","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"name":"confirm","contract":{"$id":"confirmContract"},"outcome":"answered","output":{"accepted":"yes"}},"id":"answer"},
     {"receive":{"ok":true,"result":"invalid-output"},"replyTo":"answer","unordered":true},
     {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"canConfirmClear","kind":"set","value":true},{"field":"isConfirmClearExecuting","kind":"set","value":false}]},"unordered":true},
-    {"receive":{"ok":false,"revision":2,"error":{"kind":"failed","message":{"$any":"string"}}},"replyTo":"command-request"},
+    {"receive":{"ok":false,"revision":2,"error":{"kind":"failed","message":{"$any":"string"}}},"replyTo":"command-request","unordered":true},
     {"send":{"kind":"interaction-reply","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"name":"confirm","contract":{"$id":"confirmContract"},"outcome":"answered","output":{"accepted":"yes"}},"id":"repeat"},
     {"receive":{"ok":true,"result":"already-completed"},"replyTo":"repeat"}
   ]
