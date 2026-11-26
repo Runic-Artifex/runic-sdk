@@ -5631,9 +5631,14 @@ each watched entry, so a link replaced by a rename is seen in its parent, and
 shares one watcher per directory across the process. It also watches that
 directory's parent: inotify and FSEvents keep a watch on a deleted directory
 and report nothing for a new directory of the same name, so the watcher
-compares the directory's identity (device, inode and birth time, since ext4
-reuses a freed inode at once, or volume and file index on Windows) when the parent reports it, on each read and when another watcher
-joins, and starts a new watch when it was replaced. `PathWatcherTests` run the
+compares the directory's identity when the parent reports it, on each read
+and when another watcher joins, and starts a new watch when it was replaced.
+The identity is the device, inode and birth time on Linux and macOS (ext4
+reuses a freed inode at once; Linux reads the birth time with `statx`), and
+the volume and file index on Windows. Writes inside the directory leave it
+unchanged. On a Linux file system that records no birth time, the identity
+takes the change time instead. A replacement is still found, but each entry
+created, renamed or deleted in the directory then restarts its watch. `PathWatcherTests` run the
 first five rows on Linux, Windows and macOS in CI, and check that an event,
 not a poll, reported each change; the network and limit rows follow the
 platforms' documentation.
