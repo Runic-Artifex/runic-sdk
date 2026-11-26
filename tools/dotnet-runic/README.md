@@ -401,12 +401,12 @@ redacts the message key, which always names the check. `payload.checks` is the
 complete list.
 Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `windows-targeting`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `frontend-workspace`, `package-manager-agreement`,
-`frontend-dependencies`, `compatibility-set`, `views-package-versions`,
+`frontend-dependencies`, `client-modules`, `views-dedupe`, `compatibility-set`, `views-package-versions`,
 `application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
 `browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
 `platform-services`; `views-package-versions` and `application-id` were added
 in 0.11, `dotnet-runtime` in 0.18, and `windows-targeting`, `frontend-workspace`,
-`package-manager-agreement` and `frontend-dependencies` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
+`package-manager-agreement`, `frontend-dependencies`, `client-modules` and `views-dedupe` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
@@ -508,6 +508,50 @@ when a compiled package is missing its exports and its build is off
 (`RunicApplicationFrontendBuildEnabled=false`) or has no command, and when a
 source package exports a file that does not exist, since nothing writes it.
 Warns when doctor could not read the packages. Added in 0.24.
+
+#### `client-modules`
+
+Each specifier that the page imports from a library or workspace package
+resolves from the frontend, as Vite resolves it: the `Specifier` of every
+`RunicApplicationFrontendClientModule`, and every package of
+`frontend-dependencies` that the frontend's `package.json` declares. Only for a
+page that imports such a package. Doctor follows `node_modules` from the
+frontend up to the workspace root and the package's `exports` (with Vite's
+`import`, `module`, `browser`, `development`, `production` and `default`
+conditions), or its `main` without `exports`.
+
+- Passes when each resolves to a file that exists, and lists them. A specifier
+  that no installed package has passes through a tsconfig `paths` alias
+  (`tsconfig.json` or `tsconfig.app.json`) when the Vite configuration has an
+  alias for the package, as in the shared library clients example.
+- Fails when the package is not in `node_modules` (the fix runs the install at
+  the root, or adds `"@acme/shared-ui": "workspace:*"` to the frontend's
+  dependencies), when its `exports` don't name the subpath (the fix adds it), when
+  the file the package names does not exist and no build writes it, and for a
+  relative `Specifier` (`RUNICBRIDGE082`).
+- Warns before the first install, while the package's build has not written
+  the file yet, for a `paths` alias that the Vite configuration lacks, and when
+  `node_modules` holds another copy of the package than the workspace's, such
+  as a published version.
+
+Added in 0.24.
+
+#### `views-dedupe`
+
+Only when a package that the page depends on is linked into the frontend (a
+workspace or folder package) and its `package.json` lists
+`@runic-artifex/views`. Vite resolves the package's imports from its own
+folder, which can hold another copy of the runtime than the frontend's.
+Passes when the Vite configuration lists `@runic-artifex/views` in
+`resolve.dedupe`, and warns otherwise, naming both copies when the install has
+two. Doctor reads the configuration's text, so a `dedupe` list that the
+configuration builds elsewhere is not seen. The fix:
+
+```ts
+export default defineConfig({ resolve: { dedupe: ["@runic-artifex/views"] } });
+```
+
+Added in 0.24.
 
 #### `compatibility-set`
 

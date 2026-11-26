@@ -124,6 +124,9 @@ internal sealed record DoctorProjectConfiguration(
     /// </summary>
     internal DoctorFrontendGraph? FrontendGraph { get; init; }
 
+    /// <summary>The project's <c>RunicApplicationFrontendClientModule</c> items: the client libraries whose generated clients the page imports.</summary>
+    internal IReadOnlyList<DoctorClientModule> ClientModules { get; init; } = [];
+
     /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
     /// SelfContained for the --aot, --no-aot, --self-contained and --no-self-contained switches.
@@ -195,7 +198,23 @@ internal sealed record DoctorProjectConfiguration(
             TargetPlatformIdentifier = Value("TargetPlatformIdentifier"),
             EnableWindowsTargeting = IsTrue(Value("EnableWindowsTargeting")),
             FrontendGraph = graph,
+            ClientModules = ReadClientModules(document.RootElement),
         };
+    }
+
+    /// <summary>The evaluation's <c>RunicApplicationFrontendClientModule</c> items, with their Specifier metadata.</summary>
+    internal static IReadOnlyList<DoctorClientModule> ReadClientModules(JsonElement evaluation)
+    {
+        if (!evaluation.TryGetProperty("Items", out JsonElement items) || items.ValueKind != JsonValueKind.Object ||
+            !items.TryGetProperty("RunicApplicationFrontendClientModule", out JsonElement modules) || modules.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+        return [.. modules.EnumerateArray()
+            .Select(static module => new DoctorClientModule(
+                module.TryGetProperty("Identity", out JsonElement identity) ? identity.GetString() ?? string.Empty : string.Empty,
+                module.TryGetProperty("Specifier", out JsonElement specifier) ? specifier.GetString() ?? string.Empty : string.Empty))
+            .Where(static module => module.Assembly.Length != 0)];
     }
 
     private static string NormalizeScript(string value, string directory) =>
@@ -266,7 +285,7 @@ internal sealed record DoctorProjectConfiguration(
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
             "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime",
-            "-getItem:PackageReference,ProjectReference",
+            "-getItem:PackageReference,ProjectReference,RunicApplicationFrontendClientModule",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));
         CommandResult result = await CommandRunner.RunAsync(
