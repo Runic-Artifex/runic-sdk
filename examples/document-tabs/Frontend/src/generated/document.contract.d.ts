@@ -34,9 +34,9 @@ export type DocumentCommandName = "save" | "discard" | "showDetails";
 export interface DocumentClient extends ViewClient<DocumentState> {
   /** Type-only: the client's commands, `DocumentCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: DocumentCommandName;
-  /** Calls the public C# setter of `DocumentViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<DocumentState>;
-  /** Calls the public C# setter of `DocumentViewModel.Body`. */
+  /** Calls the producer's setter of `body`. */
   setBody(value: string): Promise<DocumentState>;
   /** Writes `title` with an acknowledged field write, which reports whether the app committed it. */
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

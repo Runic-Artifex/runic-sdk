@@ -25,13 +25,13 @@ export type GrößenCommandName = "löschen";
 export interface GrößenClient extends ViewClient<GrößenState> {
   /** Type-only: the client's commands, `GrößenCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: GrößenCommandName;
-  /** Calls the public C# setter of `GrößenViewModel.Straße`. */
+  /** Calls the producer's setter of `straße`. */
   setStraße(value: string): Promise<GrößenState>;
-  /** Calls the public C# setter of `GrößenViewModel.Maße`. */
+  /** Calls the producer's setter of `maße`. */
   setMaße(value: Größe): Promise<GrößenState>;
-  /** Calls the public C# setter of `GrößenViewModel.Farbe`. */
+  /** Calls the producer's setter of `farbe`. */
   setFarbe(value: Grün | null): Promise<GrößenState>;
-  /** Calls the public C# setter of `GrößenViewModel.Höhe`. */
+  /** Calls the producer's setter of `höhe`. */
   setHöhe(value: number): Promise<GrößenState>;
   /** Writes `straße` with an acknowledged field write, which reports whether the app committed it. */
   writeStraße(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

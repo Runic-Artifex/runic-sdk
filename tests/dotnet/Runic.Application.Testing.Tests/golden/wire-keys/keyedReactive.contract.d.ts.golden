@@ -26,7 +26,7 @@ export type KeyedReactiveCommandName = "delete" | "archive" | "rename" | "export
 export interface KeyedReactiveClient extends ViewClient<KeyedReactiveState> {
   /** Type-only: the client's commands, `KeyedReactiveCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: KeyedReactiveCommandName;
-  /** Calls the public C# setter of `KeyedReactiveViewModel.Enabled`. */
+  /** Calls the producer's setter of `enabled`. */
   setEnabled(value: boolean): Promise<KeyedReactiveState>;
   /** Writes `enabled` with an acknowledged field write, which reports whether the app committed it. */
   writeEnabled(value: boolean, options: FieldWriteOptions<boolean>): Promise<FieldWriteReceipt<boolean>>;

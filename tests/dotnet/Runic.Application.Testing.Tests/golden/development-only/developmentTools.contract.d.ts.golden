@@ -37,12 +37,12 @@ export type DevelopmentToolsCommandName = "rename" | "reset" | "inject";
 export interface DevelopmentToolsClient extends ViewClient<DevelopmentToolsState> {
   /** Type-only: the client's commands, `DevelopmentToolsCommandName`, which `injectCommands` and `useCommands` offer. */
   readonly [viewCommands]?: DevelopmentToolsCommandName;
-  /** Calls the public C# setter of `DevelopmentToolsViewModel.Title`. */
+  /** Calls the producer's setter of `title`. */
   setTitle(value: string): Promise<DevelopmentToolsState>;
   /**
    * A diagnostics note.
    *
-   * Calls the public C# setter of `DevelopmentToolsViewModel.Debug`.
+   * Calls the producer's setter of `debug`.
    *
    * Development-only (`[RunicDevelopmentOnly]`): a trimmed or NativeAOT publish leaves the member out and rejects the call.
    */

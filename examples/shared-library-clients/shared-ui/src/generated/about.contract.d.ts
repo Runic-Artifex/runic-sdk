@@ -32,7 +32,7 @@ export interface AboutClient extends ViewClient<AboutState> {
   /**
    * Which releases `CheckForUpdatesCommand` looks for.
    *
-   * Calls the public C# setter of `AboutViewModel.Channel`.
+   * Calls the producer's setter of `channel`.
    */
   setChannel(value: UpdateChannel): Promise<AboutState>;
   /** Which releases `CheckForUpdatesCommand` looks for. */

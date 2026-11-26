@@ -32,7 +32,7 @@ export interface GeneratedReactiveClient extends ViewClient<GeneratedReactiveSta
   /**
    * The name to save.
    *
-   * Calls the public C# setter of `GeneratedReactiveViewModel.Name`.
+   * Calls the producer's setter of `name`.
    */
   setName(value: string): Promise<GeneratedReactiveState>;
   /** The name to save. */
