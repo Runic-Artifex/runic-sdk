@@ -9,7 +9,12 @@ dotnet runic dev
 ```
 
 All commands find the single `.csproj` in the current directory; pass
-`--project path/to/App.csproj` (`-p`) otherwise. `--configuration` (`-c`)
+`--project path/to/App.csproj` (`-p`) otherwise. `dev` and `doctor` also start
+from a solution root: in a directory without one `.csproj` but with one solution
+(`.sln` or `.slnx`), or with `--project` naming a solution or its directory, they
+evaluate the solution's projects and take its one Window project
+(`RunicApplicationFrontendWindowProject=true`). With several Window projects
+they list them and stop (`RAPPDEV1002`); choose one with `--project`. `--configuration` (`-c`)
 selects the build configuration. `dotnet runic <command> --help` describes
 every option.
 

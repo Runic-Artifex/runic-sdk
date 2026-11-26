@@ -13,8 +13,10 @@ internal static class DoctorApplication
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
-        string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
+        // From a solution root, the solution's one Window project (devtools-library-dx F9), as dev selects it.
+        string project = (await ProjectDiscovery.FindWindowProjectAsync(Environment.CurrentDirectory, options.Project, "doctor",
+            ProjectDiscovery.EvaluateWindowProject(dotnetHost), cancellationToken).ConfigureAwait(false)).Project;
         DoctorProjectConfiguration configuration = await DoctorProjectConfiguration
             .EvaluateAsync(
                 dotnetHost,
