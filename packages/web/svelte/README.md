@@ -845,3 +845,26 @@ shows while no guest page shows in it:
   {/snippet}
 </RunicHostedRegion>
 ```
+
+While the host waits for the guest's page, the `stalled` snippet shows in place of
+the `loading` fallback once the region is stalled, and the `failed` snippet shows
+when the host application gave the region up
+([loading and failure](../../../docs/hosted-regions.md#the-host)).
+`failed` takes the region's status, which is also the second argument of
+`fallback`: `stalled`, `failureReason` and `retry()`, which asks the host to load a
+failed region again and returns whether it asked. As with the element, a stalled
+region without a `stalled` snippet shows the fallback for `loading`, and a failed
+one without a `failed` snippet the fallback for `failed`. The component's
+`bind:this` instance has `retry()` too. `onstatechange` also receives the event's
+detail (`{state, previous, stalled, reason}`), and is also called when only
+`stalled` or the reason changed.
+
+```svelte
+<RunicHostedRegion name="check" style="height: 420px">
+  {#snippet fallback()}<p>Starting the check…</p>{/snippet}
+  {#snippet stalled()}<p>The check is taking longer than usual…</p>{/snippet}
+  {#snippet failed(status)}
+    <p>The check could not start ({status.failureReason}). <button onclick={status.retry}>Try again</button></p>
+  {/snippet}
+</RunicHostedRegion>
+```

@@ -877,3 +877,26 @@ Window ([hosted regions](../views/README.md#hosted-regions-experimental)). Its `
   </template>
 </RunicHostedRegion>
 ```
+
+While the host waits for the guest's page, the `stalled` slot shows in place of the
+`loading` fallback once the region is stalled, and the `failed` slot shows when the
+host application gave the region up
+([loading and failure](../../../docs/hosted-regions.md#the-host)). The
+`failed` slot's props, and the `fallback` slot's with `state`, are the region's
+`stalled`, `failureReason` and `retry()`, which asks the host to load a failed
+region again and returns whether it asked. As with the element, a stalled region
+without a `stalled` slot shows the `fallback` slot for `loading`, and a failed one
+without a `failed` slot the `fallback` slot for `failed`. A template ref reads
+`state`, `stalled` and `failureReason` and calls `retry()`. `stateChange` also
+carries the event's detail (`{state, previous, stalled, reason}`), and is also
+emitted when only `stalled` or the reason changed.
+
+```vue
+<RunicHostedRegion name="check" style="height: 420px">
+  <template #fallback><p>Starting the check…</p></template>
+  <template #stalled><p>The check is taking longer than usual…</p></template>
+  <template #failed="{ failureReason, retry }">
+    <p>The check could not start ({{ failureReason }}). <button @click="retry()">Try again</button></p>
+  </template>
+</RunicHostedRegion>
+```

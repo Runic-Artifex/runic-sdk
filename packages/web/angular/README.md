@@ -986,6 +986,25 @@ guest page shows in it, and `state()` tells which state the region is in:
 </runic-hosted-region>
 ```
 
+While the host waits for the guest's page, a projected element with
+`slot="stalled"` shows in place of the `loading` content once the region is
+stalled, and one with `slot="failed"` shows when the host application gave the
+region up ([loading and failure](../../../docs/hosted-regions.md#the-host)).
+`stalled()` and `failureReason()` are signals, and `retry()` asks the host to load
+a failed region again and returns whether it asked. As with the element, a stalled
+region without `slot="stalled"` content shows the projected content for `loading`,
+and a failed one without `slot="failed"` content the projected content for
+`failed`. `stateChange` also carries `stalled` and `reason`, and is also emitted
+when only those changed.
+
+```html
+<runic-hosted-region #check="runicHostedRegion" name="check" style="height: 420px">
+  <p>Starting the check…</p>
+  <p slot="stalled">The check is taking longer than usual…</p>
+  <p slot="failed">The check could not start ({{ check.failureReason() }}). <button (click)="check.retry()">Try again</button></p>
+</runic-hosted-region>
+```
+
 Add `RunicHostedRegion` to the component's `imports`.
 
 ## Components (experimental)

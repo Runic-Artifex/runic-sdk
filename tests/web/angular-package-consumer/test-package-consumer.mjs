@@ -79,7 +79,8 @@ class CounterPage { readonly page: InputSignal<Page> = input.required<Page>(); }
 @Component({ selector: "consumer-root", standalone: true, imports: [ViewOutlet, RunicHostedRegion],
   template: '<runic-view-outlet [content]="current" [registry]="registry" [missing]="missingView" />' +
     '<runic-hosted-region #check="runicHostedRegion" name="check" sizing="content-height" (stateChange)="changed($event)">' +
-    '<p>{{ check.state() }}</p></runic-hosted-region>' +
+    '<p>{{ check.state() }}</p><p slot="stalled">{{ check.stalled() }}</p>' +
+    '<p slot="failed">{{ check.failureReason() }} <button type="button" (click)="check.retry()">retry</button></p></runic-hosted-region>' +
     '<ng-template #missingView let-page><p role="alert">{{ page.kind }}</p></ng-template>' +
     '@if (connection.state() === "lost") { <p role="alert">lost</p> }' })
 class ConsumerRoot {
@@ -87,7 +88,7 @@ class ConsumerRoot {
   readonly registry = { counter: CounterPage } satisfies ViewRegistry<Page>;
   readonly refresh = injectCommand(async (count: number) => count + 1);
   readonly connection = injectBridgeConnection();
-  changed(change: HostedRegionStateChange): void { void change.state; }
+  changed(change: HostedRegionStateChange): void { void [change.state, change.stalled, change.reason]; }
 }
 // The deprecated alias is the same class, so an AOT build resolves it as the outlet component (#643).
 @Component({ selector: "legacy-outlet", standalone: true, imports: [RunicViewOutlet],

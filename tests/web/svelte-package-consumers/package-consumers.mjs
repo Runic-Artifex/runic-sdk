@@ -95,14 +95,17 @@ try {
   await execFile(process.execPath, ["--conditions=development", "builds.mjs"], { cwd: root });
   await writeFile(join(root, "experimental.ts"), [
     'import { defineHostedRegion, type HostedRegionState, type RunicHostedRegionElement } from "@runic-artifex/views/experimental";',
-    'import { RunicHostedRegion as ReactRegion, type RunicHostedRegionProps } from "@runic-artifex/react/experimental";',
-    'import { RunicHostedRegion as VueRegion } from "@runic-artifex/vue/experimental";',
-    'import { RunicHostedRegion as SvelteRegion } from "@runic-artifex/svelte/experimental";',
+    'import { RunicHostedRegion as ReactRegion, type HostedRegionStatus as ReactStatus, type RunicHostedRegionProps } from "@runic-artifex/react/experimental";',
+    'import { RunicHostedRegion as VueRegion, type HostedRegionStatus as VueStatus } from "@runic-artifex/vue/experimental";',
+    'import { RunicHostedRegion as SvelteRegion, type HostedRegionStateChangeDetail, type HostedRegionStatus as SvelteStatus } from "@runic-artifex/svelte/experimental";',
     'defineHostedRegion();',
     'const state: HostedRegionState = "attached";',
-    'const props: RunicHostedRegionProps = { name: "check", sizing: "content-height", fallback: (current: HostedRegionState) => current };',
+    'const props: RunicHostedRegionProps = { name: "check", sizing: "content-height", fallback: (current: HostedRegionState) => current,',
+    '  stalled: "stalled", failed: ({ failureReason, retry }: ReactStatus) => (retry(), failureReason) };',
     'declare const element: RunicHostedRegionElement;',
-    'export const checked = [state, props, element.state, ReactRegion, VueRegion, SvelteRegion] as const;',
+    'declare const statuses: [VueStatus, SvelteStatus];',
+    'declare const detail: HostedRegionStateChangeDetail;',
+    'export const checked = [state, props, element.state, element.retry(), statuses[0].stalled, statuses[1].failureReason, detail.reason, ReactRegion, VueRegion, SvelteRegion] as const;',
   ].join("\n"), "utf8");
   await writeFile(join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: {
     target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", lib: ["ES2022", "DOM"], strict: true, noEmit: true,
