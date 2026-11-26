@@ -189,7 +189,7 @@ test("projects that write at the same time all end up in web-bundle.json", async
   assert.deepEqual(manifest(bundle).projects.map(entry => entry.assembly), projects.map(item => item.name));
 });
 
-test("RUNICBRIDGE092: a project whose frontend build is off, or that wrote no page, writes no bundle", () => {
+test("RUNICBRIDGE092: a project whose frontend build is off writes no bundle, and neither does a prebuilt build", () => {
   const solution = join(directory, "build-off");
   const app = project(solution, "Off.App", { properties: "    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>" });
   let result = write(app, join(solution, "bundle"));
@@ -209,4 +209,152 @@ test("RUNICBRIDGE092: a project whose frontend build is off, or that wrote no pa
   result = write(empty, join(solution, "bundle"));
   assert.notEqual(result.status, 0);
   assert.match(result.output, /error RUNICBRIDGE092: Empty\.App's frontend build wrote no files to .*dist/);
+});
+
+// RunicApplicationFrontendPrebuiltDirectory: each project takes its page from its entry, after the check.
+const prebuilt = (project, bundle, { targets: run = "RunicViewsCheckPrebuiltFrontend", properties = [], ...options } = {}) =>
+  msbuild(project, { targets: run, ...options, properties: [`RunicApplicationFrontendPrebuiltDirectory=${bundle}`, ...properties] });
+
+const evaluate = (project, properties, names) => {
+  const result = spawnSync("dotnet", ["msbuild", project.file, ...names.map(name => `-getProperty:${name}`),
+    ...properties.map(property => `-p:${property}`), "-nologo", "-noAutoResponse"], { cwd: project.folder, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return JSON.parse(result.stdout).Properties;
+};
+
+function bundledSolution(name) {
+  const solution = join(directory, name);
+  const model = project(solution, "Acme.Model", { kind: "library", page: { "model.html": "<p>model</p>" } });
+  const app = project(solution, "Acme.App", { host: "desktop", views: ["Acme.App.CounterViewModel", "Acme.App.SettingsViewModel"],
+    page: { "index.html": "<p>app</p>", "assets/index-1.js": "export {};" }, references: ["Acme.Model"] });
+  const bundle = join(solution, "bundle");
+  for (const item of [model, app]) assert.equal(write(item, bundle).status, 0);
+  return { solution, model, app, bundle };
+}
+
+test("a prebuilt build takes each project's page from its entry and installs, builds and emits nothing", () => {
+  const { solution, model, app, bundle } = bundledSolution("prebuilt");
+  const properties = evaluate(app, [`RunicApplicationFrontendPrebuiltDirectory=bundle`],
+    ["RunicApplicationFrontendBuildEnabled", "_RunicFrontendInstallMode", "_RunicApplicationFrontendOutputPath"]);
+  assert.deepEqual(properties, {
+    RunicApplicationFrontendBuildEnabled: "false",
+    _RunicFrontendInstallMode: "Never",
+    _RunicApplicationFrontendOutputPath: `${join(app.folder, "bundle/projects/Acme.App/www")}/`,
+  }, "a relative directory is relative to where the build starts, here the project's folder");
+
+  // The projects' own dist/ is not what the build copies.
+  writePage(app.folder, { "stale.html": "<p>stale</p>" });
+  writePage(model.folder, null);
+  for (const item of [model, app]) {
+    const result = prebuilt(item, bundle, { targets: "RunicViewsCheckPrebuiltFrontend;RunicViewsCopyReferencedFrontends;RunicViewsCopyFrontend" });
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(reported(result.output, "warning"), []);
+    assert.match(result.output, new RegExp(`Web bundle: ${item.name.replaceAll(".", "\\.")} takes its frontend from .*bundle/ \\(\\d Views? match`));
+  }
+  assert.deepEqual(files(join(app.folder, "bin/www")), ["assets/index-1.js", "index.html", "model.html"]);
+  // No emission, which needs Node.js or Bun: with only dotnet and sh on PATH, the build without the bundle fails to emit.
+  const bin = join(solution, "dotnet-only");
+  mkdirSync(bin);
+  // MSBuild's Exec runs its commands with sh.
+  for (const tool of ["dotnet", "sh"]) symlinkSync(spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim(), join(bin, tool));
+  let result = msbuild(app, { targets: "RunicViewsGenerateClients", env: { PATH: bin }, properties: ["RunicApplicationFrontendInstallMode=Never"] });
+  assert.match(result.output, /error RUNICBRIDGE084: .* declares Runic Views, whose TypeScript clients .* but neither node nor bun is on PATH/);
+  result = prebuilt(app, bundle, { targets: "RunicViewsGenerateClients;RunicViewsCheckPrebuiltFrontend", env: { PATH: bin } });
+  assert.equal(result.status, 0, result.output);
+  assert.doesNotMatch(result.output, /RUNICBRIDGE084/);
+});
+
+test("RUNICBRIDGE094: a View that changed, or that only the bundle or the build has, is an error naming it and both fingerprints", () => {
+  const { app, bundle } = bundledSolution("contract");
+  const changed = fingerprint("changed");
+  writeIr(app.folder, "Acme.App", [{ id: "Acme.App.CounterViewModel", fingerprint: changed }, "Acme.App.NotesViewModel"]);
+  let result = prebuilt(app, bundle);
+  assert.notEqual(result.status, 0);
+  const advice = "Build the bundle from the same commit, or set RunicApplicationFrontendPrebuiltCheck=warning to publish anyway.";
+  const errors = reported(result.output, "error").map(line => line.replace(/^.*?: error/, "error"));
+  for (const line of errors) assert.match(line, / See https:\/\/github\.com\/Runic-Artifex\/runic-sdk\/blob\/v[^/]+\/docs\/diagnostics\.md#runicbridge094$/);
+  assert.deepEqual(errors.map(line => line.replace(/ See https:\S+$/, "")), [
+    `error RUNICBRIDGE094: The prebuilt frontend in ${bundle}/ was built from other ViewModels: Acme.App.CounterViewModel is ${changed} in this build and ${fingerprint("Acme.App.CounterViewModel")} in the bundle. ${advice}`,
+    `error RUNICBRIDGE094: The prebuilt frontend in ${bundle}/ was built from other ViewModels: Acme.App.NotesViewModel is ${fingerprint("Acme.App.NotesViewModel")} in this build and missing from the bundle's Acme.App. ${advice}`,
+    `error RUNICBRIDGE094: The prebuilt frontend in ${bundle}/ was built from other ViewModels: Acme.App.SettingsViewModel is ${fingerprint("Acme.App.SettingsViewModel")} in the bundle's Acme.App and not in this build. ${advice}`,
+  ]);
+
+  // warning publishes anyway.
+  result = prebuilt(app, bundle, { targets: "RunicViewsCheckPrebuiltFrontend;RunicViewsCopyFrontend", properties: ["RunicApplicationFrontendPrebuiltCheck=Warning"] });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(reported(result.output, "error"), []);
+  assert.equal(reported(result.output, "warning").filter(line => line.includes("warning RUNICBRIDGE094:")).length, 3);
+  assert.deepEqual(files(join(app.folder, "bin/www")), ["assets/index-1.js", "index.html"]);
+});
+
+test("RUNICBRIDGE095 and RUNICBRIDGE096: a page built for another host, or a development page in an optimized build", () => {
+  const { app, bundle } = bundledSolution("settings");
+  let result = prebuilt(app, bundle, { properties: ["RunicApplicationHost=cswebui"] });
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /error RUNICBRIDGE095: The prebuilt frontend of Acme\.App in .* was built for the host 'desktop' \(RUNIC_APPLICATION_HOST\), but this build runs it on 'cswebui'\. Write the bundle with the same RunicApplicationHost, or set RunicApplicationFrontendPrebuiltCheck=warning to publish anyway\./);
+  result = prebuilt(app, bundle, { properties: ["RunicApplicationHost=cswebui", "RunicApplicationFrontendPrebuiltCheck=warning"] });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /warning RUNICBRIDGE095:/);
+
+  // The bundle was written by a build that is not optimized, so its page has no NODE_ENV.
+  result = prebuilt(app, bundle, { properties: ["Optimize=true"] });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /Acme\.App\.proj : warning RUNICBRIDGE096: The prebuilt frontend of Acme\.App in .* is a development build \(NODE_ENV unset, configuration \w+\), and this build is optimized \(\w+\)\. Write the bundle with -c Release, as the publish runs\./);
+  // With TreatWarningsAsErrors, as for the other RUNICBRIDGE warnings.
+  result = prebuilt(app, bundle, { properties: ["Optimize=true", "TreatWarningsAsErrors=true"] });
+  assert.notEqual(result.status, 0);
+});
+
+test("RUNICBRIDGE093 and RUNICBRIDGE092: an unusable prebuilt directory, and a build that would write and take a bundle", () => {
+  const { solution, app, bundle } = bundledSolution("unusable");
+  let result = prebuilt(app, join(solution, "missing"));
+  assert.match(result.output, /error RUNICBRIDGE093: RunicApplicationFrontendPrebuiltDirectory is .*missing\/, which has no web-bundle\.json\./);
+
+  const other = project(solution, "Other.App");
+  result = prebuilt(other, bundle);
+  assert.match(result.output, /error RUNICBRIDGE093: The web bundle in .* has no entry for Other\.App, which declares Runic Views; it has Acme\.App, Acme\.Model\./);
+
+  result = prebuilt(app, bundle, { properties: ["RunicApplicationFrontendPrebuiltCheck=sometimes"] });
+  assert.match(result.output, /error RUNICBRIDGE093: RunicApplicationFrontendPrebuiltCheck is 'sometimes', which is not error or warning\./);
+
+  // A truncated download.
+  rmSync(join(bundle, "projects/Acme.App/www/assets"), { recursive: true });
+  result = prebuilt(app, bundle);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /error RUNICBRIDGE093: The page of Acme\.App in the web bundle, .*www, is not the one the bundle recorded: 1 files with SHA-256 [0-9a-f]{64}, but web-bundle\.json lists 2 files/);
+
+  result = write(app, join(solution, "other-bundle"), { properties: [`RunicApplicationFrontendPrebuiltDirectory=${bundle}`] });
+  assert.match(result.output, /error RUNICBRIDGE092: RunicApplicationFrontendBundleDirectory and RunicApplicationFrontendPrebuiltDirectory are both set/);
+});
+
+// Embedded delivery stages the bundle's page, with the referenced projects', for Runic.Assets to pack (as the delivery
+// tests of views-frontend-targets.test.mjs do, with a stand-in packer).
+test("an Embedded build stages the bundle's pages for Runic.Assets and copies no www/", () => {
+  const { model, app, bundle } = bundledSolution("embedded");
+  const assets = resolve(root, "packages/dotnet/Runic.Assets/buildTransitive");
+  writeFileSync(join(app.folder, "packer.mjs"), `import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+const args = process.argv.slice(2);
+mkdirSync(dirname(args[1]), { recursive: true });
+writeFileSync(args[1], "archive");
+writeFileSync("packed.json", JSON.stringify(args));
+`);
+  writeFileSync(app.file, readFileSync(app.file, "utf8")
+    .replace("<Project>", `<Project>\n  <Import Project="${join(assets, "Runic.Assets.props")}" />`)
+    .replace("</PropertyGroup>", `    <RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>
+    <RunicAssetsPackerPath>$(MSBuildProjectDirectory)/packer.mjs</RunicAssetsPackerPath>
+    <DotNetHostPath>${process.execPath}</DotNetHostPath>
+    <!-- What the staging runs first: in a build the generator, which runs the check after it. -->
+    <_RunicViewsEmbeddedFrontendBuildTargets>RunicViewsCheckPrebuiltFrontend;RunicViewsCollectReferencedFrontends</_RunicViewsEmbeddedFrontendBuildTargets>
+  </PropertyGroup>`)
+    .replace("</Project>", `  <Import Project="${join(assets, "Runic.Assets.targets")}" />\n</Project>`));
+  writePage(model.folder, null);
+  const result = prebuilt(app, bundle, {
+    targets: "RunicViewsResolveHost;RunicViewsResolveFrontendDelivery;RunicAssetsEmbedStagedFileSystem;RunicViewsCopyFrontend;RunicViewsCopyReferencedFrontends",
+  });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /Web bundle: Acme\.App takes its frontend from /);
+  assert.deepEqual(files(join(app.folder, "runic-www")), ["assets/index-1.js", "index.html", "model.html"]);
+  assert.ok(existsSync(join(app.folder, "packed.json")), result.output);
+  assert.equal(existsSync(join(app.folder, "bin/www")), false);
 });

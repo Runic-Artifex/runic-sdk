@@ -2417,7 +2417,7 @@ own code, while you type and in the build, so `#pragma warning disable` and
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076`, `078`, `083`, `089` and `091` are warnings; the ones the generator
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039`, `053`, `072`, `075`, `076`, `078`, `083`, `089`, `091` and `096` are warnings; the ones the generator
 reports itself (`020`, `072`, `076`, `078`, `083`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -2588,6 +2588,8 @@ returns an application's frontend packages as data ([Library packages](#library-
 | `RunicApplicationFrontendNodeModulesDirectory` | none | A `node_modules` installed by something else, such as the [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md) from the lock file. The install does not run, and the frontend's `node_modules` becomes a symbolic link (a junction on Windows) to it; an existing `node_modules` that is not a link is `RUNICBRIDGE021`. |
 | `RunicApplicationFrontendBuildEnabled` | `true`, `auto` in a client library | Set `false` when another tool owns the frontend build. TypeScript is still generated. `auto` (since 0.24) builds when the frontend's `package.json` has a `build` script and not otherwise; see [Library packages](#library-packages). |
 | `RunicApplicationFrontendBundleDirectory` | none | Writes a web bundle there after the build (since 0.24): each project's page, generated clients and View fingerprints, for a publish on another machine. See [Building the frontend in another job](#building-the-frontend-in-another-job). |
+| `RunicApplicationFrontendPrebuiltDirectory` | none | Takes each project's page from a web bundle there (since 0.24), after checking its Views' fingerprints against this build's contract IR; the build runs no install, frontend build or client emission, so it needs neither Node.js nor Bun. See [Building the frontend in another job](#building-the-frontend-in-another-job). |
+| `RunicApplicationFrontendPrebuiltCheck` | `error` | `warning` reports a prebuilt frontend built from other Views (`RUNICBRIDGE094`) or for another host (`RUNICBRIDGE095`) as a warning and publishes it. |
 | `RunicApplicationFrontendCopyEnabled` | `true`, `false` in a client library | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it, except in a client library that leaves this `false`. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
 | `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as an Angular CLI page (the `runic-app` template's `--frontend angular --translations`) or a Bun page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
@@ -2950,6 +2952,41 @@ from an empty folder: a project's entry replaces only its own. A project whose
 frontend build is off (`RunicApplicationFrontendBuildEnabled=false`, or a page
 that `dotnet runic dev` serves) cannot write its page, and the build fails with
 `RUNICBRIDGE092`.
+
+On the target OS, `RunicApplicationFrontendPrebuiltDirectory` takes the pages
+from the downloaded bundle:
+
+```sh
+dotnet publish App -c Release -r win-x64 -p:RunicApplicationFrontendPrebuiltDirectory=web-bundle
+```
+
+Every project that declares Views finds its entry by assembly name and uses its
+`www/` as its frontend output: build and publish copy it to `www/`, and
+`RunicApplicationFrontendDelivery=Embedded` packs it into the assembly. The
+build runs no frontend install, no package or frontend build and no client
+emission, so it needs neither Node.js nor Bun on the runner. A WPF
+application's model project takes its own entry, and the application copies it
+as usual.
+
+Before it uses a page, right after the generator has written this build's
+contract IR, the build checks the entry:
+
+- The entry must exist and its `www/` must have the files the bundle recorded
+  (`RUNICBRIDGE093`), so a truncated download does not publish.
+- Every View must have the same fingerprint in the bundle as in this build
+  (`RUNICBRIDGE094`). A View that changed, or that only one side has, is an
+  error that names it and both fingerprints: the page was built from other
+  ViewModels, and would fail at run time.
+- The page must have been built for this build's host (`RUNICBRIDGE095`).
+- An optimized build that takes a page not built with `NODE_ENV=production`
+  warns (`RUNICBRIDGE096`).
+
+`RunicApplicationFrontendPrebuiltCheck=warning` reports `RUNICBRIDGE094` and
+`RUNICBRIDGE095` as warnings and publishes anyway; there is no value that skips
+the check. Both directory properties are also read from environment variables,
+so `RunicApplicationFrontendPrebuiltDirectory=web-bundle dotnet runic package
+windows` publishes the MSIX from a bundle. Write the bundle with the same
+commit, configuration and Runic release as the publish.
 
 ## Adding a Window to an existing web app
 

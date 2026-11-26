@@ -10,10 +10,16 @@ using System.Text.Json.Nodes;
 /// <summary>
 /// The web bundle (<c>rax.web-bundle/1</c>, specs/application/web-bundle.md, D082): what a build that has Node.js or
 /// Bun writes so that a build on another machine, such as a Windows release job, takes the built frontends without
-/// building them. The Views targets run <c>--web-bundle-write</c> (<c>RunicApplicationFrontendBundleDirectory</c>) with
-/// a request file of <c>key=value</c> lines: it copies one project's frontend output (<c>www/</c>) and generated
-/// clients into <c>projects/&lt;assembly&gt;/</c>, writes its fragment <c>projects/&lt;assembly&gt;.json</c> and,
-/// under a lock, <c>web-bundle.json</c> from every fragment.
+/// building them. The Views targets run these modes with a request file of <c>key=value</c> lines:
+/// <list type="bullet">
+/// <item><c>--web-bundle-write</c> (<c>RunicApplicationFrontendBundleDirectory</c>): copies one project's frontend
+/// output (<c>www/</c>) and generated clients into <c>projects/&lt;assembly&gt;/</c>, writes its fragment
+/// <c>projects/&lt;assembly&gt;.json</c> and, under a lock, <c>web-bundle.json</c> from every fragment.</item>
+/// <item><c>--web-bundle-check</c> (<c>RunicApplicationFrontendPrebuiltDirectory</c>): finds the project's entry,
+/// checks that its <c>www/</c> is the one written, and compares its Views' fingerprints with the contract IR that the
+/// generator has just written. A changed, added or removed View is RUNICBRIDGE094.</item>
+/// </list>
+/// Both run on .NET alone, so the build that consumes a bundle needs neither Node.js nor Bun.
 /// </summary>
 internal static class WebBundle
 {
@@ -21,6 +27,7 @@ internal static class WebBundle
     internal const string ManifestName = "web-bundle.json";
     internal const string FingerprintFormat = "runic.views.fingerprint/1";
     private const string ProjectsFolder = "projects";
+    private const string ViewsCheckProperty = "RunicApplicationFrontendPrebuiltCheck";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -230,6 +237,127 @@ internal static class WebBundle
         // The informational version carries the commit after '+'; the manifest records it in source.
         var plus = version.IndexOf('+', StringComparison.Ordinal);
         return plus >= 0 ? version[..plus] : version;
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Checking
+    // ---------------------------------------------------------------------------------------------------------------
+
+    internal static void Check(string requestPath)
+    {
+        var request = ReadRequest(requestPath);
+        var bundle = Path.GetFullPath(Required(request, "bundle"));
+        var assembly = Required(request, "assembly");
+        var ir = Required(request, "ir");
+        var mode = Value(request, "check");
+        if (mode.Length == 0) mode = "error";
+        if (!mode.Equals("error", StringComparison.OrdinalIgnoreCase) && !mode.Equals("warning", StringComparison.OrdinalIgnoreCase))
+            throw Unusable($"{ViewsCheckProperty} is '{mode}', which is not error or warning. Set error (the default) or warning.");
+        var severity = mode.Equals("warning", StringComparison.OrdinalIgnoreCase) ? "warning" : "error";
+
+        var manifestPath = Path.Combine(bundle, ManifestName);
+        if (!File.Exists(manifestPath))
+            throw Unusable($"RunicApplicationFrontendPrebuiltDirectory is {bundle}, which has no {ManifestName}. Point it at a web bundle that a build with RunicApplicationFrontendBundleDirectory wrote, such as a downloaded CI artifact.");
+        JsonObject manifest;
+        try
+        {
+            manifest = JsonNode.Parse(File.ReadAllText(manifestPath))?.AsObject() ?? throw new JsonException("not an object");
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException)
+        {
+            throw Unusable($"{manifestPath} is not a valid web bundle manifest: {error.Message}");
+        }
+        if ((string?)manifest["format"] != Format)
+            throw Unusable($"{manifestPath} has the format '{(string?)manifest["format"]}', which this release does not read; it reads {Format}. Write the bundle with the same Runic release as this build.");
+
+        var entries = manifest["projects"]?.AsArray().OfType<JsonObject>().ToArray() ?? [];
+        var entry = entries.FirstOrDefault(candidate => (string?)candidate["assembly"] == assembly);
+        if (entry is null)
+            throw Unusable($"The web bundle in {bundle} has no entry for {assembly}, which declares Runic Views; it has {(entries.Length == 0 ? "none" : string.Join(", ", entries.Select(candidate => (string?)candidate["assembly"])))}. Write the bundle with a build of the solution or project that builds {assembly}.");
+
+        // The page: the files that the writer recorded, so that a truncated or edited download does not publish.
+        if ((string?)entry["www"] is { } www)
+        {
+            var folder = Path.GetFullPath(Path.Combine(bundle, www));
+            var expected = entry["files"]?.AsObject();
+            var actual = FilesSummary(ListTree(folder));
+            if (!Directory.Exists(folder) || expected is null
+                || (string?)expected["sha256"] != (string?)actual["sha256"] || (int?)expected["count"] != (int?)actual["count"])
+                throw Unusable($"The page of {assembly} in the web bundle, {folder}, is not the one the bundle recorded: {(Directory.Exists(folder) ? $"{actual["count"]} files with SHA-256 {actual["sha256"]}" : "the folder is missing")}, but web-bundle.json lists {expected?["count"]} files with SHA-256 {expected?["sha256"]}. Download the whole artifact again, or write the bundle again.");
+        }
+        else if (Required(request, "kind") != "clientLibrary")
+        {
+            throw Unusable($"The web bundle's entry for {assembly} has no www/, but {assembly} copies a frontend. Write the bundle with a build in which {assembly}'s frontend build is on.");
+        }
+
+        var problems = 0;
+        // The Views: the contract IR that this build's generator has just written against the bundle's.
+        var (_, built) = ReadContractIr(ir);
+        var contracts = entry["contracts"]?.AsObject();
+        var format = (string?)contracts?["fingerprintFormat"];
+        var bundled = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var view in contracts?["views"]?.AsArray() ?? [])
+            if ((string?)view?["id"] is { } id && (string?)view["fingerprint"] is { } fingerprint) bundled[id] = fingerprint;
+        var advice = severity == "error"
+            ? $"Build the bundle from the same commit, or set {ViewsCheckProperty}=warning to publish anyway."
+            : $"Build the bundle from the same commit; {ViewsCheckProperty}=warning publishes it anyway.";
+        if (format != FingerprintFormat)
+        {
+            Report(severity, BridgeDiagnosticCodes.WebBundleContract,
+                $"The prebuilt frontend of {assembly} in {bundle} records fingerprints of the format '{format}', and this build computes {FingerprintFormat}, so its Views cannot be compared. {advice}");
+            problems++;
+        }
+        else
+        {
+            foreach (var (id, fingerprint) in built.OrderBy(view => view.Key, StringComparer.Ordinal))
+            {
+                if (!bundled.TryGetValue(id, out var other))
+                {
+                    Report(severity, BridgeDiagnosticCodes.WebBundleContract,
+                        $"The prebuilt frontend in {bundle} was built from other ViewModels: {id} is {fingerprint} in this build and missing from the bundle's {assembly}. {advice}");
+                    problems++;
+                }
+                else if (!string.Equals(fingerprint, other, StringComparison.OrdinalIgnoreCase))
+                {
+                    Report(severity, BridgeDiagnosticCodes.WebBundleContract,
+                        $"The prebuilt frontend in {bundle} was built from other ViewModels: {id} is {fingerprint} in this build and {other} in the bundle. {advice}");
+                    problems++;
+                }
+            }
+            foreach (var (id, fingerprint) in bundled.Where(view => !built.ContainsKey(view.Key)).OrderBy(view => view.Key, StringComparer.Ordinal))
+            {
+                Report(severity, BridgeDiagnosticCodes.WebBundleContract,
+                    $"The prebuilt frontend in {bundle} was built from other ViewModels: {id} is {fingerprint} in the bundle's {assembly} and not in this build. {advice}");
+                problems++;
+            }
+        }
+
+        // The host the page was built for (RUNIC_APPLICATION_HOST).
+        var host = Value(request, "host");
+        var bundledHost = (string?)entry["host"] ?? "";
+        if (!string.Equals(host, bundledHost, StringComparison.OrdinalIgnoreCase))
+        {
+            Report(severity, BridgeDiagnosticCodes.WebBundleHost,
+                $"The prebuilt frontend of {assembly} in {bundle} was built for the host '{(bundledHost.Length == 0 ? "none" : bundledHost)}' (RUNIC_APPLICATION_HOST), but this build runs it on '{(host.Length == 0 ? "none" : host)}'. Write the bundle with the same RunicApplicationHost{(severity == "error" ? $", or set {ViewsCheckProperty}=warning to publish anyway" : "")}.");
+            problems++;
+        }
+
+        // An optimized build that takes a development page. A client library has no page of its own.
+        var nodeEnv = (string?)entry["nodeEnv"] ?? "";
+        if (entry["www"] is not null && Value(request, "optimize").Equals("true", StringComparison.OrdinalIgnoreCase) && nodeEnv != "production")
+            Diagnostics.WarnAt(BridgeDiagnosticCodes.WebBundleDevelopment, Required(request, "project"),
+                $"The prebuilt frontend of {assembly} in {bundle} is a development build (NODE_ENV {(nodeEnv.Length == 0 ? "unset" : $"'{nodeEnv}'")}, configuration {(string?)entry["configuration"]}), and this build is optimized ({Value(request, "configuration")}). Write the bundle with -c Release, as the publish runs.");
+
+        if (problems == 0)
+            Console.WriteLine($"Web bundle: {assembly} takes its frontend from {bundle} ({built.Count} {(built.Count == 1 ? "View matches" : "Views match")}).");
+    }
+
+    private static BridgeDiagnosticException Unusable(string message) => new(BridgeDiagnosticCodes.WebBundleInput, message);
+
+    private static void Report(string severity, string code, string message)
+    {
+        if (severity == "error") Environment.ExitCode = 1;
+        Console.Error.WriteLine($"{severity} {code}: {Diagnostics.WithHelpLink(code, message)}");
     }
 
     // ---------------------------------------------------------------------------------------------------------------

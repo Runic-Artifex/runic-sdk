@@ -2,21 +2,22 @@
 
 A web bundle (`rax.web-bundle/1`) carries the built frontends of a build's projects to a build on another machine,
 with what each was built from. A CI job on Linux, which has Node.js or Bun, builds the frontends and writes the bundle;
-the job that publishes for the target OS, such as Windows, takes the pages from it (D082). Each entry records the
-[fingerprints](contract-ir.md#fingerprint) of the Views its page was built from, so that the publishing build can
-compare them with the contract IR that its own generator writes.
+the job that publishes for the target OS, such as Windows, takes the pages from it and needs neither Node.js nor Bun.
+Before it uses a page, that build compares the bundle's View [fingerprints](contract-ir.md#fingerprint) with the
+contract IR that its own generator has just written, so a page built from other ViewModels does not publish (D082).
 
 The bundle is a **build artifact**: CI uploads and downloads it between the jobs of one commit. It is not a package and
-not a cache key. The Views targets write it
+not a cache key. The Views targets write and read it
 ([Building the frontend in another job](../../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job)):
 
 | Property | Effect |
 | --- | --- |
 | `RunicApplicationFrontendBundleDirectory=<dir>` | After its build, every project that declares Views writes its entry into `<dir>` |
+| `RunicApplicationFrontendPrebuiltDirectory=<dir>` | Every project that declares Views takes its page from its entry, after the check below |
 
 | File | Content |
 | --- | --- |
-| This document | The layout and the manifest |
+| This document | The layout, the manifest and the check |
 | [`web-bundle/web-bundle.schema.json`](web-bundle/web-bundle.schema.json) | The JSON Schema (draft 2020-12) of `web-bundle.json` |
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
@@ -79,3 +80,21 @@ A reader MUST reject a manifest whose `format` it does not know and SHOULD ignor
 that an existing reader would misread, or a new required member, is a new format version, `rax.web-bundle/2`; optional
 members are added in a new revision of the schema. The format and file names carry no `runic` name, so a producer in
 another language, such as a `rax build` of a Rust or C++ application, writes and reads the same bundle.
+
+## Using a bundle
+
+A build with `RunicApplicationFrontendPrebuiltDirectory` reads `web-bundle.json` and, for every project that declares
+Views, its entry by assembly name. Before it compiles or copies anything:
+
+1. The entry MUST exist, and its `www/` MUST hash to its `files` (**RUNICBRIDGE093**): a truncated download, an edited
+   page or a missing project stops the build.
+2. Every View of the IR that this build's generator has just written MUST be in the entry with the same fingerprint,
+   and every View of the entry MUST be in the IR (**RUNICBRIDGE094**, one per View, naming it and both fingerprints).
+3. The entry's `host` MUST be this build's `RunicApplicationHost` (**RUNICBRIDGE095**).
+4. An optimized build (Release, `dotnet publish`) warns when the entry's page is not a production build
+   (**RUNICBRIDGE096**).
+
+`RunicApplicationFrontendPrebuiltCheck=warning` reports 2 and 3 as warnings; `error` is the default. There is no value
+that skips the check. The build then uses the entry's `www/` as the project's frontend output: build and publish copy
+it to `www/`, or `RunicApplicationFrontendDelivery=Embedded` packs it into the assembly. It runs no install, no
+package or frontend build and no client emission.
