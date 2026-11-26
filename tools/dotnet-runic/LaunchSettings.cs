@@ -41,8 +41,8 @@ internal sealed record LaunchSettings(string Path, IReadOnlyList<LaunchProfile> 
         Profiles.FirstOrDefault(profile => profile.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Reads <c>Properties/launchSettings.json</c> of <paramref name="projectDirectory"/>, with comments and trailing commas
-    /// as dotnet run accepts them; null when the file does not exist.
+    /// Reads <c>Properties/launchSettings.json</c> of <paramref name="projectDirectory"/>, with comments but no trailing
+    /// commas, as dotnet run accepts it; null when the file does not exist.
     /// </summary>
     internal static LaunchSettings? Read(string projectDirectory)
     {
@@ -63,7 +63,9 @@ internal sealed record LaunchSettings(string Path, IReadOnlyList<LaunchProfile> 
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            // As dotnet run (SDK 10) reads it: comments are allowed, a trailing comma is an error, and dotnet run then uses no
+            // profile, so dev reports the file and uses none either.
+            document = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = false });
         }
         catch (JsonException error)
         {
