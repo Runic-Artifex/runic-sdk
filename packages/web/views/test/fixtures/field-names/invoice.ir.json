@@ -1,0 +1,317 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "rust",
+    "tool": "test",
+    "unit": "app"
+  },
+  "views": [
+    {
+      "id": "app::Invoice",
+      "name": "Invoice",
+      "route": "invoice",
+      "fingerprint": "F1395",
+      "kinds": [
+        "invoice"
+      ],
+      "doc": "Field paths named like a field descriptor's own members (sdk#1395).",
+      "validation": true,
+      "members": [
+        {
+          "name": "Billing",
+          "wire": "billing",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "app::Billing"
+            }
+          },
+          "settable": true,
+          "declaringType": "Invoice",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "name"
+              ]
+            },
+            {
+              "path": [
+                "read"
+              ]
+            },
+            {
+              "path": [
+                "write"
+              ]
+            },
+            {
+              "path": [
+                "checked"
+              ]
+            },
+            {
+              "path": [
+                "baseline"
+              ]
+            },
+            {
+              "path": [
+                "errors"
+              ]
+            },
+            {
+              "path": [
+                "validating"
+              ]
+            },
+            {
+              "path": [
+                "container"
+              ]
+            },
+            {
+              "path": [
+                "contact"
+              ]
+            },
+            {
+              "path": [
+                "contact",
+                "name"
+              ]
+            },
+            {
+              "path": [
+                "contact",
+                "read"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Lines",
+          "wire": "lines",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "app::Line"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "name"
+              ]
+            },
+            {
+              "path": [
+                "read"
+              ]
+            },
+            {
+              "path": [
+                "write"
+              ]
+            },
+            {
+              "path": [
+                "checked"
+              ]
+            },
+            {
+              "path": [
+                "baseline"
+              ]
+            },
+            {
+              "path": [
+                "errors"
+              ]
+            },
+            {
+              "path": [
+                "validating"
+              ]
+            },
+            {
+              "path": [
+                "container"
+              ]
+            }
+          ]
+        }
+      ],
+      "commands": []
+    }
+  ],
+  "types": {
+    "app::Billing": {
+      "kind": "object",
+      "name": {
+        "source": "app::Billing",
+        "base": "Billing",
+        "qualifiers": [
+          "App"
+        ]
+      },
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "read",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "write",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "checked",
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "wire": "baseline",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "errors",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "validating",
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "wire": "container",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "contact",
+          "type": {
+            "kind": "named",
+            "ref": "app::Contact"
+          }
+        }
+      ]
+    },
+    "app::Contact": {
+      "kind": "object",
+      "name": {
+        "source": "app::Contact",
+        "base": "Contact",
+        "qualifiers": [
+          "App"
+        ]
+      },
+      "members": [
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "read",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "app::Line": {
+      "kind": "object",
+      "name": {
+        "source": "app::Line",
+        "base": "Line",
+        "qualifiers": [
+          "App"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "read",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "write",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "checked",
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "wire": "baseline",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "errors",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "validating",
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "wire": "container",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "sources": {}
+}

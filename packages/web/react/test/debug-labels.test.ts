@@ -5,7 +5,7 @@ import * as React from "react";
 import { createElement, StrictMode, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { BridgeError, type BridgeField } from "@runic-artifex/views";
+import { BridgeError, type BridgeFieldMembers } from "@runic-artifex/views";
 import { connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
@@ -35,7 +35,7 @@ const act: typeof React.act = React.act;
 const contract = "Demo.Notes.NotesViewModel:ABC";
 type State = { readonly title: string };
 type Client = Awaited<ReturnType<typeof connectView<State>>>;
-const title: BridgeField<Client, State, string> = {
+const title: BridgeFieldMembers<Client, State, string> = {
   name: "title", kind: "text", read: state => state.title, write: (client, value) => client.set("title", value),
 };
 

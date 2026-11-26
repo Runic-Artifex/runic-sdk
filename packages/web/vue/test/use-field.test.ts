@@ -3,7 +3,7 @@
 import { createApp, defineComponent, effectScope, h, nextTick, vModelCheckbox, vModelRadio, vModelText, withDirectives } from "vue";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
-import { FieldError, useField, useForm, useView, type BridgeField, type FieldHandle, type FieldState, type FormHandle } from "../dist/index.js";
+import { FieldError, fieldMembers, useField, useForm, useView, type BridgeField, type BridgeFieldMembers, type FieldHandle, type FieldState, type FormHandle } from "../dist/index.js";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean; readonly titleErrors: readonly string[] };
 type Call = { readonly member: string; readonly value: unknown; readonly checked: boolean; resolve(result?: unknown): void };
@@ -40,15 +40,18 @@ function fakeClient(initial: Partial<State> = {}) {
 type Client = ReturnType<typeof fakeClient>;
 
 function descriptor<K extends "title" | "step" | "done", TValue extends State[K]>(
-  name: K, kind: BridgeField<Client, State, TValue>["kind"], extra: Partial<BridgeField<Client, State, TValue>> = {},
+  name: K, kind: BridgeFieldMembers<Client, State, TValue>["kind"], extra: Partial<BridgeFieldMembers<Client, State, TValue>> = {},
 ): BridgeField<Client, State, TValue> {
+  // As generated: the descriptor's own members are under `fieldMembers` (#1395).
   return {
-    name, kind,
-    read: state => state[name] as TValue,
-    write: (client, value) => client.write(name, value, false),
-    checked: (client, value, _options: FieldWriteOptions<TValue>) => client.write(name, value, true) as Promise<FieldWriteReceipt<TValue>>,
-    baseline: client => client.baseline(name) as { value: TValue; version: number },
-    ...extra,
+    [fieldMembers]: {
+      name, kind,
+      read: state => state[name] as TValue,
+      write: (client, value) => client.write(name, value, false),
+      checked: (client, value, _options: FieldWriteOptions<TValue>) => client.write(name, value, true) as Promise<FieldWriteReceipt<TValue>>,
+      baseline: client => client.baseline(name) as { value: TValue; version: number },
+      ...extra,
+    },
   };
 }
 const Fields = {
