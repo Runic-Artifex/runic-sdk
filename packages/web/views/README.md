@@ -665,10 +665,17 @@ How a field stays correct depends on what it calls:
 The generator emits a descriptor for each settable member of a View, `{View}Fields`:
 
 ```ts
+import { fieldMembers } from "@runic-artifex/views";
 import { EditorFields } from "./generated/editor.js";
-EditorFields.title; // { name: "title", kind: "text", read, write, checked, baseline, errors? }
-EditorFields.step;  // { name: "step", kind: "number", integer: true, … }
+EditorFields.title[fieldMembers]; // { name: "title", kind: "text", read, write, checked, baseline, errors? }
+EditorFields.step[fieldMembers];  // { name: "step", kind: "number", integer: true, … }
 ```
+
+A descriptor keeps what it knows of its member under the `fieldMembers` symbol, a key no field name can take, so the
+descriptors of the fields below a member keep their own names (`InvoiceFields.billing.name` is the field of
+`billing`'s `name`). `fieldDefinition(field)` returns those members, or a hand-written definition as it is. The
+bindings read them for you: pass the descriptor itself to `useField`, `injectField`, `bindField` and
+`createFieldController`.
 
 `kind` selects the field's text form:
 
@@ -698,7 +705,7 @@ without aliases, which `choices` repeats: `export const LayoutValues = ["List", 
 | `[RegularExpression]` | `pattern`, for the patterns a browser's `pattern` attribute (which compiles with the `v` flag) reads as .NET does: no inline options, named groups, lookbehind, `\A`/`\Z`/`\z`/`\G`, `\p`, `\d`/`\w`/`\b` (Unicode in .NET, ASCII in JavaScript), and in a character class no unescaped `( ) [ { } / \|`, lone `-` or doubled punctuators such as `&&`. Other patterns are left out; .NET still validates them |
 
 ```tsx
-const { maxLength, required } = EditorFields.title.constraints ?? {};
+const { maxLength, required } = fieldDefinition(EditorFields.title).constraints ?? {};
 <input {...title.inputProps} maxLength={maxLength} required={required} />
 ```
 
@@ -722,7 +729,7 @@ function constraintMessage(field: { readonly constraints?: BridgeFieldConstraint
 A page check is a hint: .NET still validates, and its errors still arrive in `errors`. For a member checked on the
 page, show the page's message in place of `errors`, so the same problem does not show twice.
 
-`read` and `write` are the member and its setter; `checked` and `baseline` its
+Of the members, `read` and `write` are the member and its setter; `checked` and `baseline` its
 checked write and `fieldBaseline`. A View with validation adds `errors(state)`: the member's messages from
 `{name}Errors`, or from `validation` at the member's path, followed by the messages below it, such as those of an
 object's members.
@@ -913,6 +920,9 @@ the rows of a collection that .NET makes editable (`[RunicRowEditor]`):
 InvoiceFields.address.street;          // a field of address's street, beside InvoiceFields.address itself
 InvoiceFields.lines.at(line.id).quantity; // a cell: the quantity of the row with that key
 ```
+
+A field or cell may have any name, also that of a descriptor member such as `name`, `read` or `errors`: since 0.24
+those members are under `fieldMembers`, so `InvoiceFields.billing.name` is the field of `billing`'s `name`.
 
 They are fields like the others, with every binding: `useField(invoice, InvoiceFields.lines.at(line.id).quantity)`,
 `injectField`, `bindField`, `createFieldController` and forms. `lines.at(key)` returns the same descriptors for the

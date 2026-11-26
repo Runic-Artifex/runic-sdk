@@ -1247,6 +1247,8 @@ that its lock file covers the frontend. To install the frontend on its own
 instead, set `RunicApplicationFrontendWorkspaceRoot` to `none` and commit a
 lock file in the frontend's folder. See
 [JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+`dotnet runic doctor` reports the same problem without a build, as its
+[`frontend-workspace`](../tools/dotnet-runic/README.md#frontend-workspace) check.
 
 ### RUNICBRIDGE088
 
@@ -1266,6 +1268,8 @@ to resolve it. It is reported in two places:
 **Fix:** make the package's build script write the file, correct `exports` in
 its `package.json`, or turn the owner's package build on. See
 [Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
+`dotnet runic doctor` checks the packages' exports without a build, as its
+[`frontend-dependencies`](../tools/dotnet-runic/README.md#frontend-dependencies) check.
 
 ### RUNICBRIDGE089
 
@@ -1278,7 +1282,9 @@ fails on Bun's `workspace:*` protocol.
 
 **Fix:** remove `packageManager` from the member's `package.json`, or make it
 the workspace's. To choose the manager yourself, set
-`RunicApplicationFrontendPackageManager`.
+`RunicApplicationFrontendPackageManager`. `dotnet runic doctor` checks every
+member and the packages that the page depends on, and the root's lock files,
+as its [`package-manager-agreement`](../tools/dotnet-runic/README.md#package-manager-agreement) check.
 
 ### RUNICBRIDGE090
 

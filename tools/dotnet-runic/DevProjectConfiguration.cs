@@ -85,6 +85,9 @@ internal sealed record DevProjectConfiguration(
     /// <summary><c>RunicApplicationFrontendPackageManager</c> when the project sets it, else empty.</summary>
     internal string PackageManagerName { get; init; } = string.Empty;
 
+    /// <summary><c>RunicApplicationFrontendWorkspaceRoot</c> as the project sets it: a folder, <c>none</c>, or empty.</summary>
+    internal string WorkspaceRootSetting { get; init; } = string.Empty;
+
     /// <summary>
     /// The package manager that runs the frontend's scripts: the workspace's, as the build installs it, so a Bun
     /// workspace member without its own <c>packageManager</c> runs <c>bun run dev</c>, not <c>npm run dev</c>.
@@ -303,6 +306,7 @@ internal sealed record DevProjectConfiguration(
                 explicitRoot.Length == 0 || explicitRoot.Equals("none", StringComparison.OrdinalIgnoreCase)
                     ? explicitRoot
                     : Path.GetFullPath(explicitRoot, evaluatedDirectory)),
+            WorkspaceRootSetting = explicitRoot,
             PackageManagerName = ExplicitPackageManager(devSessionProtocol, Value("RunicApplicationFrontendPackageManager"),
                 Value("_RunicFrontendPackageManagerExplicit"), File.Exists(NormalizeOptional(Value("ProjectAssetsFile"), evaluatedDirectory))),
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),

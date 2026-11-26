@@ -1,7 +1,7 @@
 /// <reference lib="esnext.disposable" preserve="true" />
 import { clock, randomId } from "./clock.js";
 import type { FieldBaseline, FieldWriteReceipt } from "./connection.js";
-import type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
+import { fieldMembers, type BridgeField, type BridgeFieldConstraints, type BridgeFieldKind, type BridgeFieldMembers } from "./field.js";
 import { FieldError } from "./field-error.js";
 import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
@@ -52,13 +52,23 @@ export interface FieldSource<TState, TClient> {
 }
 
 /**
- * What a field controller needs of a member: a generated {@link BridgeField}, or `read` and `write` with any of the
- * other members. Without `kind` the text form is the value itself, as for `text`.
+ * What a field controller needs of a member: `read` and `write` with any of the other members of a generated
+ * descriptor ({@link BridgeFieldMembers}). Without `kind` the text form is the value itself, as for `text`.
  */
 export type FieldDefinition<TClient, TState, TValue> =
-  & Pick<BridgeField<TClient, TState, TValue>, "read" | "write">
-  & Partial<Omit<BridgeField<TClient, TState, TValue>, "read" | "write" | "kind">>
+  & Pick<BridgeFieldMembers<TClient, TState, TValue>, "read" | "write">
+  & Partial<Omit<BridgeFieldMembers<TClient, TState, TValue>, "read" | "write" | "kind">>
   & { readonly kind?: BridgeFieldKind };
+
+/**
+ * The members of a generated {@link BridgeField} (`field[fieldMembers]`), or the definition itself: what a binding
+ * reads of the field it is given, such as `fieldDefinition(EditorFields.title).constraints`.
+ */
+export function fieldDefinition<TClient, TState, TValue>(
+  field: BridgeField<TClient, TState, TValue> | FieldDefinition<TClient, TState, TValue>,
+): FieldDefinition<TClient, TState, TValue> {
+  return fieldMembers in field ? field[fieldMembers] : field;
+}
 
 /** When a field writes what the user typed: on each input, after a pause, or when the user is done with the field. */
 export type FieldCommit = "input" | "pause" | "change";
@@ -286,9 +296,10 @@ export function commitDrafts(slots: Slots): Promise<void> | undefined {
  * ```
  */
 export function createFieldController<TState, TClient, TValue>(
-  definition: FieldDefinition<TClient, TState, TValue>,
+  descriptor: BridgeField<TClient, TState, TValue> | FieldDefinition<TClient, TState, TValue>,
   options: FieldOptions<TValue> = {},
 ): FieldController<TState, TClient, TValue> & Disposable {
+  const definition = fieldDefinition(descriptor);
   // The field belongs to the current instance: its window locale, its text and the drafts a window close writes.
   const slots = currentSlots();
   const checked = options.checked === true || definition.checkedOnly === true;

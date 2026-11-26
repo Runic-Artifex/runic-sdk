@@ -16,9 +16,12 @@ export { injectField, type FieldHandle, type FieldView, type InjectFieldOptions 
 // The field types that injectField's and injectForm's signatures use, as the React, Vue and Svelte adapters export them.
 export {
   FieldError,
+  fieldDefinition,
+  fieldMembers,
   type BridgeField,
   type BridgeFieldConstraints,
   type BridgeFieldKind,
+  type BridgeFieldMembers,
   type FieldBaseline,
   type FieldDefinition,
   type FieldErrorKind,

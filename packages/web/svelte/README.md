@@ -191,7 +191,7 @@ handle also has `value` and `text`, which `bind:value={title.value}` reads and s
 
 `errors` holds the member's validation messages from the descriptor (`[]` when valid), `error` why the latest write
 or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `conflict`, `committed-with-error` or
-`invalid-text`). `FieldError`, `FieldOptions`, `FieldState` and `BridgeField` are exported from this package. See the
+`invalid-text`). `FieldError`, `FieldOptions`, `FieldState`, `BridgeField`, `fieldMembers` and `fieldDefinition` are exported from this package. See the
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
 and text forms. An `invalid-text` error has a `reason` and `arguments`: render `useText(() => name.error).current` after
 `configureFieldErrorText` to show your own text for it in the window's language
