@@ -31,12 +31,12 @@ internal static class MacOsCoordinates
 
     // The AppKit bottom edge of a frame that a move gives the window (MoveAsync, SetBoundsAsync): a frame whose top would
     // be behind a menu bar, or above the top of a screen it overlaps without reaching another screen there, moves down
-    // until its top touches that screen's visible frame, just below the menu bar. setFrameOrigin: and setFrame:display:
-    // take such a frame as it is, and AppKit moves the window later, on its own terms: on the osx-arm64 runner a window
-    // at y 0 went back to the frame it had opened at seconds later, while the screen's parameters changed (#1000). A
-    // screen whose visible frame reaches its top (the menu bar hidden) keeps a frame at the screen's top. Screens are
-    // frames and visible frames in AppKit's coordinates; the frame keeps its position where no screen is above or
-    // below it.
+    // until its top touches that screen's visible frame, just below the menu bar, where the title bar stays reachable;
+    // setFrameOrigin: and setFrame:display: would take such a frame as it is. (The window that went back to the frame it
+    // had opened at in #1000 was shown while a closed full-screen window's space animated out, and went back as well
+    // from a frame below the menu bar.) A screen whose visible frame reaches its top (the menu bar hidden) keeps a frame
+    // at the screen's top. Screens are frames and visible frames in AppKit's coordinates; the frame keeps its position
+    // where no screen is above or below it.
     internal static double BottomBelowMenuBar(double x, double bottom, double width, double height,
         IReadOnlyList<(Rect Frame, Rect Visible)> screens)
     {

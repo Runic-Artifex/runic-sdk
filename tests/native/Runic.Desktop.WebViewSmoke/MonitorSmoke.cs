@@ -92,6 +92,16 @@ internal static partial class MonitorSmoke
             Console.WriteLine("PASS full-screen restore: a placement saved full-screen opened full-screen and left it to its bounds.");
         }
 
+        // Before the kiosk window, which closes inside its own full-screen space: macOS animates out of that space after
+        // the window has gone, and a window shown meanwhile is put back at the frame it was shown at once the space is
+        // gone, seconds later and after any move made in between (#1000: the top-left window back at its placement's
+        // 30,71 after MoveAsync). The restored window above left full screen (windowDidExitFullScreen:) before it closed.
+        if (OperatingSystem.IsMacOS())
+        {
+            await MacOS.CheckTopLeftAsync(host, primary);
+            await MacOS.CheckTitlesAsync(host);
+        }
+
         await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) }))
         await using (var kiosk = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Kiosk = true }))
         {
@@ -108,11 +118,6 @@ internal static partial class MonitorSmoke
         if (OperatingSystem.IsWindows())
         {
             await Windows.RightToLeftAsync(host);
-        }
-        if (OperatingSystem.IsMacOS())
-        {
-            await MacOS.CheckTopLeftAsync(host, primary);
-            await MacOS.CheckTitlesAsync(host);
         }
         Console.WriteLine("PASS monitors: list, watch, open and move on a monitor, full screen and its restore.");
         return 0;
@@ -405,19 +410,27 @@ internal static partial class MonitorSmoke
             await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) }))
             {
                 var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Placement = target });
+                // #1000: each step prints AppKit's frame right after it, and a failure prints every state and monitor
+                // change since the window opened.
+                await using var timeline = new Timeline(host, window);
+                await LogStepAsync(window, timeline, "opened");
                 var opened = await WaitForAsync(window, state => state.X == target.X && state.Y == target.Y,
                     $"the top-left placement's position {target.X},{target.Y}");
                 Require(opened.Placement.Origin == DesktopCoordinateOrigin.TopLeft, $"a top-left placement reported: {opened.Placement}");
                 await RequireReportedTopAsync(window, "opened from a top-left placement");
+                await LogStepAsync(window, timeline, $"at the placement's position {target.X},{target.Y}");
                 // A resize keeps the top-left corner, as on Windows and GTK; AppKit alone would keep the bottom-left one.
                 await window.ResizeAsync(520, 340);
+                await LogStepAsync(window, timeline, "after ResizeAsync(520, 340)");
                 var resized = await WaitForAsync(window, static state => Near(state.Width, 520) && Near(state.Height, 340), "the size 520x340");
                 Require(resized.X == target.X && resized.Y == target.Y, $"a resize kept the top-left corner {target.X},{target.Y}: {resized}");
                 await window.ResizeAsync(target.Width, target.Height);
+                await LogStepAsync(window, timeline, $"after ResizeAsync({target.Width}, {target.Height})");
                 await WaitForAsync(window, state => Near(state.Width, target.Width) && Near(state.Height, target.Height), "the size back");
 
                 // The work area's top is the menu bar's bottom edge: the frame's top touches the visible frame's top.
                 await window.MoveAsync(work.X + 20, work.Y);
+                await LogStepAsync(window, timeline, $"after MoveAsync({work.X + 20}, {work.Y})");
                 await WaitForAsync(window, state => state.X == work.X + 20 && state.Y == work.Y, $"the position {work.X + 20},{work.Y}");
                 var atTop = await RequireReportedTopAsync(window, "moved to the work area's top");
                 Require(Math.Abs(atTop.Frame.MaxY - atTop.Visible.MaxY) < 1,
@@ -425,19 +438,18 @@ internal static partial class MonitorSmoke
                 Console.WriteLine($"PASS top-left: MoveAsync({work.X + 20}, {work.Y}) put the frame's top below the menu bar ({atTop.Frame}).");
 
                 // y = 0 is the primary screen's top edge, behind the menu bar. MoveAsync puts the title bar below the
-                // menu bar itself (the work area's top, 0 with the menu bar hidden): AppKit took the frame behind it
-                // and moved the window back to where it had opened seconds later (#1000). The window keeps the
-                // position for as long as AppKit took then.
+                // menu bar itself (the work area's top, 0 with the menu bar hidden), and the window keeps it there.
                 await window.MoveAsync(work.X + 20, 0);
+                await LogStepAsync(window, timeline, $"after MoveAsync({work.X + 20}, 0)");
                 if (await TryWaitForAsync(window, state => state.X == work.X + 20 && state.Y == work.Y, TimeSpan.FromSeconds(10)) is null)
                     throw new InvalidOperationException($"Monitors: MoveAsync({work.X + 20}, 0) did not put the window below the menu bar at "
-                        + $"{work.X + 20},{work.Y}: {window.State} ({await DescribeFramesAsync(window)}).");
+                        + $"{work.X + 20},{work.Y}: {window.State} ({await DescribeFramesAsync(window)}).{timeline.Report()}");
                 var kept = System.Diagnostics.Stopwatch.StartNew();
                 while (kept.Elapsed < TimeSpan.FromSeconds(3))
                 {
                     if (window.State is not { } state || state.X != work.X + 20 || state.Y != work.Y)
                         throw new InvalidOperationException($"Monitors: after MoveAsync({work.X + 20}, 0) the window left {work.X + 20},{work.Y} "
-                            + $"after {kept.ElapsedMilliseconds} ms: {window.State} ({await DescribeFramesAsync(window)}).");
+                            + $"after {kept.ElapsedMilliseconds} ms: {window.State} ({await DescribeFramesAsync(window)}).{timeline.Report()}");
                     await Task.Delay(100);
                 }
                 var zero = await RequireReportedTopAsync(window, "moved to y 0");
@@ -446,6 +458,7 @@ internal static partial class MonitorSmoke
                 Console.WriteLine($"PASS top-left: MoveAsync({work.X + 20}, 0) put the frame's top below the menu bar and kept it there ({zero.Frame}).");
 
                 await window.MoveAsync(target.X!.Value, target.Y!.Value);
+                await LogStepAsync(window, timeline, $"after MoveAsync({target.X}, {target.Y})");
                 await WaitForAsync(window, state => state.X == target.X && state.Y == target.Y, "the position back");
                 savedFrame = (await ReadFramesAsync(window)).Frame;
                 await window.CloseAsync();
@@ -491,13 +504,29 @@ internal static partial class MonitorSmoke
             return frames;
         }
 
-        private readonly record struct Frames(NSRect Frame, NSRect Primary, NSRect Visible);
+        private readonly record struct Frames(NSRect Frame, NSRect Primary, NSRect Visible, Space Space);
+
+        // Where the window is among the Spaces, which a full-screen space closing changes (#1000).
+        private readonly record struct Space(bool OnActiveSpace, bool Key, bool ApplicationActive, nint PresentationOptions)
+        {
+            public override string ToString() => $"on the active space {OnActiveSpace}, key {Key}, application active "
+                + $"{ApplicationActive}, presentation options 0x{PresentationOptions:x}";
+        }
 
         // For a failure: AppKit's frame and the primary screen's frame and visible frame, bottom-left coordinates.
         private static async Task<string> DescribeFramesAsync(DesktopWindow window)
         {
             var frames = await ReadFramesAsync(window);
-            return $"AppKit frame {frames.Frame}, primary screen {frames.Primary}, visible frame {frames.Visible}";
+            return $"AppKit frame {frames.Frame}, primary screen {frames.Primary}, visible frame {frames.Visible}, {frames.Space}";
+        }
+
+        // #1000: AppKit's frame right after a step's setFrameOrigin: or setContentSize:, the primary screen's visible
+        // frame, the window's Space and its reported state and placement, printed and kept on the timeline.
+        private static async Task LogStepAsync(DesktopWindow window, Timeline timeline, string step)
+        {
+            var frames = await ReadFramesAsync(window);
+            var line = $"{step}: AppKit frame {frames.Frame}, visible frame {frames.Visible}, {frames.Space}; state {Brief(window.State)}";
+            Console.WriteLine($"Coordinates: {timeline.Add(line)}.");
         }
 
         // The window's frame and the primary screen's frame and visible frame, in AppKit's bottom-left coordinates.
@@ -508,9 +537,74 @@ internal static partial class MonitorSmoke
             {
                 var screens = Send(Class("NSScreen"), Sel("screens"));
                 var primary = Arg(screens, Sel("objectAtIndex:"), 0);
-                frames = new Frames(RectOf(handle, "frame"), RectOf(primary, "frame"), RectOf(primary, "visibleFrame"));
+                var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+                var space = new Space(SendBool(handle, Sel("isOnActiveSpace")) != 0, SendBool(handle, Sel("isKeyWindow")) != 0,
+                    SendBool(application, Sel("isActive")) != 0, Send(application, Sel("currentSystemPresentationOptions")));
+                frames = new Frames(RectOf(handle, "frame"), RectOf(primary, "frame"), RectOf(primary, "visibleFrame"), space);
             });
             return frames;
+        }
+
+        private static string Brief(DesktopWindowState? state) => state is null ? "<none>"
+            : $"{state.X},{state.Y} {state.Width}x{state.Height}{(state.IsMaximized ? " maximized" : "")}{(state.IsFullScreen ? " full-screen" : "")}, "
+                + $"placement {state.Placement.X},{state.Placement.Y} {state.Placement.Width}x{state.Placement.Height}";
+
+        // #1000: the window's state changes and the monitor changes since the window opened, in order, for a failure.
+        private sealed class Timeline : IAsyncDisposable
+        {
+            private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+            private readonly List<string> _entries = [];
+            private readonly CancellationTokenSource _stop = new();
+            private readonly DesktopWindow _window;
+            private readonly Task _monitors;
+
+            internal Timeline(DesktopHost host, DesktopWindow window)
+            {
+                _window = window;
+                window.StateChanged += OnStateChanged;
+                Add($"state {Brief(window.State)}");
+                _monitors = WatchMonitorsAsync(host, _stop.Token);
+            }
+
+            // Adds an entry and returns it with its time.
+            internal string Add(string entry)
+            {
+                var timed = $"+{_clock.ElapsedMilliseconds} ms {entry}";
+                lock (_entries) _entries.Add(timed);
+                return timed;
+            }
+
+            internal string Report()
+            {
+                lock (_entries) return Environment.NewLine + "Since the window opened:" + Environment.NewLine + "  "
+                    + string.Join(Environment.NewLine + "  ", _entries);
+            }
+
+            private void OnStateChanged(object? sender, DesktopWindowStateChangedEventArgs args) => Add($"state {Brief(args.State)}");
+
+            private async Task WatchMonitorsAsync(DesktopHost host, CancellationToken cancellationToken)
+            {
+                try
+                {
+                    await foreach (var monitors in host.Monitors.WatchAsync(cancellationToken).WithCancellation(cancellationToken))
+                        Add($"monitors {Describe(monitors)}");
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                }
+                catch (Exception error)
+                {
+                    Add($"the monitor watch failed: {error.GetType().Name}: {error.Message}");
+                }
+            }
+
+            public async ValueTask DisposeAsync()
+            {
+                _window.StateChanged -= OnStateChanged;
+                await _stop.CancelAsync();
+                await _monitors;
+                _stop.Dispose();
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -603,6 +697,7 @@ internal static partial class MonitorSmoke
         [LibraryImport(ObjC, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)] private static partial nint Sel(string name);
         [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Send(nint target, nint selector);
         [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
+        [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte SendBool(nint target, nint selector);
         [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial NSRect SendRect(nint target, nint selector);
         [LibraryImport(ObjC, EntryPoint = "objc_msgSend_stret")] private static partial NSRect SendRectStret(nint target, nint selector);
     }

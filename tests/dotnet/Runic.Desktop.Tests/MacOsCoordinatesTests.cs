@@ -143,8 +143,8 @@ public sealed class MacOsCoordinatesTests
         Assert.True(MacOsCoordinates.IsBottomLeft(applied.Placement));
     }
 
-    // #1000: AppKit takes a frame behind the menu bar from setFrameOrigin: and moves the window later on its own terms,
-    // so a move puts the title bar below the menu bar itself.
+    // #1000: setFrameOrigin: takes a frame behind the menu bar as it is, so a move puts the title bar below the menu bar
+    // itself, where it stays reachable.
     [Test]
     public void MoveBehindTheMenuBarLandsBelowIt()
     {
