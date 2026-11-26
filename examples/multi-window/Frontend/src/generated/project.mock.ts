@@ -48,7 +48,7 @@ export interface ProjectMock extends MockTypedView<ProjectMockState, ProjectClie
 const spec: MockTypedViewSpec = {
   kind: "project",
   route: "project",
-  contract: "MultiWindow.ProjectViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A",
+  contract: "MultiWindow.ProjectViewModel:A78CC1928F70569A1AE74680DB48F11DC4574EACA71A8734EB13687A437DC6F7",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     theme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

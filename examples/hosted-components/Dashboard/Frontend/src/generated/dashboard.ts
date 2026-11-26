@@ -14,7 +14,7 @@ const members: BridgeMemberDecoders<DashboardState> = {
   scopedRegistries: (wire: unknown) => bridgeWire.string(wire),
   isReportEngineExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "HostedDashboard.DashboardViewModel:370987FD959BE413FDA3602B2DBFFAF6EDC1E77AFC15EEA657636593482F1ADA";
+const bridgeContract = "HostedDashboard.DashboardViewModel:130972536EDC6F6AD52BE42D4A897A01CAB80EFB29615374568FA55174C00800";
 const reportEngineOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

@@ -29,7 +29,7 @@ export interface ConfirmNavigationMock extends MockTypedView<ConfirmNavigationMo
 const spec: MockTypedViewSpec = {
   kind: "confirmNavigation",
   route: "confirmNavigation",
-  contract: "NotesWindowViews.ConfirmNavigationViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
+  contract: "NotesWindowViews.ConfirmNavigationViewModel:E98F128D2EDFC0470871AEFE9771573346C654BB114D191973F20A1F7E3D00AF",
   fields: {
     message: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },

@@ -10,7 +10,7 @@ export interface ImportSummaryState {
 /**
  * The summary every import result page shows.
  *
- * A connected ViewModel that implements `IImportSummary`: ImportResultViewModel. Their own clients have these members too.
+ * A connected View that implements `IImportSummary`: ImportResult. Their own clients have these members too.
  */
 export interface ImportSummaryClient extends ViewClient<ImportSummaryState> {
 }

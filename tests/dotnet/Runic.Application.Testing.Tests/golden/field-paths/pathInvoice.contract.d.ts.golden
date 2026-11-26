@@ -17,13 +17,13 @@ export interface PathInvoiceCheckedFields {
 
 /** A connected PathInvoice ViewModel. Dispose it when its presentation ends. */
 export interface PathInvoiceClient extends ViewClient<PathInvoiceState> {
-  /** Calls the public C# setter of `PathInvoiceViewModel.Address`. */
+  /** Calls the producer's setter of `address`. */
   setAddress(value: PathAddress): Promise<PathInvoiceState>;
-  /** Calls the public C# setter of `PathInvoiceViewModel.Total`. */
+  /** Calls the producer's setter of `total`. */
   setTotal(value: string): Promise<PathInvoiceState>;
-  /** Writes `PathInvoiceViewModel.Address` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `address` with an acknowledged field write, which reports whether the app committed it. */
   writeAddress(value: PathAddress, options: FieldWriteOptions<PathAddress>): Promise<FieldWriteReceipt<PathAddress>>;
-  /** Writes `PathInvoiceViewModel.Total` with an acknowledged field write, which reports whether .NET committed it. */
+  /** Writes `total` with an acknowledged field write, which reports whether the app committed it. */
   writeTotal(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof PathInvoiceCheckedFields>(field: K): FieldBaseline<PathInvoiceCheckedFields[K]>;

@@ -10,7 +10,7 @@
       "id": "NotesReactiveViews.ShellViewModel",
       "name": "Shell",
       "route": "shell",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "2003C898D80FFD246E561B6473959610970CB9187AF7F6999D25A8B4AD1A0EEE",
       "kinds": [
         "shell"
       ],
@@ -96,7 +96,7 @@
       "id": "NotesReactiveViews.HomeViewModel",
       "name": "Home",
       "route": "home",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "29F1DAF179A1759C31B67D136289887135C4EA8DFE32E14ABEE9DD78CC35C51B",
       "kinds": [
         "home"
       ],
@@ -133,7 +133,7 @@
       "id": "NotesReactiveViews.DocumentViewModel",
       "name": "Document",
       "route": "document",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "FAFDBBCB0481E9D8C9EE5A7076BBA2D142C49BBB36ECA35E33FC1434D034352E",
       "kinds": [
         "document"
       ],
@@ -248,7 +248,7 @@
         {
           "name": "ConfirmLeave",
           "wire": "confirmLeave",
-          "contract": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmLeave",
+          "contract": "FAFDBBCB0481E9D8C9EE5A7076BBA2D142C49BBB36ECA35E33FC1434D034352E:interaction:ConfirmLeave",
           "input": {
             "direction": "to-page",
             "type": {
@@ -269,7 +269,7 @@
       "id": "NotesReactiveViews.EditorViewModel",
       "name": "Editor",
       "route": "editor",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "1A4F66EED25E319E609D11F39D02A83DC157F1E08643C17BF6F874A996290473",
       "kinds": [
         "editor",
         "editorCompact"
@@ -378,7 +378,7 @@
         {
           "name": "ConfirmDiscard",
           "wire": "confirmDiscard",
-          "contract": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmDiscard",
+          "contract": "1A4F66EED25E319E609D11F39D02A83DC157F1E08643C17BF6F874A996290473:interaction:ConfirmDiscard",
           "input": {
             "direction": "to-page",
             "type": {
@@ -399,7 +399,7 @@
       "id": "NotesReactiveViews.PreviewViewModel",
       "name": "Preview",
       "route": "preview",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "AFA3B0E370F04854948C5124324EB3374E419A4AD032252903B0672B09C55853",
       "kinds": [
         "preview"
       ],
@@ -435,7 +435,7 @@
       "id": "NotesReactiveViews.PinnedNoteViewModel",
       "name": "PinnedNote",
       "route": "pinnedNote",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "EC2211058D9F966C59049A3CCBB2C855AEA26DFFC0A8166F154A135F1A6A171D",
       "kinds": [
         "pinnedNote"
       ],
@@ -459,7 +459,7 @@
       "id": "NotesReactiveViews.PinnedTaskViewModel",
       "name": "PinnedTask",
       "route": "pinnedTask",
-      "fingerprint": "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
+      "fingerprint": "0F6B3548B78DEA08D2A455908298BEC310A757522DD6A3EC712D94C98748CFAB",
       "kinds": [
         "pinnedTask"
       ],

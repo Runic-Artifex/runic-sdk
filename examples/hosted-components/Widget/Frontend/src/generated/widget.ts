@@ -16,7 +16,7 @@ const members: BridgeMemberDecoders<WidgetState> = {
   canPing: (wire: unknown) => bridgeWire.boolean(wire),
   isPingExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "WidgetTool.WidgetViewModel:68E3A43F7F17BB041BFE2D58E6EF989AB473EDBCA8689D93A167FF3C8E8ABDFA";
+const bridgeContract = "WidgetTool.WidgetViewModel:A96BA96D3910F8471340B59BC0ECCB157A8B2D5E9CEEE0E05D6030CDB2DBD359";
 const pingOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

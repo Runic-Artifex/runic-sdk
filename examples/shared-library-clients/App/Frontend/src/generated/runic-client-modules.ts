@@ -8,6 +8,6 @@ type RunicSameContract<Package extends Application, Application extends string> 
 
 /** Each imported client's contract in its library's module, which must be the one this application's Bridge carries. */
 export type RunicClientModuleCheck = [
-  RunicSameContract<typeof SharedUi.about, "SharedUi.AboutViewModel:F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD">,
-  RunicSameContract<typeof SharedUi.support, "SharedUi.SupportViewModel:F1CAAD568DF8B20E7FD5879468BAFE894C9C2404A768C68EA9A41708C622D4FD">,
+  RunicSameContract<typeof SharedUi.about, "SharedUi.AboutViewModel:59BD262627E77B57D380E9F40FFCFBAE605054B146F527F8551AD7D68AFAAF32">,
+  RunicSameContract<typeof SharedUi.support, "SharedUi.SupportViewModel:62C6585AA56B889E10B9B0D69FF89D4D62ECC940429BC3D488A9BD7B2A697503">,
 ];

@@ -24,7 +24,7 @@ const members: BridgeMemberDecoders<MainState> = {
   canCloseDebug: (wire: unknown) => bridgeWire.boolean(wire),
   isCloseDebugExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "SidePanelSample.MainViewModel:5ED9DECD0167CA31B2D3923868C3212C91F5D54C8C5CE7E85A26BA62E72C69D0";
+const bridgeContract = "SidePanelSample.MainViewModel:BC864276B77E0AC4D63BE21D96DBB2D7D9EFEC85BA868F88BE649CB817D6A79F";
 const toggleDebugOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const moveDebugOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const closeDebugOperation: BridgeOperationCodec<void> = { decode: value => undefined };

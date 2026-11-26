@@ -40,7 +40,7 @@ export interface CatalogMock extends MockTypedView<CatalogMockState, CatalogClie
 const spec: MockTypedViewSpec = {
   kind: "catalog",
   route: "catalog",
-  contract: "QueryCollectionsExample.CatalogViewModel:997D7C5D156BE970A9106B043B6265CE1D6D3D843B8AC4AA42D41EC3D9B15DF8",
+  contract: "QueryCollectionsExample.CatalogViewModel:2B7A99767FCCE9AE5C4AC78515DA9C6A617675401817344D619FCA1C8DBE6D65",
   fields: {},
   defaults: { isRestockExecuting: false, canAdd: true, isAddExecuting: false },
   queries: {

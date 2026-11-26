@@ -11,7 +11,7 @@ export function pagePinnedTask(id: string): PinnedTaskPageReference { return pag
 const members: BridgeMemberDecoders<PinnedTaskState> = {
   priority: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
+const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:0F6B3548B78DEA08D2A455908298BEC310A757522DD6A3EC712D94C98748CFAB";
 
 /**
  * Connects a PinnedTask client. It waits up to `options.timeout` milliseconds (default 5000) for the

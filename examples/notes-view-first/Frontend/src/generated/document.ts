@@ -24,7 +24,7 @@ const members: BridgeMemberDecoders<DocumentState> = {
   canShowPreview: (wire: unknown) => bridgeWire.boolean(wire),
   isShowPreviewExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesWindowViews.DocumentViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
+const bridgeContract = "NotesWindowViews.DocumentViewModel:4A038EF3D865C389A736165E55B2D7B59D270B369827312BA03EDA4B80CBB2BC";
 const showEditorOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const showPreviewOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

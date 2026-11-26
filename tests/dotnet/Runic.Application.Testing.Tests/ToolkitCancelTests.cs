@@ -115,8 +115,8 @@ internal sealed class ToolkitCancelTests
         var cancel = $"can{char.ToUpperInvariant(member[0])}{member[1..]}Cancel";
         var operation = host.Root.Start(command, input, requestId);
         Require(operation.Admission == RunicOperationAdmissionKind.Accepted, $"The async Toolkit operation was not admitted: {operation.AdmissionJson}");
-        Require(operation.Contract.Split(':')[1] == BridgeContractShape.Compute(typeof(ToolkitCancelViewModel)),
-            "The generated cancel property disagreed with the reconstructed bridge fingerprint.");
+        Require(operation.Contract.Split(':')[1] == BridgeRequests.GeneratedFingerprint(typeof(ToolkitCancelViewModel)),
+            "The operation's contract is not the generated Bridge's.");
         Require(await PublishedAsync(host, cancel, true), "The generated Toolkit cancel command did not publish its availability.");
         if (nativeCancel)
             model.ExportCancelCommand.Execute(null);

@@ -27,7 +27,7 @@ export interface DocumentMock extends MockTypedView<DocumentMockState, DocumentC
 const spec: MockTypedViewSpec = {
   kind: "document",
   route: "document",
-  contract: "MultiWindow.DocumentViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A",
+  contract: "MultiWindow.DocumentViewModel:51CD18A466BC35A16E398B5AE4D0C48FE4F4F452C91A83DB3336829853D66B5A",
   fields: {
     path: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     projectTitle: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

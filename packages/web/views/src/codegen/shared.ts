@@ -109,7 +109,7 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
   const documentation = (member: (typeof client.members)[number], part: SharedPart) => {
     switch (part.key) {
       case "state": case "command": case "query": return member.doc ?? part.documentation;
-      case "setter": return (member.doc === undefined ? "" : member.doc + "\n\n") + `Calls the public C# setter of \`${member.name}\` of the implementing ViewModel.`;
+      case "setter": return (member.doc === undefined ? "" : member.doc + "\n\n") + `Calls the producer's setter of \`${member.name}\` on the implementing View.`;
       default: return part.documentation;
     }
   };
@@ -135,7 +135,7 @@ export function emitSharedClient(client: SharedClient, views: ReadonlyMap<string
     body.line();
   }
   body.doc("", (client.doc === undefined ? "" : client.doc + "\n\n")
-    + `A connected ViewModel that implements \`${contract}\`: ${implementers.map(simpleName).join(", ")}. Their own clients have these members too.`);
+    + `A connected View that implements \`${contract}\`: ${implementers.map(view => view.name).join(", ")}. Their own clients have these members too.`);
   body.line(`export interface ${name}Client extends ${Ref("ViewClient")}<${name}State> {`);
   if (shared.some(entry => entry.part.section === "queries")) {
     body.line("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");

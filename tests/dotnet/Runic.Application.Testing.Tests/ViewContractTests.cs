@@ -20,7 +20,7 @@ internal sealed class ViewContractTests
         using var host = new RunicWindowTestHost<GeneratedInteractionViewModel>(model,
             (transport, content, vm) => new GeneratedInteractionBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "generatedInteraction", ViewLocator = new TestViewLocator() });
-        var contract = $"{typeof(GeneratedInteractionViewModel).FullName}:{BridgeContractShape.Compute(typeof(GeneratedInteractionViewModel))}";
+        var contract = BridgeRequests.OperationContract<GeneratedInteractionViewModel>();
 
         using (var hello = JsonDocument.Parse(host.Transport.Request(
             """{"kind":"hello","protocol":4,"session":"s-contract","client":{"name":"t","version":"1"},"features":["view-contract/1"]}""",

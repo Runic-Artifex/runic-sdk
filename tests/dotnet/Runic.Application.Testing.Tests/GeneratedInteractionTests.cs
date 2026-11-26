@@ -84,7 +84,7 @@ internal sealed class GeneratedInteractionTests
         }
 
         static string InteractionContract() =>
-            $"{BridgeContractShape.Compute(typeof(GeneratedInteractionViewModel))}:interaction:Confirm";
+            $"{BridgeRequests.GeneratedFingerprint(typeof(GeneratedInteractionViewModel))}:interaction:Confirm";
     }
 
     // sdk#1146: [RunicInteractionTimeout] reaches the generated descriptor. Without a deadline the page receives no
@@ -102,7 +102,7 @@ internal sealed class GeneratedInteractionTests
         const string presentation = "generated-interaction";
         const string client = "generated-client";
         const string connection = "generated-connection";
-        var fingerprint = BridgeContractShape.Compute(typeof(GeneratedInteractionViewModel));
+        var fingerprint = BridgeRequests.GeneratedFingerprint(typeof(GeneratedInteractionViewModel));
         // A current page's hello: BridgeRequests' own lists no features.
         Require(host.Transport.Request($$"""{"kind":"hello","protocol":4,"session":"s-lifetimes","client":{"name":"t","version":"1"},"features":["open-ended-interactions/1"]}""",
             connection, client).StartsWith("{\"ok\":true", StringComparison.Ordinal), "The hello was refused.");

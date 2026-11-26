@@ -12,7 +12,7 @@ const members: BridgeMemberDecoders<HomeState> = {
   greeting: (wire: unknown) => bridgeWire.string(wire),
   lastResult: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.HomeViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
+const bridgeContract = "NotesReactiveViews.HomeViewModel:29F1DAF179A1759C31B67D136289887135C4EA8DFE32E14ABEE9DD78CC35C51B";
 
 /**
  * Connects a Home client. It waits up to `options.timeout` milliseconds (default 5000) for the

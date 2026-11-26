@@ -15,7 +15,7 @@ const members: BridgeMemberDecoders<AccountState> = {
   canCancel: (wire: unknown) => bridgeWire.boolean(wire),
   isCancelExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "MultiWindow.AccountViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A";
+const bridgeContract = "MultiWindow.AccountViewModel:83B16F0DEAEB6321DD543ABE914A54DA44FE9477523EFDD54C9163D5846664A6";
 const chooseOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const cancelOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

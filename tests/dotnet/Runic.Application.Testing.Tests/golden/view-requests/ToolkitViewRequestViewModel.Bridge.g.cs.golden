@@ -17,6 +17,7 @@ internal sealed class ToolkitViewRequestBridge : global::Runic.Application.Views
         Interactions,
         dataSubscriptions: Table.Data, collections: Table.Collections)
     {
+        ContractShape = "<fingerprint>";
         global::System.ArgumentNullException.ThrowIfNull(content);
         _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation("toolkitViewRequest") : null;
     }

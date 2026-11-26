@@ -1995,8 +1995,8 @@ public sealed partial class ImportResultViewModel : ReactiveObject
   explicit assembly to the default.
 - **Left-out members are never inspected or sent.** The generator does not
   check them, so a WPF-typed member needs no `[RunicIgnore]`, the Bridge never
-  puts them in a snapshot, and the analyzer and the Hot Reload contract
-  fingerprint select the same members. A `[RunicFailure]`, `[RunicCommandKey]`
+  puts them in a snapshot, and the analyzer and Hot Reload's contract shape
+  hash select the same members. A `[RunicFailure]`, `[RunicCommandKey]`
   or `[RunicPresentationScoped]` declaration on a command that is not published
   is reported as on any member the Bridge does not expose.
 - **Contradictions.** `[RunicInclude]` with `[RunicIgnore]` is error
@@ -4446,7 +4446,7 @@ System.Text.Json's unconditional ignores apply too: a DTO property with
 `[JsonExtensionData]` is not part of the contract, as it is not part of the JSON,
 throughout the ViewModel's DTO graphs, including nested DTOs, collections,
 command values, interactions and declared failures. Generated codecs, TypeScript,
-validation traversal and the Hot Reload fingerprint use the same exclusions.
+validation traversal and Hot Reload's contract shape hash use the same exclusions.
 
 For example, a separate Core assembly can keep its DTO free of Runic dependencies:
 

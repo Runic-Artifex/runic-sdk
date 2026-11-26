@@ -33,8 +33,8 @@ internal sealed class DevelopmentOnlyTests
         (await driver.SetAsync(vm => vm.Debug, "noted")).ThrowIfFailed();
         Require(model.Resets == 1 && model.Debug == "noted", "A development-only member did not run.");
         // Marking a member changes the contract, and the generator and the runtime agree on it.
-        Require(BridgeContractShape.Compute(typeof(DevelopmentToolsViewModel)) == ContractFingerprint(bridge!),
-            "The generated fingerprint differs from BridgeContractShape for development-only members.");
+        Require(BridgeContractShape.Compute(typeof(DevelopmentToolsViewModel)) == BridgeRequests.GeneratedShape(bridge!),
+            "The generated contract shape differs from BridgeContractShape for development-only members.");
         // The parts cover every ViewModel of the assembly; these are this one's.
         var marked = BridgeContractShape.Parts(typeof(DevelopmentToolsViewModel))
             .Where(part => part.StartsWith($"development-only:{typeof(DevelopmentToolsViewModel).FullName}:", StringComparison.Ordinal)).ToArray();
@@ -107,9 +107,6 @@ internal sealed class DevelopmentOnlyTests
         try { action(); return null; }
         catch (Exception error) { return error; }
     }
-
-    private static string? ContractFingerprint(ViewModelBridge bridge) =>
-        typeof(ViewModelBridge).GetField("_contractFingerprint", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(bridge) as string;
 
     private static void Require(bool condition, string message)
     {

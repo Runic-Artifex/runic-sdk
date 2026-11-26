@@ -1,0 +1,122 @@
+{
+  "description": "A worked example of runic.views.fingerprint/1 (contract-ir.md, \"Fingerprint\"): an IR document of one View, the canonical form of the View's projection, its fingerprint, and the contracts derived from it.",
+  "document": {
+    "format": "runic.views.contract-ir/1",
+    "producer": {
+      "language": "rust",
+      "tool": "example",
+      "unit": "demo"
+    },
+    "views": [
+      {
+        "id": "demo::Counter",
+        "name": "Counter",
+        "route": "counter",
+        "fingerprint": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601",
+        "kinds": [
+          "counter"
+        ],
+        "doc": "Counts.",
+        "members": [
+          {
+            "name": "Count",
+            "wire": "count",
+            "kind": "value",
+            "value": {
+              "direction": "to-page",
+              "type": {
+                "kind": "int32"
+              }
+            }
+          },
+          {
+            "name": "Mode",
+            "wire": "mode",
+            "kind": "value",
+            "value": {
+              "direction": "both",
+              "type": {
+                "kind": "named",
+                "ref": "demo::Mode",
+                "nullable": true
+              }
+            },
+            "settable": true,
+            "declaringType": "Counter",
+            "doc": "How it counts."
+          }
+        ],
+        "commands": [
+          {
+            "name": "Increment",
+            "wire": "increment",
+            "doc": "Adds one.",
+            "executionState": true
+          },
+          {
+            "name": "Add",
+            "wire": "add",
+            "parameter": "amount",
+            "input": {
+              "direction": "from-page",
+              "type": {
+                "kind": "int32"
+              }
+            },
+            "async": true
+          }
+        ],
+        "interactions": [
+          {
+            "name": "Confirm",
+            "wire": "confirm",
+            "contract": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601:interaction:Confirm",
+            "input": {
+              "direction": "to-page",
+              "type": {
+                "kind": "string"
+              }
+            },
+            "output": {
+              "direction": "from-page",
+              "type": {
+                "kind": "boolean"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "types": {
+      "demo::Mode": {
+        "kind": "enum",
+        "name": {
+          "source": "demo::Mode",
+          "base": "Mode",
+          "qualifiers": [
+            "demo"
+          ]
+        },
+        "doc": "A mode.",
+        "cases": [
+          {
+            "wire": "fast",
+            "value": "0"
+          },
+          {
+            "wire": "slow",
+            "value": "1",
+            "doc": "Slowly."
+          }
+        ]
+      }
+    },
+    "sources": {}
+  },
+  "canonical": "{\"format\":\"runic.views.fingerprint/1\",\"view\":{\"commands\":[{\"executionState\":true,\"name\":\"Increment\",\"wire\":\"increment\"},{\"async\":true,\"input\":{\"direction\":\"from-page\",\"type\":{\"kind\":\"int32\"}},\"name\":\"Add\",\"wire\":\"add\"}],\"interactions\":[{\"input\":{\"direction\":\"to-page\",\"type\":{\"kind\":\"string\"}},\"name\":\"Confirm\",\"output\":{\"direction\":\"from-page\",\"type\":{\"kind\":\"boolean\"}},\"wire\":\"confirm\"}],\"kinds\":[\"counter\"],\"members\":[{\"kind\":\"value\",\"value\":{\"direction\":\"to-page\",\"type\":{\"kind\":\"int32\"}},\"wire\":\"count\"},{\"kind\":\"value\",\"settable\":true,\"value\":{\"direction\":\"both\",\"type\":{\"definition\":{\"cases\":[{\"value\":\"0\",\"wire\":\"fast\"},{\"value\":\"1\",\"wire\":\"slow\"}],\"kind\":\"enum\"},\"kind\":\"named\",\"nullable\":true}},\"wire\":\"mode\"}],\"route\":\"counter\"}}",
+  "fingerprint": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601",
+  "contracts": {
+    "operation": "demo::Counter:3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601",
+    "interaction": "3CA525B200F174702E3F6C6716CA49BC14ADDE0CDDE00786793FBABC143B4601:interaction:Confirm"
+  }
+}

@@ -1653,7 +1653,10 @@ find again, for example after a reload.
 - `contract` is `{view}:{fingerprint}`. `view` is a stable name of the View that the producer chooses. `fingerprint` is
   an opaque string of 1 to 128 characters from U+0021 to U+007E without `:`. Two builds whose generated client and
   producer differ in anything visible on the wire (members, value types, commands, inputs, results, failures, keys,
-  collection and text fields, content slots) MUST have different fingerprints. A producer MAY cover more.
+  collection and text fields, content slots) MUST have different fingerprints. A producer MAY cover more. The Runic
+  producers use the View fingerprint of the contract IR, `runic.views.fingerprint/1`
+  ([contract IR, Fingerprint](contract-ir.md#fingerprint)), a hash of the View's own contract, from which they also
+  derive the contracts of its interactions and view requests.
 - The producer keys operations by `(contract, route, operation)`. A `start` with a known key is a **duplicate** when
   its `member` and `input` are [canonically equal](values.md#canonical-equality) to the original's; otherwise it is an
   **identity conflict**. `status`, `watch`, `unwatch`, `cancel` and `stream` find an operation by its key and member;

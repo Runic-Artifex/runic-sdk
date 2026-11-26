@@ -9,12 +9,10 @@ using System.Text;
 /// </summary>
 internal static class InteractionCodeEmitter
 {
-    internal static GeneratedInteractionPlan[] Discover(IEnumerable<PropertyInfo> members, string modelName,
-        string contractFingerprint, bool honorJsonIgnore)
+    internal static GeneratedInteractionPlan[] Discover(IEnumerable<PropertyInfo> members, string modelName, bool honorJsonIgnore)
     {
         ArgumentNullException.ThrowIfNull(members);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(contractFingerprint);
 
         var plans = new List<GeneratedInteractionPlan>();
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -46,7 +44,7 @@ internal static class InteractionCodeEmitter
                 BridgeTypeGraph.Discover(interaction.Output,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 1),
                     $"{modelName}.{property.Name}.output", property, honorJsonIgnore, BridgeValueDirection.FromPage),
-                $"{contractFingerprint}:interaction:{property.Name}", timeout));
+                "", timeout));
         }
         return [.. plans];
     }
@@ -88,14 +86,13 @@ internal static class InteractionCodeEmitter
 
     /// <summary>
     /// The <c>ViewRequest&lt;T&gt;</c> members of a ViewModel: one-way requests to the page, each with its input
-    /// codec and its contract <c>{fingerprint}:request:{Property}</c> (specs/application, "View requests").
+    /// codec. Its contract, <c>{fingerprint}:request:{Name}</c> (specs/application, "View requests"), is set once the
+    /// View's fingerprint is known (<see cref="ViewPlan.Seal"/>).
     /// </summary>
-    internal static GeneratedViewRequestPlan[] DiscoverRequests(IEnumerable<PropertyInfo> members, string modelName,
-        string contractFingerprint, bool honorJsonIgnore)
+    internal static GeneratedViewRequestPlan[] DiscoverRequests(IEnumerable<PropertyInfo> members, string modelName, bool honorJsonIgnore)
     {
         ArgumentNullException.ThrowIfNull(members);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(contractFingerprint);
 
         var plans = new List<GeneratedViewRequestPlan>();
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -112,7 +109,7 @@ internal static class InteractionCodeEmitter
             plans.Add(new GeneratedViewRequestPlan(property,
                 BridgeTypeGraph.Discover(input, ContractNullability.Argument(property, nullability, [input], 0),
                     $"{modelName}.{property.Name}.input", property, honorJsonIgnore, BridgeValueDirection.ToPage),
-                $"{contractFingerprint}:request:{property.Name}"));
+                ""));
         }
         return [.. plans];
     }
@@ -276,7 +273,8 @@ internal static class InteractionCodeEmitter
     }
 }
 
-// Timeout: the C# expression of a [RunicInteractionTimeout], or null for the default.
+// Timeout: the C# expression of a [RunicInteractionTimeout], or null for the default. ContractId is
+// {fingerprint}:interaction:{Name}, set once the View's fingerprint is known (ViewPlan.Seal).
 internal sealed record GeneratedInteractionPlan(PropertyInfo Property, MvvmInteraction Contract,
     BridgeTypeGraph Input, BridgeTypeGraph Output, string ContractId, string? Timeout = null);
 

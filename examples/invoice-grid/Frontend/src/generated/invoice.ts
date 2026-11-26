@@ -17,7 +17,7 @@ const members: BridgeMemberDecoders<InvoiceState> = {
   total: (wire: unknown) => bridgeWire.string(wire),
   canAddLine: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "InvoiceGrid.InvoiceViewModel:F408C558ACE53AE2C58577D42C1413EC9B87B79B6A588FA8F617066757875891";
+const bridgeContract = "InvoiceGrid.InvoiceViewModel:D607D48AEAEEAD6D46DD2A49CC6C7E9768FAD6CC33CAB19FB5FB9934278B7EAE";
 const checkedFieldNames = ["address"];
 
 const collectionDefinitions = defineCollections({

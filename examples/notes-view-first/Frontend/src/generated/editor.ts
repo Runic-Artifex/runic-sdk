@@ -18,7 +18,7 @@ const members: BridgeMemberDecoders<EditorState> = {
   canSave: (wire: unknown) => bridgeWire.boolean(wire),
   isSaveExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesWindowViews.EditorViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
+const bridgeContract = "NotesWindowViews.EditorViewModel:9CFA827CD622A829D2535D72EC4F52350409FD89C122425F53EEAE14C93577A8";
 const checkedFieldNames = ["title", "body"];
 const saveOperation: BridgeOperationCodec<void, SaveFailure> = { decode: value => undefined, decodeFailure: value => ((): SaveFailure => { const bridgeDecodedUnion0: any = bridgeWire.union(value); switch (bridgeDecodedUnion0.$case) { case "titleRequired": return { $case: "titleRequired" }; case "titleTaken": return { $case: "titleTaken", existingTitle: bridgeWire.string(bridgeDecodedUnion0["existingTitle"]) }; default: throw new RangeError("Unknown union case."); } })() };
 

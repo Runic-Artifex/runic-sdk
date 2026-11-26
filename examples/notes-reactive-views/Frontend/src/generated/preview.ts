@@ -12,7 +12,7 @@ const members: BridgeMemberDecoders<PreviewState> = {
   heading: (wire: unknown) => bridgeWire.string(wire),
   body: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.PreviewViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
+const bridgeContract = "NotesReactiveViews.PreviewViewModel:AFA3B0E370F04854948C5124324EB3374E419A4AD032252903B0672B09C55853";
 
 /**
  * Connects a Preview client. It waits up to `options.timeout` milliseconds (default 5000) for the

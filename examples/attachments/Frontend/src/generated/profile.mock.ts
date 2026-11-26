@@ -34,7 +34,7 @@ export interface ProfileMock extends MockTypedView<ProfileMockState, ProfileClie
 const spec: MockTypedViewSpec = {
   kind: "profile",
   route: "profile",
-  contract: "Attachments.ProfileViewModel:51044CF1EA21539A98081DA51B87A0718F1297F1AACDC7F689C619EB6B19DEB6",
+  contract: "Attachments.ProfileViewModel:6E013BC67B51DC41D4FE0922EFC728D72757872F9B2FADBC37EA4143A5B44B9E",
   fields: {
     avatar: { encode: (value: unknown) => { const typed = value as import("@runic-artifex/views").RunicBlob; return bridgeWire.encodeBlob(typed); }, decode: (wire: unknown) => bridgeWire.blob(wire) },
     attachments: { encode: (value: unknown) => { const typed = value as readonly Attachment[]; return typed.map(item => ({ ["name"]: item["name"], ["size"]: item["size"].toString(), ["file"]: bridgeWire.encodeBlob(item["file"]) })); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<Attachment>(item, value => ({ name: bridgeWire.string(value["name"]), size: bridgeWire.bigint(value["size"], "-9223372036854775808", "9223372036854775807"), file: bridgeWire.blob(value["file"])}))) },

@@ -76,7 +76,7 @@ internal sealed class ContinuationTests
     {
         var first = transport.CommandAsync(route, "run", JsonSerializer.Serialize("a")).AsTask();
         await probe.WaitingFor("a").WaitScaledAsync(TimeSpan.FromSeconds(5));
-        var contract = $"{model.FullName}:{BridgeContractShape.Compute(model)}";
+        var contract = $"{model.FullName}:{BridgeRequests.GeneratedFingerprint(model)}";
         Task<string>? second = null;
         if (operation)
         {

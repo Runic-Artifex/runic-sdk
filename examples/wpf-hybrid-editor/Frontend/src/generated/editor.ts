@@ -19,7 +19,7 @@ const members: BridgeMemberDecoders<EditorState> = {
   isSaveExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   canSaveCancel: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "HybridNotes.EditorViewModel:3EDB76E7F7CE7BD4599A185B07F1B1E659EAA667FDEAB34B0406CB64EDEE83D3";
+const bridgeContract = "HybridNotes.EditorViewModel:15D3738DB7E351E8964194F85EC4852712A11FB2F6D6F906BC21A90ED4F880D0";
 const checkedFieldNames = ["title", "body"];
 const saveOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

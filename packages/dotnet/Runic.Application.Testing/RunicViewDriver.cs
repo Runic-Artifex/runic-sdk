@@ -823,8 +823,10 @@ public sealed partial class RunicViewDriver<TModel> where TModel : class
 
     private static class Fingerprint
     {
-        // The generated operation contract includes the ViewModel's contract fingerprint.
-        internal static readonly string Value = BridgeContractShape.Compute(typeof(TModel));
+        // The generated operation contract includes the ViewModel's contract fingerprint, a hash of its contract IR that
+        // the generated Bridge carries (runic.views.fingerprint/1); the window creates that Bridge before any request.
+        // A route without a generated Bridge, such as a scripted one, gets the reflection shape hash, as before 0.24.
+        internal static string Value => BridgeContractFingerprints.Of(typeof(TModel)) ?? BridgeContractShape.Compute(typeof(TModel));
     }
 }
 

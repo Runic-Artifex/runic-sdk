@@ -1724,3 +1724,15 @@ working. These rows bring one up to the 0.23 template:
 | Translations: `dotnet-runic-translations`, `Runic.Translations`, `.Build` and `@runic-artifex/vite-plugin-runic-translations` 0.14.0 | 0.15.1 |
 
 Details: 0.23.0 [Upgrading from 0.22](../eng/release/notes/0.23.0.md#upgrading-from-022).
+
+## From 0.23 to 0.24
+
+### Views contracts
+
+Rebuild after the upgrade and commit the regenerated clients: every contract string in them changes once.
+
+| 0.23 | 0.24 |
+| --- | --- |
+| A View's contract `{ViewModel}:{fingerprint}` carried one hash of every View of the assembly (`runic-bridge-contract-v6`); a change to one View changed every View's contract | Each View has its own fingerprint, `runic.views.fingerprint/1`, a hash of the View's contract IR ([contract IR, Fingerprint](../specs/application/contract-ir.md#fingerprint)), and a change to one View changes only its contract. Every `bridgeContract`, mock `contract`, `runicClientContracts` entry and interaction or view request contract in generated clients changes once. Rebuild, commit the generated clients, and republish a client library's package with them, since an application compares its library's contracts at compile time (TS2344 in `runic-client-modules.ts`) |
+| An operation started by 0.23 and recovered after the upgrade | `unknown`: its contract fingerprint changed. Start it again |
+| A test that built an operation or interaction contract with `BridgeContractShape.Compute(typeof(TModel))` | That is now only Hot Reload's shape hash, which the generated Bridge carries as `ContractShape`. `RunicViewDriver<TModel>` and `RunicTestPresentation<TModel>` send the generated contracts themselves; read a contract from the generated client (`bridgeContract`) or the `open` reply of a connection that lists `view-contract/1` |

@@ -10,7 +10,7 @@
       "id": "InvoiceGrid.InvoiceViewModel",
       "name": "Invoice",
       "route": "invoice",
-      "fingerprint": "F408C558ACE53AE2C58577D42C1413EC9B87B79B6A588FA8F617066757875891",
+      "fingerprint": "D607D48AEAEEAD6D46DD2A49CC6C7E9768FAD6CC33CAB19FB5FB9934278B7EAE",
       "kinds": [
         "invoice"
       ],

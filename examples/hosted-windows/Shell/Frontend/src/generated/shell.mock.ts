@@ -38,7 +38,7 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "HostedShell.ShellViewModel:8665B66B00534C16F8C62A5ED364171B393FA9C85B6F06B29128C4911897AD36",
+  contract: "HostedShell.ShellViewModel:427060DB915C5747297AF2A095C102FA101A95AEB9A842E24173542678B7598E",
   fields: {
     language: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     theme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

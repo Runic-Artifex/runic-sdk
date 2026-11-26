@@ -16,7 +16,7 @@ const members: BridgeMemberDecoders<ProfileState> = {
   canRedraw: (wire: unknown) => bridgeWire.boolean(wire),
   isAttachExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "Attachments.ProfileViewModel:51044CF1EA21539A98081DA51B87A0718F1297F1AACDC7F689C619EB6B19DEB6";
+const bridgeContract = "Attachments.ProfileViewModel:6E013BC67B51DC41D4FE0922EFC728D72757872F9B2FADBC37EA4143A5B44B9E";
 const attachOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**
