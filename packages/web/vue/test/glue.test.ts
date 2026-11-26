@@ -644,7 +644,7 @@ describe("useBridgeConnection", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
       "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText", "configureTranslatedText",
-      "createRunicInstance", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "createRunicInstance", "fieldDefinition", "fieldErrorText", "fieldMembers", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
       "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "provideRunicInstance", "regionEntries",
       "resolveText", "runicInstanceKey", "selectedRegion", "syncDocumentLocale", "textDirection",
       "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useCommands", "useField", "useForm", "useInteraction", "useLatestOperation",

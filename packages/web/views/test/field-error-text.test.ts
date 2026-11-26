@@ -4,14 +4,14 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
   configureFieldErrorText, configureTranslatedText, createFieldController, describeBridgeError, FieldError, fieldErrorText,
-  resolveText, subscribeText, type BridgeField, type FieldErrorArguments, type FieldErrorReason,
+  resolveText, subscribeText, type BridgeFieldMembers, type FieldErrorArguments, type FieldErrorReason,
 } from "../dist/index.js";
 
 type State = { readonly value: unknown };
 const client = { snapshot: { value: undefined }, subscribe: () => () => {}, dispose() {} };
 
 // The error of a text typed into a field of the given traits, or undefined when it parses.
-function errorOf(text: string, definition: Partial<BridgeField<typeof client, State, unknown>>,
+function errorOf(text: string, definition: Partial<BridgeFieldMembers<typeof client, State, unknown>>,
   options: Parameters<typeof createFieldController<State, typeof client, unknown>>[1] = {}): FieldError | undefined {
   const controller = createFieldController<State, typeof client, unknown>(
     { read: () => undefined, write: () => Promise.resolve(), ...definition }, { coalesce: false, commit: "pause", delay: 60_000, ...options });
@@ -26,7 +26,7 @@ const cleanup: (() => void)[] = [];
 afterEach(() => { for (const step of cleanup.splice(0).reverse()) step(); });
 
 test("each invalid text has a reason and arguments, and keeps its English message", () => {
-  const cases: [string, Partial<BridgeField<typeof client, State, unknown>>, { locale?: string | null; scale?: number },
+  const cases: [string, Partial<BridgeFieldMembers<typeof client, State, unknown>>, { locale?: string | null; scale?: number },
     FieldErrorReason, FieldErrorArguments, string][] = [
     ["", { kind: "number" }, {}, "required", { expected: "number" }, "Enter a number."],
     ["", { kind: "number", integer: true }, {}, "required", { expected: "whole-number" }, "Enter a whole number."],
