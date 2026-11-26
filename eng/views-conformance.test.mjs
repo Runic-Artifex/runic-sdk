@@ -612,7 +612,7 @@ export function scenarioProblems(scenario) {
       connected.delete(step.disconnect);
       return;
     }
-    if ("send" in step || "receive" in step) {
+    if ("send" in step || "receive" in step || "upload" in step) {
       if (connection === undefined || !connected.has(connection)) problem(`${where}: connection ${connection} is not connected`);
       if (step.connection) use(step.connection, "connection", where);
     }
@@ -638,7 +638,8 @@ export function scenarioProblems(scenario) {
         replied.add(step.replyTo);
       }
     }
-    if (step.mutate || step.delivery || step.closeWindow || step.flushFields) {
+    if (step.upload && !(scenario.requires ?? []).includes("blobs/1")) problem(`${where}: upload needs blobs/1`);
+    if (step.mutate || step.delivery || step.closeWindow || step.flushFields || step.upload) {
       if (!roles.has("producer")) problem(`${where}: a producer step in a client-only scenario`);
     }
     for (const mutation of step.mutate ?? []) if (mutation.op === "waitPresented") start("wait", mutation.id, where);

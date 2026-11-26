@@ -231,6 +231,13 @@ public sealed record RunicWindowOptions
     public long? MaximumPendingUploadBytes { get; init; }
 
     /// <summary>
+    /// The most unclaimed uploads that the window holds at once, whatever their size
+    /// (<see cref="WindowContentSessionOptions.MaximumPendingUploads"/>), at least 1. <see langword="null"/>, the default,
+    /// uses the host's default, or else 256.
+    /// </summary>
+    public int? MaximumPendingUploads { get; init; }
+
+    /// <summary>
     /// How long the Window stays visible after its close was decided, while its accepted work drains
     /// (<see cref="RunicCloseDrain"/>). <see langword="null"/>, the default, takes the host's default, which is
     /// <see cref="RunicCloseDrain.None"/> unless the host's options set another.
@@ -288,6 +295,7 @@ public sealed record RunicWindowOptions
             throw new ArgumentException("A window-modal Window needs an Owner: set Owner, or Modality to None.", nameof(Modality));
         BridgeInputLimit.ResolveUpload(MaximumUploadBytes, nameof(MaximumUploadBytes));
         BridgeInputLimit.ResolveUpload(MaximumPendingUploadBytes, nameof(MaximumPendingUploadBytes));
+        BridgeInputLimit.ResolveUploadCount(MaximumPendingUploads, nameof(MaximumPendingUploads));
     }
 }
 

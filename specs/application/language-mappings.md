@@ -7,7 +7,8 @@ states an intentional difference that the protocol leaves to the implementation.
 APIs; names here may lag behind them, but the mapped behaviour must not.
 
 Another implementation, for example in Rust or C++, maps the same rules to its own idioms: ownership, futures or
-coroutines, result types and its own serialization. Runic does not ship or support such an implementation.
+coroutines, result types and its own serialization. Runic ships none yet; a Rust producer is in development, and the
+[Rust producer](#rust-producer-in-development) section lists the mappings the protocol leaves to it so far.
 
 ## .NET producer
 
@@ -34,6 +35,8 @@ coroutines, result types and its own serialization. Runic does not ship or suppo
 | Member wire names | The C# property, command or field name, camel-cased, or its `[RunicAlias]`. `[RunicIgnore]` leaves a member out. A ViewModel in explicit publication (`[RunicPublication(RunicPublicationMode.Explicit)]` on its class or assembly) publishes only its `[RunicInclude]` properties and the members of its `[RunicSharedClient]` interfaces. |
 | Failed publications | A state writer that throws (including `ObjectDisposedException` from a getter of a disposed object) does not throw to the code that raised the change. The failure is traced, nothing is published, and the next change tries again. A push on its way when the window disposes its transport is dropped. |
 | Failure detail | `WindowContentSessionOptions.IncludeFailureDetail` (also a host option); on by default in the Development environment. `type` is the exception's full type name and `stack` the exception's `ToString()`. |
+| Development | The Development environment: `DOTNET_ENVIRONMENT`, or else `ASPNETCORE_ENVIRONMENT`, is `Development`, which `dotnet runic dev` sets. It turns on failure detail and lists `handler-timing/1`. |
+| Handler timing | `name` is the ViewModel's type name and the C# member (`EditorViewModel.Save`). |
 | Input limit | `WindowContentSessionOptions.MaximumInputBytes`, `RunicWindowOptions.MaximumInputBytes` and the host options' default. |
 | `invalid-input` | A value that does not decode, or a setter or command that throws `ArgumentException`, `FormatException` or `JsonException` (a setter also `OverflowException`). |
 | `unavailable` | The command's `ICommand.CanExecute` returned false. |
@@ -125,6 +128,17 @@ while holding the model gate that also serializes change notifications. A reques
 delivery in a model turn, so state writers and the getters they call must not assume the thread that raised
 `PropertyChanged`. The reply order wait (`BridgeReplyOrder`) holds a reply until the pushes requested before it were
 handed to the transport. Teardown runs inline when an application-owned context was disposed first.
+
+## Rust producer (in development)
+
+A Rust producer (`runic-artifex-views`) is in development and not published; its names can still change. The rows below
+are the choices the protocol leaves to a producer that it has made so far.
+
+| Protocol | Rust mapping |
+| --- | --- |
+| Development | `WindowOptions::development()`, which the application chooses; there is no environment variable. It sets `failure_detail` and lists `handler-timing/1`. |
+| Failure detail | `WindowOptions::failure_detail`. A View's `Failure::Unexpected` and a panic in View code that the window caught are unexpected failures: `failed` with a fixed message, and `detail` only with `failure_detail`. |
+| Handler timing | `name` is the View's Rust type name and the member's wire name (`NotesView.confirmClear`). |
 
 ## TypeScript client
 

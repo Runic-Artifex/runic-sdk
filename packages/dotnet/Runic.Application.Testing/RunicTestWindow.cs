@@ -330,6 +330,7 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
                     MaximumInputBytes = opening.Options.MaximumInputBytes ?? options.MaximumInputBytes,
                     MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? options.MaximumUploadBytes,
                     MaximumPendingUploadBytes = opening.Options.MaximumPendingUploadBytes ?? options.MaximumPendingUploadBytes,
+                    MaximumPendingUploads = opening.Options.MaximumPendingUploads ?? options.MaximumPendingUploads,
                     PublicationTimeout = options.PublicationTimeout,
                 })
             { Services = provider, WindowPresentation = presentation };

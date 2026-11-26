@@ -1080,8 +1080,8 @@ for a blob URL of the state or a result, as `RunicServedBlob`: status, headers
 and content, with `range` for a byte range and `head` for `HEAD`. A replaced or
 released URL answers 404, and `ServedBlobCount` counts the URLs the window
 still serves. `UploadAsync(bytes, fileName, contentType)` simulates a page's
-upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes` and
-`MaximumPendingUploadBytes`)
+upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes`,
+`MaximumPendingUploadBytes` and `MaximumPendingUploads`)
 and returns the `RunicUpload` that a command input takes;
 `PendingUploadCount` counts the uploads no command claimed.
 

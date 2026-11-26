@@ -442,6 +442,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             MaximumInputBytes = options?.MaximumInputBytes,
             MaximumUploadBytes = options?.MaximumUploadBytes,
             MaximumPendingUploadBytes = options?.MaximumPendingUploadBytes,
+            MaximumPendingUploads = options?.MaximumPendingUploads,
         };
     }
 }

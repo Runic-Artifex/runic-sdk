@@ -107,4 +107,12 @@ public sealed class WindowContentSessionOptions
     /// least 1 KiB (1 024); the session throws <see cref="ArgumentOutOfRangeException"/> for another one.
     /// </summary>
     public long? MaximumPendingUploadBytes { get; init; }
+
+    /// <summary>
+    /// The most uploads that no command claimed yet that this window holds at once (feature <c>blobs/1</c>), counting
+    /// those still being received, whatever their size. An upload beyond it is refused with HTTP 507. <see langword="null"/>,
+    /// the default, is 256. A value must be at least 1; the session throws <see cref="ArgumentOutOfRangeException"/> for
+    /// another one.
+    /// </summary>
+    public int? MaximumPendingUploads { get; init; }
 }

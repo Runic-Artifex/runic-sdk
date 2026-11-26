@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.appearance-override-lists-only-known-members.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "requires": ["appearance/1"],
+  "description": "The appearance push's override lists only members the host decided whose value is known: a decided member that is null is left out. systemColors given while contrast is not forced-colors is pushed null.",
+  "view": "list",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"replyTo":"hello-c1","unordered":true},
+    {"receive":{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null},"unordered":true},
+    {"setAppearance":{"colorScheme":null,"contrast":"more","reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"},"override":["colorScheme","contrast"]}},
+    {"receive":{"kind":"appearance","colorScheme":null,"contrast":"more","reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null,"override":["contrast"]}}
+  ]
+}

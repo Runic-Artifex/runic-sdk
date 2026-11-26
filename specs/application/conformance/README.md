@@ -116,7 +116,9 @@ implementation that cannot open a window without a View may root it at the `list
 
 A scenario file follows [`scenario.schema.json`](scenario.schema.json) (format `runic.views.scenario/1`). Its `id` is
 `{set}.{file}.v{n}`. It describes one window whose root View is `view`, one of the [test Views](#test-views), with the
-model values of `arrange.model`, and lists `steps` in order. `roles` names the runners that execute it.
+model values of `arrange.model`, and lists `steps` in order. `roles` names the runners that execute it. `options` sets
+limits of the producer's window instead of its defaults: `inputBytes`, its input limit, and `pendingUploads`, the most
+unclaimed uploads it holds at once ([uploads](../README.md#uploads)). A client runner ignores them.
 
 ### Steps
 
@@ -136,7 +138,8 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `flushFields` | starts a [field flush](../README.md#field-flush) of the window and names it `id` | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
 | `setLocale` | sets the window's locale, a tag or `null` ([translated text](../README.md#translated-text)) | skips it |
-| `setAppearance` | sets the window's appearance, an object with the members of the `appearance` push or `null` ([appearance](../README.md#appearance)) | skips it |
+| `setAppearance` | sets the window's appearance, an object with the members of the `appearance` push or `null` ([appearance](../README.md#appearance)); `override` names the members the host decided | skips it |
+| `upload` | the page of the step's `connection` uploads a file ([uploads](../README.md#uploads)): a `POST` to the window's upload URL with the connection's token, the body `text` as UTF-8, the `name` and the media `type`, and `size` as its `Content-Length` (the body's length by default). The host's answer, `{status, body}`, must equal `answer`, compared as a message; an `{"$id"}` of kind `provided` in it binds the upload's id | skips it |
 | `expect` | checks `model`, `presented` or `closed`; a `model` expectation waits until it matches | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
@@ -282,6 +285,8 @@ This table is the closed list of requirement names, of two kinds:
 | `blobs/1` | The implementation implements the feature [`blobs/1`](../README.md#blobs-and-uploads). Its scenarios use the `files` View. |
 | `field-flush/1` | The implementation implements the feature [`field-flush/1`](../README.md#field-flush). Its scenarios use the `flushFields` step and the `flushed` expectation. |
 | `validation-pending/1` | The implementation implements the feature [`validation-pending/1`](../README.md#pending). |
+| `trace-context/1` | The implementation implements the feature [`trace-context/1`](../README.md#trace-context). |
+| `handler-timing/1` | The implementation implements the feature [`handler-timing/1`](../README.md#handler-timing), which a producer lists only in development: a producer runner runs the test windows in development for it, with failure detail still off. |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -308,27 +313,28 @@ connection before connecting it, answers a request it did not send, expects a ca
 
 | Set | Content |
 | --- | --- |
-| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic for a producer that names another Runic release, or for `Runic.Application.Views` or, in the rename window, `RunicArtifex.Application.Views` of another version, and none for other producers; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); the window's appearance pushed after `hello`, also while unknown, and on each change, and not without `appearance/1` (`appearance-*`); the client's languages in `hello` reported on the connection, invalid ones, and ones without `client-languages/1` (`client-languages-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
+| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic for a producer that names another Runic release, or for `Runic.Application.Views` or, in the rename window, `RunicArtifex.Application.Views` of another version, and none for other producers; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, not when it is set again, and not without `translation-text/1` (`locale-*`); the window's appearance pushed after `hello`, also while unknown, and on each change, an `override` that lists only known members, and not without `appearance/1` (`appearance-*`); the client's languages in `hello` reported on the connection, invalid ones, and ones without `client-languages/1` (`client-languages-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
 | [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)); an asynchronous check that starts and ends (`validation-pending-*`); revisions: one unit that changes two routes, a withheld publication, which takes a revision, and a checked field's version, which counts changes |
-| [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
-| [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
+| [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout; a trace context, also one that does not parse, which changes no reply (`trace-context/1`); handler timing, which a reply carries when asked (`handler-timing/1`) |
+| [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover; a set of a checked field, which raises its version through its announcements; the receipts of 64 writes retained; path writes (`field-paths/1`): a retry of a rejected or conflicting one, which repeats its receipt, row conflicts, an object member that became `null` and an object again, and a nested field |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out; field flush (`flush-*`): a flush that the client answers, and a connection without the feature, which is not asked |
 | [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request`; a close of a region whose close is pending, which joins it; a select that supersedes a pending close |
 | [`navigation`](scenarios/navigation) | Navigation paths (`navigation-path/1`): the path in the `hello` reply; a path region that appears after the `hello`, pushed as a `replace`; an opened route that pushes a page and one that goes back to it, each with its frame, `navigation-path` push and reply; the window's Back without history (`NoHistory`); a route a departure guard refuses, whose reply keeps the path; a route no route matches (`outcome: null`); a window without a path region, whose Back works and whose `open` is `unavailable`; a `navigation` request on a connection without the feature, which is `invalid-request` |
-| [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
+| [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; declined; asked with no handler registered; an output that does not decode; a timeout; registration outcomes and their precedence; a reply on a route nothing serves; a closed presentation, which ends its request without a push |
 | [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
 | [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
 | [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version and an unknown total before its reply, and the rows in its order with the count they start; a filter that changes the total, and a client that asks for no position past it; a query the source rejects, and an unknown filter `op` (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
-| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; an upload id that names no unclaimed upload, which is `invalid-input` |
+| [`blobs`](scenarios/blobs) | Blobs and uploads (`blobs/1`): the upload grant in the `hello` reply, and none without the feature; a blob member that crosses as a URL, and its change to `null`; a `set` of it, which is `invalid-request`; a blob in an editable row, which is no field path; an upload id that names no unclaimed upload, which is `invalid-input`; uploads (`upload` steps): claimed once, of another connection, expired after 10 minutes, larger than `maximumBytes`, and more unclaimed ones than the window holds |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views
 
 The scenarios use these Views. A producer runner implements them in its own language; their behaviour, not their
 code, is normative, and this section is all of it. Each root View is the root of its own window, and its route is its
-name. Each window has failure detail off and publishes each mutation step as soon as it ran: it does not coalesce
-changes by time ([publication units](../state-changes.md#publication-units)).
+name. Each window has failure detail off, offers [`handler-timing/1`](../README.md#handler-timing) as a producer does
+in development, and publishes each mutation step as soon as it ran: it does not coalesce changes by time
+([publication units](../state-changes.md#publication-units)).
 
 A test View's contract IR ([contract IR](../contract-ir.md)) has the View's name with an uppercase first letter as its
 `name` (`Notes`), its name as its `route` and only kind, and its members, commands, interactions and view requests in
@@ -429,7 +435,7 @@ shows it no longer executing, and an operation's terminal status carries that fr
 | `save` | none | always | fails with its declared failure `{"$case": "titleRequired"}` when `title` is empty; otherwise changes nothing |
 | `annotate` | `string` | always | sets the `detail` View's `lastAction` to the input; changes nothing in `notes` |
 | `slowImport` | `{source: string, limit: int32}` | while it is not executing | an operation, or an asynchronous command when invoked with `command`; runs until a `finish` mutation, and ignores its input; reports each `progress` mutation's `value` (a number) as its progress, in the mutation's unit; `finish` with `rows` appends rows with those labels as one change (one `add` with all their keys), with ids as `addRow` gives them, and succeeds with their number (`int32`); `finish` with `failure` fails with the declared failure `{"$case": "sourceMissing"}`; `finish` with `outcome: "cancelled"` ends cancelled after a `cancel`, and fails without one |
-| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts. It succeeds without an effect when the output declines, or when no presentation of the invoking connection registered `confirm`. An output of another shape fails the interaction, and the command with `failed`, as a timeout or a `failed` or `cancelled` reply does; a request that ends because its presentation closed ends the command `cancelled` |
+| `confirmClear` | none | when there are rows and it is not executing | asynchronous; asks the `confirm` interaction with `{question: "Clear all rows?"}` and clears the rows, as a reset, when the output `{accepted: boolean}` accepts. It succeeds without an effect when the output declines, and, asking nothing, when no presentation of the invoking connection registered `confirm`. An output of another shape fails the interaction, and the command with `failed`, as a timeout or a `failed` or `cancelled` reply does; a request that ends because its presentation closed ends the command `cancelled` |
 
 The `confirm` interaction's contract is the provided id `confirmContract`; its input is `{question: string}` and its
 output `{accepted: boolean}`.
@@ -486,13 +492,15 @@ A View with field paths ([field paths](../README.md#field-paths), `field-paths/1
 | Member | Type | Default and behaviour |
 | --- | --- | --- |
 | `address` | `{street: string, city: string}` | `{"street":"","city":""}`; settable, a checked field; its field paths are `["street"]` and `["city"]` |
+| `billing` | nullable `{name: string, address: {street: string, city: string}}` | `null`; settable, a checked field; its field paths are `["name"]`, `["address"]`, `["address","street"]` and `["address","city"]` |
 | `lines` | keyed collection of `{id: int32, label: string, quantity: int32}`, keyed by `id` | `[]`; its field paths are a row's `["label"]` and `["quantity"]` |
 
-Its `fields` are `{"address": {"version"}}`, starting at version 0. The `address` setter announces a change only when
-the new address differs from the current one, compared by value (both members), so an `assign` of an equal address
-changes nothing, not even the version. Its row editor replaces the row with the key and
-refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address`, and
-`insert`, `replaceAt` and `removeAt` with `member` `lines`.
+Its `fields` are `{"address": {"version"}, "billing": {"version"}}`, starting at version 0. The `address` and `billing`
+setters announce a change only when the new value differs from the current one, compared by value (every member), so an
+`assign` of an equal value changes nothing, not even the version. The model value `rowConflicts` (`boolean`, default
+`false`), set only by `arrange`, makes the row editor check a line as a whole ([row conflicts](../README.md#field-paths)). Its row editor replaces the row with the key and
+refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address` and of
+`billing` (an object or `null`), and `insert`, `replaceAt` and `removeAt` with `member` `lines`.
 
 ### `tabs`
 
@@ -530,10 +538,13 @@ its upload grant.
 | --- | --- | --- |
 | `avatar` | nullable `blob` | `null`; the model and `assign` give it as `{type, text, name}`, whose `text` is its UTF-8 content |
 | `lastUpload` | nullable `string` | `null`; the file name of the last upload `attach` claimed |
+| `attachments` | keyed collection of `{id: int32, name: string, preview: blob}`, keyed by `id` | `[]`; the model gives `preview` as `{type, text, name}`, as `avatar`; its field paths are a row's `["name"]`, and `preview`, which holds a blob, is none |
 
 | Command | Input | Available | Effect |
 | --- | --- | --- | --- |
-| `attach` | `upload` | always | claims the upload and sets `lastUpload` to its file name |
+| `attach` | `upload` | always | claims the upload (a later request that names it is `invalid-input`) and sets `lastUpload` to its file name |
+
+Its row editor replaces the attachment with the key.
 
 ### Mutations
 
