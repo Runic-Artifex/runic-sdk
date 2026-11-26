@@ -26,51 +26,86 @@ const crc32 = bytes => {
   return (c ^ 0xffffffff) >>> 0;
 };
 
-// A ZIP of stored entries, enough to craft manifests and directories; deflated entries come from the packer archives.
+// A ZIP of stored entries, enough to craft manifests and directories; deflated entries come from the packer archives,
+// except a few hand-written deflate streams. An entry's options override what its record says:
+// - method: the compression method (0 by default) in both headers, and payload: the bytes written as its data;
+// - crc: the CRC-32 (that of the entry's bytes by default), and size: the uncompressed size (their length).
+// A Zip's own options: prefix, bytes before the first entry, with offsets from the start of the file unless
+// relativeOffsets; zip64: "end-record" (a ZIP64 end record and locator, the classic fields at their markers) or
+// "extra-fields" (ZIP64 extra fields for every entry's sizes and offset, the classic fields at their markers).
 class Zip {
   entries = [];
   flags = 0;
   crcOverride = null; // [entry name, CRC-32]
   comment = Buffer.alloc(0);
   zip64Marker = false;
-  add(name, bytes) {
-    this.entries.push([name, typeof bytes === "string" ? utf8(bytes) : Buffer.from(bytes)]);
+  prefix = Buffer.alloc(0);
+  relativeOffsets = false;
+  zip64 = null;
+  add(name, bytes, options = {}) {
+    this.entries.push([name, typeof bytes === "string" ? utf8(bytes) : Buffer.from(bytes), options]);
     return this;
   }
   bytes() {
-    const out = [];
+    const out = [this.prefix];
     const central = [];
-    let offset = 0;
+    let offset = this.relativeOffsets ? 0 : this.prefix.length;
     const u16 = v => { const b = Buffer.alloc(2); b.writeUInt16LE(v); return b; };
     const u32 = v => { const b = Buffer.alloc(4); b.writeUInt32LE(v >>> 0); return b; };
-    for (const [name, data] of this.entries) {
+    const u64 = v => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(v)); return b; };
+    const extra = this.zip64 === "extra-fields";
+    const version = this.zip64 ? 45 : 20;
+    for (const [name, data, { method = 0, payload = data, crc: entryCrc, size = data.length }] of this.entries) {
       const nameBytes = utf8(name);
-      const crc = this.crcOverride?.[0] === name ? this.crcOverride[1] : crc32(data);
+      const crc = this.crcOverride?.[0] === name ? this.crcOverride[1] : entryCrc ?? crc32(data);
       const flags = this.flags | (/^[\x00-\x7f]*$/.test(name) ? 0 : 0x0800);
+      const field = value => (extra ? 0xffffffff : value);
+      const localExtra = extra ? Buffer.concat([u16(1), u16(16), u64(size), u64(payload.length)]) : Buffer.alloc(0);
+      const centralExtra = extra ? Buffer.concat([u16(1), u16(24), u64(size), u64(payload.length), u64(offset)]) : Buffer.alloc(0);
       const local = Buffer.concat([
-        u32(0x04034b50), u16(20), u16(flags), u16(0), u16(0), u16(0x0021), u32(crc), u32(data.length), u32(data.length),
-        u16(nameBytes.length), u16(0), nameBytes, data,
+        u32(0x04034b50), u16(version), u16(flags), u16(method), u16(0), u16(0x0021), u32(crc), u32(field(payload.length)),
+        u32(field(size)), u16(nameBytes.length), u16(localExtra.length), nameBytes, localExtra, payload,
       ]);
       central.push(Buffer.concat([
-        u32(0x02014b50), u16(20), u16(20), u16(flags), u16(0), u16(0), u16(0x0021), u32(crc), u32(data.length),
-        u32(data.length), u16(nameBytes.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), nameBytes,
+        u32(0x02014b50), u16(version), u16(version), u16(flags), u16(method), u16(0), u16(0x0021), u32(crc),
+        u32(field(payload.length)), u32(field(size)), u16(nameBytes.length), u16(centralExtra.length), u16(0), u16(0),
+        u16(0), u32(0), u32(field(offset)), nameBytes, centralExtra,
       ]));
       out.push(local);
       offset += local.length;
     }
     const directory = Buffer.concat(central);
-    const count = this.zip64Marker ? 0xffff : this.entries.length;
+    const count = this.zip64Marker || this.zip64 === "end-record" ? 0xffff : this.entries.length;
+    const records = [];
+    if (this.zip64 === "end-record") {
+      const n = this.entries.length;
+      records.push(
+        u32(0x06064b50), u64(44), u16(45), u16(45), u32(0), u32(0), u64(n), u64(n), u64(directory.length), u64(offset),
+        u32(0x07064b50), u32(0), u64(offset + directory.length), u32(1),
+      );
+    }
+    const end64 = this.zip64 === "end-record";
     return Buffer.concat([
-      ...out, directory,
-      u32(0x06054b50), u16(0), u16(0), u16(count), u16(count), u32(directory.length), u32(offset),
-      u16(this.comment.length), this.comment,
+      ...out, directory, ...records,
+      u32(0x06054b50), u16(0), u16(0), u16(count), u16(count), u32(end64 ? 0xffffffff : directory.length),
+      u32(end64 ? 0xffffffff : offset), u16(this.comment.length), this.comment,
     ]);
   }
 }
 
+// A deflate stream (RFC 1951) of one final stored block: deterministic, unlike a compressor's output.
+const storedBlock = bytes => {
+  const header = Buffer.alloc(5);
+  header[0] = 1;
+  header.writeUInt16LE(bytes.length, 1);
+  header.writeUInt16LE(~bytes.length & 0xffff, 3);
+  return Buffer.concat([header, bytes]);
+};
+
 const INDEX = utf8("<!doctype html><title>corpus</title>\n");
 const A = utf8("same content\n");
 const C = utf8("other content!\n");
+const EMPTY = Buffer.alloc(0);
 
 // One asset's manifest object, written in the packer's member order; `extra` members follow.
 const asset = (path, bytes, entryPoint, { cacheMode = "Revalidate", mediaType = "text/plain", ...extra } = {}) =>
@@ -133,6 +168,33 @@ add("valid-manifest-bom", "One leading UTF-8 byte order mark before the manifest
   new Zip().add("runic-assets.json", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), utf8(v1([index(), a]))]))
     .add("assets/index.html", INDEX).add("assets/a.txt", A),
   valid(baseline()));
+
+add("valid-zip64-end-record", "A ZIP64 end of central directory record and locator, with the classic end record's fields at their markers.",
+  (() => {
+    const zip = simple(v1([index(), a]));
+    zip.zip64 = "end-record";
+    return zip;
+  })(), valid(baseline()));
+add("valid-zip64-extra-fields", "ZIP64 extra fields hold every entry's sizes and offset, the classic fields at their markers.",
+  (() => {
+    const zip = simple(v1([index(), a]));
+    zip.zip64 = "extra-fields";
+    return zip;
+  })(), valid(baseline()));
+add("valid-leading-data", "Bytes before the first entry, such as a self-extracting stub, with offsets from the start of the file.",
+  (() => {
+    const zip = simple(v1([index(), a]));
+    zip.prefix = utf8("#!/bin/sh\nexit 0\n");
+    return zip;
+  })(), valid(baseline()));
+add("valid-length-minus-zero", "A length of -0 has no fraction and no exponent part: it is 0.",
+  new Zip().add("runic-assets.json", v1([index(), replaceOnce(asset("empty.txt", EMPTY, false), '"length":0', '"length":-0')]))
+    .add("assets/index.html", INDEX).add("assets/empty.txt", EMPTY),
+  valid([described("empty.txt", EMPTY, false), described("index.html", INDEX, true, "text/html")]));
+add("valid-path-not-white-space", "U+180E and U+200B are not white space (Unicode White_Space), so a path may start and end with them.",
+  new Zip().add("runic-assets.json", v1([index(), asset("\u180ea\u200b", A, false)]))
+    .add("assets/index.html", INDEX).add("assets/\u180ea\u200b", A),
+  valid([described("index.html", INDEX, true, "text/html"), described("\u180ea\u200b", A, false)]));
 
 add("version-unknown", "An unsupported version.", simple(manifest("runic.assets.archive/3", [index(), a])),
   invalid("manifest-version"));
@@ -243,6 +305,41 @@ add("zip64-marker", "An entry count of 0xFFFF in the end record without a ZIP64 
   zip.zip64Marker = true;
   return zip;
 })(), invalid("zip-invalid"));
+
+add("leading-data-relative-offsets", "Bytes before the first entry, with offsets counted from the first entry instead of the start of the file.",
+  (() => {
+    const zip = simple(v1([index(), a]));
+    zip.prefix = utf8("#!/bin/sh\nexit 0\n");
+    zip.relativeOffsets = true;
+    return zip;
+  })(), invalid("zip-invalid"));
+// a.txt with the entry options `options`, in the baseline archive.
+const withA = options => new Zip().add("runic-assets.json", v1([index(), a])).add("assets/index.html", INDEX)
+  .add("assets/a.txt", A, options);
+add("compression-bzip2", "a.txt has compression method 12 (BZip2): readers read methods 0 and 8 only.",
+  withA({ method: 12 }), invalid("zip-invalid"));
+add("deflate-invalid", "a.txt's deflate data has the reserved block type 3, so it does not inflate.",
+  withA({ method: 8, payload: Buffer.alloc(A.length, 0xff) }), invalid("zip-invalid"));
+add("deflate-truncated", "a.txt's deflate stream ends inside its stored block.",
+  withA({ method: 8, payload: storedBlock(A).subarray(0, 10) }), invalid("zip-invalid"));
+add("deflate-short", "a.txt's complete deflate stream inflates to 12 bytes, whose CRC-32 and digest it records, not to its length 13.",
+  new Zip().add("runic-assets.json", v1([index(), replaceOnce(a, sha(A), sha(A.subarray(0, 12)))])).add("assets/index.html", INDEX)
+    .add("assets/a.txt", A, { method: 8, payload: storedBlock(A.subarray(0, 12)), crc: crc32(A.subarray(0, 12)) }),
+  invalid("length-mismatch"));
+add("stored-size-short", "a.txt is stored with 12 bytes of data, whose CRC-32 and digest it records, and an uncompressed size of 13, its length.",
+  new Zip().add("runic-assets.json", v1([index(), replaceOnce(a, sha(A), sha(A.subarray(0, 12)))])).add("assets/index.html", INDEX)
+    .add("assets/a.txt", A, { payload: A.subarray(0, 12), crc: crc32(A.subarray(0, 12)) }),
+  invalid("length-mismatch"));
+add("length-negative", "A negative length.", simple(v1([index(), replaceOnce(a, '"length":13', '"length":-13')])),
+  invalid("asset-invalid"));
+add("path-no-break-space", "A path that starts with U+00A0, which is white space.",
+  new Zip().add("runic-assets.json", v1([index(), asset("\u00a0a.txt", A, false)])).add("assets/index.html", INDEX)
+    .add("assets/\u00a0a.txt", A),
+  invalid("path-invalid"));
+add("media-type-ideographic-space", "A media type that ends in U+3000, which is white space.",
+  simple(v1([index(), replaceOnce(a, "text/plain", "text/plain\u3000")])), invalid("asset-invalid"));
+add("manifest-lone-surrogate", "A path with a lone surrogate escape.",
+  simple(v1([index(), replaceOnce(a, '"a.txt"', '"a\\ud800.txt"')])), invalid("manifest-not-json"));
 
 // The packer's archives. What a reader reports is their manifest's metadata, once this script has inflated every entry
 // and checked its CRC-32, its length and its digest against the manifest itself.

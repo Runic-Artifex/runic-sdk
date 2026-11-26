@@ -15,7 +15,9 @@ import { validate } from "./json-schema.mjs";
 
 const directory = resolve(root, "specs/assets/vectors");
 const readJson = path => JSON.parse(readFileSync(path, "utf8"));
-const vectorFiles = readdirSync(directory).filter(name => name.endsWith(".json") && name !== "vector.schema.json").sort();
+// The directory also holds the conformance driver's cases.json (eng/conformance/README.md).
+const vectorFiles = readdirSync(directory)
+  .filter(name => name.endsWith(".json") && !["vector.schema.json", "cases.json"].includes(name)).sort();
 const cases = vectorFiles.flatMap(name => readJson(join(directory, name)).cases);
 
 test("the archive vectors are what generate.mjs writes", () => {
@@ -34,19 +36,22 @@ test("every archive vector file follows its schema, with unique case ids", () =>
   }
   const ids = cases.map(vector => vector.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(cases.length, 51);
+  assert.equal(cases.length, 66);
 });
 
-// The manifest entry of an archive, from its central directory (enough ZIP for the vectors).
+// The manifest entry of an archive, from its central directory (enough ZIP for the vectors): null for an archive
+// without a classic end record, or with ZIP64 records or offsets that do not lead to a central directory.
 function manifestOf(bytes) {
   const end = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  if (end < 0) return null;
+  if (end < 0 || bytes.readUInt16LE(end + 10) === 0xffff || bytes.readUInt32LE(end + 16) === 0xffffffff) return null;
+  if (bytes.readUInt32LE(bytes.readUInt32LE(end + 16)) !== 0x02014b50) return null;
   let central = bytes.readUInt32LE(end + 16);
   for (let index = 0; index < bytes.readUInt16LE(end + 10) && central + 46 <= bytes.length; index++) {
     const nameLength = bytes.readUInt16LE(central + 28);
     const name = bytes.subarray(central + 46, central + 46 + nameLength).toString("utf8");
     if (name === "runic-assets.json") {
       const local = bytes.readUInt32LE(central + 42);
+      if (local === 0xffffffff) return null;
       const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28);
       const data = bytes.subarray(start, start + bytes.readUInt32LE(central + 20));
       return bytes.readUInt16LE(central + 10) === 8 ? inflateRawSync(data) : data;
@@ -63,6 +68,7 @@ test("the manifest schema accepts the valid archives' manifests and rejects shap
   let checked = 0;
   for (const vector of cases) {
     const bytes = manifestOf(Buffer.from(vector.input.value, "base64"));
+    if (!bytes) continue;
     let manifest;
     try { manifest = JSON.parse(bytes.toString("utf8").replace(/^﻿/, "")); } catch { continue; }
     const errors = validate(schema, manifest);

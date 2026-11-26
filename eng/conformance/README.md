@@ -8,6 +8,7 @@ spike).
 | Corpus | Directory | Implementations |
 | --- | --- | --- |
 | Views protocol 4 (`views/4`) | [`specs/application/conformance`](../../specs/application/conformance/README.md) | `dotnet-views` (the .NET producer), `ts-client` (the TypeScript client) |
+| Assets archives (`assets/2`) | [`specs/assets/vectors`](../../specs/assets/vectors/README.md) | `dotnet-assets` (the .NET reader) |
 
 ## Run it
 
@@ -90,9 +91,11 @@ example `known-failure` with the issue of the follow-up pull request, or `unsupp
 | [`cli.ts`](cli.ts) | the command's entry point, which registers runic-sdk's corpus modules |
 | [`core/`](core/README.md) | the parts every corpus and repository shares: the command (runs, receipts, the status check, `cases`, `lint`), the adapter process client, cases, outcomes, status files and their comparison, the format names. runic-cli-sdk and runic-translations-sdk vendor it unchanged |
 | [`views/`](views) | the Views protocol 4 module: corpus loading, message writing and matching, producer steps, vectors |
+| [`assets/`](assets) | the Assets archive module: corpus loading and the `assets.read` comparison |
 | [`implementations.json`](implementations.json) | each implementation: corpus, roles, adapter build and command, status file |
 | [`adapters/ts-client.ts`](adapters/ts-client.ts) | the TypeScript client's adapter (message vectors; client scenarios are #1350) |
 | [`tests/dotnet/Runic.Application.Views.Conformance`](../../tests/dotnet/Runic.Application.Views.Conformance) | the .NET producer's adapter, which compiles the in-repository test Views and scenario transport |
+| [`tests/dotnet/Runic.Assets.Conformance`](../../tests/dotnet/Runic.Assets.Conformance) | the .NET Assets reader's adapter, on `Runic.Assets`' public API |
 | [`demo-gate.ts`](demo-gate.ts) | the status rules on a temporary copy of the corpus with three edits |
 
 **Adding an implementation:**

@@ -13,6 +13,8 @@
 // receipt to artifacts/conformance and compares the outcomes with the status file. It exits 1 on a blocking finding.
 // The command is core/driver.ts; this file registers runic-sdk's corpus modules.
 import { resolve } from "node:path";
+import { loadAssetsCorpus } from "./assets/corpus";
+import { runAssetsVector } from "./assets/read";
 import { createDriver, type CorpusModule } from "./core/driver";
 import { loadViewsCorpus } from "./views/corpus";
 import { runScenario } from "./views/scenarios";
@@ -26,6 +28,11 @@ export const corpora: Record<string, CorpusModule> = {
     root: "specs/application/conformance",
     load: loadViewsCorpus,
     run: (adapter, c, { supports, roles, timing }) => (c.kind === "vector" ? runVector(adapter, c.body, roles, c.roles, supports) : runScenario(adapter, c.body, supports, timing, roles)),
+  },
+  "assets/2": {
+    root: "specs/assets/vectors",
+    load: loadAssetsCorpus,
+    run: (adapter, c, { supports }) => runAssetsVector(adapter, c.body, supports),
   },
 };
 

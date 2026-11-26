@@ -578,7 +578,8 @@
         "specs/application/conformance",
         "specs/desktop/conformance",
         "eng/conformance",
-        "tests/dotnet/Runic.Application.Views.Conformance"
+        "tests/dotnet/Runic.Application.Views.Conformance",
+        "tests/dotnet/Runic.Assets.Conformance"
       ]
     },
     "tool-aot": {

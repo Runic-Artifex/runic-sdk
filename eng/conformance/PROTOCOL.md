@@ -110,13 +110,45 @@ driver plays the producer:
 - the read ops `client.state {route}`, `client.notifications {route}`, `client.diagnostics`, `client.connection`,
   `client.locale`, `client.appearance` and `client.requests {route, request}`.
 
+## Assets (`assets/2`)
+
+The corpus is [`specs/assets/vectors`](../../specs/assets/vectors/README.md): archives for the reader rules of
+`runic.assets.archive/1` and `/2`. Every case has the role `reader`.
+
+The adapter lists in `capabilities` the [reading modes](../../specs/assets/archive-v1.md#eager-and-lazy-reading) its
+reader has, `eager-reading` and `lazy-reading`, and `error-codes` when its reader reports the spec's
+[error codes](../../specs/assets/archive-v1.md#error-codes). The driver runs each case in every listed mode; with
+neither mode the case is `unsupported`.
+
+| op | args | ok |
+| --- | --- | --- |
+| `assets.read` | `{archive, mode}`: the archive's bytes in base64, and `eager` or `lazy` | `{result: "valid", assets}` or `{result: "invalid", stage, error?, message?}` |
+
+The adapter reads the archive with its implementation's default limits, in the mode's reader, then opens every asset
+the reader reports, in order, and reads it to its end. It answers:
+
+- `valid`, when the read and every open succeeded: `assets` in the reader's order, each with the reported `path`,
+  `mediaType`, `length`, `sha256`, `entryPoint` and `cacheMode`, and `served: {length, sha256}`, the byte count and
+  lower-case SHA-256 digest of the bytes the open gave;
+- `invalid`, when the read (`stage: "read"`) or an open (`stage: "open"`) failed: `error` is the spec's code, or
+  `unmapped:<what>` for a failure that is not the reader's documented kind; an implementation without codes leaves it
+  out for its documented kind. `message` is the failure's text, for the report.
+
+The driver compares as the [vectors README](../../specs/assets/vectors/README.md#running-a-case) says:
+
+- a valid case: the assets member by member and in order, every `served.length` equal to `length`, and in eager
+  reading every `served.sha256` equal to `sha256`;
+- an invalid case: `invalid`, from the read in eager reading; any `unmapped:` error fails; with `error-codes` the code
+  must equal the case's.
+
+A case passes when it passes in every mode. `expectLazy`, where a case has it, replaces `expect` in lazy reading.
+
 ## Other corpora
 
 Each corpus module adds ops under its own prefix:
 
 - Command Line: `cl.parse {catalog, argv, env}`, `cl.readEnvelope {input}`, `cl.write {case}`;
 - Translations: `tr.loadPack {artifact}`, `tr.format {pack, message, args, locale}`, `tr.resolveReference {text}`;
-- Assets: `assets.read {archive}`;
 - the host protocol: `host.*`, with guest and host roles.
 
 The framing, the results, the statuses and the driver core are the same for every corpus.

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The conformance adapter of the .NET Assets reader (eng/conformance/PROTOCOL.md, rax.conformance-adapter/1):
+       `bun run conformance dotnet-assets` builds and starts it. It is never packed or shipped (R7 T1-17), and it uses
+       only Runic.Assets' public API. -->
+  <Import Project="../../../eng/build/assets.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/assets.targets" />
+</Project>

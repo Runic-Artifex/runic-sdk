@@ -20,8 +20,8 @@
     <ProjectReference Include="../../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
     <EmbeddedResource Include="TestAssets/index.html" LogicalName="Runic.Assets.Tests.index.html" />
     <EmbeddedResource Include="TestAssets/app.css" LogicalName="Runic.Assets.Tests.app.css" />
-    <!-- The archive vectors, which ArchiveVectorTests reads. -->
-    <None Include="../../../specs/assets/vectors/*.json" Exclude="../../../specs/assets/vectors/vector.schema.json" Link="vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The archive vectors, which ArchiveVectorTests reads, without the schema and the driver's case list. -->
+    <None Include="../../../specs/assets/vectors/*.json" Exclude="../../../specs/assets/vectors/vector.schema.json;../../../specs/assets/vectors/cases.json" Link="vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
