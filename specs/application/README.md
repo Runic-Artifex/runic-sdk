@@ -212,7 +212,8 @@ Producer rules:
   most 64 strings of at most 64 characters each, is `rejected` with `invalid-request`. So is a second `hello` on a
   connection that already completed one, except a `hello` with another session on a connection that uses
   [`request-session/1`](#request-sessions), which replaces the connection.
-- A `hello` whose session a closed connection used is `released`.
+- A `hello` whose session a closed connection used is `released`. A producer remembers at least the latest 4,096
+  sessions of closed connections (the .NET producer that many, the oldest forgotten first); a forgotten session is new.
 - A `hello` whose session another open connection uses is `rejected` with `invalid-request`.
 - A successful reply lists every feature the producer implements, whether or not the request listed it.
 - **Requests before the `hello`.** A request other than `hello` and `receive` that arrives on a connection whose
@@ -639,8 +640,11 @@ A checked field accepts writes that are checked against the value and version th
 - A retry with the same `requestId` that repeats `expectedVersion` and either `expectedValue` and `value`, canonically
   equal to the original's, or the original's `splice` receives the original receipt and does not apply the write
   again. A retry repeats the original's form: a write with `expectedValue` and `value` does not repeat a write with a
-  splice, nor the reverse. Reusing a `requestId` for another write answers `conflict`. A producer retains receipts for
-  a bounded number of request ids.
+  splice, nor the reverse. Reusing a `requestId` for another write answers `conflict`. A producer retains the receipts
+  of at least the latest 64 request ids of each field, and remembers request ids it no longer retains for a while: a
+  retry of a forgotten receipt whose id it remembers answers `conflict` with the current field, and writes nothing. An id
+  it no longer remembers is a new write. The .NET producer retains 64 receipts and 256 KiB of them per field, the oldest
+  forgotten first, and remembers the latest 64 forgotten ids (`edits.a-field-retains-the-receipts-of-64-writes`).
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
 - A checked field is also a settable member ([contract IR](contract-ir.md#state-members)): a `set` changes it as any
   setter does, without the check. The field's version counts the changes the model announces, and a `set` raises it
@@ -761,6 +765,12 @@ paths below it. The receipts are those of a checked write, with these difference
 6. A `value` with which the member's value does not decode is `rejected` with `invalid-input`, and no receipt is
    retained.
 7. Otherwise the producer applies the value and retains the receipt.
+
+The receipts of steps 4, 5 and 7 are retained for the `requestId`, so a retry receives the same receipt: the
+`rejected` of a row that was gone, also after a row with the key was added again, and the `conflict` with the value and
+version it reported then. Steps 1, 2 and 6, and a step 3 that does not match, retain nothing. A producer retains the
+receipts of at least the latest 64 path writes of a route and remembers the ids it forgot, as for any checked write;
+the .NET producer keeps 64 and 256 KiB per route and the latest 64 forgotten ids.
 
 A producer keeps, for each route and field path whose member or row it publishes, the revision of the last publication
 that changed it, and a digest of the value it published, to compare the next publication with. A frame's indexed
@@ -1359,9 +1369,11 @@ The **window's locale** is the language the application chose for the window, or
 | push `locale` | `locale` | To each connection that uses the feature: the window's locale, a language tag of 1 to 64 ASCII letters, digits and `-`, starting with a letter and without an empty subtag (`de`, `pt-BR`), or `null` when the application sets none. A window-level push without a `route`. |
 
 - **When.** The producer pushes `locale` to a connection after its `hello` succeeded, when the window has a locale,
-  and to every connection that uses the feature each time the application changes it, also to `null`. The last
-  push a connection receives is the window's locale. A producer may send the first push before the `hello` reply
-  reaches the page.
+  and to every connection that uses the feature each time the application changes it, also to `null`. Setting the
+  locale the window already has, compared exactly, pushes nothing; a tag is pushed as the application gave it, its
+  case unchanged (`pt-br` stays `pt-br`). An application that sets a value that is not such a tag is refused by the
+  producer's API and changes nothing (.NET throws `ArgumentException`). The last push a connection receives is the
+  window's locale. A producer may send the first push before the `hello` reply reaches the page.
 - **The application owns it.** Only the application sets the window's locale; a page that offers a language switch
   asks the application, for example with a command. Every page of the window therefore shows one language, and the
   application can keep the choice with its settings. A page that changes its runtime's locale itself is set back by
@@ -1402,7 +1414,7 @@ desktop:
 | `textScale` | A number greater than 0, the desktop's text size as a factor of the default (1 for the default, 1.5 for half as large again), or `null`. |
 | `accentColor` | The desktop's accent colour as `#rrggbb` in lowercase, or `null`. |
 | `systemColors` | While `contrast` is `"forced-colors"`, the palette the desktop forces, as an object of `#rrggbb` colours named after the CSS system colours: `canvas`, `canvasText`, `linkText`, `grayText`, `highlight`, `highlightText`, `buttonFace`, `buttonText`; otherwise `null`. |
-| `override` | Optional. An array of member names, among `"colorScheme"`, `"contrast"` and `"reducedMotion"`, whose value the host decided for this window rather than read from the desktop, such as the [appearance override of a hosted region](../desktop/host-protocol.md#appearance-in-a-region-region-appearance1). Absent means none. |
+| `override` | Optional. An array of member names, among `"colorScheme"`, `"contrast"` and `"reducedMotion"`, whose value the host decided for this window rather than read from the desktop, such as the [appearance override of a hosted region](../desktop/host-protocol.md#appearance-in-a-region-region-appearance1). It lists only members whose value in the push is not `null`: a member the host decided but does not know is left out. Absent means none. |
 
 `null`, and a member that is absent, mean that the host does not know the preference. A window-level push without a
 `route`.
@@ -1524,7 +1536,11 @@ from the page:
 The `.NET` producer logs each report as event 1150 `PageError` (Error) in the category
 `Runic.Application.Views.Page`, at most 10 per connection and 30 per window a minute, and event 1151
 `PageErrorsSuppressed` or 1152 `WindowPageErrorsSuppressed` (Warning) once a minute when it starts counting. It cuts
-`message` and `url` at 2048 characters, `stack` at 8192 and `name` at 128, and starts every stack line with `    | `.
+`message` and `url` at 2048 characters, `stack` at 8192 and `name` and `route` at 128, and starts every stack line with
+`    | `. Its minutes are fixed, not sliding: a connection's or the window's minute starts with the first report after
+its previous minute ended. A report it logs carries in `dropped` the page's own count, the reports its connection did
+not log since the connection's last logged one, and those the window did not log since any connection's last logged
+one; the window's count therefore goes with the next report logged on any of its connections.
 
 ## Trace context and handler timing
 
@@ -1551,18 +1567,21 @@ Feature `trace-context/1`. A client lists it when it implements it; a producer t
 
 ### Handler timing
 
-Feature `handler-timing/1`. A client lists it when it implements it. A producer lists it **only in development**:
-`Runic.Application.Views` lists it when `DOTNET_ENVIRONMENT`, or else `ASPNETCORE_ENVIRONMENT`, is `Development`, which
-`dotnet runic dev` sets, as for failure detail.
+Feature `handler-timing/1`. A client lists it when it implements it. A producer lists it **only in development**, the
+mode in which it may also send [failure detail](#failure-detail); how an application runs a producer in development is
+the producer's own configuration ([language mappings](language-mappings.md)). `Runic.Application.Views` lists it when
+`DOTNET_ENVIRONMENT`, or else `ASPNETCORE_ENVIRONMENT`, is `Development`, which `dotnet runic dev` sets.
 
 - **Client.** On a connection that uses the feature, a request of a call MAY carry `timing: true`, which asks for the
   handler's timing. `@runic-artifex/views` implements the feature in its development build only, and sends `timing` only
   for calls that a reader of the development Bridge-call channel follows.
 - **Producer.** The successful or failed reply to a request with `timing: true` carries `handler: { name, duration }`
-  when the producer ran a handler for it: `name` is the handler, such as `EditorViewModel.Save` (the ViewModel type and
-  the C# member), and `duration` the milliseconds from the start of the call to its end, as the producer measured them.
-  `Runic.Application.Views` times the commands, setters, checked writes and operation admissions, the requests it
-  traces as `runic.bridge.*`; other requests carry no `handler`. A producer without the feature in use never sends it.
+  when the producer ran a handler for it: `name` names the handler in the producer's own terms, for a person to read
+  and never to parse, and `duration` is the milliseconds from the start of the call to
+  its end, as the producer measured them. A producer times the handlers of commands, setters, checked writes (path
+  writes included, with the row editor as their handler) and operation admissions; a `can`, and the other requests,
+  carry no `handler`. `Runic.Application.Views` names the ViewModel type and the C# member (`EditorViewModel.Save`) and
+  times the requests it traces as `runic.bridge.*`. A producer without the feature in use never sends it.
 - The client places the handler on its own clock between sending the request and receiving its reply; the producer's
   clock is never compared with the page's.
 
@@ -1772,8 +1791,10 @@ values that are not numbers. `progress` stays absent until the first report.
 ### Limits and window close
 
 - A window retains at most 64 operations, 32 terminal results, 128 expired ids and 256 KiB of results, declared
-  failures and stream replay. Running streams reserve their bound against a 256 KiB window budget; the default stream
-  bound is 128 items and 64 KiB. An overflowing stream is terminal and reports `stream-overflow`.
+  failures and stream replay. A result that would exceed the 256 KiB expires the oldest terminal operations until it
+  fits, rather than being refused; one that still does not fit is kept without its value, with
+  `delivery` `result-too-large`, and a declared failure without `failure`, with the same `delivery`. Running streams
+  reserve their bound against a 256 KiB window budget; the default stream bound is 128 items and 64 KiB. An overflowing stream is terminal and reports `stream-overflow`.
 - Closing a window stops admission: `start` answers `owner-closing`, and an asynchronous `command` answers `released`.
   The window waits up to its close timeout for running operations and asynchronous commands, and, with `presented/1`,
   for the pages to acknowledge the close ([window close](#window-close)), then requests the cancellation of what
@@ -2175,9 +2196,10 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
 ### Blobs
 
 - A `blob` value is `{url, type, size, name}`. The producer writes it in state, in a collection row, in a result or in
-  any other value that goes to the page; a page never sends one (a settable member that holds a blob is read-only for
-  the page, and a request that sets it is `invalid-input`). Blob values do not depend on the feature: they are part of
-  the contract, and a producer writes them on every connection.
+  any other value that goes to the page; a page never sends one. A member that holds a blob anywhere in its value goes
+  only to the page and is never `settable` ([contract IR](contract-ir.md#state-members)), so a `set` of it is `rejected`
+  with `invalid-request` as for any member that is not settable. Blob values do not depend on the feature: they are
+  part of the contract, and a producer writes them on every connection.
 - `url` is an absolute URL that the window's host serves with `GET` and `HEAD`, or the empty string when the host
   serves no blobs. It is a **capability**: it contains at least 128 random bits, it is valid only for the window that
   wrote it, and the producer serves it only while a holder keeps it. A state member holds the blobs of its latest
@@ -2185,7 +2207,9 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   blobs of its latest write, until it is removed or replaced. The producer MUST NOT release a blob that state or a
   row still holds. A blob in a result or another value is held until the route is released; a producer MAY release
   the least recently written of these earlier, to bound what a long-lived route holds, and its model MAY release any
-  blob explicitly. Closing the window
+  blob explicitly. An explicit release ends the blob's URL at once, whatever holds it, also state or a row: the
+  MUST NOT above binds the producer, not its model. The member keeps its value, and the next time the producer writes
+  the blob, such as in a later publication of a changed member or a full state, it gets a new URL. Closing the window
   releases every URL. One blob of the producer's model has one URL per window, so an unchanged member keeps its
   encoding; a blob written again after it was released gets a new URL.
 - A response to a blob URL has the blob's `type` as `Content-Type`, `X-Content-Type-Options: nosniff`, a
@@ -2194,6 +2218,10 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   `Cache-Control: private, max-age=31536000, immutable` and an `ETag`; the content behind a URL never changes. A blob
   whose length the producer knows answers a single byte range (`Range: bytes=a-b`, `206`, `416`). A released or
   unknown URL answers `404`.
+- **Row editors.** A [field path](#field-paths) write of a row copies the producer's row, so the copy keeps the blobs
+  the row holds, as it keeps everything the wire does not carry. A producer that can copy a row only from its wire
+  form cannot copy a blob in it, and declares no field paths below such rows. The .NET producer also declares a blob
+  member of a row as a field path; a write of it never decodes and is `rejected` with `invalid-input`.
 
 ### Uploads
 
@@ -2205,15 +2233,17 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   the header `X-Runic-Upload-Token: {token}` and `X-Runic-Upload-Name` with the file name, percent-encoded as UTF-8.
   The host answers `201` with `{"ok": true, "upload": {id, name, type, size}}`, or an error
   `{"ok": false, "error": {kind, reason, message}}`: `403` (`forbidden`, a missing or wrong token or origin), `413`
-  (`too-large`, larger than `maximumBytes`), `429` or `507` (`capacity`, the window receives too many uploads at once,
-  or its unclaimed uploads fill its space), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
+  (`too-large`, larger than `maximumBytes`; a `Content-Length` above it is refused before the body is read), `429` or
+  `507` (`capacity`, the window receives too many uploads at once, or its unclaimed uploads fill its space), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
   (`invalid-request` or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
   (`failed`, the host could not store it). An upload that fails in any way, including a client that goes away, keeps
   none of the window's upload slots or space.
 - An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and
   only while no request claimed it; any other id is `invalid-input`. The producer's model claims an upload when it
   reads it; afterwards the id is invalid. An unclaimed upload is deleted when its connection closes, when the window
-  closes, or 10 minutes after it arrived. Everything about an upload — its bytes, type and name — comes from the page
+  closes, or 10 minutes after it arrived. The window bounds the bytes of its unclaimed uploads, and MAY also bound their
+  number, answering `507` with `capacity`; the .NET producer bounds the bytes only (1 GiB by default), so empty uploads
+  have no bound until they expire. Everything about an upload — its bytes, type and name — comes from the page
   and is untrusted: the producer reduces the name to a file name.
 
 ### What a host enforces

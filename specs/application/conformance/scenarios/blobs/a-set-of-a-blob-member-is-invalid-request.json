@@ -1,0 +1,28 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.a-set-of-a-blob-member-is-invalid-request.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1"],
+  "description": "A member that holds a blob is never settable by the page: a set of it is rejected with invalid-request, as for any member that is not settable.",
+  "view": "files",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-files": {"kind":"request"},
+    "set-avatar": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null},"presentation":"ok"},"replyTo":"open-files"},
+    {"send":{"kind":"set","route":"files","member":"avatar","edit":1,"value":{"url":"http://conformance.test/_runic/blobs/x","type":"text/plain","size":1,"name":"a.txt"}},"id":"set-avatar"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"replyTo":"set-avatar"}
+  ]
+}

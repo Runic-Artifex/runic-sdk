@@ -149,6 +149,16 @@ class ScenarioRun {
       await a.call("views.setLocale", { locale: step.setLocale });
     } else if ("setAppearance" in step) {
       await a.call("views.setAppearance", { appearance: step.setAppearance });
+    } else if ("upload" in step) {
+      const conn = this.connectionOf(step);
+      const u = step.upload;
+      const answer = await a.call("views.upload", { conn, name: u.name, type: u.type, text: u.text ?? "", size: u.size ?? null });
+      try {
+        this.messages.match(step.answer, { status: answer?.status, body: answer?.body }, null);
+      } catch (e) {
+        if (e instanceof ScenarioFailure) throw new ScenarioFailure(`The upload's answer: ${e.message}\n  actual: ${abbreviate(answer, 1200)}`);
+        throw e;
+      }
     } else if ("expect" in step) {
       await this.settle();
       const e = step.expect;

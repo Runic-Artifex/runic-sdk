@@ -7,14 +7,20 @@ namespace Runic.Application.Testing.Tests.Conformance;
 
 // The files View (specs/application/conformance/README.md, "Test Views"): blobs/1. avatar is a nullable blob that the
 // model and the assign mutation give as {type, text, name}, the text being its UTF-8 content; attach takes an upload and
-// sets lastUpload to the upload's file name.
+// claims the upload and sets lastUpload to its file name.
 internal sealed class FilesViewModel : ConformanceModel
 {
     private RunicBlob? _avatar;
     private string? _lastUpload;
 
     private FilesViewModel() =>
-        AttachCommand = new(_ => true, upload => LastUpload = ((RunicUpload)upload!).FileName);
+        AttachCommand = new(_ => true, input =>
+        {
+            // Claims the upload, so a later request that names it is invalid input (README, "Uploads").
+            var upload = (RunicUpload)input!;
+            upload.Discard();
+            LastUpload = upload.FileName;
+        });
 
     public RunicBlob? Avatar
     {

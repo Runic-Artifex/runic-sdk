@@ -104,6 +104,8 @@ internal static class AdapterProgram
     {
         using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false });
+        // As in the test windows (ConformanceViews), which offer handler-timing/1 as a producer does in development.
+        BridgeDispatcher.For(transport).HandlerTiming = true;
         var hello = new JsonObject
         {
             ["kind"] = "hello", ["protocol"] = 4, ["session"] = "s-describe",
@@ -302,8 +304,10 @@ internal sealed class ScenarioState : IDisposable
                 BridgeDispatcher.For(_transport).SetLocale(args["locale"]?.GetValue<string>());
                 return new JsonObject();
             case "views.setAppearance":
-                BridgeDispatcher.For(_transport).SetAppearance(ReadAppearance(args["appearance"] as JsonObject));
+                ConformanceHost.SetAppearance(_transport, args["appearance"] as JsonObject);
                 return new JsonObject();
+            case "views.upload":
+                return await ConformanceHost.UploadAsync(_transport, Connection(args), args).ConfigureAwait(false);
             case "views.readMember":
                 return new JsonObject { ["value"] = _window.ReadMember(AdapterProgram.Str(args, "member"))?.DeepClone() };
             case "views.provide":
@@ -345,37 +349,6 @@ internal sealed class ScenarioState : IDisposable
     {
         var name = AdapterProgram.Str(args, "conn");
         return _connections.GetValueOrDefault(name) ?? throw new AdapterFailure("failed", $"Unknown connection {name}.");
-    }
-
-    // ProducerScenarioRunner.ReadAppearance: the members of an appearance push as the DesktopAppearance a host sets.
-    private static Runic.Platform.DesktopAppearance? ReadAppearance(JsonObject? members)
-    {
-        if (members is null) return null;
-        static Runic.Platform.DesktopAccentColor? Color(JsonNode? node) => node?.GetValue<string>() is { } text
-            ? new(Convert.ToInt32(text[1..3], 16) / 255d, Convert.ToInt32(text[3..5], 16) / 255d, Convert.ToInt32(text[5..7], 16) / 255d)
-            : null;
-        var colors = members["systemColors"] as JsonObject;
-        return new Runic.Platform.DesktopAppearance(
-            members["colorScheme"]?.GetValue<string>() switch
-            {
-                "light" => Runic.Platform.DesktopColorScheme.Light,
-                "dark" => Runic.Platform.DesktopColorScheme.Dark,
-                _ => Runic.Platform.DesktopColorScheme.NoPreference,
-            },
-            Color(members["accentColor"]), ReducedMotion: members["reducedMotion"]?.GetValue<bool>())
-        {
-            Contrast = members["contrast"]?.GetValue<string>() switch
-            {
-                "no-preference" => Runic.Platform.DesktopContrast.NoPreference,
-                "more" => Runic.Platform.DesktopContrast.More,
-                "forced-colors" => Runic.Platform.DesktopContrast.ForcedColors,
-                _ => null,
-            },
-            TextScale = members["textScale"]?.GetValue<double>(),
-            SystemColors = colors is null ? null : new(Color(colors["canvas"])!, Color(colors["canvasText"])!, Color(colors["linkText"])!,
-                Color(colors["grayText"])!, Color(colors["highlight"])!, Color(colors["highlightText"])!, Color(colors["buttonFace"])!,
-                Color(colors["buttonText"])!),
-        };
     }
 
     public void Dispose()

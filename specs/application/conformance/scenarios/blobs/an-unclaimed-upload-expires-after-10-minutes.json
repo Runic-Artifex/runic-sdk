@@ -1,0 +1,31 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.an-unclaimed-upload-expires-after-10-minutes.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1","virtual-clock"],
+  "description": "An upload that no request claimed is deleted 10 minutes after it arrived: its id is invalid-input then.",
+  "view": "files",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-files": {"kind":"request"},
+    "late": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "upload": {"kind":"provided"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null},"presentation":"ok"},"replyTo":"open-files"},
+    {"upload":{"name":"notes.txt","type":"text/plain","text":"hello"},"answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"upload"},"name":"notes.txt","type":"text/plain","size":5}}}},
+    {"advance":600000},
+    {"send":{"kind":"command","route":"files","member":"attach","input":{"id":{"$id":"upload"},"name":"notes.txt","type":"text/plain","size":5}},"id":"late"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-input","message":{"$any":"string"}}},"replyTo":"late"}
+  ]
+}

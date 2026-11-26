@@ -114,7 +114,7 @@ A `value` or `selection` member may also have:
 
 | Member | Content |
 | --- | --- |
-| `settable` | The page sets it: the client has `set{Name}`. `declaringType` names the source type that declares the setter. It is informational: the client's documentation names no source type, so that it fits a producer in any language. |
+| `settable` | The page sets it: the client has `set{Name}`. Never for a member whose value can hold a `blob`, which only goes to the page ([blobs](README.md#blobs)). `declaringType` names the source type that declares the setter. It is informational: the client's documentation names no source type, so that it fits a producer in any language. |
 | `checked` | A checked field ([protocol](README.md#checked-writes)): the client has `write{Name}` and a field descriptor, which also sets the field with `set{Name}`. A checked field MUST be `settable`, and the schema requires it. The .NET producer makes every settable value member checked; another producer may have settable members that are not. |
 | `constraints` | Of a checked field: the [constraints](#constraints) a page may mirror on its input |
 | `fieldPaths` | The [field paths](#field-paths) below a checked object member, or below the rows of a collection with `rowEditor` |
