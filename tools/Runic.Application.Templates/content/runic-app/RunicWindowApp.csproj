@@ -43,7 +43,7 @@
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <NuGetLockFilePath Condition="'$(PublishAot)' == 'true'">packages.aot.lock.json</NuGetLockFilePath>
 <!--#endif -->
-<!--#if (tests) -->
+<!--#if (tests && !hasLibrary) -->
     <!-- The test project has its own sources and build output. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);RunicWindowApp.Tests/**</DefaultItemExcludes>
 <!--#endif -->
@@ -76,6 +76,15 @@
     <PackageReference Include="Runic.Application.Views.CsWebUi" Version="__RUNIC_CSWEBUI_NUGET_VERSION__" />
 <!--#endif -->
   </ItemGroup>
+<!--#if (hasLibrary) -->
+  <ItemGroup>
+    <!-- The RunicCoreLibrary library. Its build generates the TypeScript clients of its Views into its frontend package,
+         runic-library-starter, and builds the package; this project's generated clients import them from there instead
+         of generating copies. This project still generates the C# Bridges of the library's ViewModels. -->
+    <ProjectReference Include="../RunicCoreLibrary/RunicCoreLibrary.csproj" />
+    <RunicApplicationFrontendClientModule Include="RunicCoreLibrary" Specifier="runic-library-starter/generated" />
+  </ItemGroup>
+<!--#endif -->
 <!--#if (translations) -->
   <!-- Runic Translations: one catalog, Frontend/translations/runic.json, for the page and C#. The build generates AppText
        (the messages, the References factories for ViewModels and AppTextCatalog.Registration) and checks every

@@ -16,7 +16,11 @@
       "detail": "dotnet runic dev",
       "type": "process",
       "command": "dotnet",
+//#if (hasLibrary)
+      "args": ["runic", "dev", "--project", "RunicWindowApp/RunicWindowApp.csproj"],
+//#else
       "args": ["runic", "dev"],
+//#endif
       "dependsOn": ["dotnet: tool restore"],
       "isBackground": true,
       "problemMatcher": {
@@ -46,7 +50,11 @@
       "detail": "dotnet runic dev --no-window",
       "type": "process",
       "command": "dotnet",
+//#if (hasLibrary)
+      "args": ["runic", "dev", "--no-window", "--project", "RunicWindowApp/RunicWindowApp.csproj"],
+//#else
       "args": ["runic", "dev", "--no-window"],
+//#endif
       "dependsOn": ["dotnet: tool restore"],
       "isBackground": true,
       "problemMatcher": {
@@ -76,7 +84,11 @@
       "detail": "dotnet runic dev --browser",
       "type": "process",
       "command": "dotnet",
+//#if (hasLibrary)
+      "args": ["runic", "dev", "--browser", "--project", "RunicWindowApp/RunicWindowApp.csproj"],
+//#else
       "args": ["runic", "dev", "--browser"],
+//#endif
       "dependsOn": ["dotnet: tool restore"],
       "isBackground": true,
       "problemMatcher": {
@@ -105,7 +117,11 @@
       "detail": "dotnet build",
       "type": "process",
       "command": "dotnet",
+//#if (hasLibrary)
+      "args": ["build", "${workspaceFolder}/RunicWindowApp/RunicWindowApp.csproj", "-p:GenerateFullPaths=true", "-consoleLoggerParameters:NoSummary;ForceNoAlign"],
+//#else
       "args": ["build", "${workspaceFolder}/RunicWindowApp.csproj", "-p:GenerateFullPaths=true", "-consoleLoggerParameters:NoSummary;ForceNoAlign"],
+//#endif
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": "$msCompile"
     },
@@ -121,7 +137,11 @@
       "detail": "dotnet runic doctor",
       "type": "process",
       "command": "dotnet",
+//#if (hasLibrary)
+      "args": ["runic", "doctor", "--project", "RunicWindowApp/RunicWindowApp.csproj"],
+//#else
       "args": ["runic", "doctor"],
+//#endif
       "dependsOn": ["dotnet: tool restore"],
       "problemMatcher": []
     }

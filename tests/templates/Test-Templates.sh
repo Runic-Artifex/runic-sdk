@@ -318,6 +318,19 @@ serve_and_fetch() {
   if [[ "$expect_development" == true ]]; then
     local page
     for page in "${pages[@]}"; do expect_served 'http://127.0.0.1:' "$page" "development document $page"; done
+    # served_module (verify_library_template): a page module that the development server must transform, with the text
+    # its answer must contain, such as the resolved path of a workspace package it imports.
+    if [[ -n "${served_module:-}" ]]; then
+      local origin
+      origin="$(grep -o 'http://127\.0\.0\.1:[0-9]*' "$document" | head -n 1)"
+      if ! curl -fsS -D "$document.module.headers" "$origin/$served_module" > "$document.module"; then
+        echo "The development server at $origin did not serve $served_module." >&2
+        head -c 2000 "$document.module" >&2 || true
+        tail -n 80 "$log" >&2
+        exit 1
+      fi
+      expect_served "$served_module_expect" "$document.module" "module $served_module"
+    fi
     # An IDE or terminal may end only dotnet runic dev; it must stop the
     # frontend and native host processes it started.
     kill -TERM "$served_group"
@@ -1308,6 +1321,211 @@ check_application_id() {
   fi
 }
 
+# --library <Name> (D081.5): a solution of the application, a client library with a View and its frontend package, and
+# one JavaScript workspace at the root with the lock for the selected manager. It is checked as a fresh clone, with the
+# documented commands only and no manual step: dotnet build of the solution installs the workspace once at its root,
+# builds the library's package and then the application's page, which imports the package; the frontends' type checks
+# and tests pass; dotnet runic dev, from a clean checkout again, serves the page, whose module resolves the built package
+# (CS-WebUI variants, whose served documents the checks fetch). The flags are the trailing ones of verify_template.
+verify_library_template() {
+  local framework="$1"
+  local manager="$2"
+  local host="$3"
+  local view_models="$4"
+  local tests="" flag
+  for flag in "${@:5}"; do
+    case "$flag" in
+      tests) tests=tests ;;
+      *) echo "Unknown verify_library_template flag: $flag" >&2; exit 2 ;;
+    esac
+  done
+  local frontend_options=(--frontend "$framework") framework_name="${framework^}"
+  if [[ "$framework" == angular-vite ]]; then frontend_options=(--frontend angular --angular-build vite); framework_name=AngularVite; fi
+  local project_name="AcceptanceLibrary${framework_name}${manager^}${host^}"
+  local library_name="$project_name.Core"
+  local output="$template_tmp/library-$framework-$manager-$host-$view_models"
+  local app="$output/$project_name" library="$output/$library_name"
+  local selected_lock
+  case "$manager" in
+    npm) selected_lock=package-lock.json ;;
+    pnpm) selected_lock=pnpm-lock.yaml ;;
+    bun) selected_lock=bun.lock ;;
+  esac
+  local tests_options=()
+  [[ "$tests" == tests ]] && tests_options=(--tests)
+
+  phase generate
+  dotnet new runic-app --name "$project_name" --output "$output" "${frontend_options[@]}" --package-manager "$manager" \
+    --host "$host" --view-models "$view_models" --editor vscode --library "$library_name" "${tests_options[@]}"
+
+  # The solution lists the application first, so Visual Studio starts it.
+  local first_project
+  first_project="$(grep -o '<Project Path="[^"]*"' "$output/$project_name.slnx" | head -n 1)"
+  [[ "$first_project" == "<Project Path=\"$project_name/$project_name.csproj\"" ]]
+  grep -Fq "<Project Path=\"$library_name/$library_name.csproj\" />" "$output/$project_name.slnx"
+  if [[ "$tests" == tests ]]; then
+    grep -Fq "<Project Path=\"$project_name.Tests/$project_name.Tests.csproj\" />" "$output/$project_name.slnx"
+    grep -Fq "<ProjectReference Include=\"../$project_name/$project_name.csproj\"" "$output/$project_name.Tests/$project_name.Tests.csproj"
+    test -f "$output/global.json"
+  fi
+  # The solution's folder has what every project shares; the application's folder has only the application.
+  local shared
+  for shared in .config/dotnet-tools.json .gitignore .vsconfig .vscode/launch.json .vscode/tasks.json package.json README.md \
+    "$selected_lock"; do
+    test -f "$output/$shared"
+  done
+  for shared in .config .gitignore .vsconfig .vscode global.json package-lock.json pnpm-lock.yaml bun.lock "$project_name.Tests"; do
+    if [[ -e "$app/$shared" ]]; then
+      echo "The library variant's application folder has $shared, which belongs to the solution's folder." >&2
+      exit 1
+    fi
+  done
+  # One lock, the workspace root's: the frontends have none of their own.
+  local other_lock
+  for other_lock in package-lock.json pnpm-lock.yaml bun.lock; do
+    [[ "$other_lock" == "$selected_lock" ]] || test ! -e "$output/$other_lock"
+    test ! -e "$app/Frontend/$other_lock"
+    test ! -e "$library/Frontend/$other_lock"
+  done
+  [[ "$manager" != pnpm ]] || grep -Fxq "  - $library_name/Frontend" "$output/pnpm-workspace.yaml"
+  [[ "$manager" == pnpm ]] || test ! -e "$output/pnpm-workspace.yaml"
+  test ! -e "$app/Frontend/pnpm-workspace.yaml"
+  # --library leaves out what it does not combine with yet.
+  test ! -e "$output/flake.nix"
+  test ! -e "$app/flake.nix"
+  # The workspace: both frontends, the package manager, and the application frontend's dependency on the library's package.
+  local library_package app_package
+  library_package="$(bun -e 'process.stdout.write(require(process.argv[1]).name)' "$library/Frontend/package.json")"
+  app_package="$(bun -e 'process.stdout.write(require(process.argv[1]).name)' "$app/Frontend/package.json")"
+  [[ -n "$library_package" && "$library_package" != "$app_package" ]]
+  bun -e '
+    const [root, app, library, manager, dependency] = process.argv.slice(1).map((value, index) => index < 3 ? require(value) : value);
+    const fail = message => { console.error(message); process.exit(1); };
+    if (JSON.stringify(root.workspaces) !== JSON.stringify([process.argv[6], process.argv[7]])) fail(`workspaces: ${root.workspaces}`);
+    for (const manifest of [root, app, library]) if (!manifest.packageManager?.startsWith(`${manager}@`)) fail(`packageManager: ${manifest.packageManager}`);
+    if (app.dependencies[library.name] !== dependency) fail(`the application frontend depends on ${library.name} ${app.dependencies[library.name]}`);
+    if (!library.scripts?.build) fail("the library package has no build script");
+  ' "$output/package.json" "$app/Frontend/package.json" "$library/Frontend/package.json" "$manager" \
+    "$([[ "$manager" == npm ]] && echo '*' || echo 'workspace:*')" "$library_name/Frontend" "$project_name/Frontend"
+  # The projects: the library is a client library that declares a View, the application references and maps it.
+  grep -Fq '<RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>' "$library/$library_name.csproj"
+  grep -Fq "public sealed partial class AboutView : " "$library/Views.cs"
+  grep -Fq "namespace $library_name;" "$library/AboutViewModel.cs"
+  grep -Fq "<ProjectReference Include=\"../$library_name/$library_name.csproj\" />" "$app/$project_name.csproj"
+  grep -Fq "<RunicApplicationFrontendClientModule Include=\"$library_name\" Specifier=\"$library_package/generated\" />" "$app/$project_name.csproj"
+  grep -Fq 'services.AddScoped<AboutViewModel>();' "$app/WorkspaceServices.cs"
+  grep -Fq 'public AboutViewModel About { get; }' "$app/WorkspaceViewModel.cs"
+  if grep -vE 'RunicApplicationFrontend(WindowProject|ClientModule)\b' "$app/$project_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge'; then
+    echo "The library variant's application declares settings the Runic packages default." >&2
+    exit 1
+  fi
+  if grep -vE 'RunicApplicationFrontendClientLibrary>' "$library/$library_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge'; then
+    echo "The library variant's library declares settings the Runic packages default." >&2
+    exit 1
+  fi
+  # VS Code opens the solution's folder: its paths lead into the application's (F10).
+  grep -Fq "\"program\": \"\${workspaceFolder}/$project_name/bin/Debug/net10.0/$project_name\"" "$output/.vscode/launch.json"
+  grep -Fq "\"webRoot\": \"\${workspaceFolder}/$project_name/Frontend\"" "$output/.vscode/launch.json"
+  grep -Fq "\"args\": [\"runic\", \"dev\", \"--project\", \"$project_name/$project_name.csproj\"]," "$output/.vscode/tasks.json"
+  if grep -nE '"\$\{workspaceFolder\}/(bin|obj|Frontend)/' "$output/.vscode/launch.json"; then
+    echo "The library variant's launch.json names a path below the solution's folder instead of the application's." >&2
+    exit 1
+  fi
+  if grep -rnIE --exclude='*lock*' '^[[:space:]]*(#|//#)(if|elif|else|endif)\b|<!--#|__[A-Z][A-Z_]+__|RunicCoreLibrary|RunicCoreNamespace|runic-library-starter|runic-app-starter' "$output"; then
+    echo "The generated library variant contains unprocessed template syntax." >&2
+    exit 1
+  fi
+  # The candidate registry for the workspace, whose root installs both frontends.
+  (cd "$output" && npm config set --location=project @runic-artifex:registry "$registry_url" \
+    && npm config set --location=project fetch-timeout 60000)
+  RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
+    "$output/$selected_lock" "${npm_archives[@]}" "${train_npm_archives[@]}"
+  # A fresh clone: the committed solution, without any build output.
+  git -C "$output" init -q
+  git -C "$output" add -A
+  git -C "$output" -c user.name=Acceptance -c user.email=acceptance@example.invalid commit -qm 'Generated solution'
+
+  phase build
+  (cd "$output" && dotnet tool restore)
+  # The first build of the solution: the workspace install, the library's clients and package, then the application.
+  if ! dotnet build "$output/$project_name.slnx" --configuration Release > "$output/build.log" 2>&1; then
+    echo "The library variant's solution did not build on a fresh clone." >&2
+    tail -n 80 "$output/build.log" >&2
+    exit 1
+  fi
+  test -d "$output/node_modules"
+  test -f "$library/Frontend/src/generated/runic-clients.ts"
+  test -f "$library/Frontend/dist/index.js"
+  test -f "$library/Frontend/dist/generated/runic-clients.js"
+  # The compiled package carries the contract declarations its typed clients import.
+  test -f "$library/Frontend/dist/generated/about.contract.d.ts"
+  # The application imports the library's clients instead of generating copies, and serves no page of the library.
+  test -f "$app/Frontend/src/generated/workspace.ts"
+  test -f "$app/Frontend/src/generated/runic-client-modules.ts"
+  test ! -e "$app/Frontend/src/generated/about.ts"
+  grep -Fq "from \"$library_package/generated\"" "$app/Frontend/src/generated/workspace.ts"
+  test -f "$app/bin/Release/net10.0/www/index.html"
+  grep -rFq 'Show details' "$app/bin/Release/net10.0/www"
+  test ! -e "$library/bin/Release/net10.0/www"
+  # .gitignore keeps every build output out of the clone; only the restore's NuGet lock files are new, to commit.
+  local changed
+  changed="$(git -C "$output" status --porcelain | grep -vE '^\?\? ([^/]+/)?packages\.lock\.json$' || true)"
+  if [[ -n "$changed" ]]; then
+    echo "The library variant's build left files that .gitignore does not cover:" >&2
+    echo "$changed" >&2
+    exit 1
+  fi
+  # Every path in the READMEs' layouts exists once the solution is built: the solution's and the application's.
+  local readme base layout_paths layout_path
+  for readme in "$output/README.md" "$app/README.md"; do
+    base="$(dirname "$readme")"
+    layout_paths="$(awk '/^## /{layout = ($0 == "## Solution layout" || $0 == "## Project layout"); next} layout && /^\| `/' "$readme" \
+      | cut -d'|' -f2 | grep -o '`[^`]*`' | tr -d '`')"
+    [[ -n "$layout_paths" ]]
+    while IFS= read -r layout_path; do
+      if [[ ! -e "$base/$layout_path" ]]; then
+        echo "$readme lists a missing path: $layout_path" >&2
+        exit 1
+      fi
+    done <<< "$layout_paths"
+  done
+
+  phase typecheck
+  frontend_script "$manager" "$library/Frontend" typecheck
+  if [[ "$framework" == vue && "$manager" == bun ]]; then
+    (cd "$app/Frontend" && bun run typecheck)
+  else
+    frontend_script "$manager" "$app/Frontend" typecheck
+  fi
+  phase frontend-test
+  # The page's test runs the library's about panel against the mocks the library's package exports.
+  frontend_script "$manager" "$app/Frontend" test
+
+  phase dev
+  # dotnet runic dev from a clean checkout again, without a build before it.
+  if [[ "$host" == cswebui ]]; then
+    git -C "$output" clean -fdXq
+    test ! -e "$library/Frontend/dist"
+    local served_module="" served_module_expect=""
+    case "$framework" in
+      react) served_module=src/AboutPanel.tsx ;;
+      vue) served_module=src/AboutPanel.vue ;;
+      svelte) served_module=src/AboutPanel.svelte ;;
+      sveltekit) served_module=src/lib/AboutPanel.svelte ;;
+      angular-vite) served_module=src/app/about.ts ;;
+    esac
+    served_module_expect="$library_name/Frontend/dist/index.js"
+    serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
+      dotnet runic dev --project "$project_name/$project_name.csproj"
+    test -f "$library/Frontend/dist/index.js"
+  fi
+
+  phase dotnet-test
+  if [[ "$tests" == tests ]]; then run_generated_tests "$output" "$project_name" 3; fi
+  phase_report "library|$framework|$manager|$host|$view_models|${tests:-no-tests}"
+  printf 'TEMPLATE_LIBRARY_OK|%s|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models" "${tests:-no-tests}"
+}
+
 # angular-vite is --frontend angular --angular-build vite.
 frameworks=(react vue svelte sveltekit angular angular-vite)
 managers=(npm pnpm bun)
@@ -1340,11 +1558,23 @@ variants=(
   "angular-vite npm cswebui toolkit tests"
   "angular-vite npm desktop reactiveui tests translations"
 )
+# --library (verify_library_template): one solution per frontend, so that each framework lane runs one, and each package
+# manager twice. The CS-WebUI variants also run dotnet runic dev from a clean checkout; React with npm, the defaults, adds
+# the test project.
+library_variants=(
+  "react npm cswebui reactiveui tests"
+  "vue pnpm desktop toolkit"
+  "svelte bun cswebui toolkit"
+  "sveltekit npm desktop reactiveui"
+  "angular pnpm cswebui reactiveui"
+  "angular-vite bun cswebui toolkit"
+)
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
   read -r -a frameworks <<< "$RUNIC_TEMPLATE_FRAMEWORKS"
 fi
-if [[ -n "${RUNIC_TEMPLATE_MANAGERS:-}" ]]; then
+if [[ -n "${RUNIC_TEMPLATE_MANAGERS+set}" ]]; then
+  # Space-separated managers of the default matrix; empty skips it, for a run of variants alone.
   read -r -a managers <<< "$RUNIC_TEMPLATE_MANAGERS"
 fi
 if [[ -n "${RUNIC_TEMPLATE_VARIANTS+set}" ]]; then
@@ -1358,6 +1588,16 @@ else
     if [[ " ${frameworks[*]} " == *" ${variant%% *} "* ]]; then selected_variants+=("$variant"); fi
   done
   variants=("${selected_variants[@]}")
+fi
+if [[ -n "${RUNIC_TEMPLATE_LIBRARY_VARIANTS+set}" ]]; then
+  # Semicolon-separated "frontend manager host view-models [tests]" entries; empty skips them.
+  IFS=';' read -r -a library_variants <<< "$RUNIC_TEMPLATE_LIBRARY_VARIANTS"
+else
+  selected_variants=()
+  for variant in "${library_variants[@]}"; do
+    if [[ " ${frameworks[*]} " == *" ${variant%% *} "* ]]; then selected_variants+=("$variant"); fi
+  done
+  library_variants=("${selected_variants[@]}")
 fi
 for framework in "${frameworks[@]}"; do
   case "$framework" in
@@ -1401,4 +1641,8 @@ done
 for variant in "${variants[@]}"; do
   read -r -a fields <<< "$variant"
   verify_template "${fields[@]}"
+done
+for variant in "${library_variants[@]}"; do
+  read -r -a fields <<< "$variant"
+  verify_library_template "${fields[@]}"
 done

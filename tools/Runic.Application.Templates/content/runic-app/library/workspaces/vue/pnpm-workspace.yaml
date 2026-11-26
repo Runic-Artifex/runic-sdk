@@ -1,0 +1,4 @@
+# The workspace's packages: pnpm reads them here, npm and Bun from package.json.
+packages:
+  - RunicCoreLibrary/Frontend
+  - RunicWindowApp/Frontend

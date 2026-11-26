@@ -14,6 +14,10 @@
       "id": "editor",
       "description": { "text": "Adds .vscode/ for VS Code: tasks for dotnet runic dev, debug configurations for the C# extension and the recommended extensions. Visual Studio and Rider use Properties/launchSettings.json, which every project has." }
     },
+    {
+      "id": "library",
+      "description": { "text": "Creates a solution with this library project beside the application, such as Notes.Core: shared ViewModels and Views, and the frontend package that holds their TypeScript clients, in one JavaScript workspace. Not with Translations or the Nix flake yet." }
+    },
     { "id": "tests" },
     { "id": "translations" },
     { "id": "nix" },

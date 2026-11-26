@@ -64,6 +64,7 @@ commands in the browser.
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
 | `--packaging` | Adds the `packaging/` manifests that `dotnet runic package` fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), as editable overrides of the command's defaults | The command's built-in manifests |
 | `--restore` | Restores the project's NuGet packages after creating it, for an IDE that opens it next | No restore |
+| `--library` | A library project's name, such as `MyApp.Core`: a solution of the application and that library, for shared ViewModels and Views, with the library's frontend package in one JavaScript workspace (not with `--translations` or `--nix` yet) | One project |
 | `--application-id` | The reverse-DNS application ID, such as `org.example.Notes` | `com.example.` and the project name's ASCII letters and digits |
 | `--output`, `-o` | A directory | The project name |
 | `--force` | Creates the project in a directory that is not empty, as `dotnet new --force` does; files the template writes replace existing files of the same name | A non-empty directory is `RCREATE003` |
@@ -77,8 +78,8 @@ the command output format.
 The creator has no subcommand to name: `dnx Runic.Create -- create` creates a
 project named `create`.
 
-The frontend, package manager, host, Linux GTK, ViewModel and editor choices, `--tests`, `--translations`, `--nix`, `--packaging`, `--restore`
-and `--application-id` come from the template itself, so `dotnet new runic-app --help` lists the same options.
+The frontend, package manager, host, Linux GTK, ViewModel and editor choices, `--tests`, `--translations`, `--nix`, `--packaging`, `--restore`,
+`--library` and `--application-id` come from the template itself, so `dotnet new runic-app --help` lists the same options.
 The creator reads the template's text options, such as `--application-id`, from the template model, so a text option
 a later template adds is a creator option too. They are not asked: without a value the template computes its
 default, and the commands leave the option out.

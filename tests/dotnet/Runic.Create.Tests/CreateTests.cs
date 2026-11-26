@@ -58,9 +58,10 @@ internal sealed class CreateTests
         Equal("Nix flake", model.Toggles[2].DisplayName);
         Equal("Packaging manifests", model.Toggles[3].DisplayName);
         Equal("Restore packages", model.Toggles[4].DisplayName);
-        // Text parameters are options generated from the model; --application-id is the template's only one.
-        Equal("application-id", string.Join(',', model.Texts.Select(text => text.LongName)));
-        Equal("Application ID", model.Texts[0].DisplayName);
+        // Text parameters are options generated from the model: --library and --application-id.
+        Equal("library,application-id", string.Join(',', model.Texts.Select(text => text.LongName)));
+        Equal("Library project", model.Texts[0].DisplayName);
+        Equal("Application ID", model.Texts[1].DisplayName);
         True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
         Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }

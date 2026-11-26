@@ -6,6 +6,13 @@ __FRONTEND_NAME__ renders it.
 
 ## Run it
 
+<!--#if (hasLibrary) -->
+This application is part of a solution with the RunicCoreLibrary library; the
+solution's README, one folder up, describes the two together. Run the commands
+below in this folder. The solution's folder has the tool manifest, the
+JavaScript workspace and its lock file, and `.gitignore`.
+
+<!--#endif -->
 ```sh
 dotnet tool restore
 dotnet runic dev
@@ -393,9 +400,11 @@ and the component build target.
 <!--#endif -->
 <!--#endif -->
 | `Properties/launchSettings.json` | Launch profiles for Visual Studio, Rider and `dotnet run`. See [Debug it in your IDE](#debug-it-in-your-ide). |
+<!--#if (!hasLibrary) -->
 | `.vsconfig` | The Visual Studio components the launch profiles need. See [Debug it in your IDE](#debug-it-in-your-ide). |
 <!--#if (editor == "vscode") -->
 | `.vscode/` | VS Code tasks for `dotnet runic dev`, debug configurations and the recommended extensions. See [VS Code](#vs-code). |
+<!--#endif -->
 <!--#endif -->
 | `icons/` | The application's placeholder icon: `icon.svg` and `icon.png` (512 px), from which the build derives the Windows and macOS icons. |
 <!--#if (packaging) -->
@@ -437,7 +446,20 @@ and the component build target.
 <!--#else -->
 | `Frontend/src/App.test.tsx` | A frontend test: Vitest runs the page against the generated mocks. See [Test it](#test-it). |
 <!--#endif -->
-<!--#if (tests) -->
+<!--#if (hasLibrary) -->
+<!--#if (frontend == "angular") -->
+| `Frontend/src/app/about.ts`, `Frontend/src/app/about.html` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#elif (frontend == "sveltekit") -->
+| `Frontend/src/lib/AboutPanel.svelte` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#elif (frontend == "svelte") -->
+| `Frontend/src/AboutPanel.svelte` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#elif (frontend == "vue") -->
+| `Frontend/src/AboutPanel.vue` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#else -->
+| `Frontend/src/AboutPanel.tsx` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#endif -->
+<!--#endif -->
+<!--#if (tests && !hasLibrary) -->
 | `RunicWindowApp.Tests/WorkspaceWindowTests.cs` | TUnit tests that drive the Window through `Runic.Application.Testing`. |
 | `global.json` | Runs `dotnet test` on Microsoft.Testing.Platform, which TUnit uses. |
 <!--#endif -->

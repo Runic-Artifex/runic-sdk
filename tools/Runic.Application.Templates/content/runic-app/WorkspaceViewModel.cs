@@ -1,6 +1,9 @@
 #if (viewModels == "reactiveui")
 using ReactiveUI;
 using ReactiveUI.Primitives;
+#if (hasLibrary)
+using RunicCoreNamespace;
+#endif
 #if (translations)
 using System.ComponentModel;
 using Runic.Application.Views;
@@ -31,11 +34,16 @@ public sealed class WorkspaceViewModel : ReactiveObject
 #if (translations)
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter,
         IRunicApplicationLocale application, IRunicWindowLocale locale, TranslationContext translations)
+#elif (hasLibrary)
+    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter, AboutViewModel about)
 #else
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)
 #endif
     {
         _main = welcome;
+#if (hasLibrary)
+        About = about;
+#endif
         ShowWelcomeCommand = ReactiveCommand.Create(() => { Main = welcome; });
         ShowCounterCommand = ReactiveCommand.Create(() => { Main = counter; });
 #if (translations)
@@ -61,6 +69,12 @@ public sealed class WorkspaceViewModel : ReactiveObject
 
     public ReactiveCommand<RxVoid, RxVoid> ShowWelcomeCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ShowCounterCommand { get; }
+#if (hasLibrary)
+
+    // The RunicCoreLibrary library's ViewModel. Its View and TypeScript client come from the library, and the page
+    // shows it beside the Main page.
+    public AboutViewModel About { get; }
+#endif
 #if (translations)
 
     // The language every Window shows, such as "en" or "de".
@@ -128,6 +142,9 @@ public sealed class CounterViewModel : ReactiveObject, IWorkspacePage
 #else
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+#if (hasLibrary)
+using RunicCoreNamespace;
+#endif
 #if (translations)
 using System.ComponentModel;
 using Runic.Application.Views;
@@ -165,6 +182,19 @@ public sealed partial class WorkspaceViewModel : ObservableObject
         Language = locale.Locale ?? AppTextCatalog.DefaultLocale;
         _locale.PropertyChanged += OnLocaleChanged;
     }
+#elif (hasLibrary)
+
+    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter, AboutViewModel about)
+    {
+        _welcome = welcome;
+        _counter = counter;
+        _main = welcome;
+        About = about;
+    }
+
+    // The RunicCoreLibrary library's ViewModel. Its View and TypeScript client come from the library, and the page
+    // shows it beside the Main page.
+    public AboutViewModel About { get; }
 #else
 
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)

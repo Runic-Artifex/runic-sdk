@@ -9,6 +9,7 @@
     "desktopServer": { "longName": "desktop-server", "shortName": "" },
     "viewModels": { "longName": "view-models", "shortName": "" },
     "editor": { "longName": "editor", "shortName": "" },
+    "library": { "longName": "library", "shortName": "" },
     "tests": { "longName": "tests", "shortName": "" },
     "translations": { "longName": "translations", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
@@ -28,6 +29,7 @@
     "--host desktop --linux-gtk 4 --packaging",
     "--desktop-server kestrel",
     "--tests --restore",
-    "--editor vscode"
+    "--editor vscode",
+    "--library Notes.Core --tests"
   ]
 }
