@@ -881,9 +881,11 @@ path.
   UTF-8, is `failed` instead. Any other failure is `failed`, with `revision` when the command had already run.
 - An asynchronous command keeps the request open until it completes, also when the page invokes it with `command`
   rather than as an [operation](#operations); its reply carries the revision of the frame of its end, which carries its
-  effects and its execution member. A window runs at most 64 such calls at once; another one is `rejected` with `capacity` and
-  runs nothing. The capacity is checked last, after availability ([order of checks](#presentation-epochs)), so a
-  command that is not available answers `unavailable` also when the window is at capacity.
+  effects and its execution member, and follows that frame ([reply order](#reply-order)), also when the command ends
+  inside a publication unit of other work, such as the change that completes it. A window runs at most 64 such calls
+  at once; another one is `rejected` with `capacity` and runs nothing. The capacity is checked last, after
+  availability ([order of checks](#presentation-epochs)), so a command that is not available answers `unavailable`
+  also when the window is at capacity, as a `start` does ([start](#start)).
 - **Key commands.** A command may take a key that the producer resolves to an object before it runs. A key that
   resolves to nothing is `rejected` with `unresolved-key` and runs nothing; `can` answers `false` for it; `start`
   rejects it with the reason `unresolved-key`. The operation identity uses the key as the input.
@@ -961,6 +963,10 @@ commands the contract scopes. On a connection without the feature, `epoch` is an
 5. the key: `unresolved-key`;
 6. availability: `unavailable`;
 7. the window's command capacity: `capacity`.
+
+A producer whose key resolution is itself awaited work of the window, such as the .NET producer's asynchronous key
+resolvers, counts it toward the same capacity: at capacity it does not resolve the key, so such a command, or `start`,
+answers `capacity` after the input, in place of the key and availability.
 
 **Scope.** `presentation-epoch/1` scopes `command` only. `start`, `can`, `set`, `write`, `region` and interaction
 replies carry no epoch: operations have their own identity and duplicate detection, setters are last-writer-wins by
@@ -1699,9 +1705,10 @@ find again, for example after a reload.
   the contract (`invalid-request`, below; also an `input` that the command does not take, or a missing one); an
   input that is not valid JSON of the [profile](values.md#json-profile) (`rejected` admission, `invalid-input`); the
   window's close (`owner-closing`, or `owner-disposed` once it is gone); the operation id (`duplicate`,
-  `identity-conflict`, `expired`); the window's operation capacity (`capacity`: it retains 64 operations); then the
-  input's decoding (`invalid-input`), the key (`unresolved-key`) and availability (`unavailable`). Unlike `command`'s,
-  a `start`'s capacity comes before availability.
+  `identity-conflict`, `expired`); the input's decoding (`invalid-input`), the key (`unresolved-key`) and
+  availability (`unavailable`); then the window's operation capacity (`capacity`: it retains 64 operations). As for
+  `command`, availability comes before capacity: `unavailable` tells the page that the command cannot run in this
+  state, which retrying does not change, while `capacity` only says that the window is busy for now.
 - A `start`, `status`, `watch`, `unwatch`, `cancel` or `stream` whose `member` is not an asynchronous command of the
   route, such as a synchronous command, is `rejected` with `invalid-request`, without `admission` or `revision`, and
   starts nothing.
@@ -1806,9 +1813,11 @@ confirmation.
   A request not pushed yet whose handler the presentation no longer registers ends as cancelled.
 - **Requests.** The producer pushes `interaction` to the presentation's connection. `expiresAt` is an
   `offset-date-time` after which the request times out ([interaction deadlines](#interaction-deadlines)), and
-  `ownerEpoch` a number the producer assigns that the reply repeats. It is not the presentation epoch of
-  `presentation-epoch/1`, with or without the feature: the .NET producer numbers the requests it pushes to each
-  presentation 1, 2, 3 and so on. `input` is encoded as the interaction's input type.
+  `ownerEpoch` a number the producer assigns that the reply repeats. Despite its name, it is a counter, not an epoch:
+  it marks no period of the presentation's life, and it is not the presentation epoch of `presentation-epoch/1`,
+  with or without the feature. The .NET producer counts the `interaction` pushes of each presentation it opened and
+  gives each push the next count, 1, 2, 3 and so on; a page treats it as an opaque number to repeat, and a reply whose
+  `ownerEpoch` differs from its request's is `stale`. `input` is encoded as the interaction's input type.
 - **Cancellation.** When a request ends before the page answered, the producer pushes `interaction-cancelled` with a
   human-readable `message`. The page stops the handler.
 - **Replies.** `outcome` is `answered` (with `output`, encoded as the interaction's output type), `cancelled` or
