@@ -153,10 +153,12 @@ internal static class DoctorChecks
         ArgumentNullException.ThrowIfNull(runtime);
         var checks = new List<DoctorCheck>();
         await CheckDotNetAsync(checks, project, dotnetHost, runtime, target, cancellationToken).ConfigureAwait(false);
+        DoctorWorkspaceChecks.CheckWindowsTargeting(checks, project, runtime);
         CheckViewsWindow(checks, project);
         CheckViewsHosts(checks, project, runtime, target);
         _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         await CheckPackageManagerAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
+        DoctorWorkspaceChecks.Inspect(checks, project, runtime);
         CheckCompatibilitySet(checks, project);
         await CheckExtensionsAsync(checks, project, dotnetHost, runtime, cancellationToken).ConfigureAwait(false);
         CheckViewsPackageVersions(checks, project);
@@ -444,9 +446,10 @@ internal static class DoctorChecks
     private static async Task<string?> CheckJavaScriptRuntimeAsync(List<DoctorCheck> checks,
         DoctorProjectConfiguration project, IDoctorRuntime runtime, CancellationToken cancellationToken)
     {
+        // The workspace's package manager (devtools-library-dx §2.2), which installs and builds the frontend.
         JavaScriptPackageManager packageManager;
-        try { packageManager = JavaScriptPackageManager.Resolve(project.FrontendPackageDirectory, project.FrontendPackageDirectory); }
-        catch (DevUsageException error)
+        try { packageManager = project.ResolvePackageManager().Manager; }
+        catch (DevDevelopmentException error)
         {
             checks.Add(Fail("javascript-runtime", error.Message, "Set packageManager to npm, pnpm, or Bun."));
             return null;
@@ -480,8 +483,9 @@ internal static class DoctorChecks
         DoctorProjectConfiguration project, IDoctorRuntime runtime, CancellationToken cancellationToken)
     {
         JavaScriptPackageManager packageManager;
-        try { packageManager = JavaScriptPackageManager.Resolve(project.FrontendPackageDirectory, project.FrontendPackageDirectory); }
-        catch (DevUsageException error)
+        string root = project.EffectiveWorkspaceRoot;
+        try { packageManager = project.ResolvePackageManager().Manager; }
+        catch (DevDevelopmentException error)
         {
             checks.Add(Fail("package-manager", error.Message, "Choose npm, pnpm, or Bun and commit its matching lock file."));
             return;
@@ -500,9 +504,11 @@ internal static class DoctorChecks
         }
         else
         {
-            CommandResult result = await runtime.RunAsync(executable, project.FrontendPackageDirectory, ["--version"], cancellationToken).ConfigureAwait(false);
+            CommandResult result = await runtime.RunAsync(executable, Directory.Exists(root) ? root : project.FrontendPackageDirectory, ["--version"], cancellationToken).ConfigureAwait(false);
             string version = result.StandardOutput.Trim().TrimStart('v');
-            string? declared = JavaScriptPackageManager.ReadDeclaredVersion(Path.Combine(project.FrontendPackageDirectory, "package.json"));
+            // The version that the workspace root declares, else the frontend's own.
+            string? declared = JavaScriptPackageManager.ReadDeclaredVersion(Path.Combine(root, "package.json")) ??
+                JavaScriptPackageManager.ReadDeclaredVersion(Path.Combine(project.FrontendPackageDirectory, "package.json"));
             bool npm = packageManager.Name == "npm";
             bool compatible = IsCompatibleToolVersion(version, baseline) ||
                 (npm && IsCompatibleToolVersion(version, AdditionalNpmBaseline));
@@ -527,10 +533,16 @@ internal static class DoctorChecks
                 checks.Add(Pass("package-manager", $"{packageManager.Name} {version} matches certified baseline."));
             }
         }
-        string lockPath = Path.Combine(project.FrontendPackageDirectory, packageManager.LockFileName);
-        checks.Add(File.Exists(lockPath)
-            ? Pass("lock-file", $"Found reproducible lock file '{packageManager.LockFileName}'.")
-            : Fail("lock-file", $"The workspace has no '{packageManager.LockFileName}'.", $"Run {packageManager.Name} and commit its lock file."));
+        // In a JavaScript workspace the lock file is the root's, which locks every member.
+        bool workspace = !StringComparer.Ordinal.Equals(Path.TrimEndingDirectorySeparator(root), Path.TrimEndingDirectorySeparator(project.FrontendPackageDirectory));
+        string? lockPath = DoctorWorkspaceChecks.FindLockFiles(root)
+            .Where(found => found.Manager == packageManager.Name).Select(static found => found.Path).FirstOrDefault();
+        string where = workspace ? $" at the root of the {packageManager.Name} workspace {root}" : string.Empty;
+        checks.Add(lockPath is not null
+            ? Pass("lock-file", $"Found reproducible lock file '{(workspace ? lockPath : Path.GetFileName(lockPath))}'.")
+            : Fail("lock-file", $"The workspace has no '{packageManager.LockFileName}'{where}.", workspace
+                ? $"Run '{packageManager.Name} install' in {root} and commit {packageManager.LockFileName}; the workspace's install needs it."
+                : $"Run {packageManager.Name} and commit its lock file."));
     }
 
     private static void CheckCompatibilitySet(List<DoctorCheck> checks, DoctorProjectConfiguration project)
