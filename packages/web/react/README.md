@@ -884,3 +884,25 @@ import { RunicHostedRegion } from "@runic-artifex/react/experimental";
   fallback={state => state === "ended" ? <RunAgain /> : <p>Starting the check…</p>}
   onStateChange={state => setStep(state)} />
 ```
+
+While the host waits for the guest's page, `stalled` content shows in place of the
+`loading` fallback once the region is stalled, and `failed` content shows when the
+host application gave the region up
+([loading and failure](../../../docs/hosted-regions.md#the-host)).
+`failed` is content, or a function of the region's status: `stalled`,
+`failureReason` and `retry()`, which asks the host to load a failed region again
+and returns whether it asked. A `fallback` function gets the same status as its
+second argument. As with the element, a stalled region without `stalled` content
+shows the fallback for `loading`, and a failed one without `failed` content the
+fallback for `failed`. `onStateChange` also receives the event's detail
+(`{state, previous, stalled, reason}`), and is also called when only `stalled` or
+the reason changed.
+
+```tsx
+<RunicHostedRegion name="check" style={{ height: 420 }}
+  fallback={<p>Starting the check…</p>}
+  stalled={<p>The check is taking longer than usual…</p>}
+  failed={({ failureReason, retry }) => (
+    <p>The check could not start ({failureReason}). <button onClick={retry}>Try again</button></p>
+  )} />
+```

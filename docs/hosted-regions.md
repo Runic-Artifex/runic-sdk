@@ -81,7 +81,7 @@ public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowReq
 </script>
 ```
 
-React, Vue, Svelte and Angular wrap it as `RunicHostedRegion` in their `./experimental` entries.
+React, Vue, Svelte and Angular wrap it as `RunicHostedRegion` in their `./experimental` entries ([frameworks](#frameworks)).
 
 - **States and fallback content.** The element is `waiting` until a window is attached, `loading` while the guest's
   page loads, `attached` once it connected, `failed` when the host application gave it up, `detached`, `ended` or
@@ -130,6 +130,23 @@ React, Vue, Svelte and Angular wrap it as `RunicHostedRegion` in their `./experi
   });
   document.getElementById("check-retry").addEventListener("click", () => region.retry());
   ```
+- <a id="frameworks"></a>**Frameworks.** Each wrapper's fallback content shows in the element's `fallback` slot, and its
+  stalled and failed content in the `stalled` and `failed` slots, with the element's fallbacks: a stalled region without
+  stalled content shows the fallback for `loading`, and a failed one without failed content the fallback for `failed`.
+
+  | Wrapper | Stalled content | Failed content | Stalled, reason and retry |
+  | --- | --- | --- | --- |
+  | React | `stalled` | `failed`: content, or a function of the status `{stalled, failureReason, retry}` | `failed`'s status, and a `fallback` function's second argument |
+  | Vue | `#stalled` slot | `#failed="{ failureReason, retry }"` slot | the `failed` and `fallback` slot props; a template ref's `state`, `stalled`, `failureReason` and `retry()` |
+  | Svelte | `stalled` snippet | `failed(status)` snippet | the snippets' `status`, also `fallback(state, status)`; `retry()` on the `bind:this` instance |
+  | Angular | a projected `slot="stalled"` element | a projected `slot="failed"` element | `stalled()`, `failureReason()` and `retry()` of the `runicHostedRegion` template ref |
+
+  The state change callback or output (`onStateChange`, `@state-change`, `onstatechange`, `(stateChange)`) also carries
+  `stalled` and the reason, and also comes when only those changed. The wrappers' READMEs have an example each
+  ([React](../packages/web/react/README.md#hosted-regions-experimental),
+  [Vue](../packages/web/vue/README.md#hosted-regions-experimental),
+  [Svelte](../packages/web/svelte/README.md#hosted-regions-experimental),
+  [Angular](../packages/web/angular/README.md#hosted-regions-experimental)).
 - **Size.** By default (`sizing="fill"`) the page's layout sets the region's size, and the guest's page scrolls inside.
   Give a filled region a height, such as a flex item in the space between header and footer. With
   `sizing="content-height"` the guest's height applies between `RunicHostedRegionOptions.MinimumHeight` and
