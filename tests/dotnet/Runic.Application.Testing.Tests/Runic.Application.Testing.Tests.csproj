@@ -57,6 +57,8 @@
     <Compile Include="../../../tools/Runic.Application.Views.Codegen/GeneratedFile.cs" Link="Codegen/GeneratedFile.cs" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The test Views' contract IR, from which ConformanceContracts derives their contracts. -->
+    <EmbeddedResource Include="../../../specs/application/conformance/views.ir.json" LogicalName="ConformanceViews.ir.json" Link="Conformance/views.ir.json" />
     <None Include="../../../specs/application/fixtures/collection-deltas/*.json" Link="fixtures/collection-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/application/fixtures/domain-failures/*.json" Link="fixtures/domain-failures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- RFC 8785 canonical-form vectors (runic.views.vector/1): this suite's own, and the

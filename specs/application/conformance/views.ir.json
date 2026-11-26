@@ -1,0 +1,972 @@
+{
+  "format": "runic.views.contract-ir/1",
+  "producer": {
+    "language": "csharp",
+    "tool": "hand-written",
+    "unit": "Runic.Application.Views.Conformance"
+  },
+  "views": [
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.ListViewModel",
+      "name": "List",
+      "route": "list",
+      "fingerprint": "F3CC35D9464624C45EC688FA6CF19B7A053DD6562E0D4B64B8924B6D18140DF6",
+      "kinds": [
+        "list"
+      ],
+      "members": [
+        {
+          "name": "Rows",
+          "wire": "rows",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.Conformance.ConformanceRow"
+              }
+            }
+          },
+          "collectionKey": "id"
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "ListViewModel",
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.LogViewModel",
+      "name": "Log",
+      "route": "log",
+      "fingerprint": "85230C7766F132DEE257879CE19046FF5978F816FCBB97081E8AF86964CF515A",
+      "kinds": [
+        "log"
+      ],
+      "members": [
+        {
+          "name": "Log",
+          "wire": "log",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          },
+          "appendOnlyText": true
+        },
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "LogViewModel",
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.NotesViewModel",
+      "name": "Notes",
+      "route": "notes",
+      "fingerprint": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3",
+      "kinds": [
+        "notes"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "NotesViewModel",
+          "text": true
+        },
+        {
+          "name": "Note",
+          "wire": "note",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "NotesViewModel",
+          "checked": true,
+          "text": true
+        },
+        {
+          "name": "Priority",
+          "wire": "priority",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.NotesPriority"
+            }
+          },
+          "settable": true,
+          "declaringType": "NotesViewModel"
+        },
+        {
+          "name": "Due",
+          "wire": "due",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "local-date",
+              "nullable": true
+            }
+          },
+          "settable": true,
+          "declaringType": "NotesViewModel"
+        },
+        {
+          "name": "Elapsed",
+          "wire": "elapsed",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "duration"
+            }
+          },
+          "settable": true,
+          "declaringType": "NotesViewModel"
+        },
+        {
+          "name": "Rows",
+          "wire": "rows",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.Conformance.ConformanceRow"
+              }
+            }
+          },
+          "collectionKey": "id"
+        },
+        {
+          "name": "Count",
+          "wire": "count",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        },
+        {
+          "name": "Summary",
+          "wire": "summary",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        },
+        {
+          "name": "Detail",
+          "wire": "detail",
+          "kind": "content",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.Conformance.DetailViewModel",
+              "name": "Detail",
+              "kind": "detail"
+            }
+          ],
+          "nullable": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "AddRow",
+          "wire": "addRow",
+          "parameter": "label",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "RemoveRow",
+          "wire": "removeRow",
+          "parameter": "row",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "keyed": true
+        },
+        {
+          "name": "Clear",
+          "wire": "clear"
+        },
+        {
+          "name": "Touch",
+          "wire": "touch"
+        },
+        {
+          "name": "Save",
+          "wire": "save",
+          "failure": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.NotesSaveFailure"
+            }
+          }
+        },
+        {
+          "name": "Annotate",
+          "wire": "annotate",
+          "parameter": "action",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "SlowImport",
+          "wire": "slowImport",
+          "parameter": "input",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.SlowImportInput"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "failure": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.NotesImportFailure"
+            }
+          },
+          "async": true,
+          "executionState": true
+        },
+        {
+          "name": "ConfirmClear",
+          "wire": "confirmClear",
+          "async": true,
+          "executionState": true
+        }
+      ],
+      "interactions": [
+        {
+          "name": "Confirm",
+          "wire": "confirm",
+          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:interaction:Confirm",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.ConfirmQuestion"
+            }
+          },
+          "output": {
+            "direction": "from-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.ConfirmAnswer"
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "name": "Focus",
+          "wire": "focus",
+          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:request:Focus",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.NotesFocus"
+            }
+          }
+        },
+        {
+          "name": "Reveal",
+          "wire": "reveal",
+          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:request:Reveal",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.NotesReveal"
+            }
+          }
+        },
+        {
+          "name": "Toast",
+          "wire": "toast",
+          "contract": "7CA4F996EFBBBB9A228012299B3C24B67D9978683352F2D0B0D0B6FF1D9D91C3:request:Toast",
+          "input": {
+            "direction": "to-page",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.NotesToast"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.DetailViewModel",
+      "name": "Detail",
+      "route": "detail",
+      "fingerprint": "3A750E08D33528FA0D2C24D62BF22C4A0ADB572C971DC23995991083D5CB9C8B",
+      "kinds": [
+        "detail"
+      ],
+      "members": [
+        {
+          "name": "LastAction",
+          "wire": "lastAction",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": [
+        {
+          "name": "Dismiss",
+          "wire": "dismiss"
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.FormViewModel",
+      "name": "Form",
+      "route": "form",
+      "fingerprint": "A1268F1C9EDD87BD36C6A6A68E975526B3E4784FFE37169304A578807DA335C1",
+      "kinds": [
+        "form"
+      ],
+      "memberErrors": true,
+      "validation": true,
+      "members": [
+        {
+          "name": "Name",
+          "wire": "name",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "settable": true,
+          "declaringType": "FormViewModel",
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.WizardViewModel",
+      "name": "Wizard",
+      "route": "wizard",
+      "fingerprint": "453813A8D57E33990D2EBDFA359EB1B2456B7E34777F1734DB74E2EDBCEA916E",
+      "kinds": [
+        "wizard"
+      ],
+      "members": [
+        {
+          "name": "Page",
+          "wire": "page",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "int32"
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Next",
+          "wire": "next",
+          "scoped": true
+        },
+        {
+          "name": "Back",
+          "wire": "back",
+          "scoped": true
+        },
+        {
+          "name": "Ping",
+          "wire": "ping"
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.InvoiceViewModel",
+      "name": "Invoice",
+      "route": "invoice",
+      "fingerprint": "8B3BE8C93739FE5CD9A3294D3D975CE76C6E75B7220C24CB6166CADF7690C37B",
+      "kinds": [
+        "invoice"
+      ],
+      "members": [
+        {
+          "name": "Address",
+          "wire": "address",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "named",
+              "ref": "Runic.Application.Testing.Tests.Conformance.InvoiceAddress"
+            }
+          },
+          "settable": true,
+          "declaringType": "InvoiceViewModel",
+          "checked": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "street"
+              ]
+            },
+            {
+              "path": [
+                "city"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Lines",
+          "wire": "lines",
+          "kind": "value",
+          "value": {
+            "direction": "both",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.Conformance.InvoiceLine"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "label"
+              ]
+            },
+            {
+              "path": [
+                "quantity"
+              ]
+            }
+          ]
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.TabsViewModel",
+      "name": "Tabs",
+      "route": "tabs",
+      "fingerprint": "34B63104800558898403889079D9C9929627D592DFF2B077DABF81C302228773",
+      "kinds": [
+        "tabs"
+      ],
+      "members": [
+        {
+          "name": "Documents",
+          "wire": "documents",
+          "kind": "region-collection",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.Conformance.TabsPageViewModel",
+              "name": "Page",
+              "kind": "page"
+            }
+          ],
+          "pageCanClose": true
+        },
+        {
+          "name": "Pinned",
+          "wire": "pinned",
+          "kind": "region-collection",
+          "pages": [
+            {
+              "view": "Runic.Application.Testing.Tests.Conformance.TabsPageViewModel",
+              "name": "Page",
+              "kind": "page"
+            }
+          ],
+          "pageCanClose": false
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.TabsPageViewModel",
+      "name": "Page",
+      "route": "page",
+      "fingerprint": "ABE27AD34F9D8D9EB08CB0038AC8691D05B337A55E4A77F1D400AD1B7A28DE63",
+      "kinds": [
+        "page"
+      ],
+      "members": [
+        {
+          "name": "Title",
+          "wire": "title",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "text": true
+        }
+      ],
+      "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.FilesViewModel",
+      "name": "Files",
+      "route": "files",
+      "fingerprint": "518E5C2180CD62648C1621B96627D6CA0F8BB50C60AE08892D52B8C918E41269",
+      "kinds": [
+        "files"
+      ],
+      "uploads": true,
+      "members": [
+        {
+          "name": "Avatar",
+          "wire": "avatar",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "blob",
+              "nullable": true
+            }
+          }
+        },
+        {
+          "name": "LastUpload",
+          "wire": "lastUpload",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string",
+              "nullable": true
+            }
+          }
+        }
+      ],
+      "commands": [
+        {
+          "name": "Attach",
+          "wire": "attach",
+          "parameter": "upload",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "upload"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.CatalogConformanceViewModel",
+      "name": "Catalog",
+      "route": "catalog",
+      "fingerprint": "CE79EF2160B2E3F96B231891AB3FF0B547F88C396513BBA9EC62E520E16E1422",
+      "kinds": [
+        "catalog"
+      ],
+      "members": [
+        {
+          "name": "Rows",
+          "wire": "rows",
+          "kind": "query-collection",
+          "rows": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.Conformance.ConformanceRow"
+              }
+            }
+          },
+          "defaultKey": "id"
+        }
+      ],
+      "commands": []
+    }
+  ],
+  "types": {
+    "Runic.Application.Testing.Tests.Conformance.ConformanceRow": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.ConformanceRow",
+        "base": "ConformanceRow",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.NotesPriority": {
+      "kind": "enum",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.NotesPriority",
+        "base": "NotesPriority",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "cases": [
+        {
+          "wire": "Low",
+          "value": "0"
+        },
+        {
+          "wire": "Normal",
+          "value": "1"
+        },
+        {
+          "wire": "High",
+          "value": "2"
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.NotesSaveFailure": {
+      "kind": "union",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.NotesSaveFailure",
+        "base": "NotesSaveFailure",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "cases": [
+        {
+          "tag": "titleRequired",
+          "object": null
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.SlowImportInput": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.SlowImportInput",
+        "base": "SlowImportInput",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "source",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "limit",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.NotesImportFailure": {
+      "kind": "union",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.NotesImportFailure",
+        "base": "NotesImportFailure",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "cases": [
+        {
+          "tag": "sourceMissing",
+          "object": null
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.ConfirmQuestion": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.ConfirmQuestion",
+        "base": "ConfirmQuestion",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "question",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.ConfirmAnswer": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.ConfirmAnswer",
+        "base": "ConfirmAnswer",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "accepted",
+          "type": {
+            "kind": "boolean"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.NotesFocus": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.NotesFocus",
+        "base": "NotesFocus",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.NotesReveal": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.NotesReveal",
+        "base": "NotesReveal",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.NotesToast": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.NotesToast",
+        "base": "NotesToast",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.InvoiceAddress": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.InvoiceAddress",
+        "base": "InvoiceAddress",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "street",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "city",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.InvoiceLine": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.InvoiceLine",
+        "base": "InvoiceLine",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "quantity",
+          "type": {
+            "kind": "int32"
+          }
+        }
+      ]
+    }
+  },
+  "sources": {}
+}

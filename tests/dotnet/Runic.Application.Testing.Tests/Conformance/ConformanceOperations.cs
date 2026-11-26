@@ -21,11 +21,12 @@ internal sealed record NotesFocus(string Member);
 // no longer executing, and the operation's terminal status carries that frame's revision.
 internal sealed partial class NotesViewModel
 {
-    internal const string ConfirmContract = "conformance.notes.confirm.v1";
-    // The view requests (view-requests/1): focus (drop), reveal (next-mounted) and toast (broadcast).
-    internal const string FocusContract = "conformance.notes.focus.v1";
-    internal const string RevealContract = "conformance.notes.reveal.v1";
-    internal const string ToastContract = "conformance.notes.toast.v1";
+    // The contracts derived from the View's fingerprint (ConformanceContracts): the confirm interaction's, and the view
+    // requests' (view-requests/1): focus (drop), reveal (next-mounted) and toast (broadcast).
+    internal static readonly string ConfirmContract = ConformanceContracts.Interaction(typeof(NotesViewModel), "Confirm");
+    internal static readonly string FocusContract = ConformanceContracts.Request(typeof(NotesViewModel), "Focus");
+    internal static readonly string RevealContract = ConformanceContracts.Request(typeof(NotesViewModel), "Reveal");
+    internal static readonly string ToastContract = ConformanceContracts.Request(typeof(NotesViewModel), "Toast");
 
     public ViewRequest<NotesFocus> Focus { get; } = new();
     public ViewRequest<int> Reveal { get; } = new(ViewRequestDelivery.NextMounted);
@@ -43,8 +44,6 @@ internal sealed partial class NotesViewModel
             default: throw new NotSupportedException($"The notes View has no view request {mutation.ToJsonString()}.");
         }
     }
-    internal const string ContractFingerprint = "conformance-notes";
-
     // The step the running slowImport waits for. Its continuation runs inline, in the mutate step's turn and unit.
     private TaskCompletionSource<JsonObject>? _step;
     private WindowContentSession? _session;
@@ -104,7 +103,7 @@ internal sealed partial class NotesViewModel
 #pragma warning disable CA1822 // The partial's declaration is an instance member.
     private partial JsonNode? ProvideOperationId(string id) => id switch
     {
-        "contract" => $"{typeof(NotesViewModel).FullName}:{ContractFingerprint}",
+        "contract" => ConformanceContracts.Contract(typeof(NotesViewModel)),
         "confirmContract" => ConfirmContract,
         "focusContract" => FocusContract,
         "revealContract" => RevealContract,

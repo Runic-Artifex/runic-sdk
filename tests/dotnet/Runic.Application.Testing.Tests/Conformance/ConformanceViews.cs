@@ -68,7 +68,9 @@ internal static class ConformanceViews
 }
 
 // The .NET producer's test Views. The Bridges are written by hand against the generated-code API of protocol 4
-// (BridgeStateMember, JsonElement setters, ReadInput), so the scenarios fix the members each View has exactly.
+// (BridgeStateMember, JsonElement setters, ReadInput), so the scenarios fix the members each View has exactly. Their
+// contracts come from the test Views' contract IR (ConformanceContracts), which ConformanceContractTests checks against
+// them.
 internal sealed class DotNetConformanceViews : IConformanceViews
 {
     internal const string DetailId = "0123456789abcdef0123456789abcdef";
@@ -437,7 +439,7 @@ internal sealed class ListBridge(IBridgeTransport transport, ListViewModel vm, W
             new("Title", "title", model => ((ListViewModel)model).Title, (model, value) => ((ListViewModel)model).Title = ConformanceWire.String(value))
                 { TextMember = true, TextSetter = static (model, value) => ((ListViewModel)model).Title = value },
         ],
-        [], [], "conformance-list", content,
+        [], [], ConformanceContracts.Fingerprint(typeof(ListViewModel)), content,
         collections: [new("rows", model => ((ListViewModel)model).Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)]);
 
 // The log View: the model of the protocol-3 text fixtures.
@@ -504,7 +506,7 @@ internal sealed class LogBridge(IBridgeTransport transport, LogViewModel vm, Win
             new("Title", "title", model => ((LogViewModel)model).Title, (model, value) => ((LogViewModel)model).Title = ConformanceWire.String(value))
                 { TextMember = true, TextSetter = static (model, value) => ((LogViewModel)model).Title = value },
         ],
-        [], [], "conformance-log", content);
+        [], [], ConformanceContracts.Fingerprint(typeof(LogViewModel)), content);
 
 internal enum NotesPriority
 {
@@ -545,7 +547,7 @@ internal sealed class DetailBridge(IBridgeTransport transport, DetailViewModel v
         [new("LastAction", "lastAction", model => ((DetailViewModel)model).LastAction, null) { TextMember = true }],
         [],
         [new CommandDescriptor("Dismiss", model => ((DetailViewModel)model).DismissCommand)],
-        "conformance-detail", content);
+        ConformanceContracts.Fingerprint(typeof(DetailViewModel)), content);
 
 // The input of the notes View's slowImport.
 internal sealed record SlowImportInput(string Source, int Limit);
@@ -725,7 +727,7 @@ internal sealed record NotesImportFailure
 
 internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm, WindowContentSession content)
     : ViewModelBridge(transport, vm, typeof(NotesViewModel), "notes", State(content), Properties, Checked, Commands,
-        "conformance-notes", content, NotesViewModel.CreateInteractions(),
+        ConformanceContracts.Fingerprint(typeof(NotesViewModel)), content, NotesViewModel.CreateInteractions(),
         collections: [new("rows", model => ((NotesViewModel)model).Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)])
 {
     internal static NotesPriority ReadPriority(JsonElement value) => ConformanceWire.String(value) switch
@@ -773,7 +775,9 @@ internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm,
     [
         new("Title", "title", model => ((NotesViewModel)model).Title, (model, value) => ((NotesViewModel)model).Title = ConformanceWire.String(value))
             { TextMember = true, TextSetter = static (model, value) => ((NotesViewModel)model).Title = value },
-        new("Note", "note", model => ((NotesViewModel)model).Note, null) { TextMember = true },
+        // A checked field is settable too (specs/application/contract-ir.md, "State members").
+        new("Note", "note", model => ((NotesViewModel)model).Note, (model, value) => ((NotesViewModel)model).Note = ConformanceWire.String(value))
+            { TextMember = true, TextSetter = static (model, value) => ((NotesViewModel)model).Note = value },
         new("Summary", "summary", model => ((NotesViewModel)model).Summary, null) { TextMember = true },
         new("Priority", "priority", model => ((NotesViewModel)model).Priority, (model, value) => ((NotesViewModel)model).Priority = ReadPriority(value)),
         new("Due", "due", model => ((NotesViewModel)model).Due, (model, value) => ((NotesViewModel)model).Due = ConformanceWire.ReadDate(value)),

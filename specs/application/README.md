@@ -637,6 +637,8 @@ A checked field accepts writes that are checked against the value and version th
   splice, nor the reverse. Reusing a `requestId` for another write answers `conflict`. A producer retains receipts for
   a bounded number of request ids.
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
+- A checked field is also a settable member ([contract IR](contract-ir.md#state-members)): a `set` changes it as any
+  setter does, without the check, and a change it makes raises the field's version like a change the model announces.
 - On a connection that uses `text-splice/1`, a `write` of a checked field that is a
   [text member](state-changes.md#text-members) may carry `splice` instead of `expectedValue` and `value` (below).
 - On a connection that uses `field-paths/1`, a `write` may carry `path`: it writes the value at that path below the
