@@ -51,11 +51,18 @@ accept only schema 1.
 These rules decide whether an archive is valid and what a reader reports for it (since 0.24). An archive that breaks
 one is invalid, and the reader serves none of it, except as [lazy reading](#eager-and-lazy-reading) allows. Each rule
 names the error code that the [vectors](vectors/README.md) use for it. The vectors have an archive for every code
-except `limit-exceeded`, whose limits are configurable; split archives, nesting depth and lone surrogates have none.
+except `limit-exceeded`, whose limits are configurable. Split archives and nesting depth have none, and neither have
+the rules that the .NET reader does not check yet ([Notes for .NET](#notes-for-net)).
 
-Archives that `runic.assets.archive` writers produce satisfy every rule. Four of them were added in 0.24 for archives
-that no writer produces: the CRC-32 check, the encryption flag, cache modes by name only, and the JSON profile
-(duplicate member names and UTF-8).
+Archives that `runic.assets.archive` writers produce satisfy every rule. Some were added in 0.24 for archives that no
+writer produces: the CRC-32 check, the encryption flag, cache modes by name only, the JSON profile (duplicate member
+names, UTF-8 and lone surrogates), local headers that match the central directory, compression methods 0 and 8 only,
+and deflate data that ends at `length`.
+
+**Terms.** *White space* is a character with the Unicode `White_Space` property: U+0009 to U+000D, U+0020, U+0085,
+U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000. It is .NET's `char.IsWhiteSpace` and
+Rust's `char::is_whitespace`; U+180E, U+200B and U+FEFF are not white space. A *control character* is one of general
+category Cc (U+0000 to U+001F and U+007F to U+009F; .NET's `char.IsControl`).
 
 ### ZIP container
 
@@ -68,13 +75,24 @@ The archive is a ZIP file ([APPNOTE](https://pkware.cachefly.net/webdocs/casestu
 - **Entries.** A reader takes each entry's name, compression method, sizes and CRC-32 from its central directory
   record. A name is decoded as UTF-8; writers set general-purpose bit 11 for a name that is not ASCII. A name that
   ends in `/` is a directory entry: the reader skips it.
+- **Offsets.** Every offset in the end records and the central directory counts from the start of the file. Bytes
+  before the first local header, such as a self-extracting stub, are valid when the offsets count them; offsets that
+  count from the first local header instead do not lead to the records, and the archive is invalid (`zip-invalid`).
+- **Local headers.** At the offset that an entry's central record gives there is a local header, with its signature
+  and the same name and compression method as the central record. No two entries' bytes, each from its local header
+  to the end of its data, overlap, and none overlaps the central directory (`zip-invalid`). So one entry's bytes are
+  never read under two names, and a reader that walks the local headers reads the archive as the central directory
+  says.
 - **Encryption.** An entry whose general-purpose bit 0 (encrypted) is set is invalid, even when its data is plain
   text, and so is a directory entry with it (`zip-encrypted`).
 - **Duplicates.** Two entries other than directory entries with the same name, compared ordinally, are invalid
   (`zip-duplicate-entry`).
-- **Compression.** Writers use method 0 (stored) or 8 (deflate), and readers read both. Bit 3 (sizes in a data
-  descriptor) is valid; the central directory's values count. Other methods are not covered by this version: the
-  vectors do not test them.
+- **Compression.** Writers use method 0 (stored) or 8 (deflate), and readers read both. Every other method is
+  invalid (`zip-invalid`), including 9 (Deflate64), which no writer produces; a lazy reader may find it only when it
+  opens the entry. Bit 3 (sizes in a data descriptor) is valid; the central directory's values count.
+- **Deflate data.** An entry of method 8 whose data does not inflate, an invalid or truncated deflate stream, is
+  invalid (`zip-invalid`). A complete stream that inflates to fewer or more bytes than the entry's uncompressed size
+  breaks the content rule (`length-mismatch`, [Entries and content](#entries-and-content)).
 - **CRC-32.** The CRC-32 of the bytes that a reader inflates from an entry, the manifest's and every asset's, must
   equal the CRC-32 of its central directory record (`crc-mismatch`). This holds in both reading modes, so a reader
   never serves a damaged entry.
@@ -92,9 +110,10 @@ invalid (`manifest-not-json`):
 - No object has two members with the same name, compared after unescaping, at any depth. This is the I-JSON rule
   (RFC 7493, section 2.3); a reader does not pick the first or the last.
 - Values nest at most 64 levels deep.
+- No string, a member's name or a value, contains a lone surrogate escape (`"\ud800"`), in the members that the
+  reader ignores too: the text is I-JSON (RFC 7493, section 2.1).
 
-Members that this specification does not define are ignored, at every level. A string of a member it defines must not
-contain a lone surrogate escape (`"\ud800"`); a reader may also reject one in a member it ignores.
+Members that this specification does not define are ignored, at every level.
 
 ### Manifest and assets
 
@@ -106,7 +125,7 @@ contain a lone surrogate escape (`"\ud800"`); a reader may also reject one in a 
   | --- | --- |
   | `path` | A string that the [path rules](#paths) accept (`path-invalid`) |
   | `mediaType` | A string that is not empty, has no leading or trailing white space, and contains no CR, LF or NUL |
-  | `length` | A JSON number with no fraction and no exponent part (`13`, not `13.0` or `1.3e1`), from 0 to 2⁶³−1 |
+  | `length` | A JSON number with no fraction and no exponent part (`13`, not `13.0` or `1.3e1`), from 0 to 2⁶³−1. `-0` is 0 |
   | `sha256` | A string of 64 hexadecimal digits, in either case; a reader reports it in lower case |
   | `entryPoint` | `true` or `false` |
   | `cacheMode` | Exactly one of the names `NoStore`, `Revalidate` and `Immutable`, compared ordinally: not a number such as `"2"`, a list, another case or a padded name |
@@ -141,8 +160,10 @@ The result is the normalized path. Its ZIP entry is `assets/` followed by it, co
   the asset entries and directory entries is invalid, including an entry of an asset that has `contentPath`
   (`entry-undeclared`).
 - **Content.** An entry inflates to exactly `length` bytes (`length-mismatch`) whose CRC-32 matches (see above,
-  `crc-mismatch`) and whose SHA-256 digest equals `sha256` (`digest-mismatch`). An asset with `contentPath` has the
-  named asset's bytes and is checked against its own `sha256`.
+  `crc-mismatch`) and whose SHA-256 digest equals `sha256` (`digest-mismatch`). A reader reads on past `length` to
+  find that the data ends there: stored data or a deflate stream that holds more or fewer bytes is `length-mismatch`,
+  even when the first `length` bytes match. An asset with `contentPath` has the named asset's bytes and is checked
+  against its own `sha256`.
 
 ### Eager and lazy reading
 
@@ -158,8 +179,15 @@ A reader reads in one of two modes:
 ### Limits
 
 A reader bounds its input. The defaults are 1 GiB of archive, 4 MiB of inflated manifest, 100,000 assets and 1 GiB of
-declared asset lengths in total; a reader can be configured with others. An archive over a limit is invalid
-(`limit-exceeded`). The vectors stay far below the defaults.
+declared asset lengths in total; a reader can be configured with others. A reader may also bound two things that
+these do not:
+
+- the entries of the central directory, which it reads before the manifest, at no fewer than twice the asset limit
+  plus one: a valid archive has an entry for each asset that has no `contentPath`, the manifest, and at most one
+  directory entry per folder;
+- one asset's length, at no less than 2³¹−1 bytes, .NET's bound.
+
+An archive over a limit is invalid (`limit-exceeded`). The vectors stay far below the defaults.
 
 ### Error codes
 
@@ -183,7 +211,10 @@ declared asset lengths in total; a reader can be configured with others. An arch
 | `limit-exceeded` | [Limits](#limits) |
 
 Each invalid vector breaks one rule, so its code is unambiguous. When an archive breaks several, which one a reader
-reports is not specified. A reader reports a failure in its own terms; a conformance adapter maps it to these codes.
+reports is not specified, and its two reading modes may report different ones: lazy reading checks the content rules
+only when it opens an asset, and each mode may meet the broken rules in its own order. Both modes fail, except where
+[lazy reading](#eager-and-lazy-reading) skips a rule (a digest). A reader reports a failure in its own terms; a
+conformance adapter maps it to these codes.
 
 ## Notes for .NET
 
@@ -194,5 +225,15 @@ deterministic validated manifest report of the canonical form: the schema and
 schema-1 archive that stores duplicate content twice reports schema 2.
 
 `AssetArchive.Read`, `ReadAsync`, `ReadEmbedded` and `Inspect` report every broken rule as `InvalidDataException`,
-with no error code; `AssetArchiveReadOptions` sets the limits. The .NET reader also reads compression method 9
-(Deflate64), which this version does not cover.
+with no error code; `AssetArchiveReadOptions` sets the limits. The reader reads the ZIP container with
+`System.IO.Compression.ZipArchive`, which takes the data offset from each local header and finds an entry of an
+unsupported method only when it opens it, so `ReadEmbedded` reports such an entry when its asset is first opened.
+
+The .NET reader bounds one asset at 2³¹−1 bytes, a fixed limit, and the central directory only through the archive
+size. It does not check these rules yet, so the vectors have no case for them:
+
+- local headers: it reads an entry whose local header has another name or method, and entries that overlap;
+- compression: it reads method 9 (Deflate64);
+- content: it reads an entry whose data holds more bytes than `length` as its first `length` bytes;
+- lone surrogates: it reads one in the value of a member that it ignores, and one in an ignored member's name fails
+  with `InvalidOperationException` instead of `InvalidDataException`.

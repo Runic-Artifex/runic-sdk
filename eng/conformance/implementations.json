@@ -8,6 +8,14 @@
       "env": { "DOTNET_NOLOGO": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" },
       "status": "status/dotnet-views.json"
     },
+    "dotnet-assets": {
+      "corpus": "assets/2",
+      "roles": ["reader"],
+      "build": ["dotnet", "build", "${ROOT}/tests/dotnet/Runic.Assets.Conformance/Runic.Assets.Conformance.csproj", "-c", "${CONFIGURATION}", "-nologo", "-v", "q", "-clp:ErrorsOnly"],
+      "command": ["dotnet", "run", "--no-build", "--project", "${ROOT}/tests/dotnet/Runic.Assets.Conformance/Runic.Assets.Conformance.csproj", "-c", "${CONFIGURATION}"],
+      "env": { "DOTNET_NOLOGO": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" },
+      "status": "status/dotnet-assets.json"
+    },
     "ts-client": {
       "corpus": "views/4",
       "roles": ["client"],

@@ -16,6 +16,8 @@ import { formatCases, loadViewsCorpus } from "./conformance/views/corpus.ts";
 import { Messages, ScenarioFailure, expand, valueEqual } from "./conformance/views/messages.ts";
 import { anchorExists } from "./conformance/cli.ts";
 import { runVector } from "./conformance/views/vectors.ts";
+import { loadAssetsCorpus } from "./conformance/assets/corpus.ts";
+import { runAssetsVector } from "./conformance/assets/read.ts";
 
 const receipt = (results) => ({
   format: names.receipt,
@@ -140,6 +142,68 @@ test("a vector case whose requirement the implementation does not list is unsupp
   const outcome = await runVector(adapter, item, new Set(["producer"]), ["producer"], new Set(["text-splice/1"]));
   assert.deepEqual(outcome, { outcome: "unsupported", detail: "requires region-collections/1", requires: ["region-collections/1"] });
   assert.equal((await runVector(adapter, item, new Set(["client"]), ["producer"], new Set())).outcome, "excluded");
+});
+
+test("the Assets corpus loads every vector file's cases, and its case list and status file are current", async () => {
+  const corpus = resolve(root, "specs/assets/vectors");
+  const cases = loadAssetsCorpus(corpus);
+  assert.equal(new Set(cases.map((c) => c.id)).size, cases.length);
+  assert.deepEqual([...new Set(cases.map((c) => c.set))], ["assets.crafted", "assets.packer"]);
+  for (const c of cases) {
+    assert.ok(c.id.startsWith(`${c.set}.`) && c.file === `${c.set.slice("assets.".length)}.json`, c.id);
+    assert.deepEqual(c.roles, ["reader"]);
+  }
+  assert.equal(readFileSync(join(corpus, "cases.json"), "utf8"), coreFormatCases(names.cases, "assets/2", cases), "run bun run conformance cases --write");
+  const status = JSON.parse(readFileSync(join(corpus, "status/dotnet-assets.json"), "utf8"));
+  assert.deepEqual(lintStatus(status, anchorExists), []);
+  assert.deepEqual(Object.keys(status.cases), cases.map((c) => c.id));
+});
+
+// A fake adapter that answers assets.read with `reply(mode)` and records the calls.
+const assetsAdapter = (reply) => {
+  const calls = [];
+  return { calls, call: async (op, args) => (calls.push(`${op} ${args.mode}`), reply(args.mode)) };
+};
+const assetRow = { path: "a.txt", mediaType: "text/plain", length: 2, sha256: "ab", entryPoint: true, cacheMode: "Revalidate" };
+const validCase = { input: { value: "" }, expect: { result: "valid", assets: [assetRow] } };
+const invalidCase = { input: { value: "" }, expect: { result: "invalid", error: "crc-mismatch" } };
+const bothModes = new Set(["eager-reading", "lazy-reading"]);
+
+test("an Assets vector runs in every mode the adapter lists and compares what each read and served", async () => {
+  const served = (sha256) => () => ({ result: "valid", assets: [{ ...assetRow, served: { length: 2, sha256 } }] });
+  const good = assetsAdapter(served("ab"));
+  assert.deepEqual(await runAssetsVector(good, validCase, bothModes), { outcome: "pass" });
+  assert.deepEqual(good.calls, ["assets.read eager", "assets.read lazy"]);
+  // A lazy reader does not check digests, an eager one does.
+  const outcome = await runAssetsVector(assetsAdapter(served("cd")), validCase, bothModes);
+  assert.equal(outcome.outcome, "fail");
+  assert.match(outcome.detail, /^eager: served a.txt with the digest cd/);
+  assert.doesNotMatch(outcome.detail, /lazy/);
+  const short = await runAssetsVector(assetsAdapter(() => ({ result: "valid", assets: [{ ...assetRow, served: { length: 1, sha256: "ab" } }] })), validCase, new Set(["lazy-reading"]));
+  assert.match(short.detail, /^lazy: served 1 bytes of a.txt/);
+  const other = await runAssetsVector(assetsAdapter(() => ({ result: "valid", assets: [{ ...assetRow, cacheMode: "Immutable", served: { length: 2, sha256: "ab" } }] })), validCase, bothModes);
+  assert.match(other.detail, /reported .*Immutable.*expected .*Revalidate/);
+  // expectLazy replaces expect in lazy reading.
+  const lazyValid = { ...invalidCase, expectLazy: validCase.expect };
+  const modes = assetsAdapter((mode) => (mode === "eager" ? { result: "invalid", stage: "read" } : served("zz")()));
+  assert.deepEqual(await runAssetsVector(modes, lazyValid, bothModes), { outcome: "pass" });
+  // With neither mode the case is unsupported, before the adapter is asked.
+  const none = assetsAdapter(() => { throw new Error("the adapter was asked"); });
+  assert.equal((await runAssetsVector(none, validCase, new Set(["error-codes"]))).outcome, "unsupported");
+});
+
+test("an invalid Assets vector compares codes only for an implementation with error-codes", async () => {
+  const run = (reply, supports = bothModes) => runAssetsVector(assetsAdapter(() => reply), invalidCase, supports);
+  assert.deepEqual(await run({ result: "invalid", stage: "read" }), { outcome: "pass" });
+  assert.deepEqual(await run({ result: "invalid", stage: "read", error: "zip-invalid" }), { outcome: "pass" });
+  assert.match((await run({ result: "invalid", stage: "read", error: "zip-invalid" }, new Set([...bothModes, "error-codes"]))).detail, /zip-invalid.*expected crc-mismatch/);
+  assert.deepEqual(await run({ result: "invalid", stage: "read", error: "crc-mismatch" }, new Set([...bothModes, "error-codes"])), { outcome: "pass" });
+  assert.match((await run({ result: "invalid", stage: "read", error: "unmapped:InvalidOperationException" })).detail, /unmapped/);
+  assert.match((await run({ result: "valid", assets: [] })).detail, /accepted, expected crc-mismatch/);
+  // An eager read checks every rule before it returns; a lazy one may fail when it opens an asset.
+  const late = await run({ result: "invalid", stage: "open" });
+  assert.match(late.detail, /^eager: the read returned and an asset then failed to open/);
+  assert.doesNotMatch(late.detail, /lazy/);
 });
 
 test("message matching compares members exactly, $any by type, and frame changes per field", () => {
