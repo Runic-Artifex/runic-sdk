@@ -66,6 +66,7 @@ internal sealed partial class DevSession
     private IReadOnlyList<BrowserEntry.ServedWindow> _browserWindows = [];
     private readonly List<DebugEndpoint> _windowEndpoints = [];
     private readonly List<(FrontendDependency Dependency, DependencyState State)> _dependencies = [];
+    private DevFailure? _failure;
 
     internal DevSession(
         DevProjectConfiguration configuration,
@@ -400,6 +401,32 @@ internal sealed partial class DevSession
         Write();
     }
 
+    /// <summary>
+    /// Records why dev stops (D087), for the session file's <c>failure</c>; <see cref="Stop"/> writes it with
+    /// <c>"state": "stopped"</c>, in one write, so a reader never sees a failure of a session that still runs. A dependency
+    /// package that failed is listed as <c>failed</c> with the failure's message.
+    /// </summary>
+    internal void Failed(DevFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        lock (_gate)
+        {
+            _failure = failure;
+            if (failure.Package is not { } package) return;
+            int index = _dependencies.FindIndex(entry => FrontendDependencies.PathComparer.Equals(entry.Dependency.Directory, package));
+            if (index >= 0) _dependencies[index] = (_dependencies[index].Dependency, _dependencies[index].State with { State = DependencyState.Failed, Message = failure.Message });
+        }
+    }
+
+    /// <summary>The failure that <see cref="Failed"/> recorded, or null.</summary>
+    internal DevFailure? Failure
+    {
+        get
+        {
+            lock (_gate) return _failure;
+        }
+    }
+
     /// <summary>Marks the session stopped. A failure to write is not reported: dev is ending anyway.</summary>
     internal void Stop()
     {
@@ -658,6 +685,36 @@ internal sealed partial class DevSession
                 json.WriteEndObject();
             }
             json.WriteEndArray();
+            // Since 0.24 (D087): why dev stopped, when a failure stopped it; null while it runs and after a stop without one.
+            // Written with "stopped", so an IDE shows the failure after dev ended, which a task's problem matcher cannot.
+            if (_failure is { } failure)
+            {
+                json.WriteStartObject("failure");
+                json.WriteString("code", failure.Code);
+                json.WriteString("message", failure.Message);
+                WriteStringOrNull(json, "project", failure.Project);
+                WriteStringOrNull(json, "package", failure.Package);
+                json.WriteStartArray("diagnostics");
+                foreach (DevDiagnostic diagnostic in failure.Diagnostics)
+                {
+                    json.WriteStartObject();
+                    json.WriteString("file", diagnostic.File);
+                    if (diagnostic.Line is { } line) json.WriteNumber("line", line);
+                    else json.WriteNull("line");
+                    if (diagnostic.Column is { } column) json.WriteNumber("column", column);
+                    else json.WriteNull("column");
+                    json.WriteString("severity", diagnostic.Severity);
+                    json.WriteString("code", diagnostic.Code);
+                    json.WriteString("message", diagnostic.Message);
+                    json.WriteEndObject();
+                }
+                json.WriteEndArray();
+                json.WriteEndObject();
+            }
+            else
+            {
+                json.WriteNull("failure");
+            }
             json.WriteEndObject();
         }
         return stream.ToArray();
