@@ -91,11 +91,11 @@ example `known-failure` with the issue of the follow-up pull request, or `unsupp
 | --- | --- |
 | [`cli.ts`](cli.ts) | the command's entry point, which registers runic-sdk's corpus modules |
 | [`core/`](core/README.md) | the parts every corpus and repository shares: the command (runs, receipts, the status check, `cases`, `lint`), the adapter process client, cases, outcomes, status files and their comparison, the format names. runic-cli-sdk and runic-translations-sdk vendor it unchanged |
-| [`views/`](views) | the Views protocol 4 module: corpus loading, message writing and matching, producer steps, vectors |
+| [`views/`](views) | the Views protocol 4 module: corpus loading, message writing and matching, producer steps, client steps, vectors |
 | [`assets/`](assets) | the Assets archive module: corpus loading and the `assets.read` comparison |
 | [`server/`](server) | the Desktop server module: corpus loading, and the client that runs a case's steps over sockets and checks the server's responses and frames |
 | [`implementations.json`](implementations.json) | each implementation: corpus, roles, adapter build and command, status file |
-| [`adapters/ts-client.ts`](adapters/ts-client.ts) | the TypeScript client's adapter (message vectors; client scenarios are #1350) |
+| [`packages/web/views/test/conformance-adapter.ts`](../../packages/web/views/test/conformance-adapter.ts) | the TypeScript client's adapter, on the package's production build, with the test Views and scripted host of [`test/support/conformance-client.ts`](../../packages/web/views/test/support/conformance-client.ts) |
 | [`tests/dotnet/Runic.Application.Views.Conformance`](../../tests/dotnet/Runic.Application.Views.Conformance) | the .NET producer's adapter, which compiles the in-repository test Views and scenario transport |
 | [`tests/dotnet/Runic.Assets.Conformance`](../../tests/dotnet/Runic.Assets.Conformance) | the .NET Assets reader's adapter, on `Runic.Assets`' public API |
 | [`native/crates/server-conformance`](../../native/crates/server-conformance) | runic-server's adapter, on its Rust API, with the corpus's test application |

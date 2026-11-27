@@ -103,14 +103,47 @@ in flight, so `settle` does not wait for it.
 
 ### Client scenarios
 
-These are a later slice (R7 G10, #1350). The adapter implements the host bridge that the client talks to, and the
-driver plays the producer:
+The driver plays the producer: it writes each message that a `receive` step delivers, and checks each request that a
+`send` step expects, with the README's ids, generators and comparison rules, including its session and languages
+rules. The adapter owns the client, its test Views, the scripted host bridge that the client talks to (README
+"Steps"), and the virtual clock. It runs the calls in the client's API. Each op that drives the client answers once the
+client has run the work it queued, such as a reply's continuation; for a JavaScript client, a few turns of the event
+loop.
 
-- `client.connect`, `client.disconnect`;
-- `client.nextRequest {conn, waitMs}` and `client.deliver {conn, replyTo, text}`;
-- `client.call {id, op, …}` (README "Calls") and `client.callResult {id, waitMs}`;
-- the read ops `client.state {route}`, `client.notifications {route}`, `client.diagnostics`, `client.connection`,
-  `client.locale`, `client.appearance` and `client.requests {route, request}`.
+| op | args | ok | Notes |
+| --- | --- | --- | --- |
+| `client.begin` | `{view}` | `{}` | A fresh scenario: no connection, no open route, no diagnostics, and the virtual clock at 0 on the corpus's default day. `unsupported` for a View the adapter does not have. |
+| `client.end` | — | `{}` | Releases every route and the connection, and stops the virtual clock. |
+| `client.connect` | `{conn}` | `{}` | The host bridge reports a new connection named `conn`, after any earlier one. The client then sends its `hello`. |
+| `client.disconnect` | `{conn}` | `{}` | The host bridge reports the connection lost; requests still waiting for a reply fail. |
+| `client.nextRequest` | `{conn, waitMs}` | `{request: {tag, text} \| null}` | The client's next request on the connection that the driver has not taken, waiting up to `waitMs` real milliseconds (0: only what is there). `tag` names it for its reply. |
+| `client.deliver` | `{conn, replyTo, text}` | `{}` | The host delivers `text`: as the reply to the request `replyTo` (a `tag`), or as a push when `replyTo` is `null`. |
+| `client.advance` | `{ms}` | `{}` | Advances the virtual clock, running each timer that falls due, in order. |
+| `client.call` | `{id, call}` | `{}` | Starts the step's `call` (README "Calls") and names it `id`. For `start`, `wait`, `status` and `cancel`, `call.operation` is the operation id's value as the driver writes it. `unsupported` for a call the client has no API for. |
+| `client.callResult` | `{id, waitMs}` | `{state: "pending"}`, `{state: "resolved", value}` or `{state: "rejected", error: {kind, reason?, failure?}}` | Waits up to `waitMs` for the call to complete. `value` is the call's result as JSON. `error.kind` is the client error's kind, `domain-failed` with `failure` for a declared failure, or `unmapped:<what>` for an error that is not the client's documented kind. |
+| `client.state` | `{route}` | `{value}` | The state the client exposes for the route. |
+| `client.operation` | `{operation}` | `{status}` | The last status of the operation that the client observed, without `revision`, or `null`. |
+| `client.notifications` | `{route}` | `{count}` | How often the route's subscribers were notified of a new state since its `open` resolved. |
+| `client.diagnostics` | — | `{codes}` | The codes of every diagnostic the client reported since `client.begin`, in order. |
+| `client.connection` | — | `{state}` | The connection state the client reports, or `null`. |
+| `client.locale`, `client.appearance` | — | `{locale}`, `{appearance}` | The window's locale, and the appearance the client keeps from the host. |
+| `client.requests` | `{route, request}` | `{inputs}` | The inputs the `handle` handler of that route and view request was called with, in order. |
+
+The driver runs a client scenario as the README's client runner does:
+
+- **Skipped steps.** It skips the steps that only a producer runner runs, and the producer's expectations (`model`,
+  `presented`, `closed`, `flushed`, `languages`).
+- **Unordered steps.** It delivers `unordered` messages in the order the steps list them.
+- **Producer capabilities.** It meets `held-delivery` itself, since it is the producer runner and skips `delivery`
+  steps. The adapter lists `virtual-clock`.
+- **Features.** A client adapter's `features` are those of the `hello` its client sends to a probe connection.
+- **Expectations.** It reads a call that should have completed, and a `requests` expectation, until they match, up to
+  the receive timeout. It reads everything else once.
+- **The end.** It requires that no connection has a request that no `send` step took.
+- **Ids.** A `wire` id that the client sends binds the first value the driver sees, as the README says. The driver
+  writes the bound value after that. It writes a `provided` id that it must write before the client sent it as
+  `"provided:<name>"`, or as the number 1 when the name contains `epoch`. The test Views give the view requests'
+  contracts these values too.
 
 ## Assets (`assets/2`)
 

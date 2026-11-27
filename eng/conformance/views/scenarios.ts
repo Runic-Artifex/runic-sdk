@@ -1,9 +1,10 @@
 // The producer role of the Views scenarios (specs/application/conformance/README.md, "Scenarios"), driven through
 // an adapter. The driver owns the steps, ids, matching, unordered groups and timeouts; the adapter owns the window,
-// its test Views, the transport and the virtual clock. The client role's steps are a later slice (R7 G10).
+// its test Views, the transport and the virtual clock. The client role's steps are in client.ts.
 import type { Adapter } from "../core/adapter";
 import { AdapterError } from "../core/adapter";
 import type { Outcome } from "../core/results";
+import { runClientScenario } from "./client";
 import { Messages, ScenarioFailure, abbreviate, expand, valueEqual, type Id } from "./messages";
 
 export type Timing = { receiveMs: number };
@@ -17,7 +18,8 @@ export async function runScenario(adapter: Adapter, scenario: any, supports: Set
   const roles: string[] = scenario.roles ?? [];
   if (!implementationRoles.has("producer")) {
     if (!roles.includes("client")) return { outcome: "excluded", detail: "role:producer" };
-    return { outcome: "unsupported", detail: "the driver has no client steps yet (R7 G10)" };
+    if (implementationRoles.has("client")) return runClientScenario(adapter, scenario, supports, timing);
+    return { outcome: "excluded", detail: `role:${roles.join(",")}` };
   }
   if (!roles.includes("producer")) return { outcome: "excluded", detail: "role:client" };
   const missing = (scenario.requires ?? []).filter((r: string) => !supports.has(r));

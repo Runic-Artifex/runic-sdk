@@ -16,6 +16,7 @@ import { formatCases, loadViewsCorpus } from "./conformance/views/corpus.ts";
 import { Messages, ScenarioFailure, expand, valueEqual } from "./conformance/views/messages.ts";
 import { anchorExists } from "./conformance/cli.ts";
 import { runVector } from "./conformance/views/vectors.ts";
+import { runScenario } from "./conformance/views/scenarios.ts";
 import { loadAssetsCorpus } from "./conformance/assets/corpus.ts";
 import { runAssetsVector } from "./conformance/assets/read.ts";
 import { loadServerCorpus } from "./conformance/server/corpus.ts";
@@ -137,6 +138,70 @@ test("in an unordered group, revisions first seen on different routes may map in
   shared.match({ kind: "frame", route: "a", revision: 1 }, { kind: "frame", route: "a", revision: 4 }, null);
   assert.throws(() => shared.match({ kind: "frame", route: "b", revision: 2 }, { kind: "frame", route: "b", revision: 4 }, null), ScenarioFailure);
   assert.throws(() => shared.match({ kind: "frame", route: "a", revision: 2 }, { kind: "frame", route: "a", revision: 3 }, null), ScenarioFailure);
+});
+
+test("in the client role a wire id binds what the client sends first, and the runner writes the bound value", async () => {
+  const ids = { session: { kind: "wire", value: "s-1" }, token: { kind: "provided" } };
+  const messages = new Messages(ids, async (name) => (ids[name].kind === "wire" ? ids[name].value : `provided:${name}`), true);
+  messages.match({ kind: "hello", session: { $id: "session" } }, { kind: "hello", session: "random" }, null);
+  assert.throws(() => messages.match({ session: { $id: "session" } }, { session: "other" }, null), ScenarioFailure);
+  assert.equal(await messages.write({ session: { $id: "session" }, token: { $id: "token" } }), '{"session":"random","token":"provided:token"}');
+  // The producer role still requires a wire id's value.
+  assert.throws(() => new Messages(ids, async () => null).match({ session: { $id: "session" } }, { session: "random" }, null), ScenarioFailure);
+});
+
+// A fake client adapter: the client sends `requests` in order, and every call resolves with null.
+function fakeClient(requests) {
+  const ops = [];
+  const queue = [...requests];
+  return {
+    ops,
+    alive: true,
+    call: async (op, args) => {
+      ops.push([op, args]);
+      if (op === "client.nextRequest") {
+        const text = queue.shift();
+        return { request: text === undefined ? null : { tag: `t${ops.length}`, text: JSON.stringify(text) } };
+      }
+      if (op === "client.callResult") return { state: "resolved", value: null };
+      return {};
+    },
+  };
+}
+
+test("a client scenario checks the client's requests with the session and languages rules and runs its calls", async () => {
+  const scenario = {
+    id: "demo.client.v1", roles: ["client"], view: "notes", requires: ["held-delivery"],
+    ids: { c1: { kind: "connection" }, hello: { kind: "request" }, open: { kind: "request" }, session: { kind: "wire", value: "s-1" }, o: { kind: "call" } },
+    steps: [
+      { connect: "c1" },
+      { send: { kind: "hello", session: { $id: "session" }, features: { $any: "array" } }, id: "hello" },
+      { receive: { ok: true }, replyTo: "hello" },
+      { mutate: [], role: "producer" },
+      { call: { id: "o", op: "open", route: "notes" } },
+      { send: { kind: "open", route: "notes" }, id: "open" },
+      { receive: { ok: true, revision: 1 }, replyTo: "open" },
+      { expect: { call: { id: "o", resolved: null }, model: { title: "ignored" } } },
+    ],
+  };
+  const hello = { kind: "hello", session: "abc", features: ["text-splice/1"], languages: ["en-US"] };
+  const pass = fakeClient([hello, { kind: "open", route: "notes", session: "abc" }]);
+  assert.deepEqual(await runScenario(pass, scenario, new Set(), { receiveMs: 50 }, new Set(["client"])), { outcome: "pass" });
+  assert.deepEqual(pass.ops.map(([op]) => op), [
+    "client.begin", "client.connect", "client.nextRequest", "client.deliver", "client.call", "client.nextRequest", "client.deliver",
+    "client.callResult", "client.nextRequest", "client.end",
+  ]);
+  assert.deepEqual(pass.ops[6][1], { conn: "c1", replyTo: "t6", text: '{"ok":true,"revision":1}' });
+  // A request that names another session than its hello fails, and so does a request no send step matched.
+  const other = await runScenario(fakeClient([hello, { kind: "open", route: "notes", session: "xyz" }]), scenario, new Set(), { receiveMs: 50 }, new Set(["client"]));
+  assert.equal(other.outcome, "fail");
+  assert.match(other.detail, /session/);
+  const extra = await runScenario(fakeClient([hello, { kind: "open", route: "notes" }, { kind: "snapshot", route: "notes" }]), scenario, new Set(), { receiveMs: 50 }, new Set(["client"]));
+  assert.equal(extra.outcome, "fail");
+  assert.match(extra.detail, /no send step matched/);
+  // A requirement of the client itself is the adapter's to list.
+  const clock = await runScenario(fakeClient([]), { ...scenario, requires: ["virtual-clock"] }, new Set(), { receiveMs: 50 }, new Set(["client"]));
+  assert.equal(clock.outcome, "unsupported");
 });
 
 test("a vector case whose requirement the implementation does not list is unsupported, before the adapter is asked", async () => {

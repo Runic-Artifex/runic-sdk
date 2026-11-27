@@ -46,7 +46,17 @@ export class Messages {
     this.group = null;
   }
 
-  constructor(private readonly ids: Record<string, Id>, private readonly provide: (name: string) => Promise<unknown>) {}
+  // checksClient: the runner checks what a client sends (the client role), so a wire id binds the first value it sees
+  // there, as a provided id does, and a message the runner writes uses the bound value (README "Comparing messages").
+  constructor(
+    private readonly ids: Record<string, Id>,
+    private readonly provide: (name: string) => Promise<unknown>,
+    private readonly checksClient = false,
+  ) {}
+
+  private binds(id: Id) {
+    return id.kind === "provided" || (this.checksClient && id.kind === "wire");
+  }
 
   id(name: string, ...kinds: string[]): Id {
     const id = this.ids[name];
@@ -55,10 +65,11 @@ export class Messages {
     return id;
   }
 
-  // The text a producer runner's send step writes. A string message is the request's text.
-  async write(message: unknown): Promise<string> {
+  // The text a runner writes: a producer runner's send step, or a client runner's receive step. A string message is the
+  // text itself. route is the route of the request a reply answers, for its epochs.
+  async write(message: unknown, route: string | null = null): Promise<string> {
     if (typeof message === "string") return message;
-    this.route = isObject(message) && typeof message.route === "string" ? message.route : null;
+    this.route = isObject(message) && typeof message.route === "string" ? message.route : route;
     return this.writeValue(message, null);
   }
 
@@ -72,7 +83,7 @@ export class Messages {
       if (keys.length === 1 && keys[0] === "$id") {
         const name = String(node.$id);
         const id = this.id(name, "wire", "provided");
-        if (id.kind === "wire") return JSON.stringify(id.value ?? "");
+        if (!this.binds(id)) return JSON.stringify(id.value ?? "");
         if (!this.provided.has(name)) {
           const value = await this.provide(name);
           if (value === undefined || value === null)
@@ -133,7 +144,7 @@ export class Messages {
     if (isObject(expected) && Object.keys(expected).length === 1 && "$id" in expected) {
       const name = String(expected.$id);
       const id = this.id(name, "wire", "provided");
-      if (id.kind === "wire") {
+      if (!this.binds(id)) {
         if (actual !== id.value) throw new ScenarioFailure(`${path}: expected the wire id ${name} (${JSON.stringify(id.value)}), actual ${abbreviate(actual)}`);
       } else if (this.provided.has(name)) {
         if (!valueEqual(this.provided.get(name), actual)) throw fail();
