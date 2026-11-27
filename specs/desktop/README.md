@@ -24,6 +24,12 @@ intentionally divergent, or not applicable.
   integration requirements for the shared contract.
 - [Wire-profile decision](wire-profile.md) selects and isolates the v1
   browser framing profile.
+- [Desktop page services](page-services.md) are what an embedded window gives
+  its page besides the transport: drag regions, navigation and external links,
+  announcements, high contrast, region install, and the rule for a page channel
+  over the webview's own messages.
+- The [development host profile](development-host-profile.md) is the
+  environment a host reads under the development tool and the lines it writes.
 - [Conformance](conformance/README.md) selects portable scenario and codec
   vector formats.
 - [Shortcut cases](fixtures/shortcuts.json) are the keyboard shortcut text,
