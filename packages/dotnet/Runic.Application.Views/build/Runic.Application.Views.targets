@@ -693,9 +693,13 @@
        IncludeTransitiveProjectReferences, so the update above evaluation
        misses them; the target after it covers them. Without it every
        transitive reference was compiled again with the bootstrap's output
-       paths, all into one IntermediateOutputPath, in parallel (#1003). -->
+       paths, all into one IntermediateOutputPath, in parallel (#1003).
+       The runtime identifier and publish properties that the pass clears are
+       removed too: otherwise a library that a solution also builds was built
+       again with PublishAot=false and the like, a second instance writing the
+       same bin/ and obj/ as the solution's (#1424). -->
   <PropertyGroup>
-    <_RunicBridgeBootstrapReferencePropertiesToRemove>RunicApplicationFrontendBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath</_RunicBridgeBootstrapReferencePropertiesToRemove>
+    <_RunicBridgeBootstrapReferencePropertiesToRemove>RunicApplicationFrontendBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath;RuntimeIdentifier;PublishAot;PublishTrimmed;PublishReadyToRun;PublishSingleFile;IncludeNativeLibrariesForSelfExtract;SelfContained</_RunicBridgeBootstrapReferencePropertiesToRemove>
   </PropertyGroup>
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <ProjectReference Update="@(ProjectReference)"

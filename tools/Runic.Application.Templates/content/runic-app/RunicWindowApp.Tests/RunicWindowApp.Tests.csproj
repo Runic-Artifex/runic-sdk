@@ -18,10 +18,13 @@
     <PackageReference Include="Runic.Application.Testing" Version="__RUNIC_NUGET_VERSION__" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The tests need the application's assembly, not its built frontend. -->
 <!--#if (hasLibrary) -->
-    <ProjectReference Include="../RunicWindowApp/RunicWindowApp.csproj" AdditionalProperties="RunicApplicationFrontendBuildEnabled=false" />
+    <!-- The solution builds the application with its frontend. A reference with other properties, such as
+         RunicApplicationFrontendBuildEnabled=false, would build the application a second time, at the same time and
+         into the same folders. The frontend build skips an unchanged frontend. -->
+    <ProjectReference Include="../RunicWindowApp/RunicWindowApp.csproj" />
 <!--#else -->
+    <!-- The tests need the application's assembly, not its built frontend. -->
     <ProjectReference Include="../RunicWindowApp.csproj" AdditionalProperties="RunicApplicationFrontendBuildEnabled=false" />
 <!--#endif -->
   </ItemGroup>
