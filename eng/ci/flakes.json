@@ -1,3 +1,12 @@
 {
-  "quarantine": []
+  "quarantine": [
+    {
+      "issue": 1274,
+      "job": "wpf",
+      "legs": ["win-x64"],
+      "project": "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests",
+      "class": "NativeChecks",
+      "method": "TabEntersAndLeavesTheChildWebView"
+    }
+  ]
 }
