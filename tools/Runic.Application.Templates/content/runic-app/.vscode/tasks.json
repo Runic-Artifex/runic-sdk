@@ -10,8 +10,11 @@
       "problemMatcher": []
     },
     {
-      // dotnet runic dev: the development server and the Window, restarted after each C# edit. Its failures (RAPPDEV)
-      // and the errors of the first build and of each rebuild go to the Problems panel; the task is ready at each [dev] Ready.
+      // dotnet runic dev: the development server and the Window, restarted after each C# edit. While it runs, the errors of
+      // each rebuild and its failures (RAPPDEV) go to the Problems panel; the task is ready at each [dev] Ready. VS Code
+      // removes a background task's problems when its process ends, so a failure that ends dev, such as a failed first
+      // build, stays in this terminal. Runic DevKit's "Start dotnet runic dev" runs this task in DevKit's own terminal,
+      // which keeps it in Problems.
       "label": "runic: dev",
       "detail": "dotnet runic dev",
       "type": "process",

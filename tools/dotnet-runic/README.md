@@ -1392,9 +1392,13 @@ process it started: the shallowest process that runs the project's program
 250 ms (every second on macOS, which runs `ps`), so the line follows the start
 by up to that long.
 
-A VS Code background task can wait for `Ready`, and the same task gets `dev`'s
-failures and the errors of the first build and of each rebuild in the Problems
-panel, as the template's `.vscode/tasks.json` does:
+A VS Code background task can wait for `Ready`, and while `dev` runs the same
+task gets `dev`'s failures and the errors of each build in the Problems panel,
+as the template's `.vscode/tasks.json` does. VS Code removes a background
+task's problems when its process ends, so a failure that ends `dev` (a failed
+first build, `RAPPDEV1018`) stays only in the task's terminal. Runic DevKit's
+**Start dotnet runic dev** runs the template's `runic: dev` tasks in a terminal
+of its own, which reads `dev`'s output, and keeps that failure in Problems:
 
 ```jsonc
 // .vscode/tasks.json

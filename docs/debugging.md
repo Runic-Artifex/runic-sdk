@@ -126,7 +126,10 @@ Without `dev`, the Window shows the production frontend.
 | `Window + WebKitGTK (Linux)` | Runic Desktop on Linux: the same with WebKitGTK, through `dotnet runic dev`'s CDP adapter on port 9222. |
 | `Attach to the page (JavaScript)` | VS Code's JavaScript debugger on port 9222 alone: the Window that `dotnet runic dev` started on Linux, or a WebView2 Window started with the port on Windows. |
 
-The tasks put `dev`'s failures (`RAPPDEV` codes) and build errors in the Problems panel. VS Code builds from other
+While `dev` runs, the tasks put its failures (`RAPPDEV` codes) and build errors in the Problems panel. VS Code removes
+a background task's problems when its process ends, so a failure that ends `dev`, such as a failed first build or
+`RAPPDEV1018`, stays in the task's terminal; Runic DevKit's **Start dotnet runic dev** runs the task in a terminal of its
+own and keeps it in Problems. VS Code builds from other
 vendors, such as VSCodium, cannot run Microsoft's .NET debugger; use netcoredbg there.
 
 **Runic DevKit for VS Code** (`runic-artifex.runic-devkit`, from
