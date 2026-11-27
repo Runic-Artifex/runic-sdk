@@ -27,7 +27,10 @@ internal static class HostConformanceAdapter
     {
         // The protocol owns standard output; everything else the process writes goes to the log.
         var protocol = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
+        // The adapter mode runs instead of TUnit (Program.cs dispatches on --conformance-adapter), so no TUnit log is lost.
+#pragma warning disable TUnit0055 // Overwriting the Console writer can break TUnit logging
         Console.SetOut(Console.Error);
+#pragma warning restore TUnit0055
         using var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
         ConformanceGuest? guest = null;
         while (await input.ReadLineAsync() is { } line)
