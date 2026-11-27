@@ -18,6 +18,9 @@ import { anchorExists } from "./conformance/cli.ts";
 import { runVector } from "./conformance/views/vectors.ts";
 import { loadAssetsCorpus } from "./conformance/assets/corpus.ts";
 import { runAssetsVector } from "./conformance/assets/read.ts";
+import { loadServerCorpus } from "./conformance/server/corpus.ts";
+import { encodeFrame, expandText, runServerCase } from "./conformance/server/run.ts";
+import { createServer } from "node:net";
 
 const receipt = (results) => ({
   format: names.receipt,
@@ -316,4 +319,93 @@ test("a driver without corpus modules runs and reports that it has none", async 
   assert.match(lines.join("\n"), /no implementations yet/);
   assert.match(lines.join("\n"), /usage: bun eng\/conformance\/cli\.ts <implementation>/, "the messages name the repository's command");
   assert.match(lines.join("\n"), /unknown implementation dotnet-commandline \(this repository has no corpus modules yet\)/);
+});
+
+test("the Desktop server corpus loads, names a stated rule and level for every case, and its case list and status file are current", () => {
+  const corpus = resolve(root, "specs/desktop/server");
+  const cases = loadServerCorpus(corpus);
+  assert.deepEqual([...new Set(cases.map((c) => c.set))], ["server.close", "server.files", "server.frames", "server.handshake", "server.http"]);
+  const readme = readFileSync(join(corpus, "README.md"), "utf8");
+  for (const c of cases) {
+    assert.deepEqual(c.roles, ["server"]);
+    assert.ok(readme.includes(`<a id="${c.body.rule}"></a>`), `${c.id}: the README states no rule ${c.body.rule}`);
+  }
+  assert.equal(readFileSync(join(corpus, "cases.json"), "utf8"), coreFormatCases(names.cases, "desktop-server/1", cases), "run bun run conformance cases --write");
+  const level = new Map(cases.map((c) => [c.id, c.body.level]));
+  for (const file of readdirSync(join(corpus, "status"))) {
+    const status = JSON.parse(readFileSync(join(corpus, "status", file), "utf8"));
+    assert.deepEqual(lintStatus(status, anchorExists), [], file);
+    assert.deepEqual(Object.keys(status.cases), cases.map((c) => c.id), file);
+    for (const [id, entry] of Object.entries(status.cases)) {
+      // A MUST is met or tracked as a failure; only a SHOULD or MAY may be an intended difference (README "Requirement levels").
+      if (entry.status === "deviation") assert.notEqual(level.get(id), "must", `${file}: ${id} is a must case`);
+      if (entry.deviation) assert.match(entry.deviation, /^specs\/desktop\/server\/README\.md#/, `${file}: ${id}`);
+    }
+  }
+});
+
+test("server client frames are masked, use the shortest length unless told otherwise, and can be cut short", () => {
+  const hex = (bytes) => Buffer.from(bytes).toString("hex");
+  assert.equal(hex(encodeFrame({ opcode: "text", payload: { text: "ab" } })), "8182" + "37fa213d" + hex([0x61 ^ 0x37, 0x62 ^ 0xfa]));
+  assert.equal(hex(encodeFrame({ opcode: "binary", mask: false, payload: { text: "x" } })), "820178");
+  assert.equal(hex(encodeFrame({ opcode: "binary", fin: false, rsv: 4, mask: false })), "4200");
+  assert.equal(hex(encodeFrame({ opcode: "binary", mask: false, lengthForm: "16", payload: { text: "x" } })), "827e000178");
+  assert.equal(hex(encodeFrame({ opcode: "binary", mask: false, payload: { repeat: { byte: 0, count: 70000 } } }).subarray(0, 10)), "827f0000000000011170");
+  assert.equal(hex(encodeFrame({ opcode: 2, mask: false, lengthForm: "64", length: 2 ** 63 })), "827f8000000000000000");
+  assert.equal(hex(encodeFrame({ opcode: "close", mask: false, close: { code: 1002, reason: "x" } })), "880303ea78");
+  assert.equal(encodeFrame({ opcode: "binary", payload: { text: "abc" }, truncate: 3 }).length, 3);
+  assert.equal(expandText("{authority} {port+1}", { address: "::1", port: 8080 }), "[::1]:8080 8081");
+});
+
+// A fake server that answers every connection with `answer`, and a fake adapter that reports it and `events`.
+async function fakeServer(answer, events = []) {
+  const server = createServer((socket) => socket.once("data", () => socket.end(answer)));
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const calls = [];
+  const adapter = {
+    calls,
+    call: async (op) => {
+      calls.push(op);
+      if (op === "server.start") return { address: "127.0.0.1", port: server.address().port };
+      if (op === "server.events") return { events: events.splice(0) };
+      return {};
+    },
+  };
+  return { adapter, close: () => server.close() };
+}
+
+test("a server case compares the response and the host's events, and fails on a difference", async () => {
+  const timing = { receiveMs: 2000 };
+  const steps = (body, target) => [
+    { connect: "a" },
+    { send: "a", request: { target: "/text" } },
+    { response: "a", expect: { status: 200, headers: { "x-content-type-options": "nosniff", "x-frame-options": null }, body: { text: body } } },
+    { host: "a", expect: [{ type: "request", method: "GET", target }] },
+  ];
+  const answer = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Content-Type-Options: nosniff\r\n\r\nhello";
+  const request = () => [{ type: "request", conn: "a", method: "GET", target: "/text", websocket: false, headers: [] }];
+  let fake = await fakeServer(answer, request());
+  assert.deepEqual(await runServerCase(fake.adapter, { steps: steps("hello", "/text") }, new Set(), timing), { outcome: "pass" });
+  assert.deepEqual(fake.adapter.calls.at(-1), "server.stop");
+  fake.close();
+  fake = await fakeServer(answer, request());
+  const body = await runServerCase(fake.adapter, { steps: steps("hellp", "/text") }, new Set(), timing);
+  assert.equal(body.outcome, "fail");
+  assert.match(body.detail, /^step 3 \(response, expect\): HTTP 200 OK: body: "hello", expected "hellp"/);
+  fake.close();
+  fake = await fakeServer(answer, request());
+  const target = await runServerCase(fake.adapter, { steps: steps("hello", "/other") }, new Set(), timing);
+  assert.match(target.detail, /^step 4 \(host, expect\): host event 1: .*expected the target "\/other"/);
+  fake.close();
+  fake = await fakeServer(answer, request());
+  const none = await runServerCase(fake.adapter, { steps: [...steps("hello", "/text").slice(0, 3), { host: "a", expect: [] }] }, new Set(), timing);
+  assert.match(none.detail, /the host saw request \/text for a, expected nothing/);
+  fake.close();
+  // A server frame that breaks RFC 6455's rules for servers fails whatever the case expects.
+  fake = await fakeServer(Buffer.from("82810000000078", "hex"));
+  const masked = await runServerCase(fake.adapter, { steps: [{ connect: "a" }, { send: "a", frames: [{ opcode: "ping" }] }, { frame: "a", expect: {} }] }, new Set(), timing);
+  assert.match(masked.detail, /the server masked a frame/);
+  fake.close();
+  const unsupported = await runServerCase({ call: () => assert.fail("the adapter was asked") }, { requires: ["stop"], steps: [] }, new Set(), timing);
+  assert.equal(unsupported.outcome, "unsupported");
 });
