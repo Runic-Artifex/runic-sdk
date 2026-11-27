@@ -137,10 +137,14 @@
             "street": "",
             "city": "Bern"
           },
+          "billing": null,
           "lines": []
         },
         "fields": {
           "address": {
+            "version": 0
+          },
+          "billing": {
             "version": 0
           }
         },

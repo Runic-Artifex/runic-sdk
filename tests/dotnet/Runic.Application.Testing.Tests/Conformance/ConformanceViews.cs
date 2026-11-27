@@ -57,9 +57,10 @@ internal interface IConformanceWindow : IDisposable
     Task RunQueuedTurnsAsync() => Task.CompletedTask;
 }
 
-// What the runner gives the window: its transport (the ScenarioTransport), its virtual clock and its input limit
-// (the scenario's options.inputBytes, or null for the default).
-internal sealed record ConformanceWindowSettings(IBridgeTransport Transport, TimeProvider TimeProvider, int? MaximumInputBytes);
+// What the runner gives the window: its transport (the ScenarioTransport), its virtual clock, its input limit (the
+// scenario's options.inputBytes) and its bound of unclaimed uploads (options.pendingUploads), null for the defaults.
+internal sealed record ConformanceWindowSettings(IBridgeTransport Transport, TimeProvider TimeProvider, int? MaximumInputBytes,
+    int? MaximumPendingUploads = null);
 
 internal static class ConformanceViews
 {
@@ -82,11 +83,14 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         // The scenarios expect one publication unit per step; the producer may coalesce notifications that arrive
         // within its minimum unit interval (specs/application/state-changes.md leaves unit size to the producer).
         BridgeDispatcher.For(settings.Transport).MinimumUnitInterval = TimeSpan.Zero;
+        // handler-timing/1 is offered only in development (README, "Handler timing"); the test windows offer it.
+        BridgeDispatcher.For(settings.Transport).HandlerTiming = true;
         var ids = 0;
         var session = new WindowContentSession(settings.Transport, new WindowContentSessionOptions
         {
             TimeProvider = settings.TimeProvider,
             MaximumInputBytes = settings.MaximumInputBytes,
+            MaximumPendingUploads = settings.MaximumPendingUploads,
             IncludeFailureDetail = false,
             // The detail View's content id is fixed; later ids (interaction requests) are counted. The tabs View's pages
             // have the ids 1, 2 and 3 as 32 hexadecimal digits.

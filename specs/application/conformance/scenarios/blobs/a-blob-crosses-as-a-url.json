@@ -50,15 +50,16 @@
         "revision": 0,
         "state": {
           "avatar": {"url":{"$any":"string","default":"http://conformance.test/_runic/blobs/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},"type":"image/png","size":3,"name":"a.png"},
-          "lastUpload": null
+          "lastUpload": null,
+          "attachments": []
         },
         "presentation": "ok"
       },
       "replyTo": "open-files-request"
     },
-    {"expect":{"state":{"route":"files","value":{"avatar":{"url":"http://conformance.test/_runic/blobs/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","type":"image/png","size":3,"name":"a.png"},"lastUpload":null}}}},
+    {"expect":{"state":{"route":"files","value":{"avatar":{"url":"http://conformance.test/_runic/blobs/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","type":"image/png","size":3,"name":"a.png"},"lastUpload":null,"attachments":[]}}}},
     {"mutate":[{"op":"assign","member":"avatar","value":null}]},
     {"receive":{"kind":"frame","route":"files","baseRevision":0,"revision":1,"changes":[{"field":"avatar","kind":"set","value":null}]}},
-    {"expect":{"state":{"route":"files","value":{"avatar":null,"lastUpload":null}}}}
+    {"expect":{"state":{"route":"files","value":{"avatar":null,"lastUpload":null,"attachments":[]}}}}
   ]
 }

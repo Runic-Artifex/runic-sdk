@@ -123,6 +123,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumPendingUploadBytes,
                 "MaximumPendingUploadBytes must be at least 1 024 bytes.");
         _maximumPendingUploadBytes = options.MaximumPendingUploadBytes;
+        if (options.MaximumPendingUploads is < 1)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumPendingUploads, "MaximumPendingUploads must be at least 1.");
+        _maximumPendingUploads = options.MaximumPendingUploads;
         _closeDrain = options.CloseDrain;
         if (options.Guest is not null && !startsGuest)
             throw new ArgumentException("Hosted mode starts with RunicDesktopHost.Run; RunicDesktopHostOptions.Guest is not supported here.", nameof(options));
@@ -255,6 +258,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     private readonly int? _maximumInputBytes;
     private readonly long? _maximumUploadBytes;
     private readonly long? _maximumPendingUploadBytes;
+    private readonly int? _maximumPendingUploads;
     // RunicDesktopHostOptions.CloseDrain: the drain of the Windows whose options set none (sdk#900).
     private readonly RunicCloseDrain? _closeDrain;
     private readonly string? _contentSecurityPolicy;
@@ -606,6 +610,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
                 MaximumPendingUploadBytes = opening.Options.MaximumPendingUploadBytes ?? _maximumPendingUploadBytes,
+                MaximumPendingUploads = opening.Options.MaximumPendingUploads ?? _maximumPendingUploads,
             });
             // The reserved route of an in-page menu bar, served before the page loads. The transport reports closed
             // connections to the window's dispatcher, which releases their mounts and menu bar watches.

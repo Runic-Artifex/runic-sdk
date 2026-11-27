@@ -787,7 +787,7 @@ Third-party packages:
   | `ReactiveUI.Binding`, `ReactiveUI.Binding.Reactive` | `[9.1.0, 10)` | The `*.ReactiveUI*` packages |
   | `ReactiveUI.Primitives`, `ReactiveUI.Primitives.Reactive`, `ReactiveUI.Disposables` | `[9.0.0, 10)` | The `*.ReactiveUI*` packages |
   | `System.Reactive` | `[7.0.0, 8)` | The `*.ReactiveUI.Reactive` packages |
-  | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.10, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
+  | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.11, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
   | `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) | `[10.10.0, 11)` | `Runic.Application.Testing` |
   | `effect` (npm) | `^4.0.1` | `@runic-artifex/views-effect` |
   | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.15.1, 0.16.0-0.0)` | `Runic.Application.Views.Translations` |

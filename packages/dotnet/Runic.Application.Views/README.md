@@ -3219,6 +3219,10 @@ const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { c
   `Clone()`, cannot be copied exactly and has no fields below it; as rows it is
   `RUNICBRIDGE052`, as an object inside a row warning `RUNICBRIDGE053`.
   `[RunicNoField]` leaves a member of a row or object without a field.
+- **Blobs.** A member that holds a `RunicBlob` has no field, since the page
+  never sends a blob; the other members of its object or row do, and their
+  copy keeps the blob. A sealed class copied through its codec cannot copy a
+  blob, so an object or row of such a class that holds one has no fields.
 - **Rows.** A `[RunicCollection]` with a `[RunicRowEditor]` method has a field
   for each row member except the key: `InvoiceFields.lines.at(key).quantity`.
   The method takes the row's key and the row with the one cell changed, and
@@ -4869,12 +4873,14 @@ await client.attach(ref);
   it as a path.
 - An upload whose body sends nothing for 30 seconds is dropped (HTTP 408), on
   every host.
-- Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
-  and `MaximumPendingUploadBytes` (unclaimed uploads of a Window at once, default
-  1 GiB), with host defaults of the same names on `RunicDesktopHostOptions`,
-  `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions`, and
-  `WindowContentSessionOptions` for a session you create. The WPF host uses the
-  defaults.
+- Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB),
+  `MaximumPendingUploadBytes` (the bytes of a Window's unclaimed uploads at once,
+  default 1 GiB) and `MaximumPendingUploads` (their number, also of empty
+  uploads, counting those still being received, default 256); an upload beyond
+  either is refused with HTTP 507. `RunicDesktopHostOptions`,
+  `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions` have host defaults
+  of the same names, and `WindowContentSessionOptions` has them for a session
+  you create. The WPF host uses the defaults.
 - Uploads are stored in a new folder of each Window, `runic-uploads-{random}`
   with mode 0700, below the temporary directory when no other user can change
   it (it is the user's own, or sticky such as `/tmp`), otherwise below
@@ -5540,7 +5546,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2030 | `DesktopHostedRegionAppearanceUnavailable` | Warning | The host gave a region window an appearance override (`RunicHostedRegionOptions.Appearance`, `RunicHostedRegion.SetAppearanceAsync`), but the guest does not implement `region-appearance/1`, such as a 0.18 guest: the window shows the desktop's appearance. Once per window. | `Name`, `Region` |
 | 2031 | `DesktopHostedRegionRetryRefused` | Warning | The host page asked for a failed region again (`hosted-region-retry`) more than 3 times within a minute; the region stays failed until the application calls `RunicHostedRegion.RetryAsync`. | `Region` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
-| 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `24c7d196e` (CsWebUi 2.5.0-beta.4.10). Once per process, before the first window opens. | `Path` |
+| 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `8a55352c2` (CsWebUi 2.5.0-beta.4.11). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
 | 2103 | `CsWebUiBlobEndpointPortsHeld` | Warning | Another process held, or answered on, one loopback address of `localhost` (`Address`) on `Count` of the `Tried` ports a CS-WebUI Window's blob endpoint tried, so the endpoint gave up `Host`. On Windows, where http.sys refuses to listen on a port that another socket holds, `Address` is `localhost` when no single address shows which socket holds it. Its URLs then fall back to `127.0.0.1`, whose loads the page makes cross-site and the endpoint refuses; on Windows, which has no fallback, the Window opens without blobs and uploads (event 1207). | `Address`, `Count`, `Tried`, `Host` |
 | 2104 | `CsWebUiBlobEndpointPortsReserved` | Warning | On Windows, URL reservations of http.sys (`Reservations`, the reserved URL prefixes) named `Count` of the `Tried` ports a CS-WebUI Window's blob endpoint tried for `Host`, so the endpoint gave up `Host`. A reservation lets the users that its access list names register URLs under the endpoint's, so the endpoint does not use a port that one names, whatever its host or path. The Window then opens without blobs and uploads (event 1207). | `Reservations`, `Count`, `Tried`, `Host` |
@@ -5858,9 +5864,14 @@ each watched entry, so a link replaced by a rename is seen in its parent, and
 shares one watcher per directory across the process. It also watches that
 directory's parent: inotify and FSEvents keep a watch on a deleted directory
 and report nothing for a new directory of the same name, so the watcher
-compares the directory's identity (device, inode and birth time, since ext4
-reuses a freed inode at once, or volume and file index on Windows) when the parent reports it, on each read and when another watcher
-joins, and starts a new watch when it was replaced. `PathWatcherTests` run the
+compares the directory's identity when the parent reports it, on each read
+and when another watcher joins, and starts a new watch when it was replaced.
+The identity is the device, inode and birth time on Linux and macOS (ext4
+reuses a freed inode at once; Linux reads the birth time with `statx`), and
+the volume and file index on Windows. Writes inside the directory leave it
+unchanged. On a Linux file system that records no birth time, the identity
+takes the change time instead. A replacement is still found, but each entry
+created, renamed or deleted in the directory then restarts its watch. `PathWatcherTests` run the
 first five rows on Linux, Windows and macOS in CI, and check that an event,
 not a poll, reported each change; the network and limit rows follow the
 platforms' documentation.

@@ -1,0 +1,22 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.an-upload-larger-than-the-maximum-is-too-large.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1"],
+  "description": "An upload that declares more bytes than the grant's maximumBytes is refused with 413 too-large, and stores nothing.",
+  "view": "files",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"upload":{"name":"big.bin","type":"application/octet-stream","text":"","size":268435457},"answer":{"status":413,"body":{"ok":false,"error":{"kind":"rejected","reason":"too-large","message":{"$any":"string"}}}}}
+  ]
+}

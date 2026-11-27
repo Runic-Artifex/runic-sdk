@@ -85,6 +85,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumPendingUploadBytes,
                 "MaximumPendingUploadBytes must be at least 1 024 bytes.");
         _maximumPendingUploadBytes = options.MaximumPendingUploadBytes;
+        if (options.MaximumPendingUploads is < 1)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumPendingUploads, "MaximumPendingUploads must be at least 1.");
+        _maximumPendingUploads = options.MaximumPendingUploads;
         _assets = options.Assets;
         Placement = options.Placement;
         _closeDrain = options.CloseDrain;
@@ -119,6 +122,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     private readonly int? _maximumInputBytes;
     private readonly long? _maximumUploadBytes;
     private readonly long? _maximumPendingUploadBytes;
+    private readonly int? _maximumPendingUploads;
 
     private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
 
@@ -289,6 +293,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
                 MaximumPendingUploadBytes = opening.Options.MaximumPendingUploadBytes ?? _maximumPendingUploadBytes,
+                MaximumPendingUploads = opening.Options.MaximumPendingUploads ?? _maximumPendingUploads,
             });
             var menuLogger = (scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(CsWebUiLog.LogCategory))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;

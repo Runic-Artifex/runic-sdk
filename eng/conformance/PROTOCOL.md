@@ -61,7 +61,7 @@ One window is open at a time.
 
 | op | args | ok | Notes |
 | --- | --- | --- | --- |
-| `views.open` | `{view, model, inputBytes}` | `{}` | The test View `view` with the model values (generators already expanded), failure detail off and publication coalescing off. `unsupported` for a View the adapter does not have. |
+| `views.open` | `{view, model, inputBytes, pendingUploads}` | `{}` | The test View `view` with the model values (generators already expanded), failure detail off and publication coalescing off. `inputBytes` and `pendingUploads` are the case's `options` (README "Scenarios"), or `null` for the producer's defaults. `unsupported` for a View the adapter does not have, or a `pendingUploads` its producer cannot set. |
 | `views.dispose` | — | `{}` | Closes every connection and the window. |
 | `views.connect`, `views.disconnect` | `{conn}` | `{}` | `conn` is the scenario's connection name; the adapter gives it fresh transport identities. |
 | `views.send` | `{conn, tag, text}` | `{}` | Delivers the request; its reply is tagged with `tag`. |
@@ -72,7 +72,8 @@ One window is open at a time.
 | `views.mutate` | `{mutations, each}` | `{}` | README "Mutations", including `waitPresented` and `renew`. |
 | `views.flushFields` | `{id}` | `{}` | Starts the flush named `id` (`field-flush/1`). |
 | `views.closeWindow` | `{id, timeout}` | `{}` | Starts the close named `id`. |
-| `views.setLocale`, `views.setAppearance` | `{locale}`, `{appearance}` | `{}` | Host inputs. |
+| `views.setLocale`, `views.setAppearance` | `{locale}`, `{appearance}` | `{}` | Host inputs. `appearance.override` names the members the host decided. |
+| `views.upload` | `{conn, name, type, text, size}` | `{status, body}` | `blobs/1`: the page of `conn` uploads a file as README "Uploads" says, through the host's upload path with the connection's token: the body is the UTF-8 of `text`, `size` (or `null`, the body's length) its `Content-Length`. `status` is the HTTP status of the host's answer and `body` its JSON. |
 | `views.readMember` | `{member}` | `{value}` | The root View's member as its wire value. |
 | `views.provide` | `{name}` | `{value \| null}` | A `provided` id that the driver must write before any message carried it. |
 | `views.waitResult`, `views.closeResult`, `views.flushResult` | `{id, waitMs}` | `{result: true \| false \| null}` | `null`: still pending after `waitMs`. |

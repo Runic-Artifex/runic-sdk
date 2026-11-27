@@ -5,11 +5,13 @@ import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
 import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
 import {
   FieldError,
+  fieldMembers,
   useField,
   useForm,
   type FormHandle,
   useView,
   type BridgeField,
+  type BridgeFieldMembers,
   type FieldCheckboxProps,
   type FieldHandle,
   type FieldRadioProps,
@@ -53,15 +55,18 @@ function fakeClient(initial: Partial<State> = {}) {
 type Client = ReturnType<typeof fakeClient>;
 
 function descriptor<K extends "title" | "step" | "done", TValue extends State[K]>(
-  name: K, kind: BridgeField<Client, State, TValue>["kind"], extra: Partial<BridgeField<Client, State, TValue>> = {},
+  name: K, kind: BridgeFieldMembers<Client, State, TValue>["kind"], extra: Partial<BridgeFieldMembers<Client, State, TValue>> = {},
 ): BridgeField<Client, State, TValue> {
+  // As generated: the descriptor's own members are under `fieldMembers` (#1395).
   return {
-    name, kind,
-    read: state => state[name] as TValue,
-    write: (client, value) => client.write(name, value, false),
-    checked: (client, value, _options: FieldWriteOptions<TValue>) => client.write(name, value, true) as Promise<FieldWriteReceipt<TValue>>,
-    baseline: client => client.baseline(name) as { value: TValue; version: number },
-    ...extra,
+    [fieldMembers]: {
+      name, kind,
+      read: state => state[name] as TValue,
+      write: (client, value) => client.write(name, value, false),
+      checked: (client, value, _options: FieldWriteOptions<TValue>) => client.write(name, value, true) as Promise<FieldWriteReceipt<TValue>>,
+      baseline: client => client.baseline(name) as { value: TValue; version: number },
+      ...extra,
+    },
   };
 }
 const Fields = {

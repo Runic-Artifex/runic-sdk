@@ -313,6 +313,11 @@ export interface PathAddress {
   readonly geo: PathGeo | null;
 }
 
+export interface PathFrame {
+  readonly color: string;
+  readonly mat: import("@runic-artifex/views").RunicBlob | null;
+}
+
 export interface PathGeo {
   readonly lat: number;
   readonly lng: number;
@@ -323,6 +328,19 @@ export interface PathLine {
   readonly product: string;
   readonly quantity: number;
   readonly price: string;
+}
+
+export interface PathPicture {
+  readonly id: number;
+  readonly caption: string;
+  readonly image: import("@runic-artifex/views").RunicBlob;
+  readonly frame: PathFrame;
+}
+
+export interface PathSticker {
+  readonly id: number;
+  readonly label: string;
+  readonly image: import("@runic-artifex/views").RunicBlob | null;
 }
 
 export interface PathTask {

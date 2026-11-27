@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumPendingUploads.get -> int?
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumPendingUploads.init -> void

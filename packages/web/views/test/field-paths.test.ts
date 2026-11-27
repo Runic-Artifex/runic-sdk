@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { clock } from "../dist/clock.js";
-import { createFieldController, fieldErrorsAt, fieldValidatingAt, type BridgeValidationState, type FieldBaseline } from "../dist/index.js";
+import { createFieldController, fieldErrorsAt, fieldMembers, fieldValidatingAt, type BridgeValidationState, type FieldBaseline } from "../dist/index.js";
 import { connectView, defineCollection, defineCollections, fieldPath, rowFields, rowIndex, type FieldPathClient } from "../dist/generated.js";
 import { createMockBridge, installMockBridge, type MockBridge } from "../dist/mock.js";
 import * as wire from "../dist/wire.js";
@@ -69,9 +69,9 @@ const until = async (condition: () => boolean) => {
 test("row fields are the same object per key, and a cell descriptor always writes checked", () => {
   assert.equal(lines.at(1), lines.at("1"));
   assert.notEqual(lines.at(1), lines.at(2));
-  assert.equal(lines.at(1).quantity.checkedOnly, true);
-  assert.equal(lines.at(1).quantity.name, "lines.1.quantity");
-  assert.equal(street.name, "address.street");
+  assert.equal(lines.at(1).quantity[fieldMembers].checkedOnly, true);
+  assert.equal(lines.at(1).quantity[fieldMembers].name, "lines.1.quantity");
+  assert.equal(street[fieldMembers].name, "address.street");
 });
 
 test("a cell's field writes its row, and a write of a cell another writer changed is a conflict", async () => {
@@ -188,12 +188,12 @@ test("a cell's errors and pending checks are found at its row's index", () => {
       pending: [["lines", 1, "product"]],
     },
   };
-  assert.deepEqual(lines.at(7).quantity.errors!(state), ["At least one."]);
-  assert.deepEqual(lines.at(3).quantity.errors!(state), ["Other row."]);
-  assert.deepEqual(lines.at(99).quantity.errors!(state), []);
-  assert.equal(lines.at(3).product.validating!(state), true);
-  assert.equal(lines.at(7).product.validating!(state), false);
-  assert.deepEqual(street.errors!(state), ["Street required."]);
+  assert.deepEqual(lines.at(7).quantity[fieldMembers].errors!(state), ["At least one."]);
+  assert.deepEqual(lines.at(3).quantity[fieldMembers].errors!(state), ["Other row."]);
+  assert.deepEqual(lines.at(99).quantity[fieldMembers].errors!(state), []);
+  assert.equal(lines.at(3).product[fieldMembers].validating!(state), true);
+  assert.equal(lines.at(7).product[fieldMembers].validating!(state), false);
+  assert.deepEqual(street[fieldMembers].errors!(state), ["Street required."]);
   assert.equal(fieldErrorsAt(state.validation, ["address", "street"]), fieldErrorsAt(state.validation, ["address", "street"]));
   assert.equal(fieldValidatingAt(state.validation, ["lines", 1]), true);
   assert.equal(rowIndex(state.lines, item => String(item.id), "3"), 1);

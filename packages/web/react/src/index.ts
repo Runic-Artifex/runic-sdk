@@ -28,6 +28,7 @@ import {
   createLatestOperationController,
   createOperationController,
   createFieldController,
+  fieldDefinition,
   createTextFieldController,
   createViewController,
   onBridgeConnection,
@@ -759,24 +760,26 @@ export function useField<TClient extends ViewClient, TValue>(
   options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   type State = TClient["snapshot"];
-  const latest = useRef(field);
-  useInsertionEffect(() => { latest.current = field; });
+  // A generated descriptor keeps its own members under `fieldMembers` (#1395).
+  const definition = fieldDefinition(field);
+  const latest = useRef(definition);
+  useInsertionEffect(() => { latest.current = definition; });
   const controller = useMountedController(() => createFieldController<State, TClient, TValue>({
-    ...field.name === undefined ? {} : { name: field.name },
-    ...field.kind === undefined ? {} : { kind: field.kind },
-    ...field.nullable === undefined ? {} : { nullable: field.nullable },
-    ...field.integer === undefined ? {} : { integer: field.integer },
-    ...field.choices === undefined ? {} : { choices: field.choices },
-    ...field.offset === undefined ? {} : { offset: field.offset },
-    ...field.constraints === undefined ? {} : { constraints: field.constraints },
+    ...definition.name === undefined ? {} : { name: definition.name },
+    ...definition.kind === undefined ? {} : { kind: definition.kind },
+    ...definition.nullable === undefined ? {} : { nullable: definition.nullable },
+    ...definition.integer === undefined ? {} : { integer: definition.integer },
+    ...definition.choices === undefined ? {} : { choices: definition.choices },
+    ...definition.offset === undefined ? {} : { offset: definition.offset },
+    ...definition.constraints === undefined ? {} : { constraints: definition.constraints },
     // field-paths/1: a field below a member (InvoiceFields.lines.at(key).quantity) always writes checked.
-    ...field.checkedOnly === undefined ? {} : { checkedOnly: field.checkedOnly },
+    ...definition.checkedOnly === undefined ? {} : { checkedOnly: definition.checkedOnly },
     read: state => latest.current.read(state),
     write: (client, value) => latest.current.write(client, value),
-    ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
-    ...field.baseline === undefined ? {} : { baseline: client => latest.current.baseline!(client) },
-    ...field.errors === undefined ? {} : { errors: state => latest.current.errors!(state) },
-    ...field.validating === undefined ? {} : { validating: state => latest.current.validating!(state) },
+    ...definition.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
+    ...definition.baseline === undefined ? {} : { baseline: client => latest.current.baseline!(client) },
+    ...definition.errors === undefined ? {} : { errors: state => latest.current.errors!(state) },
+    ...definition.validating === undefined ? {} : { validating: state => latest.current.validating!(state) },
   }, options));
   const { state, client } = view;
   useEffect(() => {
@@ -813,11 +816,11 @@ export function useField<TClient extends ViewClient, TValue>(
   const kind = controller.field.kind;
   const value = current.editing ? current.value
     : state === undefined ? (kind === "text" || kind === undefined ? "" : undefined) as TValue
-    : field.read(state);
+    : definition.read(state);
   const text = Object.is(value, current.value) ? current.text : controller.format(value);
-  const errors = field.errors === undefined ? current.errors : state === undefined ? noFieldErrors : field.errors(state);
+  const errors = definition.errors === undefined ? current.errors : state === undefined ? noFieldErrors : definition.errors(state);
   const invalid = errors.length > 0 || current.error !== undefined;
-  const validating = field.validating === undefined ? current.validating : state !== undefined && field.validating(state);
+  const validating = definition.validating === undefined ? current.validating : state !== undefined && definition.validating(state);
   const inputProps = kind === "boolean"
     ? { checked: value === true, onChange: actions.onCheck, onBlur: actions.onBlur, "aria-invalid": invalid }
     : {
@@ -1074,9 +1077,12 @@ export {
 } from "@runic-artifex/views";
 export {
   FieldError,
+  fieldDefinition,
+  fieldMembers,
   type BridgeField,
   type BridgeFieldConstraints,
   type BridgeFieldKind,
+  type BridgeFieldMembers,
   type FieldBaseline,
   type FieldDefinition,
   type FieldErrorKind,
