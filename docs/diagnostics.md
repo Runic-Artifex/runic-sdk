@@ -1890,10 +1890,12 @@ blocks it on other Macs. Since 0.11.
 ### RAPPPKG2003
 
 Warning: `desktop-file-validate` (desktop-file-utils) is not installed, so the
-desktop entry of a Linux package was not validated. Since 0.11.
+desktop entry of a Linux package was not validated. Since 0.11. Since 0.24 also:
+`appstreamcli` (appstream) is not installed, so an AppImage's metainfo was not
+validated.
 
-**Fix:** install desktop-file-utils; with it, a rejected entry is
-`RAPPPKG1006`.
+**Fix:** install desktop-file-utils or appstream; with them, a rejected entry or
+metainfo is `RAPPPKG1006`.
 
 ### RAPPPKG2004
 

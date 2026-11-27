@@ -901,6 +901,11 @@ internal sealed partial class ToolTests
         string appRun = AppImagePackager.AppRun(identity);
         True(appRun.StartsWith("#!/bin/sh\n", StringComparison.Ordinal) && appRun.EndsWith('\n'), appRun);
         Contains(appRun, "exec \"$here/usr/lib/org.example.Notes/Notes\" \"$@\"");
+        // The metainfo is validated offline, and appimagetool's own AppStream check, which fetches its URLs, is off (#1444).
+        Equal("validate --no-net --explain /a/org.example.Notes.appdata.xml",
+            string.Join(' ', AppImagePackager.ValidateMetainfoArguments("/a/org.example.Notes.appdata.xml")));
+        Equal("--no-appstream --runtime-file /t/runtime-x86_64 /o/Notes.AppDir /o/Notes.AppImage",
+            string.Join(' ', AppImagePackager.AppImageToolArguments("/t/runtime-x86_64", "/o/Notes.AppDir", "/o/Notes.AppImage")));
 
         // The service file starts the launcher where each format installs it; an AppImage has no fixed path, so it is
         // not D-Bus activatable.
