@@ -13,7 +13,8 @@ keep their spelling.
 
 A host runs **in Development** when `DOTNET_ENVIRONMENT`, or else (when it is unset or empty) `ASPNETCORE_ENVIRONMENT`,
 equals `Development`, compared without case. The development tool sets `DOTNET_ENVIRONMENT=Development` unless the
-developer set either variable. Everything in [Development variables](#development-variables) applies only in
+developer set either variable. From 0.25 a host that is not .NET reads `RAX_ENVIRONMENT` first, and the tool sets it
+too; the two .NET variables stay the fallback. Everything in [Development variables](#development-variables) applies only in
 Development; outside it a host ignores them.
 
 In .NET: `WebContentRules.IsDevelopment` (`packages/dotnet/Runic.Desktop/Internal/WebContentRules.cs:47-52`) and the
@@ -70,9 +71,8 @@ it.
 
 The tool also sets `RUNIC_APPLICATION_VITE_ENTRY`, `RUNIC_APPLICATION_VITE_PACKAGE_DIRECTORY`,
 `RUNIC_APPLICATION_FRONTEND_DEV_SERVER_KIND`, `RUNIC_APPLICATION_FRONTEND_COMPILER_DIAGNOSTICS` and
-`RUNIC_APPLICATION_FRONTEND_COMPILER_HOT_RELOAD` (0.25: `RAX_APPLICATION_VITE_ENTRY`,
-`RAX_APPLICATION_VITE_PACKAGE_DIRECTORY`, `RAX_APPLICATION_FRONTEND_DEV_SERVER_KIND`,
-`RAX_APPLICATION_FRONTEND_COMPILER_DIAGNOSTICS`, `RAX_APPLICATION_FRONTEND_COMPILER_HOT_RELOAD`) for the Window process,
+`RUNIC_APPLICATION_FRONTEND_COMPILER_HOT_RELOAD` for the Window process (0.25 removes them rather than renaming them,
+since nothing reads them),
 and clears them when no development server runs (`tools/dotnet-runic/ViteDevelopmentServer.cs:61-70`,
 `tools/dotnet-runic/AngularDevelopmentServer.cs:26-31`, `tools/dotnet-runic/HostProcessController.cs:333-348`). A host
 does not read them.
