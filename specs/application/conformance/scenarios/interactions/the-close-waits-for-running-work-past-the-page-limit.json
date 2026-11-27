@@ -1,0 +1,32 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "interactions.the-close-waits-for-running-work-past-the-page-limit.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "interactions",
+  "roles": ["producer"],
+  "requires": ["presented/1","virtual-clock"],
+  "description": "The 5-second limit of a close's wait for closing-reply bounds only that wait (README, \"Window close\"). A close with a timeout of 8 seconds whose page never replies still lets confirmClear run after 5 seconds, and requests its cancellation only when its own timeout passes; its pending request then ends with interaction-cancelled, and the close is unacknowledged.",
+  "view": "notes",
+  "ids": {"c1":{"kind":"connection"},"hello-c1":{"kind":"request"},"session":{"kind":"wire","value":"s-1"},"open-notes":{"kind":"request"},"presentation":{"kind":"wire","value":"p-1"},"confirmContract":{"kind":"provided"},"command-request":{"kind":"request"},"interactionRequest":{"kind":"provided"},"ownerEpoch":{"kind":"provided"},"close":{"kind":"close"},"can-request":{"kind":"request"}},
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"}]}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"},"handlers":[{"name":"confirm","contract":{"$id":"confirmContract"}}]},"id":"open-notes"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"","priority":"Normal","due":null,"elapsed":"PT0S","rows":[{"id":1,"label":"one"}],"count":1,"summary":"rows: 1","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":true,"canTouch":true,"canSave":true,"canConfirmClear":true,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok","registration":"ok"},"replyTo":"open-notes"},
+    {"send":{"kind":"command","route":"notes","member":"confirmClear"},"id":"command-request"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"isConfirmClearExecuting","kind":"set","value":true},{"field":"canConfirmClear","kind":"set","value":false}]}},
+    {"receive":{"kind":"interaction","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"name":"confirm","contract":{"$id":"confirmContract"},"expiresAt":{"$any":"string","default":"2026-10-28T12:02:00Z"},"input":{"question":"Clear all rows?"}}},
+    {"closeWindow":{"id":"close","timeout":8000}},
+    {"receive":{"kind":"closing"}},
+    {"advance":5000,"note":"The close stops waiting for the page's closing-reply after 5 seconds; it still waits for confirmClear until its own timeout."},
+    {"send":{"kind":"can","route":"notes","member":"confirmClear"},"id":"can-request"},
+    {"receive":{"ok":true,"value":false},"replyTo":"can-request","note":"confirmClear still runs: nothing was cancelled."},
+    {"advance":3000,"note":"The close timeout passes: the window requests the cancellation of confirmClear."},
+    {"receive":{"kind":"interaction-cancelled","route":"notes","presentation":{"$id":"presentation"},"requestId":{"$id":"interactionRequest"},"ownerEpoch":{"$id":"ownerEpoch"},"message":{"$any":"string"}},"unordered":true},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"canConfirmClear","kind":"set","value":true},{"field":"isConfirmClearExecuting","kind":"set","value":false}]},"unordered":true},
+    {"receive":{"ok":false,"revision":2,"error":{"kind":"cancelled","message":{"$any":"string"}}},"replyTo":"command-request","unordered":true},
+    {"expect":{"closed":{"id":"close","acknowledged":false}}}
+  ]
+}

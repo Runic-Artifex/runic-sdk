@@ -19,7 +19,7 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //
 // - CreateWindow creates the window of one scenario: a WindowContentSession on settings.Transport with
 //   settings.TimeProvider and settings.MaximumInputBytes, failure detail off (IncludeFailureDetail = false), whose root
-//   View is `view` ("list", "log", "notes", "form", "wizard", "invoice" or "tabs"), serving the route of that name, with the values of arrange.model
+//   View is `view` ("list", "log", "notes", "form", "wizard", "invoice", "tabs", "catalog", "files" or "retention"), serving the route of that name, with the values of arrange.model
 //   (generators expanded; members it does not list keep their defaults). The notes View also serves the detail View in
 //   its detail slot with the content id 0123456789abcdef0123456789abcdef.
 // - IConformanceWindow.MutateAsync applies the mutations of one mutate step to the root View's model, as one
@@ -32,7 +32,8 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //   compare with expect.model.
 // - IConformanceWindow.Provide returns the value of a provided id (README "Identifiers") that the runner writes before
 //   any message carried it, or null when the window does not know it. The corpus names the operation contract of the
-//   notes View's slowImport "contract" and the contract of its confirm interaction "confirmContract".
+//   root View's operations "contract" (the notes or the retention View) and the contract of the notes View's confirm
+//   interaction "confirmContract".
 internal interface IConformanceViews
 {
     IConformanceWindow CreateWindow(string view, JsonObject model, ConformanceWindowSettings settings);
@@ -123,6 +124,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new CatalogConformanceBridge(settings.Transport, vm, content)),
                 "files" => new Window<FilesViewModel>(session, FilesViewModel.Create(model),
                     (vm, content) => new FilesBridge(settings.Transport, vm, content)),
+                "retention" => new Window<RetentionViewModel>(session, RetentionViewModel.Create(model),
+                    (vm, content) => new RetentionBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }
