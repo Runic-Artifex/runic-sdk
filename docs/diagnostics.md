@@ -1465,7 +1465,10 @@ project, the frontend directory or the report.
 ### RAPPCLI1009
 
 Doctor checks reached the `--fail-on` threshold. JSON output maps each check
-that did not pass to `fail` or `warn` in `fault.details`.
+that warned or failed to `fail` or `warn` in `fault.details`. A check that a
+prebuilt frontend makes unnecessary, such as `javascript-runtime` with
+`doctor --bundle` or `RunicApplicationFrontendPrebuiltDirectory`, is skipped
+and never reaches the threshold (0.24).
 
 **Fix:** follow the remediation of each failing check in the report. See
 [Doctor JSON output](../tools/dotnet-runic/README.md#doctor-json-output) for

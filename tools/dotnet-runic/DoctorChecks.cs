@@ -12,9 +12,12 @@ namespace Runic.Application.Tool;
 
 internal enum DoctorStatus
 {
-    Pass,
-    Warning,
-    Failure,
+    /// <summary>The check does not apply, for example a JavaScript check with a prebuilt frontend (#1421).</summary>
+    /// <remarks>Below <see cref="Pass"/>, so no --fail-on threshold counts it.</remarks>
+    Skipped = -1,
+    Pass = 0,
+    Warning = 1,
+    Failure = 2,
 }
 
 internal sealed record DoctorCheck(
@@ -28,6 +31,7 @@ internal sealed record DoctorReport(IReadOnlyList<DoctorCheck> Checks)
     internal int Passed => Checks.Count(static check => check.Status == DoctorStatus.Pass);
     internal int Warnings => Checks.Count(static check => check.Status == DoctorStatus.Warning);
     internal int Failed => Checks.Count(static check => check.Status == DoctorStatus.Failure);
+    internal int Skipped => Checks.Count(static check => check.Status == DoctorStatus.Skipped);
     internal bool IsHealthy => Failed == 0;
 }
 
@@ -146,7 +150,8 @@ internal static class DoctorChecks
         string dotnetHost,
         IDoctorRuntime runtime,
         CancellationToken cancellationToken,
-        DoctorTargetRid? target = null)
+        DoctorTargetRid? target = null,
+        string? bundle = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentException.ThrowIfNullOrWhiteSpace(dotnetHost);
@@ -156,9 +161,18 @@ internal static class DoctorChecks
         DoctorWorkspaceChecks.CheckWindowsTargeting(checks, project, runtime);
         CheckViewsWindow(checks, project);
         CheckViewsHosts(checks, project, runtime, target);
-        _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
-        await CheckPackageManagerAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
-        DoctorWorkspaceChecks.Inspect(checks, project, runtime);
+        // #1421: a build that takes its pages from a web bundle runs no install, frontend build or client emission, so
+        // the checks of those report that they are not needed, and a runner without Node.js or Bun passes.
+        if (PrebuiltFrontend(project, bundle) is { } prebuilt)
+        {
+            SkipFrontendBuildChecks(checks, project, prebuilt);
+        }
+        else
+        {
+            _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
+            await CheckPackageManagerAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
+            DoctorWorkspaceChecks.Inspect(checks, project, runtime);
+        }
         CheckCompatibilitySet(checks, project);
         await CheckExtensionsAsync(checks, project, dotnetHost, runtime, cancellationToken).ConfigureAwait(false);
         CheckViewsPackageVersions(checks, project);
@@ -178,7 +192,54 @@ internal static class DoctorChecks
         {
             await DoctorTargetChecks.InspectAsync(checks, project, target, runtime, cancellationToken).ConfigureAwait(false);
         }
+        if ((bundle ?? PrebuiltDirectory(project)) is { } checkedBundle)
+        {
+            checks.Add(DoctorWorkspaceChecks.CheckWebBundle(checkedBundle, project.AssemblyName));
+        }
         return new DoctorReport(checks);
+    }
+
+    /// <summary>The checks of the frontend's install, build and client emission, which a prebuilt frontend skips (#1421).</summary>
+    internal static readonly IReadOnlyList<string> FrontendBuildChecks =
+    [
+        "javascript-runtime", "package-manager", "lock-file", "frontend-workspace", "package-manager-agreement",
+        "frontend-dependencies", "client-modules", "views-dedupe",
+    ];
+
+    /// <summary>The project's <c>RunicApplicationFrontendPrebuiltDirectory</c> as a full path, or null.</summary>
+    private static string? PrebuiltDirectory(DoctorProjectConfiguration project) =>
+        project.PrebuiltFrontendDirectory.Trim() is { Length: > 0 } directory
+            ? Path.GetFullPath(directory, Environment.CurrentDirectory)
+            : null;
+
+    /// <summary>Where the build takes its pages from, as the reason of a skipped check; null when it builds them.</summary>
+    private static string? PrebuiltFrontend(DoctorProjectConfiguration project, string? bundle) =>
+        bundle is not null ? $"the web bundle {bundle} (--bundle)"
+        : PrebuiltDirectory(project) is { } directory ? $"the web bundle {directory} (RunicApplicationFrontendPrebuiltDirectory)"
+        : null;
+
+    private static void SkipFrontendBuildChecks(List<DoctorCheck> checks, DoctorProjectConfiguration project, string prebuilt)
+    {
+        string reason = $"the build takes each page from {prebuilt} and runs no install, frontend build or client emission.";
+        // The workspace checks run only for a frontend with a package.json, as without a bundle.
+        bool frontend = project.FrontendPackageDirectory.Length != 0 && File.Exists(Path.Combine(project.FrontendPackageDirectory, "package.json"));
+        foreach ((string id, string subject) in new[]
+        {
+            ("javascript-runtime", "Node.js or Bun is not needed"),
+            ("package-manager", "No package manager is needed"),
+            ("lock-file", "No lock file is needed"),
+        }.Concat(frontend
+            ? [
+                ("frontend-workspace", "The JavaScript workspace is not installed"),
+                ("package-manager-agreement", "The workspace's package manager is not used"),
+                ("frontend-dependencies", "The frontend packages are not built"),
+                ("client-modules", "The page's imports are not resolved"),
+                ("views-dedupe", "Vite does not bundle the page"),
+            ]
+            : []))
+        {
+            checks.Add(new DoctorCheck(DoctorStatus.Skipped, id, $"{subject}: {reason}"));
+        }
     }
 
     private static async Task CheckDotNetAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
