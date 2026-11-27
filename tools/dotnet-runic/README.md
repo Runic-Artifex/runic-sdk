@@ -2155,7 +2155,7 @@ installs the Translations release of this compatibility set, with `--local`
 when a tool manifest exists, for example:
 
 ```text
-dotnet tool install dotnet-runic-translations --version 0.15.1 --local
+dotnet tool install dotnet-runic-translations --version 0.16.0 --local
 ```
 
 It never installs anything itself. `doctor` checks the version of the installed

@@ -52,9 +52,11 @@ test('S6 accepts the bound template pins and still refuses any other', () => {
 });
 
 // A generated --translations React application as runic-sdk main would make it with Translations 0.15.0 pinned: the
-// template's own files, with its Translations pins set back to 0.15.0.
+// template's own files, with its Translations pins (whatever release the template pins now) set back to 0.15.0.
 function generatedApplication(directory) {
-  const pinned = text => text.replaceAll('0.15.1', '0.15.0');
+  const current = /<PackageReference Include="Runic\.Translations" Version="([^"]+)"/.exec(readFileSync(join(template, 'RunicWindowApp.csproj'), 'utf8'))[1];
+  const source = `(?<![\\d.])${current.replaceAll('.', '\\.')}(?![\\d])`;
+  const pinned = text => text.replace(new RegExp(source, 'g'), '0.15.0');
   mkdirSync(join(directory, '.config'), { recursive: true });
   mkdirSync(join(directory, 'Frontend'), { recursive: true });
   writeFileSync(join(directory, 'RunicWindowApp.csproj'), readFileSync(join(template, 'RunicWindowApp.csproj'), 'utf8'));
@@ -64,7 +66,7 @@ function generatedApplication(directory) {
   for (const file of ['RunicWindowApp.csproj', '.config/dotnet-tools.json', 'Frontend/package.json', 'Frontend/package-lock.json']) {
     const path = join(directory, file);
     const text = readFileSync(path, 'utf8');
-    expect(text, file).toContain('0.15.1');
+    expect(text, file).toMatch(new RegExp(source));
     writeFileSync(path, pinned(text));
   }
 }

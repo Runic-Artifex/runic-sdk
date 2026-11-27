@@ -28,15 +28,15 @@
       },
       "Runic.Translations": {
         "type": "Direct",
-        "requested": "[0.15.1, )",
-        "resolved": "0.15.1",
-        "contentHash": "nU0/X9WSUFffTsrEoDkHrRCP9yIdrIZ+x6J/OT/VlIL42UBGq+1j3JgrWdfWJAccD6hLZQKsSs6nEw1Bd+LjWA=="
+        "requested": "[0.16.0, )",
+        "resolved": "0.16.0",
+        "contentHash": "5N0YGEeNbOkYi8srkX847iUGCCck9A9Z8pI+wTfRQYQ4wzV3P1HsOddAzXkFePTDGJMRjQ73tFGrYF/NuSPDlA=="
       },
       "Runic.Translations.Build": {
         "type": "Direct",
-        "requested": "[0.15.1, )",
-        "resolved": "0.15.1",
-        "contentHash": "PBfK0+8hZjp1NzSFyb7Z8pcfvj7OxNVHJ4IxWrLSK3WUcfFPGSFXlb4ABKvCcigAPsxIlOrWs7Ho6I0+KWgc8Q=="
+        "requested": "[0.16.0, )",
+        "resolved": "0.16.0",
+        "contentHash": "Ycqj86KtzE+Z4gyzzdQsWDFMzaNlMI8G+uP52rkLuRnLG38JuIRa2CJ9LGM9BpwvXcYUGmpgIA03JawQHertHw=="
       },
       "ReactiveUI.Primitives.Core": {
         "type": "Transitive",
