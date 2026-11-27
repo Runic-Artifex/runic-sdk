@@ -375,3 +375,85 @@ test("producer ids enter no fingerprint: the conformance Views keep theirs under
   for (const [index, view] of ir.views.entries())
     assert.equal(fingerprint(ir, view), conformanceIr.views[index].fingerprint, `${conformanceIr.views[index].id} under ${view.id}`);
 });
+
+// contract-ir.md, "Values": the direction of each value position, as the .NET writer decides it
+// (tools/Runic.Application.Views.Codegen/Program.cs, the value graphs of the state properties). It is part of the
+// fingerprint, so a producer that decides another direction has other fingerprints. Checked on the conformance test
+// Views, the corpus, and the .NET writer's own output for the fixtures of Runic.Application.Testing.Tests (the
+// ContractIrGoldenTests goldens, which that test keeps equal to the writer's output).
+const goldens = resolve(root, "tests/dotnet/Runic.Application.Testing.Tests/golden");
+const goldenDocuments = readdirSync(goldens, { withFileTypes: true }).filter(item => item.isDirectory())
+  .map(item => join(goldens, item.name, "contract.ir.json.golden")).filter(path => existsSync(path))
+  .map(path => ({ label: relative(root, path).replaceAll("\\", "/"), ir: readJson(path) }));
+
+// Whether a value of the type can hold a blob: the type itself, a list element, a map value, or a member or case
+// object of a named type reached from it.
+function holdsBlob(ir, type, seen = new Set()) {
+  if (type.kind === "blob") return true;
+  if (type.kind === "list") return holdsBlob(ir, type.element, seen);
+  if (type.kind === "map") return holdsBlob(ir, type.value, seen);
+  if (type.kind !== "named" || seen.has(type.ref)) return false;
+  seen.add(type.ref);
+  const definition = ir.types[type.ref];
+  if (definition.kind === "object") return definition.members.some(member => holdsBlob(ir, member.type, seen));
+  if (definition.kind === "union")
+    return definition.cases.some(item => item.object !== null && holdsBlob(ir, { kind: "named", ref: item.object }, seen));
+  return false;
+}
+
+// Each value position of the document with the direction contract-ir.md gives it.
+function* directions(ir) {
+  for (const view of ir.views) {
+    for (const member of view.members) {
+      if (member.kind === "value") {
+        const back = member.settable === true || member.rowEditor === true;
+        yield [`${view.id} ${member.wire}`, member.value, back && !holdsBlob(ir, member.value.type) ? "both" : "to-page"];
+      }
+      if (member.kind === "selection") yield [`${view.id} ${member.wire}`, member.value, "to-page"];
+      if (member.kind === "query-collection") yield [`${view.id} ${member.wire} rows`, member.rows, "to-page"];
+    }
+    for (const command of view.commands) {
+      if (command.input) yield [`${view.id} ${command.wire} input`, command.input, "from-page"];
+      if (command.result) yield [`${view.id} ${command.wire} result`, command.result, "to-page"];
+      if (command.failure) yield [`${view.id} ${command.wire} failure`, command.failure, "to-page"];
+    }
+    for (const interaction of view.interactions ?? []) {
+      yield [`${view.id} interaction ${interaction.wire} input`, interaction.input, "to-page"];
+      yield [`${view.id} interaction ${interaction.wire} output`, interaction.output, "from-page"];
+    }
+    for (const request of view.requests ?? []) yield [`${view.id} request ${request.wire} input`, request.input, "to-page"];
+  }
+}
+
+test("each value position has the direction contract-ir.md gives it, in every IR document", () => {
+  const all = [
+    { label: "conformance/views.ir.json", ir: conformanceIr },
+    ...documents.map(({ entry, ir }) => ({ label: entry.ir, ir })),
+    ...goldenDocuments,
+  ];
+  assert.ok(goldenDocuments.length > 0, "no ContractIrGoldenTests goldens");
+  const wrong = [];
+  const seen = new Set();
+  for (const { label, ir } of all)
+    for (const [where, position, expected] of directions(ir)) {
+      if (position.direction !== expected) wrong.push(`${label}: ${where} is ${position.direction}, not ${expected}`);
+      const member = ir.views.flatMap(view => view.members).find(item => item.value === position);
+      if (member?.kind === "value")
+        seen.add(`${expected} ${member.settable ? "settable" : member.rowEditor ? "row-editor" : "read-only"}${holdsBlob(ir, position.type) ? " blob" : ""}`);
+    }
+  assert.deepEqual(wrong, []);
+  // Each rule of the value member's row shows in the documents, the .NET writer's output among them.
+  for (const shape of ["both settable", "both row-editor", "to-page read-only", "to-page read-only blob", "to-page row-editor blob"])
+    assert.ok(seen.has(shape), `no value member is ${shape}`);
+  const writer = new Set(goldenDocuments.flatMap(({ ir }) => ir.views.flatMap(view => view.members)
+    .filter(member => member.kind === "value" && member.rowEditor).map(member => `${member.value.direction} ${holdsBlob(ir, member.value.type)}`)));
+  assert.deepEqual([...writer].sort(), ["both false", "to-page true"], "the .NET writer's row editors, with and without blobs");
+});
+
+test("a value position's direction enters the fingerprint", () => {
+  const ir = structuredClone(conformanceIr);
+  const files = ir.views.find(view => view.route === "files");
+  const attachments = files.members.find(member => member.wire === "attachments");
+  attachments.value.direction = "both";
+  assert.notEqual(fingerprint(ir, files), conformanceIr.views.find(view => view.route === "files").fingerprint);
+});

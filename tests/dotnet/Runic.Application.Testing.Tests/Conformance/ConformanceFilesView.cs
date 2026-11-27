@@ -10,9 +10,12 @@ namespace Runic.Application.Testing.Tests.Conformance;
 
 // The files View (specs/application/conformance/README.md, "Test Views"): blobs/1. avatar is a nullable blob that the
 // model and the assign mutation give as {type, text, name}, the text being its UTF-8 content; attach takes an upload and
-// claims the upload and sets lastUpload to its file name. attachments are editable rows that hold a blob: their name is a
-// field path, their preview is not, because the page never sends a blob (runic-sdk#1391).
-internal sealed record FilesAttachment(int Id, string Name, RunicBlob Preview)
+// claims the upload and sets lastUpload to its file name. attachments are editable rows that hold blobs: their name and
+// their cover's caption are field paths; their preview, their cover, its image and their pages are not, because each
+// holds a blob, which the page never sends (runic-sdk#1391, contract-ir.md "Field paths").
+internal sealed record FilesCover(string Caption, RunicBlob? Image);
+
+internal sealed record FilesAttachment(int Id, string Name, RunicBlob Preview, FilesCover Cover, IReadOnlyList<RunicBlob> Pages)
 {
     internal static void Write(Utf8JsonWriter writer, FilesAttachment row)
     {
@@ -21,6 +24,17 @@ internal sealed record FilesAttachment(int Id, string Name, RunicBlob Preview)
         writer.WriteString("name", row.Name);
         writer.WritePropertyName("preview");
         BridgeWire.WriteBlob(writer, row.Preview);
+        writer.WritePropertyName("cover");
+        writer.WriteStartObject();
+        writer.WriteString("caption", row.Cover.Caption);
+        writer.WritePropertyName("image");
+        if (row.Cover.Image is { } image) BridgeWire.WriteBlob(writer, image);
+        else writer.WriteNullValue();
+        writer.WriteEndObject();
+        writer.WritePropertyName("pages");
+        writer.WriteStartArray();
+        foreach (var page in row.Pages) BridgeWire.WriteBlob(writer, page);
+        writer.WriteEndArray();
         writer.WriteEndObject();
     }
 
@@ -75,7 +89,9 @@ internal sealed class FilesViewModel : ConformanceModel
         if (model.ContainsKey("avatar")) vm._avatar = Blob(model["avatar"]);
         if (model["attachments"] is JsonArray attachments)
             foreach (var row in attachments)
-                vm.Attachments.Add(new(row!["id"]!.GetValue<int>(), row["name"]!.GetValue<string>(), Blob(row["preview"])!));
+                vm.Attachments.Add(new(row!["id"]!.GetValue<int>(), row["name"]!.GetValue<string>(), Blob(row["preview"])!,
+                    new(row["cover"]!["caption"]!.GetValue<string>(), Blob(row["cover"]!["image"])),
+                    [.. row["pages"]!.AsArray().Select(page => Blob(page)!)]));
         return vm;
     }
 
@@ -125,8 +141,15 @@ internal sealed class FilesBridge(IBridgeTransport transport, FilesViewModel vm,
         [
             new("attachments", model => ((FilesViewModel)model).Attachments, (writer, row) => FilesAttachment.Write(writer, (FilesAttachment)row!), FilesAttachment.KeyOf)
             {
-                // preview holds a blob, so it is not a field path.
-                FieldPaths = [new(["name"], (row, value) => (FilesAttachment)row with { Name = ConformanceWire.String(value) })],
+                // preview, cover, cover.image and pages hold blobs, so they are not field paths. A copy keeps the blobs.
+                FieldPaths =
+                [
+                    new(["name"], (row, value) => (FilesAttachment)row with { Name = ConformanceWire.String(value) }),
+                    new(["cover", "caption"], (row, value) => (FilesAttachment)row with
+                    {
+                        Cover = ((FilesAttachment)row).Cover with { Caption = ConformanceWire.String(value) },
+                    }),
+                ],
                 UpdateRow = (model, row, _) => ((FilesViewModel)model).UpdateAttachment(((FilesAttachment)row!).Id, (FilesAttachment)row),
             },
         ]);

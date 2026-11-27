@@ -85,6 +85,11 @@ public sealed class ConformanceContractTests
             ["attachments"] = new JsonArray(new JsonObject
             {
                 ["id"] = 1, ["name"] = "a.txt", ["preview"] = new JsonObject { ["type"] = "text/plain", ["text"] = "a", ["name"] = "a.txt" },
+                ["cover"] = new JsonObject
+                {
+                    ["caption"] = "c", ["image"] = new JsonObject { ["type"] = "image/png", ["text"] = "i", ["name"] = "c.png" },
+                },
+                ["pages"] = new JsonArray(new JsonObject { ["type"] = "text/plain", ["text"] = "p", ["name"] = "p.txt" }),
             }),
         },
         _ => [],

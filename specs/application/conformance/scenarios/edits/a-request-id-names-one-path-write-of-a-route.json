@@ -1,0 +1,37 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-request-id-names-one-path-write-of-a-route.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "requires": ["field-paths/1"],
+  "description": "The path writes of a route share their receipts: a requestId that a path write of a row cell used, reused for a path write of a member of another member's object, is a conflict with the value at its own path and writes nothing. A write without a path keeps its receipts per field, so the same requestId is a new write there.",
+  "view": "invoice",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-invoice": {"kind":"request"},
+    "label": {"kind":"request"},
+    "street": {"kind":"request"},
+    "address": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "writeId": {"kind":"wire","value":"w-1"}
+  },
+  "arrange": {"model":{"address":{"street":"","city":"Bern"},"lines":[{"id":1,"label":"Pens","quantity":1}]}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"invoice","presentation":{"$id":"presentation"}},"id":"open-invoice"},
+    {"receive":{"ok":true,"revision":0,"state":{"address":{"street":"","city":"Bern"},"billing":null,"lines":[{"id":1,"label":"Pens","quantity":1}]},"fields":{"address":{"version":0},"billing":{"version":0}},"presentation":"ok"},"replyTo":"open-invoice"},
+    {"send":{"kind":"write","route":"invoice","member":"lines","path":["1","label"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"Pens","value":"Pen"},"id":"label"},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":0,"revision":1,"changes":[{"field":"lines","kind":"replace","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"label":"Pen","quantity":1}]}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"Pen","version":1}}},"replyTo":"label"},
+    {"send":{"kind":"write","route":"invoice","member":"address","path":["street"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"","value":"Main Street 1"},"id":"street"},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"conflict","incoming":{"value":"","version":1},"message":{"$any":"string"}}},"replyTo":"street"},
+    {"send":{"kind":"write","route":"invoice","member":"address","requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":{"street":"","city":"Bern"},"value":{"street":"Main Street 1","city":"Bern"}},"id":"address"},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":1,"revision":2,"changes":[{"field":"address","kind":"set","value":{"street":"Main Street 1","city":"Bern"},"version":1}]}},
+    {"receive":{"ok":true,"revision":2,"receipt":{"kind":"applied","snapshot":{"value":{"street":"Main Street 1","city":"Bern"},"version":1}}},"replyTo":"address"}
+  ]
+}
