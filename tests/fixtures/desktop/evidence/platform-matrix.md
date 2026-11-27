@@ -12,7 +12,7 @@ a wedged platform process cannot consume the hosted runner's six-hour default.
 The Linux gate runs the complete sequence:
 
 1. restore and Release-build the solution;
-2. run the complete managed behavioral and conformance-receipt suite;
+2. run the complete managed behavioral suite;
 3. pack `Runic.Desktop` and restore a clean consumer with no project reference;
 4. build and run that consumer, publish it with NativeAOT for the lane RID, and
    run the native executable; and

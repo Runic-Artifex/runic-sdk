@@ -4,7 +4,7 @@ using Runic.Platform;
 using TUnit.Core;
 
 // The launch lines, proofs and outcome mapping of the Runic host protocol (specs/desktop/host-protocol.md), which the
-// guest, the host and RunicTestHost share. The handshake and window flows are checked by HostConformanceTests.
+// guest, the host and RunicTestHost share. The handshake and window flows are checked by the conformance driver's host/1 run.
 internal sealed class HostProtocolChecks
 {
     private const string Key = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8";
