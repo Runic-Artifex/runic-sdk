@@ -1,0 +1,125 @@
+# Forgejo Actions. GitHub and Gitea read .github/workflows/ci.yml, which Forgejo ignores while this folder exists. The
+# two files differ only in the artifact actions (Forgejo's forks: the stock actions/upload-artifact and
+# download-artifact v4 and later fail on Forgejo with "not currently supported on GHES") and the default runner
+# labels; ci/check-workflows.mjs checks that. Forgejo resolves every action from its DEFAULT_ACTIONS_URL,
+# https://data.forgejo.org by default, which mirrors actions/* and forgejo/* at the same commits.
+#
+# The tests and all web work run on Linux. The Windows runner only packages, from the web bundle that the Linux job
+# uploads, and only after every Linux job passed on main or a tag, so pull requests never wait for it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  test:
+    name: Test on Linux
+    runs-on: ${{ vars.LINUX_RUNNER || 'docker' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      # The headless Window tests drive the ViewModels and generated Bridges without a window, so they need no
+      # Windows runner. Keep tests of WPF or WebView2 code for an optional Windows job.
+      - name: Run the tests
+        run: dotnet test --project tests/Acme.App.Tests/Acme.App.Tests.csproj -c Release
+
+  web-bundle:
+    name: Build the web bundle on Linux
+    runs-on: ${{ vars.LINUX_RUNNER || 'docker' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.22.3"
+      - name: Restore dotnet-runic
+        run: dotnet tool restore
+      # Builds the application in Release, which generates the TypeScript clients, installs the frontend from its lock
+      # file and builds it, then writes each project's page, clients and View fingerprints (rax.web-bundle/1).
+      - name: Write the web bundle
+        run: dotnet runic bundle --project src/Acme.App --output-directory "$RUNNER_TEMP/web-bundle"
+      - uses: forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # v4
+        with:
+          name: web-bundle
+          path: ${{ runner.temp }}/web-bundle
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-package:
+    name: Package for Windows
+    needs: [test, web-bundle]
+    # Main and tags only. Gitea ignores environment:, so gate signing secrets by ref here as well.
+    if: github.event_name == 'push'
+    runs-on: ${{ vars.WINDOWS_RUNNER || 'windows' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: forgejo/download-artifact@d8d0a99033603453ad2255e58720b460a0555e1e # v4
+        with:
+          name: web-bundle
+          path: web-bundle
+      - name: Restore dotnet-runic
+        run: dotnet tool restore
+      # NativeAOT and makeappx, with the page from the bundle: no frontend install, no Vite and no client emission, so
+      # the job sets up neither Node.js nor Bun. The build first checks every View's fingerprint against the bundle
+      # (RUNICBRIDGE094). Add --certificate and RUNIC_SIGNING_PASSWORD to sign.
+      - name: Package the MSIX from the web bundle
+        run: dotnet runic package windows --project src/Acme.App --frontend-bundle web-bundle --output-directory artifacts/msix
+      - uses: forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # v4
+        with:
+          name: msix
+          path: artifacts/msix/*.msix
+          if-no-files-found: error
+
+  linux-package:
+    name: Package for Linux
+    needs: [test, web-bundle]
+    if: github.event_name == 'push'
+    runs-on: ${{ vars.LINUX_RUNNER || 'docker' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: forgejo/download-artifact@d8d0a99033603453ad2255e58720b460a0555e1e # v4
+        with:
+          name: web-bundle
+          path: web-bundle
+      - name: Restore dotnet-runic
+        run: dotnet tool restore
+      # The same bundle, the same check: a Debian package built with NativeAOT and dpkg-deb.
+      - name: Package the deb from the web bundle
+        run: dotnet runic package deb --project src/Acme.App --frontend-bundle web-bundle --output-directory artifacts/deb
+      - uses: forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # v4
+        with:
+          name: deb
+          path: artifacts/deb/*.deb
+          if-no-files-found: error

@@ -33,7 +33,9 @@ a web bundle there with `dotnet runic bundle`, upload it as an artifact, and
 package from it with `--frontend-bundle` (since 0.24). The publish checks that
 the bundle was built from the same ViewModels. `-p:NAME=VALUE` passes MSBuild
 properties, such as `Version`, to every target but `flathub`. See
-[Write a web bundle](../tools/dotnet-runic/README.md#write-a-web-bundle).
+[Write a web bundle](../tools/dotnet-runic/README.md#write-a-web-bundle), and the
+[split CI example](../examples/split-ci/README.md) for workflows that test and bundle on Linux and package
+for Windows and Linux from the bundle.
 
 ### Building a Windows application on Linux or macOS
 
