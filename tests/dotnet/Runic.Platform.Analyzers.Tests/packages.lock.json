@@ -178,7 +178,7 @@
       "runic.platform.analyzers.codefixes": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Analyzers": "[0.24.0, )"
+          "Runic.Platform.Analyzers": "[0.25.0, )"
         }
       },
       "Microsoft.CodeAnalysis.CSharp": {
