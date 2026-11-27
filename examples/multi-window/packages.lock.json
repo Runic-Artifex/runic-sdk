@@ -43,13 +43,13 @@
         "type": "Direct",
         "requested": "[0.16.0, )",
         "resolved": "0.16.0",
-        "contentHash": "5N0YGEeNbOkYi8srkX847iUGCCck9A9Z8pI+wTfRQYQ4wzV3P1HsOddAzXkFePTDGJMRjQ73tFGrYF/NuSPDlA=="
+        "contentHash": "8SrKyjmG0rfqEGupnWudHEWbeE2cd6Ou+8pIOH6PIJr033/yVrYH30d1nIudbQN58cVMJDverzxSLrSu3SCE1w=="
       },
       "Runic.Translations.Build": {
         "type": "Direct",
         "requested": "[0.16.0, )",
         "resolved": "0.16.0",
-        "contentHash": "Ycqj86KtzE+Z4gyzzdQsWDFMzaNlMI8G+uP52rkLuRnLG38JuIRa2CJ9LGM9BpwvXcYUGmpgIA03JawQHertHw=="
+        "contentHash": "mK8612bXeDAbwQ2s60VAKhHkuatE20Tn2zboqbUS5oHE6/jLT+mZ+SZLP7pqf3tGPwKD4TgQ84zv+t6lTMnfpw=="
       },
       "Microsoft.Extensions.Configuration": {
         "type": "Transitive",
