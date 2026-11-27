@@ -9,8 +9,8 @@ added APIs but changed some defaults; 0.12.0 changed macOS behaviour and macOS
 packaging, which needed breaking changes; 0.13.0 replaced Views protocol 3 with
 protocol 4, which 1.0 keeps; 0.21.0 renamed APIs added since 0.12 after the API
 review before 1.0; the `1.0.0-rc.N` releases and 1.0.0 take fixes only.
-An application on 0.y needs every section from its own release on: one on 0.22
-needs only [From 0.22 to 0.23](#from-022-to-023), one on 0.12 every section from
+An application on 0.y needs every section from its own release on: one on 0.23
+needs only [From 0.23 to 0.24](#from-023-to-024), one on 0.12 every section from
 [From 0.12 to 0.13](#from-012-to-013), and one on 0.11 also
 [From 0.11 to 0.12](#from-011-to-012). Each section links
 the release notes, which give the full detail and the pull requests:
@@ -119,6 +119,15 @@ the release notes, which give the full detail and the pull requests:
   [The application icon](../eng/release/notes/0.23.0.md#the-application-icon-from-one-source-1207),
   [Fixes](../eng/release/notes/0.23.0.md#fixes),
   [Known issues](../eng/release/notes/0.23.0.md#known-issues)
+- 0.24.0: [Upgrading from 0.23](../eng/release/notes/0.24.0.md#upgrading-from-023),
+  [Breaking changes](../eng/release/notes/0.24.0.md#breaking-changes),
+  [Behaviour and output changes](../eng/release/notes/0.24.0.md#behaviour-and-output-changes),
+  [Shared ViewModel libraries](../eng/release/notes/0.24.0.md#share-viewmodels-and-their-clients-through-a-library-1318),
+  [Frontends in JavaScript workspaces](../eng/release/notes/0.24.0.md#frontends-in-javascript-workspaces),
+  [Web bundles](../eng/release/notes/0.24.0.md#web-bundles-build-the-frontend-in-one-ci-job-publish-in-another),
+  [`dotnet runic dev` and the launch profile](../eng/release/notes/0.24.0.md#dotnet-runic-dev-uses-the-launch-profile-and-passes-the-projects-and-the-profiles-arguments),
+  [Fixes](../eng/release/notes/0.24.0.md#fixes),
+  [Known issues](../eng/release/notes/0.24.0.md#known-issues)
 
 ## Before you start
 
@@ -1727,6 +1736,13 @@ Details: 0.23.0 [Upgrading from 0.22](../eng/release/notes/0.23.0.md#upgrading-f
 
 ## From 0.23 to 0.24
 
+0.24.0 adds library projects, split CI and the IDE run and debug work, and changes every generated Views contract
+string once. Update every Runic NuGet and npm package to 0.24.0 together, rebuild, and commit the regenerated clients.
+Views protocol 4 is unchanged, so a 0.23 page and a 0.24 host connect. A project that generates Views clients needs
+Node.js or Bun when it builds, and the toolchain floor is .NET SDK 10.0.404 and Node 24.22.3. An application that uses
+Runic Translations moves every Translations package, NuGet and npm, to 0.16.0; one that uses Runic Command Line itself
+moves to 0.15.0. Update Runic's editor extensions to 0.24.0 once they are published.
+
 ### Views contracts
 
 Rebuild after the upgrade and commit the regenerated clients: every contract string in them changes once.
@@ -1738,3 +1754,36 @@ Rebuild after the upgrade and commit the regenerated clients: every contract str
 | Generated TypeScript escaped `+`, `&`, `'`, `<`, `>`, a backtick and non-ASCII characters in string literals as `\uXXXX`, as the .NET generator did | The emitter writes string literals with `JSON.stringify`: `"höhe"` instead of `"h\u00F6he"`. The values are the same; a committed client with such strings changes once when it is regenerated |
 | A test that built an operation or interaction contract with `BridgeContractShape.Compute(typeof(TModel))` | That is now only Hot Reload's shape hash, which the generated Bridge carries as `ContractShape`. `RunicViewDriver<TModel>` and `RunicTestPresentation<TModel>` send the generated contracts themselves; read a contract from the generated client (`bridgeContract`) or the `open` reply of a connection that lists `view-contract/1` |
 | Code that read a generated field descriptor's members: `EditorFields.title.constraints`, `.kind`, `.read`, `.write`, `.choices`, or spread a descriptor to override one (`{ ...EditorFields.title, write }`) | The members are under the `fieldMembers` symbol (sdk#1395), so a field below a member can be named `name`, `read` or `errors`: read `EditorFields.title[fieldMembers].constraints` or `fieldDefinition(EditorFields.title).constraints`, and spread `EditorFields.title[fieldMembers]`. A hand-written object typed `BridgeField` is a `FieldDefinition` (or `BridgeFieldMembers`). `useField`, `injectField`, `bindField` and `createFieldController` take the descriptors as before ([Fields](../packages/web/views/README.md#fields)) |
+
+Details: 0.24.0 [Breaking changes](../eng/release/notes/0.24.0.md#breaking-changes).
+
+### Build, tools and packages
+
+| 0.23 | 0.24 |
+| --- | --- |
+| `Runic.Application.Views.Translations` required Runic Translations `[0.15.1, 0.16.0)`; the tools bundled Runic Command Line 0.14.0 | It requires `[0.16.0, 0.17.0)`: move every Translations package, NuGet and npm, to 0.16.0. Runic's catalog and the ESM output are those of 0.15, so pages and generated modules are unaffected. `dotnet-runic`, `Runic.Create` and the asset packer bundle Command Line 0.15.0, which leaves `--version` out of a command's help and changes some usage errors: update tests that compare such text. `dotnet runic doctor` checks for both ([Translations 0.16.0 notes](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.16.0/eng/release/notes/0.16.0.md#upgrading-from-015), [Command Line 0.15.0 release](https://github.com/Runic-Artifex/runic-cli-sdk/releases/tag/v0.15.0)) |
+| `doctor` accepted .NET SDK 10.0.403 and Node 24.22.1 | It fails below SDK 10.0.404 (runtime 10.0.15) and wants Node 24.22.3 or a later Node 24, or Node 26; `RUNICBRIDGE033` warns on an older SDK. Rebuild self-contained and NativeAOT packages, which embed the runtime |
+| The .NET generator wrote the TypeScript clients | `@runic-artifex/views/codegen` writes them from the contract IR, run with Node.js or Bun, so a project with `RunicApplicationFrontendGenerationEnabled=true` needs `node` or `bun` on `PATH` (or `RunicApplicationFrontendCodegenRuntime`), also without a frontend; otherwise [`RUNICBRIDGE084`](diagnostics.md#runicbridge084). A frontend that declares `@runic-artifex/views` uses its own emitter, so it must be 0.24 or later; the build installs the frontend's packages before it generates the clients. A publish from a web bundle needs neither |
+| `Runic.Desktop.NativeServer` shipped `librunic_server.*` and `runic_server.*`, C ABI 5 | `librax_server.*` and `rax_server.*`, C functions `rax_server_*`, ABI 6. A `RunicDesktopNativeServerLibraryDirectory` holds the new names; an application's own Rust library depends on `runic-artifex-server` at `v0.24.0` and names it with `use rax_server as _;` ([NativeAOT and an application's own Rust library](../packages/dotnet/Runic.Desktop.NativeServer/README.md#nativeaot-and-an-applications-own-rust-library)) |
+| `AssetArchive` readers accepted Deflate64 entries, CRC-32 mismatches, a non-UTF-8 manifest, duplicate manifest members and numeric `cacheMode` values | They follow the [reader rules](../specs/assets/archive-v1.md#reader-rules) and reject such archives with `InvalidDataException`. Archives that the packer and `AssetArchive.Write*` write are unaffected; write another tool's Deflate64 archive again with the packer |
+| `[RunicInclude]` was not read | With `[RunicPublication(RunicPublicationMode.Explicit)]` only marked members are published. `[RunicInclude]` with `[RunicIgnore]` is error `RUNICBRIDGE077`, on a field, static, non-public or inherited property or an indexer warning `RUNICBRIDGE078` ([Which members are published](../packages/dotnet/Runic.Application.Views/README.md#which-members-are-published)) |
+| A client library's frontend package was not built (`RunicApplicationFrontendBuildEnabled` `false` in a library) | It is `auto`: a package with a `build` script builds, and installs its packages for that. Set `false` to keep building it yourself. A frontend in a Bun, npm or pnpm workspace installs once at the workspace root, with the root's lock file and package manager ([JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces)) |
+| `dotnet runic dev` ran the Window without a launch profile | It uses the first `Project` profile of `Properties/launchSettings.json`, as `dotnet run` does, and passes both the project's `StartArguments` and the profile's `commandLineArgs` (`RAPPDEV1020`). `--no-launch-profile` restores 0.23's behaviour |
+| `dotnet runic dev` turned the frontend build off for every project it built | It names its project in `RunicApplicationFrontendDevSessionProject`, and the build installs the frontend packages; with `--no-build` missing packages stop `dev` with `RAPPDEV1008`. Views targets older than the tool warn with `RAPPDEV1019` |
+| `@runic-artifex/views` compared a `hello` reply's version only for `Runic.Application.Views` | It compares the reply's `release`, whatever the producer is called, and names the producer in the message. For the 0.25 rename window, routes that start with `rax.` are reserved, and the menu bar is also served as `rax.menu-bar` ([rename window](../specs/application/README.md#rename-window)) |
+
+Details: 0.24.0 [Upgrading from 0.23](../eng/release/notes/0.24.0.md#upgrading-from-023) and
+[Behaviour and output changes](../eng/release/notes/0.24.0.md#behaviour-and-output-changes).
+
+### Templates
+
+Applications created from the 0.23 template keep working. These rows bring one up to the 0.24 template:
+
+| 0.23 | 0.24 |
+| --- | --- |
+| `.vscode/tasks.json`: the `dotnet runic dev` tasks' pattern files a copy of a failure under `dev`'s sentence "…, so dev did not start: …" | A file that holds no `": "` and a subcategory without a colon; copy the `problemMatcher` from a new project ([IDE contract](../tools/dotnet-runic/README.md#ide-contract)) |
+| An argument for Debug builds only, such as `/mock`, in the launch profile's `commandLineArgs` | In `StartArguments` in a Debug-conditioned `PropertyGroup`, which `dotnet run`, `dev`, Visual Studio and Runic DevKit read ([Arguments for Debug builds](debugging.md#arguments-for-debug-builds)) |
+| Translations: `dotnet-runic-translations`, `Runic.Translations`, `.Build` and `@runic-artifex/vite-plugin-runic-translations` 0.15.1 | 0.16.0 |
+| One project | `--library <Name>` creates a solution with the application and a client library ([`dotnet new runic-app --library`](../eng/release/notes/0.24.0.md#a-solution-with-a-client-library-dotnet-new-runic-app---library)); an existing application adds one as [Share ViewModels and their clients through a library](../packages/dotnet/Runic.Application.Views/README.md#share-viewmodels-and-their-clients-through-a-library) describes |
+
+Details: 0.24.0 [Upgrading from 0.23](../eng/release/notes/0.24.0.md#upgrading-from-023).
