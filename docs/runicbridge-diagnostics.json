@@ -335,6 +335,31 @@
       "id": "RUNICBRIDGE091",
       "severity": "warning",
       "title": "RunicApplicationFrontendInstallMode is not Auto, Always or Never"
+    },
+    {
+      "id": "RUNICBRIDGE092",
+      "severity": "error",
+      "title": "A web bundle cannot be written for a project whose frontend build is off"
+    },
+    {
+      "id": "RUNICBRIDGE093",
+      "severity": "error",
+      "title": "The prebuilt frontend directory has no usable entry for the project"
+    },
+    {
+      "id": "RUNICBRIDGE094",
+      "severity": "error",
+      "title": "A prebuilt frontend was built from other Views than the build's"
+    },
+    {
+      "id": "RUNICBRIDGE095",
+      "severity": "error",
+      "title": "A prebuilt frontend was built for another host"
+    },
+    {
+      "id": "RUNICBRIDGE096",
+      "severity": "warning",
+      "title": "An optimized build takes a development build of a prebuilt frontend"
     }
   ]
 }

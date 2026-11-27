@@ -39,6 +39,7 @@
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE083;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE083</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE089;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE089</_RunicBridgeWarningsAsErrors>
     <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE091;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE091</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE096;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE096</_RunicBridgeWarningsAsErrors>
     <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
@@ -96,6 +97,25 @@
          path is relative to the frontend directory. -->
     <RunicApplicationFrontendOutputDirectory Condition="'$(RunicApplicationFrontendOutputDirectory)' == ''">dist</RunicApplicationFrontendOutputDirectory>
     <_RunicApplicationFrontendOutputPath>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendDirectory)', '$(RunicApplicationFrontendOutputDirectory)'))</_RunicApplicationFrontendOutputPath>
+    <!-- D082, split CI: a build with Node.js or Bun writes a web bundle (rax.web-bundle/1,
+         specs/application/web-bundle.md), and a build on another machine publishes from it without them.
+         - RunicApplicationFrontendBundleDirectory: after its build, every project that declares Views writes its entry,
+           its frontend output (www/) and generated clients, to projects/<assembly>/ there, and web-bundle.json lists
+           every entry (RunicViewsWriteWebBundle).
+         - RunicApplicationFrontendPrebuiltDirectory: every project that declares Views takes its frontend output from
+           its entry's www/ and skips the install, the package and frontend builds and the client emission, so no
+           Node.js or Bun runs. RunicViewsCheckPrebuiltFrontend first compares the entry's Views with the contract IR
+           that the generator has just written; RunicApplicationFrontendPrebuiltCheck=warning turns a mismatch into a
+           warning.
+         A relative directory is relative to the directory the build started in, so every project of a solution build
+         finds the same one, also when it is set as an environment variable. The entry's name is the assembly name. -->
+    <_RunicFrontendBundleEntryName>$(AssemblyName)</_RunicFrontendBundleEntryName>
+    <_RunicFrontendBundleEntryName Condition="'$(_RunicFrontendBundleEntryName)' == ''">$(MSBuildProjectName)</_RunicFrontendBundleEntryName>
+    <_RunicFrontendBundleRoot Condition="'$(RunicApplicationFrontendBundleDirectory)' != ''">$([MSBuild]::NormalizeDirectory('$(MSBuildStartupDirectory)', '$(RunicApplicationFrontendBundleDirectory)'))</_RunicFrontendBundleRoot>
+    <_RunicFrontendPrebuiltRoot Condition="'$(RunicApplicationFrontendPrebuiltDirectory)' != ''">$([MSBuild]::NormalizeDirectory('$(MSBuildStartupDirectory)', '$(RunicApplicationFrontendPrebuiltDirectory)'))</_RunicFrontendPrebuiltRoot>
+    <_RunicFrontendPrebuilt Condition="'$(_RunicFrontendPrebuiltRoot)' != ''">true</_RunicFrontendPrebuilt>
+    <RunicApplicationFrontendBuildEnabled Condition="'$(_RunicFrontendPrebuilt)' == 'true'">false</RunicApplicationFrontendBuildEnabled>
+    <_RunicApplicationFrontendOutputPath Condition="'$(_RunicFrontendPrebuilt)' == 'true'">$([MSBuild]::NormalizeDirectory('$(_RunicFrontendPrebuiltRoot)', 'projects', '$(_RunicFrontendBundleEntryName)', 'www'))</_RunicApplicationFrontendOutputPath>
     <!-- The directory below the build and publish output that the application serves. The hosts find it through the
          Runic.Application.FrontendWebRoot runtime option when it is not www. -->
     <RunicApplicationFrontendWebRoot Condition="'$(RunicApplicationFrontendWebRoot)' == ''">www</RunicApplicationFrontendWebRoot>
@@ -490,6 +510,8 @@
     <_RunicFrontendInstallMode Condition="'$(_RunicFrontendInstallModeInvalid)' == 'true'">Auto</_RunicFrontendInstallMode>
     <_RunicFrontendInstallMode Condition="'$(_RunicFrontendInstallMode)' == '' and '$(RunicApplicationFrontendInstallEnabled)' == 'false'">Never</_RunicFrontendInstallMode>
     <_RunicFrontendInstallMode Condition="'$(_RunicFrontendInstallMode)' == ''">Auto</_RunicFrontendInstallMode>
+    <!-- D082: a prebuilt frontend installs nothing. -->
+    <_RunicFrontendInstallMode Condition="'$(_RunicFrontendPrebuilt)' == 'true'">Never</_RunicFrontendInstallMode>
     <_RunicFrontendInstallAlways Condition="'$(_RunicFrontendInstallMode)' == 'Always'">true</_RunicFrontendInstallAlways>
     <_RunicFrontendInstallAlways Condition="'$(_RunicFrontendInstallAlways)' == ''">false</_RunicFrontendInstallAlways>
     <RunicApplicationFrontendInstallEnabled Condition="'$(_RunicFrontendInstallMode)' == 'Never'">false</RunicApplicationFrontendInstallEnabled>
@@ -1227,9 +1249,11 @@
   </Target>
 
   <!-- Runs when the generator wrote the IR: it writes one, or the no-Views marker, after every successful run. -->
+  <!-- D082: a build that takes a prebuilt frontend emits no clients, as nothing builds a page from them; the bundle
+       carries the clients its frontend was built with. -->
   <Target Name="_RunicViewsEmitClients" DependsOnTargets="_RunicViewsClientsInputs"
           Inputs="@(_RunicViewsClientsInput)" Outputs="$(_RunicViewsClientsStamp)"
-          Condition="'$(_RunicBridgeSkipped)' != 'true' and Exists('$(_RunicViewsContractIr)')">
+          Condition="'$(_RunicBridgeSkipped)' != 'true' and Exists('$(_RunicViewsContractIr)') and '$(_RunicFrontendPrebuilt)' != 'true'">
     <PropertyGroup>
       <_RunicViewsCodegenFirst>node</_RunicViewsCodegenFirst>
       <_RunicViewsCodegenSecond>bun</_RunicViewsCodegenSecond>
@@ -1278,6 +1302,112 @@
            Condition="'$(_RunicViewsEmitterExitCode)' == '0' and !Exists('$(_RunicViewsClientsOutputs)')"
            Text="The Runic Views TypeScript emitter exited without writing the clients of $(AssemblyName) or its record $(_RunicViewsClientsOutputs), an internal error. Its output is above; include it when you report the problem." />
     <Touch Files="$(_RunicViewsClientsStamp)" AlwaysCreate="true" Condition="'$(_RunicViewsEmitterExitCode)' == '0'" />
+  </Target>
+
+  <!-- D082, split CI (see RunicApplicationFrontendBundleDirectory above). The generator tool writes and checks the
+       bundle on .NET alone; these targets pass it a request file of key=value lines. The entry's kind: application
+       (an executable), library (a model project whose page an application copies, as beside a WPF application) or
+       clientLibrary (a package that applications' pages bundle, which has no page of its own). -->
+  <Target Name="_RunicViewsWebBundleRequest" DependsOnTargets="_RunicViewsClientsPaths">
+    <PropertyGroup>
+      <_RunicFrontendBundleKind>application</_RunicFrontendBundleKind>
+      <_RunicFrontendBundleKind Condition="'$(OutputType)' == 'Library'">library</_RunicFrontendBundleKind>
+      <_RunicFrontendBundleKind Condition="'$(RunicApplicationFrontendClientLibrary)' == 'true'">clientLibrary</_RunicFrontendBundleKind>
+    </PropertyGroup>
+    <!-- The tool may not have been built in this build yet: NoBuild reuses the generated code, and these targets can be
+         run on their own. In a build, the generator's build has already run, so this is up to date. -->
+    <MSBuild Projects="$(_RunicBridgeCodegenProject)" Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;PublishTrimmed=false;PublishReadyToRun=false;PublishSingleFile=false;IncludeNativeLibrariesForSelfExtract=false;SelfContained=false"
+             Condition="Exists('$(_RunicBridgeCodegenProject)') and !Exists('$(_RunicBridgeCodegenDll)')" />
+  </Target>
+
+  <!-- RunicApplicationFrontendBundleDirectory: after the build, this project's entry. Its frontend must have been built
+       in this build: a frontend build that is off (RunicApplicationFrontendBuildEnabled=false, or a dotnet runic dev
+       session that serves the page) or a prebuilt input as well is RUNICBRIDGE092. A client library whose package has
+       no build script writes its Views and clients only. -->
+  <Target Name="RunicViewsWriteWebBundle" AfterTargets="Build" DependsOnTargets="_RunicViewsWebBundleRequest"
+          Condition="'$(_RunicFrontendBundleRoot)' != '' and '$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <Error Code="RUNICBRIDGE092" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge092"
+           Condition="'$(_RunicFrontendPrebuilt)' == 'true'"
+           Text="RunicApplicationFrontendBundleDirectory and RunicApplicationFrontendPrebuiltDirectory are both set, but a build either writes a web bundle (with its frontend build) or takes its frontend from one. Set one of them." />
+    <PropertyGroup>
+      <_RunicFrontendBundleBuildOff Condition="'$(RunicApplicationFrontendBuildEnabled)' == 'false' and '$(_RunicFrontendBundleKind)' != 'clientLibrary'">true</_RunicFrontendBundleBuildOff>
+      <_RunicFrontendBundleBuildOffReason>RunicApplicationFrontendBuildEnabled is false</_RunicFrontendBundleBuildOffReason>
+      <_RunicFrontendBundleBuildOffReason Condition="'$(_RunicFrontendServedByDev)' == 'true' or '$(_RunicDevSessionLive)' == 'true'">dotnet runic dev serves its frontend</_RunicFrontendBundleBuildOffReason>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE092" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge092"
+           Condition="'$(_RunicFrontendPrebuilt)' != 'true' and '$(_RunicFrontendBundleBuildOff)' == 'true'"
+           Text="RunicApplicationFrontendBundleDirectory asks for a web bundle, but $(MSBuildProjectName) does not build its frontend in this build ($(_RunicFrontendBundleBuildOffReason)), so the bundle would carry an old page or none. Write the bundle with a build that builds the frontend (dotnet build -c Release -p:RunicApplicationFrontendBundleDirectory=...), without dotnet runic dev running." />
+    <PropertyGroup>
+      <_RunicFrontendBundleNodeEnv Condition="'$(RunicApplicationFrontendBuildEnabled)' != 'false'">$([System.Environment]::GetEnvironmentVariable('NODE_ENV'))</_RunicFrontendBundleNodeEnv>
+      <_RunicFrontendBundleNodeEnv Condition="'$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(_RunicFrontendBundleNodeEnv)' == '' and '$(Optimize)' == 'true'">production</_RunicFrontendBundleNodeEnv>
+      <_RunicFrontendBundleBuildCommand Condition="'$(RunicApplicationFrontendBuildEnabled)' != 'false'">$(RunicApplicationFrontendBuildCommand)</_RunicFrontendBundleBuildCommand>
+      <_RunicFrontendBundleRequest>$(_RunicBridgeGeneratedDir)web-bundle-write.request</_RunicFrontendBundleRequest>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicFrontendBundleRequestLine Include="bundle=$([MSBuild]::Escape('$(_RunicFrontendBundleRoot)'))" />
+      <_RunicFrontendBundleRequestLine Include="assembly=$([MSBuild]::Escape('$(_RunicFrontendBundleEntryName)'))" />
+      <_RunicFrontendBundleRequestLine Include="kind=$(_RunicFrontendBundleKind)" />
+      <_RunicFrontendBundleRequestLine Include="project=$([MSBuild]::Escape('$(MSBuildProjectFullPath)'))" />
+      <_RunicFrontendBundleRequestLine Include="configuration=$([MSBuild]::Escape('$(Configuration)'))" />
+      <_RunicFrontendBundleRequestLine Include="targetFramework=$([MSBuild]::Escape('$(TargetFramework)'))" />
+      <_RunicFrontendBundleRequestLine Include="host=$([MSBuild]::Escape('$(RunicApplicationHost)'))" />
+      <_RunicFrontendBundleRequestLine Include="nodeEnv=$([MSBuild]::Escape('$(_RunicFrontendBundleNodeEnv)'))" />
+      <_RunicFrontendBundleRequestLine Include="ir=$([MSBuild]::Escape('$(_RunicViewsContractIr)'))" />
+      <_RunicFrontendBundleRequestLine Include="www=$([MSBuild]::Escape('$(_RunicApplicationFrontendOutputPath)'))" />
+      <_RunicFrontendBundleRequestLine Include="clients=$([MSBuild]::Escape('$(_RunicViewsClientsDirectory)'))" />
+      <_RunicFrontendBundleRequestLine Include="clientsRecord=$([MSBuild]::Escape('$(_RunicViewsClientsOutputs)'))" />
+      <_RunicFrontendBundleRequestLine Include="frontend=$([MSBuild]::Escape('$(_RunicViewsFrontendDirectory)'))" />
+      <_RunicFrontendBundleRequestLine Include="installDirectory=$([MSBuild]::Escape('$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(_RunicFrontendInstallDirectory)'))'))" Condition="'$(_RunicFrontendInstallDirectory)' != ''" />
+      <_RunicFrontendBundleRequestLine Include="packageManager=$([MSBuild]::Escape('$(RunicApplicationFrontendPackageManager)'))" />
+      <_RunicFrontendBundleRequestLine Include="buildCommand=$([MSBuild]::Escape('$(_RunicFrontendBundleBuildCommand)'))" />
+      <_RunicFrontendBundleRequestLine Include="dotnetSdk=$([MSBuild]::Escape('$(NETCoreSdkVersion)'))" />
+    </ItemGroup>
+    <MakeDir Directories="$(_RunicBridgeGeneratedDir)" />
+    <WriteLinesToFile File="$(_RunicFrontendBundleRequest)" Lines="@(_RunicFrontendBundleRequestLine)" Overwrite="true" />
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --web-bundle-write &quot;$(_RunicFrontendBundleRequest)&quot;"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="high" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicFrontendBundleExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicFrontendBundleOutputLine" />
+    </Exec>
+    <RunicViewsReportCommandResult Lines="@(_RunicFrontendBundleOutputLine)" ExitCode="$(_RunicFrontendBundleExitCode)"
+        FailureCode="RUNICBRIDGE024" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The Runic generator exited with code $(_RunicFrontendBundleExitCode) without reporting an error while writing the web bundle entry of $(MSBuildProjectName) to $(_RunicFrontendBundleRoot), an internal error. Its output is above; include it when you report the problem." />
+  </Target>
+
+  <!-- RunicApplicationFrontendPrebuiltDirectory: right after the generator has written this build's contract IR, and
+       before anything compiles or copies the page, the entry must exist and its www/ be the one the bundle recorded
+       (RUNICBRIDGE093). Its Views must have this build's fingerprints, and its page this build's host
+       (RUNICBRIDGE094 and RUNICBRIDGE095: errors, or warnings with RunicApplicationFrontendPrebuiltCheck=warning). An
+       optimized build that takes a development page is RUNICBRIDGE096, a warning. NoBuild reuses the IR of the
+       build before. -->
+  <Target Name="RunicViewsCheckPrebuiltFrontend" AfterTargets="RunicViewsGenerateBridge"
+          DependsOnTargets="_RunicViewsWebBundleRequest;RunicViewsResolveHost"
+          Condition="'$(_RunicFrontendPrebuilt)' == 'true' and '$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <PropertyGroup>
+      <_RunicFrontendPrebuiltRequest>$(_RunicBridgeGeneratedDir)web-bundle-check.request</_RunicFrontendPrebuiltRequest>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicFrontendPrebuiltRequestLine Include="bundle=$([MSBuild]::Escape('$(_RunicFrontendPrebuiltRoot)'))" />
+      <_RunicFrontendPrebuiltRequestLine Include="assembly=$([MSBuild]::Escape('$(_RunicFrontendBundleEntryName)'))" />
+      <_RunicFrontendPrebuiltRequestLine Include="kind=$(_RunicFrontendBundleKind)" />
+      <_RunicFrontendPrebuiltRequestLine Include="project=$([MSBuild]::Escape('$(MSBuildProjectFullPath)'))" />
+      <_RunicFrontendPrebuiltRequestLine Include="ir=$([MSBuild]::Escape('$(_RunicViewsContractIr)'))" />
+      <_RunicFrontendPrebuiltRequestLine Include="host=$([MSBuild]::Escape('$(RunicApplicationHost)'))" />
+      <_RunicFrontendPrebuiltRequestLine Include="optimize=$(Optimize)" />
+      <_RunicFrontendPrebuiltRequestLine Include="configuration=$([MSBuild]::Escape('$(Configuration)'))" />
+      <_RunicFrontendPrebuiltRequestLine Include="check=$([MSBuild]::Escape('$(RunicApplicationFrontendPrebuiltCheck.Trim())'))" />
+    </ItemGroup>
+    <MakeDir Directories="$(_RunicBridgeGeneratedDir)" />
+    <WriteLinesToFile File="$(_RunicFrontendPrebuiltRequest)" Lines="@(_RunicFrontendPrebuiltRequestLine)" Overwrite="true" />
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --web-bundle-check &quot;$(_RunicFrontendPrebuiltRequest)&quot;"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="high" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicFrontendPrebuiltExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicFrontendPrebuiltOutputLine" />
+    </Exec>
+    <RunicViewsReportCommandResult Lines="@(_RunicFrontendPrebuiltOutputLine)" ExitCode="$(_RunicFrontendPrebuiltExitCode)"
+        FailureCode="RUNICBRIDGE024" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The Runic generator exited with code $(_RunicFrontendPrebuiltExitCode) without reporting an error while checking the prebuilt frontend of $(MSBuildProjectName) in $(_RunicFrontendPrebuiltRoot), an internal error. Its output is above; include it when you report the problem." />
   </Target>
 
   <!-- WPF's temporary markup project is a copy of the project file, so it

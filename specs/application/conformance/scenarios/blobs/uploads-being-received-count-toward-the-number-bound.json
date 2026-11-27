@@ -1,0 +1,39 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.uploads-being-received-count-toward-the-number-bound.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1"],
+  "description": "An upload the window is still receiving counts against the number of unclaimed uploads: with a bound of 2, one upload being received and one stored leave no place, so a third is refused with 507 capacity. The held upload is stored when its body ends, and a claimed upload frees its place.",
+  "view": "files",
+  "options": {"pendingUploads":2},
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-files": {"kind":"request"},
+    "attach": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "slow": {"kind":"upload"},
+    "first": {"kind":"provided"},
+    "second": {"kind":"provided"},
+    "fourth": {"kind":"provided"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[]},"presentation":"ok"},"replyTo":"open-files"},
+    {"upload":{"name":"first.txt","type":"text/plain","text":"first","hold":"slow"}},
+    {"upload":{"name":"second.txt","type":"text/plain","text":""},"answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"second"},"name":"second.txt","type":"text/plain","size":0}}}},
+    {"upload":{"name":"third.txt","type":"text/plain","text":""},"answer":{"status":507,"body":{"ok":false,"error":{"kind":"rejected","reason":"capacity","message":{"$any":"string"}}}}},
+    {"endUpload":"slow","answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"first"},"name":"first.txt","type":"text/plain","size":5}}}},
+    {"send":{"kind":"command","route":"files","member":"attach","input":{"id":{"$id":"second"},"name":"second.txt","type":"text/plain","size":0}},"id":"attach"},
+    {"receive":{"kind":"frame","route":"files","baseRevision":0,"revision":1,"changes":[{"field":"lastUpload","kind":"set","value":"second.txt"}]}},
+    {"receive":{"ok":true,"revision":1},"replyTo":"attach"},
+    {"upload":{"name":"fourth.txt","type":"text/plain","text":""},"answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"fourth"},"name":"fourth.txt","type":"text/plain","size":0}}}}
+  ]
+}

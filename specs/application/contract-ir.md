@@ -149,10 +149,25 @@ request has the same without `output`, and the contract `{fingerprint}:request:{
 
 ## Values
 
-A value position is `{direction, type}`. `direction` is where its values cross: `to-page` (state the page reads,
-results, failures, view request inputs), `from-page` (command inputs, interaction outputs) or `both` (settable
-members). It decides which object members a page may leave out: a member that is `optional` may be missing only from a
-value that comes from the page ([values.md](values.md#composite-values)).
+A value position is `{direction, type}`. `direction` is where its values cross: `to-page`, `from-page` or `both`. It
+decides which object members a page may leave out: a member that is `optional` may be missing only from a value that
+comes from the page ([values.md](values.md#composite-values)). It is part of the [fingerprint](#fingerprint), so every
+producer decides it by this rule:
+
+| Position | `direction` |
+| --- | --- |
+| A `value` member's `value` | `both` when the page may send the member's value back and the value cannot hold a `blob`; otherwise `to-page`. The page sends it back when the source has a setter for it (in .NET, a public setter), and when the member is a keyed collection with `rowEditor`, whose rows a field path write rebuilds from the page's values (`field-paths/1`). A value can hold a `blob` when a `blob` is anywhere in its type: the type itself, a list element, a map value, or a member or case object of a named type reached from it. Such a value only goes to the page ([blobs](README.md#blobs)), so it is `to-page` whatever its setter or row editor, and the member is not `settable` |
+| A `selection` member's `value`, a `query-collection` member's `rows` | `to-page` |
+| A command's `input`, also a keyed command's key | `from-page` |
+| A command's `result` and `failure` | `to-page` |
+| An interaction's `input` | `to-page` |
+| An interaction's `output` | `from-page` |
+| A view request's `input` | `to-page` |
+
+The conformance test Views show each `value` rule: `invoice.address` (settable) and `invoice.lines` (a row editor) are
+`both`; `files.avatar` (a nullable `blob`) and `files.attachments` (a row editor whose rows hold a `blob`) are `to-page`.
+The .NET writer decides it in `tools/Runic.Application.Views.Codegen/Program.cs` (the value graphs of the state
+properties), and `eng/views-contract-ir.test.mjs` checks the rule on every IR document of the repository.
 
 A type is an object with a `kind` and `nullable: true` when `null` is a value:
 

@@ -227,4 +227,11 @@ internal sealed class DevDevelopmentException(
     internal string Code { get; } = code;
     internal string? LocalDetail { get; } = localDetail;
     internal CommandExitCategory Category { get; } = category;
+
+    /// <summary>
+    /// The exit code of the child process whose unexpected exit this reports (a development server, frontend watcher or
+    /// native host), or null. A code of a stop signal lets dev tell a terminal Ctrl+C that reached the child first from
+    /// a crash (#1396, <see cref="DevStop"/>).
+    /// </summary>
+    internal int? ChildExitCode { get; init; }
 }

@@ -195,7 +195,10 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                     int exitCode = await completion.ConfigureAwait(false);
                     throw new DevDevelopmentException(
                         "RAPPDEV1007",
-                        $"The Angular development server exited before readiness with code {exitCode}.");
+                        $"The Angular development server exited before readiness with code {exitCode}.")
+                    {
+                        ChildExitCode = exitCode,
+                    };
                 }
 
                 try

@@ -636,7 +636,7 @@
       "id": "Runic.Application.Testing.Tests.Conformance.FilesViewModel",
       "name": "Files",
       "route": "files",
-      "fingerprint": "544256BF62CC1CD8B91D37F39C78FA0111A9C8EB954801BD1817ECE4818A6D1D",
+      "fingerprint": "78AD931187DAF324DE5B8EB4D435C8EE337878D3D0744764CB37EBECC22CE48F",
       "kinds": [
         "files"
       ],
@@ -687,6 +687,12 @@
             {
               "path": [
                 "name"
+              ]
+            },
+            {
+              "path": [
+                "cover",
+                "caption"
               ]
             }
           ]
@@ -1091,6 +1097,51 @@
           "wire": "preview",
           "type": {
             "kind": "blob"
+          }
+        },
+        {
+          "wire": "cover",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Application.Testing.Tests.Conformance.FilesCover"
+          }
+        },
+        {
+          "wire": "pages",
+          "type": {
+            "kind": "list",
+            "element": {
+              "kind": "blob"
+            }
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.Conformance.FilesCover": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.Conformance.FilesCover",
+        "base": "FilesCover",
+        "qualifiers": [
+          "Conformance",
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "caption",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "image",
+          "type": {
+            "kind": "blob",
+            "nullable": true
           }
         }
       ]

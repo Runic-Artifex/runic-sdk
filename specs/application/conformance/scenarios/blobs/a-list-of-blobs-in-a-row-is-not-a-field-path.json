@@ -1,0 +1,38 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.a-list-of-blobs-in-a-row-is-not-a-field-path.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1", "field-paths/1"],
+  "description": "A list of blobs in an editable row is not a field path: a write of the row's pages is rejected with invalid-request and nothing runs. A write of the row's name replaces the row with a copy that keeps its pages, each with its URL.",
+  "view": "files",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-files": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "pages": {"kind":"request"},
+    "name": {"kind":"request"},
+    "w1": {"kind":"wire","value":"w-1"},
+    "w2": {"kind":"wire","value":"w-2"},
+    "previewUrl": {"kind":"provided"},
+    "imageUrl": {"kind":"provided"},
+    "page1Url": {"kind":"provided"},
+    "page2Url": {"kind":"provided"}
+  },
+  "arrange": {"model":{"attachments":[{"id":1,"name":"a.txt","preview":{"type":"text/plain","text":"a","name":"a.txt"},"cover":{"caption":"Lake","image":{"type":"image/png","text":"png","name":"lake.png"}},"pages":[{"type":"text/plain","text":"p1","name":"1.txt"},{"type":"text/plain","text":"p2","name":"2.txt"}]}]}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1","field-paths/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1","field-paths/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[{"id":1,"name":"a.txt","preview":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"},"cover":{"caption":"Lake","image":{"url":{"$id":"imageUrl"},"type":"image/png","size":3,"name":"lake.png"}},"pages":[{"url":{"$id":"page1Url"},"type":"text/plain","size":2,"name":"1.txt"},{"url":{"$id":"page2Url"},"type":"text/plain","size":2,"name":"2.txt"}]}]},"presentation":"ok"},"replyTo":"open-files"},
+    {"send":{"kind":"write","route":"files","member":"attachments","path":["1","pages"],"requestId":{"$id":"w1"},"expectedVersion":0,"expectedValue":[{"url":{"$id":"page1Url"},"type":"text/plain","size":2,"name":"1.txt"},{"url":{"$id":"page2Url"},"type":"text/plain","size":2,"name":"2.txt"}],"value":[]},"id":"pages"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"replyTo":"pages"},
+    {"send":{"kind":"write","route":"files","member":"attachments","path":["1","name"],"requestId":{"$id":"w2"},"expectedVersion":0,"expectedValue":"a.txt","value":"b.txt"},"id":"name"},
+    {"receive":{"kind":"frame","route":"files","baseRevision":0,"revision":1,"changes":[{"field":"attachments","kind":"replace","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"name":"b.txt","preview":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"},"cover":{"caption":"Lake","image":{"url":{"$id":"imageUrl"},"type":"image/png","size":3,"name":"lake.png"}},"pages":[{"url":{"$id":"page1Url"},"type":"text/plain","size":2,"name":"1.txt"},{"url":{"$id":"page2Url"},"type":"text/plain","size":2,"name":"2.txt"}]}]}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"b.txt","version":1}}},"replyTo":"name"}
+  ]
+}
