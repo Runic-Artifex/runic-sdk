@@ -34,6 +34,9 @@ intentionally divergent, or not applicable.
 - [In-page menu bar routes](menu-bar-page.md) are the reserved Bridge routes a
   page uses to render the menu bar and run its items, with the shared
   [state cases](fixtures/menu-bar-page.json).
+- The [server corpus](server/README.md) states what the HTTP and WebSocket
+  server under a host must, should and may do, with vectors the
+  conformance driver runs against runic-server (`bun run conformance rax-server`).
 - The [Runic host protocol](host-protocol.md) (`runic-host/1`, experimental) is
   how a host application shows a guest application's windows, with its own
   [conformance scenarios](host-conformance/README.md). It versions

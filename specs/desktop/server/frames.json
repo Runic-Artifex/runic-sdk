@@ -1,0 +1,2082 @@
+{
+  "format": "rax.desktop.server-vector/1",
+  "id": "server.frames",
+  "description": "WebSocket data and control frames (RFC 6455 sections 5 and 8): what the server delivers to the host, what it answers, what it writes, and how it fails a connection that breaks the protocol or the message limit.",
+  "cases": [
+    {
+      "id": "server.frames.fragments-joined-around-a-ping",
+      "level": "must",
+      "rule": "ws-messages",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "fin": false,
+              "payload": {
+                "text": "ab"
+              }
+            },
+            {
+              "opcode": "ping",
+              "payload": {
+                "text": "ping"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "fin": false,
+              "payload": {
+                "text": "cd"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "text": "ef"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "pong",
+            "payload": {
+              "text": "ping"
+            }
+          }
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "text": "abcdef"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.text-fragment-ends-inside-a-character",
+      "level": "must",
+      "rule": "ws-messages",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "fin": false,
+              "payload": {
+                "hex": "e282"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "hex": "ac"
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "text",
+              "data": {
+                "text": "€"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.empty-messages",
+      "level": "must",
+      "rule": "ws-messages",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text"
+            },
+            {
+              "opcode": "binary"
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "text",
+              "data": {
+                "empty": true
+              }
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "empty": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.messages-in-order",
+      "level": "must",
+      "rule": "ws-messages",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "payload": {
+                "text": "1"
+              }
+            },
+            {
+              "opcode": "binary",
+              "payload": {
+                "text": "2"
+              }
+            },
+            {
+              "opcode": "text",
+              "payload": {
+                "text": "3"
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "text",
+              "data": {
+                "text": "1"
+              }
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "text": "2"
+              }
+            },
+            {
+              "type": "message",
+              "kind": "text",
+              "data": {
+                "text": "3"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.unsolicited-pong-ignored",
+      "level": "must",
+      "rule": "ws-ping",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "pong",
+              "payload": {
+                "text": "x"
+              }
+            },
+            {
+              "opcode": "text",
+              "payload": {
+                "text": "after"
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "text",
+              "data": {
+                "text": "after"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.ping-answered-with-its-payload",
+      "level": "must",
+      "rule": "ws-ping",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "ping",
+              "payload": {
+                "repeat": {
+                  "byte": "p",
+                  "count": 125
+                }
+              }
+            },
+            {
+              "opcode": "ping"
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "pong",
+            "payload": {
+              "repeat": {
+                "byte": "p",
+                "count": 125
+              }
+            }
+          }
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "pong",
+            "payload": {
+              "empty": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "server.frames.long-messages",
+      "level": "must",
+      "rule": "ws-messages",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "payload": {
+                "repeat": {
+                  "byte": "a",
+                  "count": 200
+                }
+              }
+            },
+            {
+              "opcode": "binary",
+              "payload": {
+                "repeat": {
+                  "byte": "b",
+                  "count": 70000
+                }
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "repeat": {
+                  "byte": "a",
+                  "count": 200
+                }
+              }
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "repeat": {
+                  "byte": "b",
+                  "count": 70000
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.non-minimal-length-accepted",
+      "level": "may",
+      "rule": "ws-lenient-lengths",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "lengthForm": "16",
+              "payload": {
+                "text": "short"
+              }
+            },
+            {
+              "opcode": "binary",
+              "lengthForm": "64",
+              "payload": {
+                "text": "wide"
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "text": "short"
+              }
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "text": "wide"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.host-messages",
+      "level": "must",
+      "rule": "ws-server-frames",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "hostSend": "a",
+          "kind": "text",
+          "data": {
+            "text": "x ✓"
+          }
+        },
+        {
+          "hostSend": "a",
+          "kind": "binary",
+          "data": {
+            "repeat": {
+              "byte": "b",
+              "count": 126
+            }
+          }
+        },
+        {
+          "hostSend": "a",
+          "kind": "binary",
+          "data": {
+            "repeat": {
+              "byte": "c",
+              "count": 65536
+            }
+          }
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "text",
+            "payload": {
+              "text": "x ✓"
+            }
+          }
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "binary",
+            "payload": {
+              "repeat": {
+                "byte": "b",
+                "count": 126
+              }
+            }
+          }
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "binary",
+            "payload": {
+              "repeat": {
+                "byte": "c",
+                "count": 65536
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "server.frames.message-at-the-limit",
+      "level": "must",
+      "rule": "ws-limit",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "payload": {
+                "text": "12345678"
+              }
+            },
+            {
+              "opcode": "text",
+              "fin": false,
+              "payload": {
+                "text": "1234"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "text": "5678"
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "message",
+              "kind": "binary",
+              "data": {
+                "text": "12345678"
+              }
+            },
+            {
+              "type": "message",
+              "kind": "text",
+              "data": {
+                "text": "12345678"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.unmasked",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "mask": false,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.unmasked-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "mask": false,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.reserved-bit",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "rsv": 4,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.reserved-bit-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "rsv": 4,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.reserved-data-opcode",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": 3,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.reserved-data-opcode-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": 3,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.reserved-control-opcode",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": 11
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.reserved-control-opcode-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": 11
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.fragmented-ping",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "ping",
+              "fin": false,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.fragmented-ping-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "ping",
+              "fin": false,
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.long-control-frame",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "ping",
+              "payload": {
+                "repeat": {
+                  "byte": "p",
+                  "count": 126
+                }
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.long-control-frame-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "ping",
+              "payload": {
+                "repeat": {
+                  "byte": "p",
+                  "count": 126
+                }
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.continuation-without-a-message",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "continuation",
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.continuation-without-a-message-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "continuation",
+              "payload": {
+                "text": "x"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.message-inside-a-message",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "fin": false,
+              "payload": {
+                "text": "a"
+              }
+            },
+            {
+              "opcode": "text",
+              "payload": {
+                "text": "b"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.message-inside-a-message-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "fin": false,
+              "payload": {
+                "text": "a"
+              }
+            },
+            {
+              "opcode": "text",
+              "payload": {
+                "text": "b"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.length-top-bit",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "lengthForm": "64",
+              "length": 9223372036854775808
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.length-top-bit-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "lengthForm": "64",
+              "length": 9223372036854775808
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.declared-length-over-the-limit",
+      "level": "must",
+      "rule": "ws-limit",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "lengthForm": "64",
+              "length": 1099511627776
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.declared-length-over-the-limit-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "lengthForm": "64",
+              "length": 1099511627776
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1009
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.message-over-the-limit",
+      "level": "must",
+      "rule": "ws-limit",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "payload": {
+                "text": "123456789"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.message-over-the-limit-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "payload": {
+                "text": "123456789"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1009
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.fragments-over-the-limit",
+      "level": "must",
+      "rule": "ws-limit",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "fin": false,
+              "payload": {
+                "text": "12345"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "text": "6789"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.fragments-over-the-limit-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "config": {
+        "maxMessageBytes": 8
+      },
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "fin": false,
+              "payload": {
+                "text": "12345"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "text": "6789"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1009
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.text-not-utf8",
+      "level": "must",
+      "rule": "ws-utf8",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "payload": {
+                "hex": "fffe"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.text-not-utf8-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "payload": {
+                "hex": "fffe"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1007
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.text-not-utf8-across-fragments",
+      "level": "must",
+      "rule": "ws-utf8",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "fin": false,
+              "payload": {
+                "hex": "e282"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "hex": "41"
+              }
+            }
+          ]
+        },
+        {
+          "closeOrEnd": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.frames.text-not-utf8-across-fragments-close-code",
+      "level": "should",
+      "rule": "ws-fail-close-code",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "text",
+              "fin": false,
+              "payload": {
+                "hex": "e282"
+              }
+            },
+            {
+              "opcode": "continuation",
+              "payload": {
+                "hex": "41"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1007
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.frames.truncated-frame-then-end",
+      "level": "must",
+      "rule": "ws-fail",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "binary",
+              "payload": {
+                "text": "abc"
+              },
+              "truncate": 3
+            }
+          ]
+        },
+        {
+          "halfClose": "a"
+        },
+        {
+          "end": "a"
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

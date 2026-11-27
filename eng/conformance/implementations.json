@@ -16,6 +16,13 @@
       "env": { "DOTNET_NOLOGO": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" },
       "status": "status/dotnet-assets.json"
     },
+    "rax-server": {
+      "corpus": "desktop-server/1",
+      "roles": ["server"],
+      "build": ["cargo", "build", "--locked", "--quiet", "--manifest-path", "${ROOT}/native/Cargo.toml", "-p", "runic-artifex-server-conformance"],
+      "command": ["cargo", "run", "--locked", "--quiet", "--manifest-path", "${ROOT}/native/Cargo.toml", "-p", "runic-artifex-server-conformance"],
+      "status": "status/rax-server.json"
+    },
     "ts-client": {
       "corpus": "views/4",
       "roles": ["client"],

@@ -1,0 +1,133 @@
+{
+  "format": "rax.desktop.server-vector/1",
+  "id": "server.handshake",
+  "description": "The WebSocket opening handshake (RFC 6455 section 4.2): what the server accepts, what it refuses, and what it writes in its 101.",
+  "cases": [
+    {
+      "id": "server.handshake.accept-key",
+      "level": "must",
+      "rule": "ws-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws" } },
+        { "response": "a", "expect": { "status": 101, "headers": { "sec-websocket-accept": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "upgrade": { "ignoreCase": "websocket" }, "connection": { "token": "upgrade" }, "content-length": null, "sec-websocket-protocol": null, "sec-websocket-extensions": null } } },
+        { "host": "a", "expect": [{ "type": "request", "method": "GET", "target": "/ws", "websocket": true }] }
+      ]
+    },
+    {
+      "id": "server.handshake.subprotocol-of-the-host",
+      "level": "must",
+      "rule": "ws-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Sec-WebSocket-Protocol", "other, rax.test"], ["Origin", "http://{authority}"]] } },
+        { "response": "a", "expect": { "status": 101, "headers": { "sec-websocket-protocol": "rax.test" } } },
+        { "host": "a", "expect": [{ "type": "request", "websocket": true, "headers": { "origin": "http://{authority}", "sec-websocket-protocol": "other, rax.test" } }] }
+      ]
+    },
+    {
+      "id": "server.handshake.no-subprotocol-chosen",
+      "level": "must",
+      "rule": "ws-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Sec-WebSocket-Protocol", "other"]] } },
+        { "response": "a", "expect": { "status": 101, "headers": { "sec-websocket-protocol": null } } }
+      ]
+    },
+    {
+      "id": "server.handshake.connection-token-list",
+      "level": "must",
+      "rule": "ws-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Connection", "keep-alive, Upgrade"], ["Upgrade", "WebSocket"]] } },
+        { "response": "a", "expect": { "status": 101, "headers": { "sec-websocket-accept": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" } } }
+      ]
+    },
+    {
+      "id": "server.handshake.extensions-declined",
+      "level": "must",
+      "rule": "ws-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits"]] } },
+        { "response": "a", "expect": { "status": 101, "headers": { "sec-websocket-extensions": null } } },
+        { "send": "a", "frames": [{ "opcode": "text", "payload": { "text": "plain" } }] },
+        { "host": "a", "expect": [{ "type": "request", "websocket": true }, { "type": "message", "kind": "text", "data": { "text": "plain" } }] }
+      ]
+    },
+    {
+      "id": "server.handshake.message-at-accept-follows-the-101",
+      "level": "must",
+      "rule": "ws-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws?hello" } },
+        { "response": "a", "expect": { "status": 101 } },
+        { "frame": "a", "expect": { "opcode": "text", "payload": { "text": "hello" } } }
+      ]
+    },
+    {
+      "id": "server.handshake.unsupported-version",
+      "level": "must",
+      "rule": "ws-version",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Sec-WebSocket-Version", "8"]] } },
+        { "response": "a", "expect": { "status": "4xx", "headers": { "sec-websocket-version": "13" } } }
+      ]
+    },
+    {
+      "id": "server.handshake.unsupported-version-426",
+      "level": "should",
+      "rule": "ws-version",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Sec-WebSocket-Version", "14"]] } },
+        { "response": "a", "expect": { "status": 426 } }
+      ]
+    },
+    {
+      "id": "server.handshake.missing-key",
+      "level": "must",
+      "rule": "ws-invalid-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "omit": ["Sec-WebSocket-Key"] } },
+        { "response": "a", "expect": { "status": "4xx", "headers": { "sec-websocket-accept": null } } }
+      ]
+    },
+    {
+      "id": "server.handshake.post-is-not-an-upgrade",
+      "level": "must",
+      "rule": "ws-invalid-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "method": "POST", "target": "/ws", "headers": [["Content-Length", "0"]] } },
+        { "response": "a", "expect": { "status": "4xx", "headers": { "sec-websocket-accept": null } } }
+      ]
+    },
+    {
+      "id": "server.handshake.host-refuses",
+      "level": "must",
+      "rule": "ws-invalid-handshake",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws-reject" } },
+        { "response": "a", "expect": { "status": 403, "headers": { "sec-websocket-accept": null } } }
+      ]
+    },
+    {
+      "id": "server.handshake.foreign-host-refused",
+      "level": "must",
+      "rule": "host-check",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "upgrade": { "target": "/ws", "headers": [["Host", "rebound.example:{port}"]] } },
+        { "response": "a", "expect": { "status": 421, "headers": { "sec-websocket-accept": null } } },
+        { "host": "a", "expect": [] }
+      ]
+    }
+  ]
+}

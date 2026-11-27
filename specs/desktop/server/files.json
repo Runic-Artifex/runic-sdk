@@ -1,0 +1,165 @@
+{
+  "format": "rax.desktop.server-vector/1",
+  "id": "server.files",
+  "description": "File bodies: the whole file, one byte range, unsatisfiable and ignored ranges, HEAD and a missing file. The test application's /file is the 10 bytes 0123456789.",
+  "cases": [
+    {
+      "id": "server.files.whole-file",
+      "level": "must",
+      "rule": "file-bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "content-length": "10", "content-type": "application/octet-stream", "content-range": null }, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.accept-ranges",
+      "level": "may",
+      "rule": "accept-ranges",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "accept-ranges": "bytes" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-closed",
+      "level": "must",
+      "rule": "ranges",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=2-4"]] } },
+        { "response": "a", "expect": { "status": 206, "headers": { "content-range": "bytes 2-4/10", "content-length": "3", "content-type": "application/octet-stream" }, "body": { "text": "234" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-suffix",
+      "level": "must",
+      "rule": "ranges",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=-3"]] } },
+        { "response": "a", "expect": { "status": 206, "headers": { "content-range": "bytes 7-9/10" }, "body": { "text": "789" } } },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=-100"]] } },
+        { "response": "a", "expect": { "status": 206, "headers": { "content-range": "bytes 0-9/10" }, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-open",
+      "level": "must",
+      "rule": "ranges",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=5-"]] } },
+        { "response": "a", "expect": { "status": 206, "headers": { "content-range": "bytes 5-9/10" }, "body": { "text": "56789" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-end-past-the-file",
+      "level": "must",
+      "rule": "ranges",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=8-100"]] } },
+        { "response": "a", "expect": { "status": 206, "headers": { "content-range": "bytes 8-9/10" }, "body": { "text": "89" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-unsatisfiable",
+      "level": "should",
+      "rule": "ranges-unsatisfiable",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=20-"]] } },
+        { "response": "a", "expect": { "status": 416, "headers": { "content-range": "bytes */10", "content-type": null }, "body": { "empty": true } } },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=-0"]] } },
+        { "response": "a", "expect": { "status": 416, "headers": { "content-range": "bytes */10" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-unknown-unit-ignored",
+      "level": "must",
+      "rule": "ranges-ignored",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "items=0-1"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.if-range-without-validators",
+      "level": "must",
+      "rule": "ranges-ignored",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=0-1"], ["If-Range", "\"tag\""]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.range-on-head-ignored",
+      "level": "must",
+      "rule": "ranges-ignored",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "HEAD", "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=2-4"]] } },
+        { "response": "a", "expect": { "status": 200, "headers": { "content-length": "10", "content-range": null } } }
+      ]
+    },
+    {
+      "id": "server.files.range-on-post-ignored",
+      "level": "must",
+      "rule": "ranges-ignored",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "POST", "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=2-4"], ["Content-Length", "0"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.several-ranges-whole-file",
+      "level": "may",
+      "rule": "ranges-several",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=0-1,5-6"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.invalid-range-whole-file",
+      "level": "may",
+      "rule": "ranges-invalid",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=a-b"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "0123456789" } } },
+        { "send": "a", "request": { "target": "/file", "headers": [["Host", "{authority}"], ["Range", "bytes=9-1"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "0123456789" } } }
+      ]
+    },
+    {
+      "id": "server.files.head",
+      "level": "must",
+      "rule": "file-bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "HEAD", "target": "/file" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "content-length": "10", "content-type": "application/octet-stream" } } },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } }
+      ]
+    },
+    {
+      "id": "server.files.missing-file",
+      "level": "must",
+      "rule": "file-bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/missing-file" } },
+        { "response": "a", "expect": { "status": 404, "headers": { "content-type": null, "content-length": "0", "x-content-type-options": "nosniff" }, "body": { "empty": true } } }
+      ]
+    }
+  ]
+}

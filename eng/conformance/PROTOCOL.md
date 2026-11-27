@@ -145,6 +145,26 @@ The driver compares as the [vectors README](../../specs/assets/vectors/README.md
 
 A case passes when it passes in every mode. `expectLazy`, where a case has it, replaces `expect` in lazy reading.
 
+## Desktop server (`desktop-server/1`)
+
+The corpus is [`specs/desktop/server`](../../specs/desktop/server/README.md): the requests, responses and WebSocket
+frames of the server under a Runic Desktop host. Every case has the role `server`. The adapter runs the server with
+the corpus's [test application](../../specs/desktop/server/README.md#test-application) and records what the
+application sees; the driver is the client, over real sockets to the port the adapter reports, and checks every byte
+the server writes.
+
+`capabilities` lists `stop` when the adapter can stop a running server, `peer-admission` when the server can admit or
+refuse a peer before it reads its request, and `ipv6-loopback` when it can listen on `[::1]` on this machine. A case
+that requires one the adapter does not list is `unsupported`.
+
+| op | args | ok |
+| --- | --- | --- |
+| `server.start` | `{maxMessageBytes?, ipv6Loopback?, admit?}`: the case's `config` | `{port, address}`: a fresh server with a fresh application, on a port the system chose; `address` is `127.0.0.1` or `::1`. A running server is stopped first. |
+| `server.stop` | — | `{}` once the server stopped; its waiting requests end. |
+| `server.events` | `{waitMs, count}` | `{events: [...]}`: the events recorded since the last call, once there are at least `count` or after `waitMs`. Each has `type` (`request`, `message`, `closed`, `aborted`) and `conn`, the request's `X-Rax-Conformance` value; a `request` has `method`, `target` (as sent), `websocket` (the server reports an upgrade it can accept) and `headers` (`[name, value]` pairs, names in lower case); a `message` has `kind` (`text` or `binary`) and `data` (base64); a `closed` has the peer's `code` and `reason`, both `null` when the connection ended without the peer's close frame. |
+| `server.wsSend` | `{conn, kind, data}` | `{}`: the host sends the message (data in base64) on the WebSocket that the connection `conn` opened. |
+| `server.wsClose` | `{conn, code, reason}` | `{}`: the host closes that WebSocket after the messages it sent. |
+
 ## Other corpora
 
 Each corpus module adds ops under its own prefix:

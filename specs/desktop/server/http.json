@@ -1,0 +1,438 @@
+{
+  "format": "rax.desktop.server-vector/1",
+  "id": "server.http",
+  "description": "Requests and responses: the Host check, the server's default headers, its own error responses, message framing, persistent connections, the request as the host sees it, bodies, peer admission and stop.",
+  "cases": [
+    {
+      "id": "server.http.host-loopback-names",
+      "level": "must",
+      "rule": "host-check",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "127.0.0.1:{port}"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "localhost:{port}"]] } },
+        { "response": "a", "expect": { "status": 200 } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "LOCALHOST:{port}"]] } },
+        { "response": "a", "expect": { "status": 200 } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "127.1.2.3:{port}"]] } },
+        { "response": "a", "expect": { "status": 200 } },
+        { "host": "a", "expect": [
+          { "type": "request", "method": "GET", "target": "/text", "headers": { "host": "127.0.0.1:{port}" } },
+          { "type": "request", "target": "/text", "headers": { "host": "localhost:{port}" } },
+          { "type": "request", "target": "/text", "headers": { "host": "LOCALHOST:{port}" } },
+          { "type": "request", "target": "/text", "headers": { "host": "127.1.2.3:{port}" } }
+        ] }
+      ]
+    },
+    {
+      "id": "server.http.host-foreign-name",
+      "level": "must",
+      "rule": "host-check",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "rebound.example:{port}"]] } },
+        { "response": "a", "expect": { "status": 421, "headers": { "x-content-type-options": "nosniff" }, "body": { "empty": true } } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.host-rebinding-forms",
+      "level": "must",
+      "rule": "host-check",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "localhost.rebound.example:{port}"]] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "127.0.0.1.nip.io:{port}"]] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "10.0.0.1:{port}"]] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "[::2]:{port}"]] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.host-other-port",
+      "level": "must",
+      "rule": "host-check",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "localhost:{port+1}"]] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "127.0.0.1"]] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.host-missing-http10",
+      "level": "must",
+      "rule": "host-check",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "version": "HTTP/1.0", "headers": [] } },
+        { "response": "a", "expect": { "status": 421 } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.host-missing-http11",
+      "level": "must",
+      "rule": "host-missing",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [] } },
+        { "response": "a", "expect": { "status": 400 } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.host-two-lines",
+      "level": "must",
+      "rule": "host-two-lines",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "127.0.0.1:{port}"], ["Host", "rebound.example:{port}"]] } },
+        { "response": "a", "expect": { "status": 400, "headers": { "x-content-type-options": "nosniff" } } },
+        { "connect": "b" },
+        { "send": "b", "request": { "target": "/text", "headers": [["Host", "127.0.0.1:{port}"], ["Host", "127.0.0.1:{port}"]] } },
+        { "response": "b", "expect": { "status": 400 } },
+        { "host": "a", "expect": [] },
+        { "host": "b", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.error-responses-not-stored",
+      "level": "should",
+      "rule": "server-errors",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "rebound.example:{port}"]] } },
+        { "response": "a", "expect": { "status": 421, "headers": { "cache-control": "no-store", "content-length": "0", "content-type": null, "x-frame-options": "SAMEORIGIN" } } },
+        { "connect": "b" },
+        { "send": "b", "request": { "target": "/text", "headers": [["Host", "127.0.0.1:{port}"], ["Host", "127.0.0.1:{port}"]] } },
+        { "response": "b", "expect": { "status": 400, "headers": { "cache-control": "no-store", "content-length": "0", "content-type": null } } }
+      ]
+    },
+    {
+      "id": "server.http.default-headers",
+      "level": "must",
+      "rule": "default-headers",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "x-content-type-options": "nosniff", "x-frame-options": "SAMEORIGIN", "content-type": "text/plain; charset=utf-8" } } },
+        { "send": "a", "request": { "target": "/missing" } },
+        { "response": "a", "expect": { "status": 404, "headers": { "x-content-type-options": "nosniff", "x-frame-options": "SAMEORIGIN" } } }
+      ]
+    },
+    {
+      "id": "server.http.host-frame-options-kept",
+      "level": "must",
+      "rule": "default-headers",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/frame-deny" } },
+        { "response": "a", "expect": { "status": 204, "headers": { "x-frame-options": "DENY", "x-content-type-options": "nosniff" } } }
+      ]
+    },
+    {
+      "id": "server.http.frame-ancestors-replaces-frame-options",
+      "level": "must",
+      "rule": "default-headers",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/csp-ancestors" } },
+        { "response": "a", "expect": { "status": 204, "headers": { "x-frame-options": null, "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; frame-ancestors http://127.0.0.1:8080" } } },
+        { "send": "a", "request": { "target": "/csp-ancestors-upper" } },
+        { "response": "a", "expect": { "status": 204, "headers": { "x-frame-options": null } } },
+        { "send": "a", "request": { "target": "/csp-other" } },
+        { "response": "a", "expect": { "status": 204, "headers": { "x-frame-options": "SAMEORIGIN", "content-security-policy": "default-src 'self'" } } }
+      ]
+    },
+    {
+      "id": "server.http.host-headers-kept",
+      "level": "must",
+      "rule": "host-headers",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/cookies" } },
+        { "response": "a", "expect": { "status": 204, "headers": { "set-cookie": ["a=1", "b=2"] } } }
+      ]
+    },
+    {
+      "id": "server.http.no-content-type-invented",
+      "level": "must",
+      "rule": "content-types",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/empty" } },
+        { "response": "a", "expect": { "status": 204, "headers": { "content-type": null, "content-length": null }, "body": { "empty": true } } },
+        { "send": "a", "request": { "target": "/missing" } },
+        { "response": "a", "expect": { "status": 404, "headers": { "content-type": null } } }
+      ]
+    },
+    {
+      "id": "server.http.in-memory-body",
+      "level": "must",
+      "rule": "bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "content-length": "5" }, "body": { "text": "hello" } } }
+      ]
+    },
+    {
+      "id": "server.http.head-has-no-body",
+      "level": "must",
+      "rule": "bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "HEAD", "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "content-length": "5", "content-type": "text/plain; charset=utf-8" } } },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } }
+      ]
+    },
+    {
+      "id": "server.http.streamed-body",
+      "level": "must",
+      "rule": "bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/stream" } },
+        { "response": "a", "expect": { "status": 200, "headers": { "content-type": "text/plain; charset=utf-8" }, "body": { "text": "one two three" } } },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } }
+      ]
+    },
+    {
+      "id": "server.http.target-as-sent",
+      "level": "must",
+      "rule": "request-head",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/a%20b/%2e%2e/c?x=1&y=%2F" } },
+        { "response": "a", "expect": { "status": 404 } },
+        { "host": "a", "expect": [{ "type": "request", "method": "GET", "target": "/a%20b/%2e%2e/c?x=1&y=%2F", "websocket": false }] }
+      ]
+    },
+    {
+      "id": "server.http.methods-reach-the-host",
+      "level": "must",
+      "rule": "request-head",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "OPTIONS", "target": "/x" } },
+        { "response": "a", "expect": { "status": 404 } },
+        { "send": "a", "request": { "method": "DELETE", "target": "/x" } },
+        { "response": "a", "expect": { "status": 404 } },
+        { "send": "a", "request": { "method": "PROPFIND", "target": "/x" } },
+        { "response": "a", "expect": { "status": 404 } },
+        { "host": "a", "expect": [
+          { "type": "request", "method": "OPTIONS", "target": "/x" },
+          { "type": "request", "method": "DELETE", "target": "/x" },
+          { "type": "request", "method": "PROPFIND", "target": "/x" }
+        ] }
+      ]
+    },
+    {
+      "id": "server.http.keep-alive",
+      "level": "must",
+      "rule": "persistence",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } },
+        { "send": "a", "request": { "target": "/stream" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "one two three" } } },
+        { "send": "a", "request": { "target": "/empty" } },
+        { "response": "a", "expect": { "status": 204 } }
+      ]
+    },
+    {
+      "id": "server.http.pipelined-in-order",
+      "level": "must",
+      "rule": "persistence",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "raw": { "text": "GET /stream HTTP/1.1\r\nHost: {authority}\r\n{tag}\r\n\r\nGET /text HTTP/1.1\r\nHost: {authority}\r\n{tag}\r\n\r\n", "methods": ["GET", "GET"] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "one two three" } } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } }
+      ]
+    },
+    {
+      "id": "server.http.connection-close",
+      "level": "must",
+      "rule": "persistence",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "{authority}"], ["Connection", "close"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" }, "closes": true } }
+      ]
+    },
+    {
+      "id": "server.http.http10-closes",
+      "level": "must",
+      "rule": "persistence",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "version": "HTTP/1.0" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" }, "closes": true } }
+      ]
+    },
+    {
+      "id": "server.http.upload-content-length",
+      "level": "must",
+      "rule": "request-bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "POST", "target": "/upload", "headers": [["Host", "{authority}"], ["Content-Length", "200000"]], "body": { "repeat": { "byte": "x", "count": 200000 } } } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "200000 62951f943c41cdd326e5ce2b53a779e7916a820d" } } }
+      ]
+    },
+    {
+      "id": "server.http.upload-chunked",
+      "level": "must",
+      "rule": "request-bodies",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "POST", "target": "/upload", "headers": [["Host", "{authority}"], ["Transfer-Encoding", "chunked"]], "body": { "text": "5\r\nhello\r\n1;ext=1\r\n \r\n5\r\nworld\r\n0\r\n\r\n" } } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "11 2aae6c35c94fcfb415dbe95f408b9ce91ee846ed" } } }
+      ]
+    },
+    {
+      "id": "server.http.length-and-chunked-closes",
+      "level": "must",
+      "rule": "framing-errors",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "POST", "target": "/upload", "headers": [["Host", "{authority}"], ["Content-Length", "3"], ["Transfer-Encoding", "chunked"]], "body": { "text": "5\r\nhello\r\n0\r\n\r\n" } } },
+        { "response": "a", "orEnd": true, "expect": { "status": [200, 400], "closes": true } }
+      ]
+    },
+    {
+      "id": "server.http.conflicting-lengths",
+      "level": "must",
+      "rule": "framing-errors",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "method": "POST", "target": "/upload", "headers": [["Host", "{authority}"], ["Content-Length", "5"], ["Content-Length", "6"]], "body": { "text": "hello!" } } },
+        { "response": "a", "orEnd": true, "expect": { "status": 400, "closes": true } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.space-before-colon",
+      "level": "must",
+      "rule": "framing-errors",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "raw": { "text": "GET /text HTTP/1.1\r\nHost: {authority}\r\nX-Bad : 1\r\n{tag}\r\n\r\n" } },
+        { "response": "a", "orEnd": true, "expect": { "status": 400 } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.invalid-request-line",
+      "level": "should",
+      "rule": "framing-errors",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "raw": { "text": "NOT A REQUEST LINE\r\n\r\n" } },
+        { "response": "a", "expect": { "status": 400 } }
+      ]
+    },
+    {
+      "id": "server.http.oversized-head-refused",
+      "level": "must",
+      "rule": "limits",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "raw": { "text": "GET /text HTTP/1.1\r\nHost: {authority}\r\n{tag}\r\nX-Large: " } },
+        { "send": "a", "raw": { "repeat": { "byte": "a", "count": 1048576 }, "methods": [] } },
+        { "send": "a", "raw": { "text": "\r\n\r\n", "methods": [] } },
+        { "response": "a", "orEnd": true, "expect": { "status": "4xx" } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.requester-leaves",
+      "level": "must",
+      "rule": "lifecycle",
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/slow" } },
+        { "host": "a", "expect": [{ "type": "request", "target": "/slow" }] },
+        { "close": "a" },
+        { "host": "a", "expect": [{ "type": "aborted" }] }
+      ]
+    },
+    {
+      "id": "server.http.stop-ends-waiting-requests",
+      "level": "must",
+      "rule": "lifecycle",
+      "requires": ["stop"],
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/slow" } },
+        { "host": "a", "expect": [{ "type": "request", "target": "/slow" }] },
+        { "stop": true },
+        { "response": "a", "orEnd": true, "expect": { "status": 503 } }
+      ]
+    },
+    {
+      "id": "server.http.ipv6-loopback",
+      "level": "must",
+      "rule": "listener",
+      "requires": ["ipv6-loopback"],
+      "config": { "ipv6Loopback": true },
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "[::1]:{port}"]] } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } },
+        { "send": "a", "request": { "target": "/text", "headers": [["Host", "127.0.0.1:{port}"]] } },
+        { "response": "a", "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "id": "server.http.refused-peer-never-reaches-the-host",
+      "level": "must",
+      "rule": "admission",
+      "requires": ["peer-admission"],
+      "config": { "admit": false },
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "orEnd": true, "expect": { "status": "4xx" } },
+        { "host": "a", "expect": [] }
+      ]
+    },
+    {
+      "id": "server.http.refused-peer-gets-no-response",
+      "level": "should",
+      "rule": "admission",
+      "requires": ["peer-admission"],
+      "config": { "admit": false },
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text" } },
+        { "end": "a" }
+      ]
+    },
+    {
+      "id": "server.http.admitted-peer-served",
+      "level": "must",
+      "rule": "admission",
+      "requires": ["peer-admission"],
+      "config": { "admit": true },
+      "steps": [
+        { "connect": "a" },
+        { "send": "a", "request": { "target": "/text" } },
+        { "response": "a", "expect": { "status": 200, "body": { "text": "hello" } } }
+      ]
+    }
+  ]
+}

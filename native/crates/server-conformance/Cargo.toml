@@ -1,0 +1,25 @@
+# The conformance adapter of runic-server (eng/conformance/PROTOCOL.md, "Desktop server"): runs the server with the
+# corpus's test application (specs/desktop/server/README.md) and speaks rax.conformance-adapter/1 on stdin and stdout.
+# A test tool, never shipped (R7 T1-17). It lives here rather than in native/runic-server so that a corpus change does
+# not run the native server's workflow; it uses only crates that runic-server already locks.
+[package]
+name = "runic-artifex-server-conformance"
+description = "Conformance adapter of the native Desktop server (test tool, not shipped)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "rax-server-conformance"
+path = "src/main.rs"
+
+[dependencies]
+runic-artifex-server = { path = "../../runic-server" }
+axum = { version = "=0.8.9", default-features = false }
+# The same features as runic-server's, so the workspace build of the shipped library does not change.
+base64 = { version = "0.22.1", default-features = false }
+bytes = "1.12"
+sha1 = { version = "0.10.7", default-features = false }

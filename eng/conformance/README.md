@@ -9,6 +9,7 @@ spike).
 | --- | --- | --- |
 | Views protocol 4 (`views/4`) | [`specs/application/conformance`](../../specs/application/conformance/README.md) | `dotnet-views` (the .NET producer), `ts-client` (the TypeScript client) |
 | Assets archives (`assets/2`) | [`specs/assets/vectors`](../../specs/assets/vectors/README.md) | `dotnet-assets` (the .NET reader) |
+| Desktop server (`desktop-server/1`) | [`specs/desktop/server`](../../specs/desktop/server/README.md) | `rax-server` (runic-server) |
 
 ## Run it
 
@@ -92,10 +93,12 @@ example `known-failure` with the issue of the follow-up pull request, or `unsupp
 | [`core/`](core/README.md) | the parts every corpus and repository shares: the command (runs, receipts, the status check, `cases`, `lint`), the adapter process client, cases, outcomes, status files and their comparison, the format names. runic-cli-sdk and runic-translations-sdk vendor it unchanged |
 | [`views/`](views) | the Views protocol 4 module: corpus loading, message writing and matching, producer steps, vectors |
 | [`assets/`](assets) | the Assets archive module: corpus loading and the `assets.read` comparison |
+| [`server/`](server) | the Desktop server module: corpus loading, and the client that runs a case's steps over sockets and checks the server's responses and frames |
 | [`implementations.json`](implementations.json) | each implementation: corpus, roles, adapter build and command, status file |
 | [`adapters/ts-client.ts`](adapters/ts-client.ts) | the TypeScript client's adapter (message vectors; client scenarios are #1350) |
 | [`tests/dotnet/Runic.Application.Views.Conformance`](../../tests/dotnet/Runic.Application.Views.Conformance) | the .NET producer's adapter, which compiles the in-repository test Views and scenario transport |
 | [`tests/dotnet/Runic.Assets.Conformance`](../../tests/dotnet/Runic.Assets.Conformance) | the .NET Assets reader's adapter, on `Runic.Assets`' public API |
+| [`native/crates/server-conformance`](../../native/crates/server-conformance) | runic-server's adapter, on its Rust API, with the corpus's test application |
 | [`demo-gate.ts`](demo-gate.ts) | the status rules on a temporary copy of the corpus with three edits |
 
 **Adding an implementation:**

@@ -1,0 +1,740 @@
+{
+  "format": "rax.desktop.server-vector/1",
+  "id": "server.close",
+  "description": "The WebSocket closing handshake (RFC 6455 sections 5.5.1, 7 and 7.4): answering and reporting the peer's close, the host's close, and close frames that break the protocol.",
+  "cases": [
+    {
+      "id": "server.close.peer-close-answered",
+      "level": "must",
+      "rule": "ws-close",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1000
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close"
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 1000,
+              "reason": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.close.peer-close-reported",
+      "level": "must",
+      "rule": "ws-close-report",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 4321,
+                "reason": "bye ✓"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close"
+          }
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 4321,
+              "reason": "bye ✓"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.close.peer-close-without-a-code",
+      "level": "must",
+      "rule": "ws-close-report",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close"
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close"
+          }
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 1005,
+              "reason": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.close.answer-is-1000",
+      "level": "may",
+      "rule": "ws-close-answer",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 4321,
+                "reason": "bye"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1000,
+            "reason": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "server.close.server-closes-tcp-first",
+      "level": "should",
+      "rule": "ws-close-tcp",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1000
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close"
+          }
+        },
+        {
+          "end": "a"
+        }
+      ]
+    },
+    {
+      "id": "server.close.registered-and-private-codes",
+      "level": "must",
+      "rule": "ws-close-report",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "connect": "b"
+        },
+        {
+          "send": "b",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "b",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "connect": "c"
+        },
+        {
+          "send": "c",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "c",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1012
+              }
+            }
+          ]
+        },
+        {
+          "send": "b",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 3000
+              }
+            }
+          ]
+        },
+        {
+          "send": "c",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 4999
+              }
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 1012
+            }
+          ]
+        },
+        {
+          "host": "b",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 3000
+            }
+          ]
+        },
+        {
+          "host": "c",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 4999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.close.host-close-after-queued-messages",
+      "level": "must",
+      "rule": "ws-host-close",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "hostSend": "a",
+          "kind": "text",
+          "data": {
+            "text": "last"
+          }
+        },
+        {
+          "hostClose": "a",
+          "code": 1001,
+          "reason": "going away"
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "text",
+            "payload": {
+              "text": "last"
+            }
+          }
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1001,
+            "reason": "going away"
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1001
+              }
+            }
+          ]
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 1001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "server.close.data-after-close-not-delivered",
+      "level": "should",
+      "rule": "ws-close",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1000
+              }
+            },
+            {
+              "opcode": "binary",
+              "payload": {
+                "text": "late"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close"
+          }
+        },
+        {
+          "host": "a",
+          "expect": [
+            {
+              "type": "request",
+              "websocket": true
+            },
+            {
+              "type": "closed",
+              "code": 1000
+            }
+          ]
+        },
+        {
+          "host": "a",
+          "expect": []
+        }
+      ]
+    },
+    {
+      "id": "server.close.invalid-code-1005",
+      "level": "should",
+      "rule": "ws-close-invalid",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1005
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.close.invalid-code-999",
+      "level": "should",
+      "rule": "ws-close-invalid",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 999
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.close.invalid-code-2000",
+      "level": "should",
+      "rule": "ws-close-invalid",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 2000
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.close.one-byte-payload",
+      "level": "should",
+      "rule": "ws-close-invalid",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "payload": {
+                "hex": "03"
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1002
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    },
+    {
+      "id": "server.close.reason-not-utf8",
+      "level": "should",
+      "rule": "ws-close-invalid",
+      "steps": [
+        {
+          "connect": "a"
+        },
+        {
+          "send": "a",
+          "upgrade": {
+            "target": "/ws"
+          }
+        },
+        {
+          "response": "a",
+          "expect": {
+            "status": 101
+          }
+        },
+        {
+          "send": "a",
+          "frames": [
+            {
+              "opcode": "close",
+              "close": {
+                "code": 1000,
+                "reason": {
+                  "hex": "fffe"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "frame": "a",
+          "expect": {
+            "opcode": "close",
+            "code": 1007
+          }
+        },
+        {
+          "end": "a",
+          "shutdown": true
+        }
+      ]
+    }
+  ]
+}

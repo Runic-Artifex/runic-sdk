@@ -16,6 +16,8 @@ import { resolve } from "node:path";
 import { loadAssetsCorpus } from "./assets/corpus";
 import { runAssetsVector } from "./assets/read";
 import { createDriver, type CorpusModule } from "./core/driver";
+import { loadServerCorpus } from "./server/corpus";
+import { runServerCase } from "./server/run";
 import { loadViewsCorpus } from "./views/corpus";
 import { runScenario } from "./views/scenarios";
 import { runVector } from "./views/vectors";
@@ -33,6 +35,11 @@ export const corpora: Record<string, CorpusModule> = {
     root: "specs/assets/vectors",
     load: loadAssetsCorpus,
     run: (adapter, c, { supports }) => runAssetsVector(adapter, c.body, supports),
+  },
+  "desktop-server/1": {
+    root: "specs/desktop/server",
+    load: loadServerCorpus,
+    run: (adapter, c, { supports, timing }) => runServerCase(adapter, c.body, supports, timing),
   },
 };
 
