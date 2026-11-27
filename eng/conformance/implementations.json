@@ -18,7 +18,7 @@
     },
     "dotnet-desktop": {
       "corpus": "host/1",
-      "roles": ["guest"],
+      "roles": ["guest", "host"],
       "build": ["dotnet", "build", "${ROOT}/tests/dotnet/Runic.Application.Views.Desktop.Tests/Runic.Application.Views.Desktop.Tests.csproj", "-c", "${CONFIGURATION}", "-nologo", "-v", "q", "-clp:ErrorsOnly"],
       "command": ["dotnet", "run", "--no-build", "--project", "${ROOT}/tests/dotnet/Runic.Application.Views.Desktop.Tests/Runic.Application.Views.Desktop.Tests.csproj", "-c", "${CONFIGURATION}", "--", "--conformance-adapter"],
       "env": { "DOTNET_NOLOGO": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" },

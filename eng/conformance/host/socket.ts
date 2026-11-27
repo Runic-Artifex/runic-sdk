@@ -1,8 +1,9 @@
 // A WebSocket client over a plain TCP connection, so a runner controls every header of the upgrade (the `Host`, the
 // path, `Origin`, the subprotocol) and sees the upgrade's status, headers and the peer's close code
-// (specs/desktop/host-conformance/README.md, "Steps"). Messages are read continuously into a queue.
+// (specs/desktop/host-conformance/README.md, "Steps"). Messages are read continuously into a queue. The same class is
+// the server end of a connection that a `Listener` accepted, for the host role, where the runner is the guest.
 import { createHash, randomBytes } from "node:crypto";
-import { createConnection, type Socket } from "node:net";
+import { createConnection, createServer, type Server, type Socket } from "node:net";
 
 export type Message = { kind: "text"; text: string } | { kind: "binary"; data: Uint8Array };
 
@@ -91,7 +92,8 @@ export class WebSocketClient {
   closed = false;
   closeCode: number | null = null;
 
-  constructor(private readonly socket: Socket, rest: Uint8Array) {
+  // A client masks the frames it sends (RFC 6455, section 5.3); a server does not.
+  constructor(private readonly socket: Socket, rest: Uint8Array, private readonly masks = true) {
     this.buffer = rest;
     socket.removeAllListeners("close");
     socket.removeAllListeners("error");
@@ -189,16 +191,23 @@ export class WebSocketClient {
 
   private write(opcode: number, payload: Uint8Array) {
     if (this.socket.destroyed) return;
-    const head = payload.length < 126 ? [0x80 | opcode, 0x80 | payload.length] : payload.length <= 0xffff ? [0x80 | opcode, 0x80 | 126, payload.length >> 8, payload.length & 0xff] : null;
+    const bit = this.masks ? 0x80 : 0;
+    const head = payload.length < 126 ? [0x80 | opcode, bit | payload.length] : payload.length <= 0xffff ? [0x80 | opcode, bit | 126, payload.length >> 8, payload.length & 0xff] : null;
     const bytes = head
       ? new Uint8Array(head)
       : (() => {
           const long = new Uint8Array(10);
           long[0] = 0x80 | opcode;
-          long[1] = 0x80 | 127;
+          long[1] = bit | 127;
           new DataView(long.buffer).setBigUint64(2, BigInt(payload.length));
           return long;
         })();
+    if (!this.masks) {
+      try {
+        this.socket.write(concat(bytes, payload));
+      } catch {}
+      return;
+    }
     const mask = randomBytes(4);
     const body = payload.map((byte, i) => byte ^ mask[i % 4]);
     try {
@@ -221,5 +230,69 @@ export class WebSocketClient {
 
   destroy() {
     this.socket.destroy();
+  }
+}
+
+// A loopback listener whose connections the runner accepts one at a time, each answered with a plain `101` upgrade
+// (the host role's `accept` step). Connections that arrive before an `accept` wait in order.
+export class Listener {
+  private server: Server;
+  private pending: (WebSocketClient | null)[] = [];
+  private waiters: (() => void)[] = [];
+  private sockets: Socket[] = [];
+  port = 0;
+
+  private constructor() {
+    this.server = createServer((socket) => {
+      this.sockets.push(socket);
+      let buffer = new Uint8Array();
+      const onData = (chunk: Buffer) => {
+        buffer = concat(buffer, new Uint8Array(chunk));
+        const text = new TextDecoder("latin1").decode(buffer);
+        const end = text.indexOf("\r\n\r\n");
+        if (end < 0) return;
+        socket.removeListener("data", onData);
+        const key = /^sec-websocket-key:\s*(.+?)\s*$/im.exec(text.slice(0, end))?.[1];
+        if (!key) {
+          socket.end("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+          return;
+        }
+        const accept = createHash("sha1").update(key + GUID).digest("base64");
+        socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+        this.pending.push(new WebSocketClient(socket, buffer.subarray(end + 4), false));
+        for (const waiter of this.waiters.splice(0)) waiter();
+      };
+      socket.on("data", onData);
+      socket.on("error", () => {});
+    });
+  }
+
+  static async open(): Promise<Listener> {
+    const listener = new Listener();
+    await new Promise<void>((resolve) => listener.server.listen(0, "127.0.0.1", resolve));
+    listener.port = (listener.server.address() as { port: number }).port;
+    return listener;
+  }
+
+  // The next upgraded connection, or undefined after `timeoutMs`.
+  async accept(timeoutMs: number): Promise<WebSocketClient | undefined> {
+    const deadline = Date.now() + timeoutMs;
+    while (!this.pending.length) {
+      const left = deadline - Date.now();
+      if (left <= 0) return undefined;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, left);
+        this.waiters.push(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+    return this.pending.shift() ?? undefined;
+  }
+
+  close() {
+    this.server.close();
+    for (const socket of this.sockets) socket.destroy();
   }
 }

@@ -205,11 +205,20 @@ Runic host protocol, `runic-host/1`. For the `guest` role the driver plays the h
 launch lines, connects to the guest's channel over a real loopback WebSocket, sends and matches every message, computes
 the nonce, keys and proofs, and makes the region scenarios' frame and component requests. The adapter starts the guest
 with the corpus's [test application](../../specs/desktop/host-conformance/README.md#test-application) and runs its
-actions. The driver has no steps for the `host` role yet.
+actions. For the `host` role the driver plays the guest: it reads the host's offer and writes the launch lines through
+a relay guest, listens on its own channel, accepts the host's connections and sends and matches every message. The
+adapter starts its host, plays [the host's user](../../specs/desktop/host-conformance/README.md#the-hosts-user) and
+application, and reports what the host shows.
 
-`describe` adds `pageTransport`, the guest's [page-transport profile](../../specs/desktop/host-conformance/README.md#page-transport)
-(`webui-compat/52f9e75` for Runic's .NET guest). `features` are the features the guest lists in its `hello` reply when
-its application opts in to everything the corpus uses.
+`describe` adds:
+
+- `pageTransport`, the guest's [page-transport profile](../../specs/desktop/host-conformance/README.md#page-transport)
+  (`webui-compat/52f9e75` for Runic's .NET guest);
+- `hostFeatures`, the features the host lists in its `hello`; a host scenario whose `requires` names another is
+  `unsupported`. `features` are the features the guest lists in its `hello` reply when its application opts in to
+  everything the corpus uses;
+- `guestActivationMs`, for a host that fixes how long an activation after the guest's request counts as the guest's
+  (2000 for Runic's): an `advance` of `guestActivation` waits at least that long.
 
 One guest runs at a time:
 
@@ -228,13 +237,30 @@ One guest runs at a time:
 An outcome is `{"success": {}}`, `{"unavailable": <reason>}` or `{"failed": <code>}` in kebab case. The driver compares
 results by JSON value, and waits for a state by asking again until it matches or its timeout passes.
 
+One host runs at a time. Its guest is a **relay guest**: a process the host starts as its guest, which connects to the
+driver's `relayPort` on `127.0.0.1` and relays its standard input there, line by line, and writes each line the driver
+sends to its standard output, except `exit <code>`, which ends its process with that code. In .NET it is the test
+executable with `--puppet-guest`, the port in `RUNIC_TEST_PUPPET_PORT`.
+
+| op | args | ok |
+| --- | --- | --- |
+| `host.host.start` | `{host, limits, relayPort}`: the scenario's `arrange.host` and `arrange.limits`, and the driver's relay port | `{}` once the host started the relay guest's launch, without waiting for it to end |
+| `host.host.user` | `{action, waitMs}`: the step's `user` object, its `$file` and `$directory` values resolved to paths | `{}` once the user did it, or `{failed}` with a message when the host shows nothing the action can act on within `waitMs`, such as no such enabled menu item or no dialog |
+| `host.host.observe` | `{kind, window?, name?}` | `{value}`, read again on each call: `menuBar` (the window's native bar, as menu entries without `id`, with `role`, `shortcut` and `checked` `null` when absent), `region` (`{state, title, focused, documentEdited}` of the guest's window, or `null`), `page` (the host window's page's region `name`: `{name, shows, src, module, token, title, allow, height, colorScheme}`), `closed` (a boolean), `clipboard` (the text, or `null`), `launched` (the URIs and paths, in order), `dialogOwner` (the scenario's name of the window that owns the latest dialogs, or `null`) |
+| `host.host.wait` | `{kind, waitMs}` | `{state: "pending"}` after `waitMs`, else for `started` `{state: "started", applicationId}` or `{state: "failed", code, message}`; for `applied` and `departure` `{state: "done", value}`, the oldest pending `setRegionAppearance` or `departRegion` result |
+| `host.host.stop` | — | `{}` once the host and its guest ended and everything they held is released |
+
+Before each `user`, `observe` and `wait`, the adapter waits until the host delivered the window events it queued, so
+the user acts on the windows the host reported. The driver compares every state: `expect` with `menuBar` matches the
+whole bar, `region` and `page` the members the scenario names, and `started` also checks that the host names the guest
+of the last successful `hello` reply.
+
 ## Other corpora
 
 Each corpus module adds ops under its own prefix:
 
 - Command Line: `cl.parse {catalog, argv, env}`, `cl.readEnvelope {input}`, `cl.write {case}`;
 - Translations: `tr.loadPack {artifact}`, `tr.format {pack, message, args, locale}`, `tr.resolveReference {text}`;
-- the host protocol's host role: `host.host.*`;
 - the Desktop presentation contract (`desktop.presentation/1`): `desktop.*`.
 
 The framing, the results, the statuses and the driver core are the same for every corpus.
