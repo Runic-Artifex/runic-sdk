@@ -12,6 +12,8 @@ namespace Runic.Application.Tool.Packaging;
 /// <c>package appimage</c>: an AppDir (the publish folder in <c>usr/lib/&lt;id&gt;</c>, <c>AppRun</c>, the desktop entry
 /// and icon at its root, the metainfo) made into an AppImage with <c>appimagetool</c> from PATH and a local AppImage
 /// runtime, so nothing is downloaded while packaging. GTK and WebKitGTK come from the host (D039.15). Unsigned.
+/// The metainfo is validated with <c>appstreamcli validate --no-net</c>, as the Flatpak packager does, and appimagetool's
+/// own AppStream check, which fetches the metainfo's URLs, is turned off, so the result does not depend on the network.
 /// </summary>
 internal static partial class AppImagePackager
 {
@@ -42,6 +44,16 @@ exec "$here/usr/lib/{identity.Id}/{identity.Executable}" "$@"
         return File.Exists(beside) ? beside : null;
     }
 
+    /// <summary>The arguments that validate the metainfo without the network (<c>appstreamcli validate</c>).</summary>
+    internal static string[] ValidateMetainfoArguments(string metainfo) => ["validate", "--no-net", "--explain", metainfo];
+
+    /// <summary>
+    /// appimagetool's arguments: the local runtime, and <c>--no-appstream</c>, because the packager has validated the
+    /// metainfo offline and appimagetool's check would fetch its URLs.
+    /// </summary>
+    internal static string[] AppImageToolArguments(string runtime, string appDir, string output) =>
+        ["--no-appstream", "--runtime-file", runtime, appDir, output];
+
     internal static async Task RunAsync(PackageContext context, CancellationToken cancellationToken)
     {
         PackageIdentity identity = context.Identity;
@@ -52,9 +64,16 @@ exec "$here/usr/lib/{identity.Id}/{identity.Executable}" "$@"
         string appDir = Path.Combine(context.Output, identity.Id + ".AppDir");
         string entry = await LinuxPackaging.StageAsync(context, PackageTarget.AppImage, appDir, cancellationToken).ConfigureAwait(false);
         await LinuxPackaging.ValidateDesktopEntryAsync(context, entry, required: false, cancellationToken).ConfigureAwait(false);
-        // appimagetool validates the metainfo under the name AppImage tools look for, <id>.appdata.xml.
-        string metainfo = Path.Combine(appDir, "usr", "share", "metainfo", identity.Id);
-        File.Move(metainfo + ".metainfo.xml", metainfo + ".appdata.xml", overwrite: true);
+        // The metainfo goes under the name AppImage tools look for, <id>.appdata.xml. It is validated here without the
+        // network; without appstreamcli it is not validated, as appimagetool skips it then too.
+        string metainfoBase = Path.Combine(appDir, "usr", "share", "metainfo", identity.Id);
+        string metainfo = metainfoBase + ".appdata.xml";
+        File.Move(metainfoBase + ".metainfo.xml", metainfo, overwrite: true);
+        if (PackageTools.Find("appstreamcli") is { } appstreamcli)
+            await PackageTools.RunAsync(appstreamcli, ValidateMetainfoArguments(metainfo), context.Output, cancellationToken,
+                PackageCodes.ValidationFailed).ConfigureAwait(false);
+        else
+            context.Warn(PackageCodes.NotValidated, "appstreamcli (appstream) is not installed, so the metainfo was not validated.");
         // appimagetool reads the desktop entry and its icon at the AppDir's root; .DirIcon is the AppImage's icon.
         File.Copy(entry, Path.Combine(appDir, identity.Id + ".desktop"), overwrite: true);
         string icon = Path.Combine(appDir, "usr", "share", "icons", "hicolor", "512x512", "apps", identity.Id + ".png");
@@ -66,7 +85,7 @@ exec "$here/usr/lib/{identity.Id}/{identity.Executable}" "$@"
         LinuxPackaging.NormalizeModes(appDir);
         string output = Path.Combine(context.Output, FileName(identity, architecture));
         PackageTools.Delete(output);
-        await PackageTools.RunAsync(appimagetool, ["--runtime-file", runtime, appDir, output], context.Output, cancellationToken,
+        await PackageTools.RunAsync(appimagetool, AppImageToolArguments(runtime, appDir, output), context.Output, cancellationToken,
             environment: new Dictionary<string, string>(StringComparer.Ordinal) { ["ARCH"] = architecture }).ConfigureAwait(false);
         PackageTools.Delete(appDir);
         context.Warn(PackageCodes.Unsigned, "The AppImage is unsigned (appimagetool --sign signs it).");

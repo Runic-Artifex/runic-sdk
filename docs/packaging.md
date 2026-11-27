@@ -676,8 +676,13 @@ Install `appimagetool` from the
 `runtime-aarch64` from the
 [type2-runtime releases](https://github.com/AppImage/type2-runtime/releases))
 beside it, or name the runtime file with `RUNIC_APPIMAGE_RUNTIME`. The command
-then downloads nothing while packaging. If `appstreamcli` is installed,
-appimagetool validates the metainfo too. On a machine without FUSE 2, set
+then downloads nothing while packaging. If `appstreamcli` is installed, the
+command validates the metainfo with `appstreamcli validate --no-net`, as the
+Flatpak target does, and a rejected metainfo is `RAPPPKG1006`; without it the
+metainfo is not validated (`RAPPPKG2003`). appimagetool's own AppStream check,
+which fetches the metainfo's URLs, is turned off (`--no-appstream`), so an
+offline machine or an unreachable URL does not fail the package. On a machine
+without FUSE 2, set
 `APPIMAGE_EXTRACT_AND_RUN=1` so appimagetool, itself an AppImage, runs.
 
 The AppImage contains the application and its frontend, but not GTK or

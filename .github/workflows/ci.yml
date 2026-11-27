@@ -2701,8 +2701,9 @@ jobs:
           bun eng/ci/packaging-probe-check.mjs "$receipts/packaged.json" flatpak
           flatpak uninstall --user -y --noninteractive org.runic.tests.PackagingProbe
       # The AppImage leg: appimagetool and the type2 runtime, pinned by release and SHA-256, so packaging downloads
-      # nothing. The AppImage uses the host's GTK and WebKitGTK (D039.15); appimagetool validates the metainfo with
-      # appstreamcli. Both AppImages run with APPIMAGE_EXTRACT_AND_RUN, because the runner has no FUSE 2.
+      # nothing. The AppImage uses the host's GTK and WebKitGTK (D039.15); the packager validates the metainfo with
+      # appstreamcli --no-net and turns appimagetool's networked check off (#1444). Both AppImages run with
+      # APPIMAGE_EXTRACT_AND_RUN, because the runner has no FUSE 2.
       - name: Install the AppImage tools
         if: matrix.target == 'appimage'
         uses: ./.github/actions/apt-install
