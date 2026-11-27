@@ -1553,6 +1553,13 @@ packages without starting Vite, as its
 its [`views-dedupe`](../tools/dotnet-runic/README.md#views-dedupe) check asks
 for `resolve.dedupe` of `@runic-artifex/views` when a linked package imports it.
 
+A terminal Ctrl+C reaches the development server too, which can exit before
+`dev` handles the signal. Since 0.24, `dev` treats an exit with a stop signal's
+code (130 for SIGINT, 143 for SIGTERM, 129, 131, or Windows' Ctrl+C status) as
+its own stop when its signal follows within 2 seconds, and ends with 130.
+Such an exit without the signal to `dev`, and every other exit, is
+`RAPPDEV1007`.
+
 For Vite, the application entry must come back as a JavaScript module. Vite
 answers a path that is not below its `root` with its `index.html` fallback, so
 `dev` stops at once when the entry's content type is not JavaScript (since
