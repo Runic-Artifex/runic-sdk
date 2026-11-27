@@ -54,9 +54,12 @@ foreach ($frontend in $frontends.FullName) {
         if ($text -and -not $text.EndsWith("`n")) { $text += "`n" }
         [IO.File]::WriteAllText($file, $text + $npmrc)
     }
+    # An existing bunfig.toml must be this folder's (an earlier Use-Candidate.ps1 or a committed copy): anything else
+    # would lose its settings. Git's core.autocrlf checks a committed copy out with CRLF, so line endings don't count.
     $file = Join-Path $frontend 'bunfig.toml'
-    if ((Test-Path -LiteralPath $file) -and [IO.File]::ReadAllText($file) -ne $bunfig) { throw "$file exists: add the [install.cache] of $root\bunfig.toml to it by hand." }
-    [IO.File]::WriteAllText($file, $bunfig)
+    if (Test-Path -LiteralPath $file) {
+        if ([IO.File]::ReadAllText($file).Replace("`r`n", "`n") -cne $bunfig) { throw "$file exists: add the [install.cache] of $root\bunfig.toml to it by hand." }
+    } else { [IO.File]::WriteAllText($file, $bunfig) }
     $lock = Join-Path $frontend 'package-lock.json'
     if (Test-Path -LiteralPath $lock) { & node (Join-Path $root 'bind-npm-lock.mjs') $lock | Out-Host; Assert-Exit 'bind-npm-lock.mjs' }
     "npm: $frontend"

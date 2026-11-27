@@ -57,6 +57,14 @@ async function proxy(request, response, name, path) {
   }
 }
 
+// The origin of the tarball URLs in the metadata: the loopback address the client asked, so a client that reaches the
+// registry through a forwarded port (eng/ci/candidate-feed.mjs serve, ssh -R) fetches the tarball through that port too.
+// Any other Host gets the registry's own port.
+function origin(request) {
+  const host = request.headers.host ?? "";
+  return /^(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/.test(host) ? `http://${host}` : `http://127.0.0.1:${server.address().port}`;
+}
+
 const server = createServer((request, response) => {
   const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
   const independent = independentPackage(path);
@@ -69,7 +77,7 @@ const server = createServer((request, response) => {
     const packageBaseName = name.slice(name.lastIndexOf("/") + 1);
     const conventionalArchivePath = `/${name}/-/${packageBaseName}-${entry.manifest.version}.tgz`;
     if (decodeURIComponent(path.slice(1)) === name) {
-      const tarball = `http://127.0.0.1:${server.address().port}${archivePath}`;
+      const tarball = `${origin(request)}${archivePath}`;
       const metadata = {
         name,
         "dist-tags": { latest: entry.manifest.version },
