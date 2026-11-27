@@ -674,6 +674,13 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.deepEqual(task["runic: window"].dependsOn, ["runic: dev --no-window", "build"]);
     assert.equal(task["runic: window"].dependsOrder, "sequence");
 
+    // dev prints a failure again as a sentence (the fault text after the diagnostic line). $msCompile files it under the
+    // sentence, so the template's pattern keeps ": " out of the file and colons out of the subcategory before "error".
+    const dependencyFailure = "A frontend package that the page depends on failed to build, so dev did not start: " +
+      "/src/Shared/Frontend/src/index.ts(12,14): error TS2322: Type 'string' is not assignable to type 'number'.";
+    const windowsDependencyFailure = dependencyFailure.replace("/src/Shared/Frontend/src/index.ts", "C:\\src\\Shared\\Frontend\\src\\index.ts");
+    const sentences = [dependencyFailure, windowsDependencyFailure].flatMap(message => [message, `  ${message}`]);
+    for (const line of sentences) assert.ok(msCompile.regexp.exec(line)?.[1].startsWith("A frontend package"), line);
     // The background tasks: dev's RAPPDEV lines and the build's errors, ready at each [dev] Ready (#959). $msCompile's
     // pattern after an optional label (#1161): dev prints a rebuild's errors after "[host] " (dotnet watch), "[app] "
     // (dotnet run) or "[vite] ", and $msCompile itself takes the label for part of the file. The CS1002 and RAPPDEV1006
@@ -694,6 +701,11 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
       // A frontend module that does not compile, from the Runic Vite plugin (#1160).
       ["[vite] /src/Ide.App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'.",
         ["/src/Ide.App/Frontend/src/App.tsx", "29,50", "error", "RUNICP008", "[vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'."]],
+      // A frontend package's failed build (D081.6): the RAPPDEV1018 line is the project's, not the embedded path's.
+      [`/src/Ide.App/Ide.App.csproj : error RAPPDEV1018: ${dependencyFailure}`,
+        ["/src/Ide.App/Ide.App.csproj", undefined, "error", "RAPPDEV1018", dependencyFailure]],
+      [`C:\\src\\Ide.App\\Ide.App.csproj : error RAPPDEV1018: ${windowsDependencyFailure}`,
+        ["C:\\src\\Ide.App\\Ide.App.csproj", undefined, "error", "RAPPDEV1018", windowsDependencyFailure]],
     ];
     assert.equal(msCompile.regexp.exec(diagnostics[3][0])?.[1], "[host] /src/Ide.App/WorkspaceViewModel.cs");
     for (const label of ["runic: dev", "runic: dev --no-window", "runic: dev --browser"]) {
@@ -703,7 +715,8 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
       assert.deepEqual([owner, applyTo, fileLocation], [msCompile.owner, msCompile.applyTo, msCompile.fileLocation], label);
       const { regexp, ...fields } = pattern;
       assert.deepEqual(fields, msCompile.fields, label);
-      assert.equal(regexp, "^(?:\\[(?:host|app|vite)\\] )?" + msCompile.regexp.source.slice(1), label);
+      assert.equal(regexp, "^(?:\\[(?:host|app|vite)\\] )?" + msCompile.regexp.source.slice(1)
+        .replace("(\\S.*?)", "(\\S(?:(?!:\\s).)*?)").replace("(?:(\\S+)\\s+)?", "(?:([^\\s:]+)\\s+)?"), label);
       const matcher = new RegExp(regexp);
       for (const [line, expected] of diagnostics) {
         const match = matcher.exec(line);
@@ -711,7 +724,7 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
           expected, `${label}: ${line}`);
       }
       for (const line of ["[host] dotnet watch ❌ Exited with error code 1", "[host] The build failed. Fix the build errors and run again.",
-        "[dev] Window exited: process 4242", "[dev] Ready"])
+        "[dev] Window exited: process 4242", "[dev] Ready", ...sentences])
         assert.doesNotMatch(line, matcher, `${label}: ${line}`);
       assert.equal(background.activeOnStart, true, label);
       const begins = new RegExp(background.beginsPattern), ends = new RegExp(background.endsPattern);

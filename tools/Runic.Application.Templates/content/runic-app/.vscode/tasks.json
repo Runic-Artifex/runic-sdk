@@ -26,11 +26,13 @@
       "problemMatcher": {
         // VS Code's $msCompile, after an optional "[host] ", "[app] " or "[vite] ": dev puts its child process's label
         // before each of that process's lines, so a rebuild's errors read "[host] /path/File.cs(18,5): error CS1002: ...".
+        // The file holds no ": " and the subcategory before "error" no colon: dev also prints a failure as a sentence
+        // ("..., so dev did not start: /path/index.ts(12,14): error TS2322: ..."), which is not a file.
         "owner": "msCompile",
         "applyTo": "allDocuments",
         "fileLocation": "absolute",
         "pattern": {
-          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S(?:(?!:\\s).)*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:([^\\s:]+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
           "file": 1,
           "location": 2,
           "severity": 4,
@@ -60,11 +62,13 @@
       "problemMatcher": {
         // VS Code's $msCompile, after an optional "[host] ", "[app] " or "[vite] ": dev puts its child process's label
         // before each of that process's lines, so a rebuild's errors read "[host] /path/File.cs(18,5): error CS1002: ...".
+        // The file holds no ": " and the subcategory before "error" no colon: dev also prints a failure as a sentence
+        // ("..., so dev did not start: /path/index.ts(12,14): error TS2322: ..."), which is not a file.
         "owner": "msCompile",
         "applyTo": "allDocuments",
         "fileLocation": "absolute",
         "pattern": {
-          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S(?:(?!:\\s).)*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:([^\\s:]+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
           "file": 1,
           "location": 2,
           "severity": 4,
@@ -94,11 +98,13 @@
       "problemMatcher": {
         // VS Code's $msCompile, after an optional "[host] ", "[app] " or "[vite] ": dev puts its child process's label
         // before each of that process's lines, so a rebuild's errors read "[host] /path/File.cs(18,5): error CS1002: ...".
+        // The file holds no ": " and the subcategory before "error" no colon: dev also prints a failure as a sentence
+        // ("..., so dev did not start: /path/index.ts(12,14): error TS2322: ..."), which is not a file.
         "owner": "msCompile",
         "applyTo": "allDocuments",
         "fileLocation": "absolute",
         "pattern": {
-          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S(?:(?!:\\s).)*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:([^\\s:]+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
           "file": 1,
           "location": 2,
           "severity": 4,

@@ -1408,12 +1408,13 @@ panel, as the template's `.vscode/tasks.json` does:
       "args": ["runic", "dev"],
       "isBackground": true,
       "problemMatcher": {
-        // $msCompile's pattern after dev's optional child-process label
+        // $msCompile's pattern after dev's optional child-process label; the file holds
+        // no ": " and the subcategory no colon, so a failure sentence is not a file
         "owner": "msCompile",
         "applyTo": "allDocuments",
         "fileLocation": "absolute",
         "pattern": {
-          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S.*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:(\\S+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
+          "regexp": "^(?:\\[(?:host|app|vite)\\] )?\\s*(?:\\s*\\d+>)?(\\S(?:(?!:\\s).)*?)(?:\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\))?\\s*:\\s+(?:([^\\s:]+)\\s+)?((?:fatal +)?error|warning|info)\\s+(\\w+\\d+)?\\s*:\\s*(.*)$",
           "file": 1, "location": 2, "severity": 4, "code": 5, "message": 6
         },
         "background": {
@@ -1443,7 +1444,10 @@ first build's lines come as the build prints them. The lines of a process that
 `[host] /path/to/App/CounterViewModel.cs(18,5): error CS1002: ; expected`
 (`[app] ` with `--no-dotnet-watch`; the Vite development server's lines follow
 `[vite] `). VS Code's built-in `$msCompile` takes `[host] /path/…` for the
-file, so the task above uses its pattern after an optional label.
+file, so the task above uses its pattern after an optional label. `dev` also
+prints a failure as a sentence (`…, so dev did not start: /path/to/index.ts(12,14): error TS2322: …`),
+which `$msCompile` would file under the sentence. So in the task's pattern the
+file holds no `": "` and the subcategory before `error` no colon.
 
 Since 0.23, a frontend module that Vite cannot compile (a TSX syntax error, an
 import that does not resolve) is also one such line per error, from the Runic
@@ -1461,7 +1465,7 @@ type check: a type error that Vite compiles is not one. This pattern matches
 all of them, for other tools:
 
 ```text
-^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
+^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S(?:(?!:\s).)*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:[^\s:]+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
 ```
 
 ### Session file
