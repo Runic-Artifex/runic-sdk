@@ -26,7 +26,8 @@
     "ts-client": {
       "corpus": "views/4",
       "roles": ["client"],
-      "command": ["bun", "${ROOT}/eng/conformance/adapters/ts-client.ts"],
+      "build": ["bun", "run", "--cwd", "${ROOT}/packages/web/views", "--bun", "build"],
+      "command": ["bun", "${ROOT}/packages/web/views/test/conformance-adapter.ts"],
       "status": "status/ts-client.json"
     }
   }
