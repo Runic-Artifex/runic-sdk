@@ -88,10 +88,10 @@
 <!--#if (withTranslations) -->
   <!-- Runic Translations: one catalog, Frontend/translations/runic.json, for the page and C#. The build generates AppText
        (the messages, the References factories for ViewModels and AppTextCatalog.Registration) and checks every
-       translation. https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.1/docs/guides/translations/runic-views.md -->
+       translation. https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.16.0/docs/guides/translations/runic-views.md -->
   <ItemGroup>
-    <PackageReference Include="Runic.Translations" Version="0.15.1" />
-    <PackageReference Include="Runic.Translations.Build" Version="0.15.1" PrivateAssets="all" />
+    <PackageReference Include="Runic.Translations" Version="0.16.0" />
+    <PackageReference Include="Runic.Translations.Build" Version="0.16.0" PrivateAssets="all" />
     <RunicTranslationProject Include="Frontend/translations/runic.json" />
   </ItemGroup>
 <!--#if (translationsVitePlugin) -->

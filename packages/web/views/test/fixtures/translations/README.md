@@ -6,10 +6,10 @@
 - `library/` is a component library's catalog (`acme.grid`) in English, German and Arabic. The test resolves
   references of both catalogs with `createReferenceResolver`, and the Arabic locale checks right-to-left placeholder
   isolation.
-- `generated/` is their ESM output, generated with `runic-translations` 0.15.1, one catalog at a time:
+- `generated/` is their ESM output, generated with `runic-translations` 0.16.0, one catalog at a time:
 
   ```sh
-  dotnet tool install dotnet-runic-translations --version 0.15.1 --tool-path <dir>
+  dotnet tool install dotnet-runic-translations --version 0.16.0 --tool-path <dir>
   <dir>/runic-translations generate --project catalog --output generated --emit-esm
   <dir>/runic-translations generate --project library --output generated --emit-esm
   ```
