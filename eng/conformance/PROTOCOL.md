@@ -255,12 +255,29 @@ the user acts on the windows the host reported. The driver compares every state:
 whole bar, `region` and `page` the members the scenario names, and `started` also checks that the host names the guest
 of the last successful `hello` reply.
 
+## Desktop presentation (`desktop.presentation/1`)
+
+The corpus is [`specs/desktop/conformance`](../../specs/desktop/conformance/README.md): the presentation contract's
+behavioral scenarios and codec vectors. The adapter runs each abstract operation of
+[`operations.json`](../../specs/desktop/conformance/operations.json) against a real host and reports what it observed;
+the driver compares ([running the cases](../../specs/desktop/conformance/README.md#running-the-cases)). Every case has
+the role `host`. `describe` adds `profiles`, the wire profiles of the vectors it decodes. One scenario runs at a time:
+
+| op | args | ok |
+| --- | --- | --- |
+| `desktop.start` | `{policy, ids}`: the scenario's `policy` (or `null`) and `ids` | `{}`; nothing exists yet |
+| `desktop.step` | `{op, target, arguments, phase}`: one operation, `phase` `arrange` or `step` | `{}` once the operation did what it names, such as a request sent or a chunk taken; an operation of `arrange` reports no events |
+| `desktop.observe` | — | `{events, states, outcomes}`: the steps' events in order, each `{type, subject, data?}`; each subject's state; the terminal outcomes `{subject, terminal, category, code, message, retryable}` the host reported. Read again on each call |
+| `desktop.stop` | — | `{}` once everything the scenario created is released |
+| `desktop.decode` | `{profile, operation, input}`: a vector's | `{value}`, the decoded value, or `{error}` with `category`, `code`, `message` and `retryable` |
+
+An operation the adapter cannot run is an `unsupported` error; the case is then unsupported.
+
 ## Other corpora
 
 Each corpus module adds ops under its own prefix:
 
 - Command Line: `cl.parse {catalog, argv, env}`, `cl.readEnvelope {input}`, `cl.write {case}`;
 - Translations: `tr.loadPack {artifact}`, `tr.format {pack, message, args, locale}`, `tr.resolveReference {text}`;
-- the Desktop presentation contract (`desktop.presentation/1`): `desktop.*`.
 
 The framing, the results, the statuses and the driver core are the same for every corpus.

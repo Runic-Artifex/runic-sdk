@@ -5,7 +5,9 @@ namespace Runic.Desktop.Tests;
 
 /// <summary>
 /// The test application doubles as the application that ShutdownSignalTests stops with a signal, so the
-/// entry point is hand-written: the fixture arguments run the fixture, anything else runs the tests.
+/// entry point is hand-written: the fixture arguments run the fixture, <c>--conformance-adapter</c> runs
+/// <see cref="PresentationConformanceAdapter"/>, the presentation contract's adapter of the conformance driver
+/// (<c>bun run conformance dotnet-desktop-presentation</c>), and anything else runs the tests.
 /// </summary>
 internal static class Program
 {
@@ -14,6 +16,7 @@ internal static class Program
 #pragma warning restore TUnit0034
     {
         if (args is [ShutdownSignalFixture.Argument, var mode]) return ShutdownSignalFixture.Run(mode);
+        if (args is [PresentationConformanceAdapter.Argument]) return await PresentationConformanceAdapter.RunAsync().ConfigureAwait(false);
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddSelfRegisteredExtensions(args);
         using ITestApplication application = await builder.BuildAsync().ConfigureAwait(false);

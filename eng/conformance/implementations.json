@@ -24,6 +24,14 @@
       "env": { "DOTNET_NOLOGO": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" },
       "status": "status/dotnet-desktop.json"
     },
+    "dotnet-desktop-presentation": {
+      "corpus": "desktop.presentation/1",
+      "roles": ["host"],
+      "build": ["dotnet", "build", "${ROOT}/tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj", "-c", "${CONFIGURATION}", "-nologo", "-v", "q", "-clp:ErrorsOnly"],
+      "command": ["dotnet", "run", "--no-build", "--project", "${ROOT}/tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj", "-c", "${CONFIGURATION}", "--", "--conformance-adapter"],
+      "env": { "DOTNET_NOLOGO": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" },
+      "status": "status/dotnet-desktop-presentation.json"
+    },
     "rax-server": {
       "corpus": "desktop-server/1",
       "roles": ["server"],

@@ -18,6 +18,8 @@ import { runAssetsVector } from "./assets/read";
 import { createDriver, type CorpusModule } from "./core/driver";
 import { loadHostCorpus } from "./host/corpus";
 import { runHostCase } from "./host/run";
+import { loadPresentationCorpus } from "./presentation/corpus";
+import { runPresentationCase } from "./presentation/run";
 import { loadServerCorpus } from "./server/corpus";
 import { runServerCase } from "./server/run";
 import { loadViewsCorpus } from "./views/corpus";
@@ -47,6 +49,11 @@ export const corpora: Record<string, CorpusModule> = {
     root: "specs/desktop/host-conformance",
     load: loadHostCorpus,
     run: (adapter, c, { supports, roles, timing }) => runHostCase(adapter, c.body, supports, roles, timing),
+  },
+  "desktop.presentation/1": {
+    root: "specs/desktop/conformance",
+    load: loadPresentationCorpus,
+    run: (adapter, c, { supports, timing }) => runPresentationCase(adapter, c, supports, timing),
   },
 };
 

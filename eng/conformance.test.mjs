@@ -28,6 +28,8 @@ import { GuestRun, StepFailure, proof } from "./conformance/host/guest.ts";
 import { runHostCase } from "./conformance/host/run.ts";
 import { PAGE_TRANSPORTS } from "./conformance/host/page-transport.ts";
 import { HostRun } from "./conformance/host/host.ts";
+import { loadPresentationCorpus } from "./conformance/presentation/corpus.ts";
+import { compareObservation, runPresentationCase } from "./conformance/presentation/run.ts";
 import { upgrade } from "./conformance/host/socket.ts";
 import { createConnection } from "node:net";
 
@@ -607,4 +609,38 @@ test("the host runner reads the offer from the relay, writes the channel line, a
     ],
   };
   assert.deepEqual(await new HostRun(adapter, scenario, { receiveMs: 2000, guestActivationMs: 0 }).run(), { outcome: "pass" });
+});
+
+test("the presentation corpus loads its scenarios and vectors, and its case list and status files are current", () => {
+  const corpus = resolve(root, "specs/desktop/conformance");
+  const cases = loadPresentationCorpus(corpus);
+  assert.deepEqual(cases.map((c) => c.kind), [...Array(7).fill("scenario"), ...Array(3).fill("vector")]);
+  assert.equal(readFileSync(join(corpus, "cases.json"), "utf8"), coreFormatCases(names.cases, "desktop.presentation/1", cases), "run bun run conformance cases --write");
+  for (const file of readdirSync(join(corpus, "status"))) {
+    const status = JSON.parse(readFileSync(join(corpus, "status", file), "utf8"));
+    assert.deepEqual(lintStatus(status, anchorExists), [], file);
+    assert.deepEqual(Object.keys(status.cases), cases.map((c) => c.id), file);
+  }
+});
+
+test("a presentation scenario matches events in order by type, subject and expected data, and its absent events, states and outcomes exactly", () => {
+  const expect = {
+    events: [{ type: "request.started", subject: "r" }, { type: "response.committed", subject: "r", data: { status: 200 } }],
+    absentEvents: [{ type: "stream.chunkAccepted", subject: "s" }],
+    states: [{ subject: "r", state: "succeeded" }],
+    outcomes: [],
+  };
+  const events = [{ type: "request.started", subject: "r" }, { type: "response.committed", subject: "r", data: { status: 200, contentLength: 6 } }];
+  assert.equal(compareObservation(expect, { events, states: { r: "succeeded" }, outcomes: [] }), null);
+  assert.match(compareObservation(expect, { events: [...events].reverse(), states: { r: "succeeded" }, outcomes: [] }), /event 1/);
+  assert.match(compareObservation(expect, { events: [...events, { type: "stream.chunkAccepted", subject: "s" }], states: { r: "succeeded" }, outcomes: [] }), /after the expected events/);
+  assert.match(compareObservation(expect, { events, states: { r: "cancelled" }, outcomes: [] }), /r is cancelled/);
+  assert.match(compareObservation(expect, { events, states: { r: "succeeded" }, outcomes: [{ subject: "r", terminal: "failed" }] }), /does not expect/);
+  assert.match(compareObservation({ ...expect, events: [], absentEvents: [{ type: "x", subject: "y" }] }, { events: [{ type: "x", subject: "y", data: { n: 1 } }], states: { r: "succeeded" }, outcomes: [] }), /after the expected|absent/);
+});
+
+test("a presentation vector of a profile the adapter does not list is excluded, and a scenario needing an unlisted feature unsupported", async () => {
+  const adapter = { call: () => assert.fail("the adapter was asked"), describe: { profiles: [] } };
+  assert.deepEqual(await runPresentationCase(adapter, { kind: "vector", body: { profile: "p/1" } }, new Set(), { receiveMs: 1 }), { outcome: "excluded", detail: "profile:p/1" });
+  assert.equal((await runPresentationCase(adapter, { kind: "scenario", body: { requires: ["reconnect"] } }, new Set(), { receiveMs: 1 })).outcome, "unsupported");
 });
