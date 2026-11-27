@@ -271,4 +271,16 @@ internal sealed class DevDevelopmentException(
     /// a crash (#1396, <see cref="DevStop"/>).
     /// </summary>
     internal int? ChildExitCode { get; init; }
+
+    /// <summary>
+    /// The diagnostics of the step that failed (a build's errors and warnings), which the session file's
+    /// <c>failure.diagnostics</c> lists before dev's own line (D087); empty when dev's line is the whole story.
+    /// </summary>
+    internal IReadOnlyList<DevDiagnostic> Diagnostics { get; set; } = [];
+
+    /// <summary>The .NET project that failed when it is not the served one, such as a library whose build failed, or null.</summary>
+    internal string? FailedProject { get; set; }
+
+    /// <summary>The directory of the frontend package that failed (RAPPDEV1018), or null.</summary>
+    internal string? FailedPackage { get; init; }
 }

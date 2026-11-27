@@ -230,7 +230,11 @@ internal static partial class FrontendDependencies
             throw new DevDevelopmentException(FailureCode,
                 $"{dependency.DisplayName} is {dependency.Description}, and the page imports it, but it has not been built: " +
                 $"{dependency.Label}/{relative} is missing; {why}",
-                $"Package directory: {dependency.Directory}\n");
+                $"Package directory: {dependency.Directory}\n")
+            {
+                FailedProject = dependency.Owner,
+                FailedPackage = dependency.Directory,
+            };
         }
     }
 
@@ -240,7 +244,15 @@ internal static partial class FrontendDependencies
     /// <c>src/index.ts(3,1): error TS1005</c>, that the targets report for it), a workspace package's build that the served
     /// project ran, or a package export check (RUNICBRIDGE088). Null when the build failed elsewhere, such as in C#.
     /// </summary>
-    internal static string? FindPackageFailure(string buildOutput, string servedProject, string servedFrontend)
+    internal static string? FindPackageFailure(string buildOutput, string servedProject, string servedFrontend) =>
+        FindPackageError(buildOutput, servedProject, servedFrontend)?.Text;
+
+    /// <summary>
+    /// <see cref="FindPackageFailure"/>'s error line (<see cref="PackageError.Text"/>), with the .NET project that reported
+    /// it and the frontend package it is in, for the session file's <c>failure</c> (D087): the package of a located
+    /// source error is the folder above the file with a package.json; a RUNICBRIDGE line names no package, only its project.
+    /// </summary>
+    internal static PackageError? FindPackageError(string buildOutput, string servedProject, string servedFrontend)
     {
         ArgumentNullException.ThrowIfNull(buildOutput);
         string served = Path.GetFullPath(servedProject);
@@ -272,10 +284,15 @@ internal static partial class FrontendDependencies
                 (frontendSource && (otherProject || !fullFile.StartsWith(frontend, PathComparison)));
             if (!package) continue;
             string location = match.Groups["location"].Success ? $"({match.Groups["location"].Value})" : string.Empty;
-            return frontendSource ? $"{fullFile}{location}: error {code}: {message}" : $"{code}: {message}";
+            return new(frontendSource ? $"{fullFile}{location}: error {code}: {message}" : $"{code}: {message}",
+                otherProject ? Path.GetFullPath(project) : null,
+                frontendSource ? DevFailure.PackageOf(fullFile) : null);
         }
         return null;
     }
+
+    /// <summary>A dependency package's build error: the line, the project that reported it when not the served one, and its package.</summary>
+    internal sealed record PackageError(string Text, string? Project, string? Package);
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

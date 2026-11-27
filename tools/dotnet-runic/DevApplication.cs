@@ -393,6 +393,19 @@ internal static class DevApplication
             {
                 return Program.Cancelled;
             }
+            session.Failed(Failure(configuration, error));
+            throw;
+        }
+        catch (DevDevelopmentException error)
+        {
+            // D087: the failure goes into the session file with "stopped", in the stop's one write below, so an IDE shows
+            // it after dev has ended. VS Code drops a background task's problems when its process ends.
+            session.Failed(Failure(configuration, error));
+            throw;
+        }
+        catch (DevUsageException error)
+        {
+            session.Failed(DevFailure.Create(error.Code, error.Message, configuration.ProjectPath));
             throw;
         }
         finally
@@ -402,6 +415,14 @@ internal static class DevApplication
             await launcher.ConfigureAwait(false);
             session.Stop();
         }
+    }
+
+    /// <summary>The session file's <c>failure</c> of an exception that stops dev (D087).</summary>
+    internal static DevFailure Failure(DevProjectConfiguration configuration, DevDevelopmentException error)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(error);
+        return DevFailure.Create(error.Code, error.Message, configuration.ProjectPath, error.FailedProject, error.FailedPackage, error.Diagnostics);
     }
 
     private static async Task<int> RunDevelopmentLoopAsync(
@@ -957,10 +978,14 @@ internal static class DevApplication
             CommandRunner.DoctorHint(configuration.ProjectPath),
             cancellationToken,
             // D081.6: a frontend package that the page depends on failed to build, so dev stops with its error.
-            result => FrontendDependencies.FindPackageFailure(result.CombinedOutput, configuration.ProjectPath, configuration.FrontendPackageDirectory) is { } failure
+            result => FrontendDependencies.FindPackageError(result.CombinedOutput, configuration.ProjectPath, configuration.FrontendPackageDirectory) is { } failure
                 ? new DevDevelopmentException(FrontendDependencies.FailureCode,
-                    $"A frontend package that the page depends on failed to build, so dev did not start: {failure}",
+                    $"A frontend package that the page depends on failed to build, so dev did not start: {failure.Text}",
                     CommandRunner.LocalDetail(configuration.ProjectDirectory, CommandRunner.DoctorHint(configuration.ProjectPath)))
+                {
+                    FailedProject = failure.Project,
+                    FailedPackage = failure.Package,
+                }
                 : null).ConfigureAwait(false);
         phase.Complete();
     }
@@ -1086,12 +1111,15 @@ internal static class DevApplication
 
         if (result.ExitCode != 0)
         {
-            if (classify?.Invoke(result) is { } classified) throw classified;
-            throw new DevDevelopmentException(
+            DevDevelopmentException failure = classify?.Invoke(result) ?? new DevDevelopmentException(
                 code,
                 $"{message} {CommandRunner.DescribeFailure(executable, arguments, result.ExitCode)}",
                 $"Failed program: {CommandRunner.DescribeProgram(executable, arguments)} (exit code {result.ExitCode})\n" +
                 CommandRunner.LocalDetail(workingDirectory, remediation));
+            // D087: the step's own errors, for the session file's failure after dev has ended.
+            failure.Diagnostics = DevFailure.Parse(result.CombinedOutput, workingDirectory);
+            failure.FailedProject ??= DevFailure.FirstErrorProject(result.CombinedOutput);
+            throw failure;
         }
     }
 
