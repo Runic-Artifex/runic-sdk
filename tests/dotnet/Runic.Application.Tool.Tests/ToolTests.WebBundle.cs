@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Runic.Application.Tool.Packaging;
 using TUnit.Core;
 
@@ -189,5 +190,66 @@ internal sealed partial class ToolTests
         DoctorCheck truncated = DoctorWorkspaceChecks.CheckWebBundle(bundle, "Acme.App");
         Equal(DoctorStatus.Failure, truncated.Status);
         Contains(truncated.Remediation ?? string.Empty, "dotnet runic bundle");
+    }
+
+    // #1421: a publish runner without Node.js or Bun takes its pages from a web bundle. doctor --bundle, or a project
+    // with RunicApplicationFrontendPrebuiltDirectory, reports the checks of the frontend's install and build as not
+    // needed, and the exit code follows the other checks and web-bundle.
+    [Test, DisplayName("doctor --bundle skips the JavaScript checks on a runner without Node.js")]
+    public void DoctorBundleSkipsJavaScriptChecks()
+    {
+        using var workspace = new TestWorkspace();
+        string bundle = WriteWebBundle(workspace);
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, DoctorProjectConfiguration.DesktopPackage, out CompatibilitySetAuthority authority)
+            with { AssemblyName = "Acme.App" };
+        var runner = new FakeDoctorRuntime(authority.Toolchain) { Missing = ["node", "npm", "bun"] };
+        DoctorReport Inspect(DoctorProjectConfiguration candidate, string? bundleOption) =>
+            DoctorChecks.InspectAsync(candidate, "dotnet", runner, CancellationToken.None, bundle: bundleOption).GetAwaiter().GetResult();
+
+        // Without --bundle nothing changes: the runner lacks node and npm.
+        DoctorReport plain = Inspect(project, null);
+        Equal(DoctorStatus.Failure, Check(plain, "javascript-runtime").Status);
+        Equal(DoctorStatus.Failure, Check(plain, "package-manager").Status);
+        Equal(DoctorStatus.Pass, Check(plain, "lock-file").Status);
+        Equal(DoctorStatus.Pass, Check(plain, "frontend-workspace").Status);
+        False(plain.Checks.Any(static check => check.Status == DoctorStatus.Skipped || check.Name == "web-bundle"),
+            "Without --bundle doctor skips no check and checks no bundle.");
+
+        DoctorReport bundled = Inspect(project, bundle);
+        foreach (string id in DoctorChecks.FrontendBuildChecks)
+        {
+            DoctorCheck skipped = Check(bundled, id);
+            Equal(DoctorStatus.Skipped, skipped.Status);
+            Contains(skipped.Message, $"the build takes each page from the web bundle {bundle} (--bundle) and runs no install, frontend build or client emission");
+            Equal(null, skipped.Remediation);
+        }
+        Contains(Check(bundled, "javascript-runtime").Message, "Node.js or Bun is not needed");
+        Equal(DoctorStatus.Pass, Check(bundled, "web-bundle").Status);
+        Equal(0, bundled.Failed);
+        True(bundled.IsHealthy, "A runner without Node.js passes doctor --bundle.");
+        Equal(DoctorChecks.FrontendBuildChecks.Count, bundled.Skipped);
+
+        // The exit code follows web-bundle: a bundle without an entry for the project fails.
+        DoctorReport other = Inspect(project with { AssemblyName = "Acme.Admin" }, bundle);
+        Equal(DoctorStatus.Failure, Check(other, "web-bundle").Status);
+        Equal(1, other.Failed);
+
+        // A skipped check is neither a warning nor a failure in JSON, the diagnostics or --fail-on warn.
+        DoctorCommandResult result = DoctorCommandResult.Create(project, bundled, string.Empty);
+        Equal("skip", result.Checks.Single(static check => check.Id == "javascript-runtime").Status);
+        Equal(DoctorChecks.FrontendBuildChecks.Count, result.Summary.Skipped);
+        string json = JsonSerializer.Serialize(result, DoctorCommandJsonContext.Default.DoctorCommandResult);
+        Contains(json, $"\"skipped\":{DoctorChecks.FrontendBuildChecks.Count}");
+        False(DoctorCommandResult.CreateDiagnostics(bundled, new Runic.CommandLine.CommandPath(["doctor"]))
+            .Any(static diagnostic => diagnostic.MessageKey?.StartsWith("doctor.javascript-runtime.", StringComparison.Ordinal) == true),
+            "A skipped check has no diagnostic.");
+
+        // RunicApplicationFrontendPrebuiltDirectory, from the project or the environment, does the same and checks the bundle.
+        DoctorReport prebuilt = Inspect(project with { PrebuiltFrontendDirectory = bundle }, null);
+        DoctorCheck runtime = Check(prebuilt, "javascript-runtime");
+        Equal(DoctorStatus.Skipped, runtime.Status);
+        Contains(runtime.Message, $"the web bundle {bundle} (RunicApplicationFrontendPrebuiltDirectory)");
+        Equal(DoctorStatus.Pass, Check(prebuilt, "web-bundle").Status);
+        True(prebuilt.IsHealthy, "A project with RunicApplicationFrontendPrebuiltDirectory passes on a runner without Node.js.");
     }
 }

@@ -15,6 +15,7 @@ internal static class DoctorApplication
     {
         ArgumentNullException.ThrowIfNull(options);
         string dotnetHost = ResolveDotNetHost();
+        string? bundle = options.Bundle is { } directory ? Path.GetFullPath(directory, Environment.CurrentDirectory) : null;
         // From a solution root, the solution's one Window project (devtools-library-dx F9), as dev selects it.
         string project = await ProjectDiscovery.SelectProjectAsync(Environment.CurrentDirectory, options.Project, "doctor", dotnetHost,
             cancellationToken, writeSolution: false).ConfigureAwait(false);
@@ -24,7 +25,8 @@ internal static class DoctorApplication
                 project,
                 options.Configuration,
                 cancellationToken,
-                options.Target is null ? null : DoctorProjectConfiguration.PublishProperties(options.Target, options.Aot, options.SelfContained))
+                options.Target is null ? null : DoctorProjectConfiguration.PublishProperties(options.Target, options.Aot, options.SelfContained),
+                prebuiltFrontend: bundle is not null)
             .ConfigureAwait(false);
         DoctorReport report = await DoctorChecks
             .InspectAsync(
@@ -32,13 +34,9 @@ internal static class DoctorApplication
                 dotnetHost,
                 SystemDoctorRuntime.Instance,
                 cancellationToken,
-                options.Target)
+                options.Target,
+                bundle)
             .ConfigureAwait(false);
-        if (options.Bundle is { } bundle)
-        {
-            report = new DoctorReport([.. report.Checks,
-                DoctorWorkspaceChecks.CheckWebBundle(Path.GetFullPath(bundle, Environment.CurrentDirectory), configuration.AssemblyName)]);
-        }
         return new DoctorRun(configuration, report, options.Target);
     }
 
@@ -61,7 +59,8 @@ internal static class DoctorApplication
         }
 
         Console.WriteLine(
-            $"Summary: {report.Passed} passed, {report.Warnings} warnings, {report.Failed} failed.");
+            $"Summary: {report.Passed} passed, {report.Warnings} warnings, {report.Failed} failed" +
+            (report.Skipped == 0 ? "." : $", {report.Skipped} not needed."));
     }
 
     private static string ResolveDotNetHost() =>
@@ -72,6 +71,7 @@ internal static class DoctorApplication
     private static string StatusText(DoctorStatus status) =>
         status switch
         {
+            DoctorStatus.Skipped => "SKIP",
             DoctorStatus.Pass => "PASS",
             DoctorStatus.Warning => "WARN",
             DoctorStatus.Failure => "FAIL",

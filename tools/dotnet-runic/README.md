@@ -306,7 +306,17 @@ Since 0.11, two more checks warn without failing:
 
 `dotnet runic doctor --bundle <dir>` (since 0.24) also checks a web bundle that
 a publish with `package --frontend-bundle` would use, as its
-[`web-bundle`](#web-bundle) check.
+[`web-bundle`](#web-bundle) check. A build that takes its pages from a web
+bundle runs no install, frontend build or client emission, so it needs neither
+Node.js nor Bun. With `--bundle`, or when the project builds with
+`RunicApplicationFrontendPrebuiltDirectory` (from the project or the
+environment), doctor therefore reports `javascript-runtime`, `package-manager`,
+`lock-file`, `frontend-workspace`, `package-manager-agreement`,
+`frontend-dependencies`, `client-modules` and `views-dedupe` as not needed
+(`SKIP` with the reason, status `skip` in JSON) and checks the bundle. Skipped
+checks never reach a `--fail-on` threshold, so on a target-OS publish runner
+without Node.js the exit code follows the other checks and `web-bundle`
+(#1421). Without either, doctor runs those checks as before.
 
 ### Deployment checks for a target
 
@@ -381,7 +391,8 @@ The payload type is `runic.application.tool.doctor/1`:
       "properties": {
         "passed": { "type": "integer", "minimum": 0 },
         "warnings": { "type": "integer", "minimum": 0 },
-        "failed": { "type": "integer", "minimum": 0 }
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0, "description": "Checks with status skip. Added in 0.24." }
       }
     },
     "checks": {
@@ -392,7 +403,7 @@ The payload type is `runic.application.tool.doctor/1`:
         "required": ["id", "status", "message", "remediation", "helpUri"],
         "properties": {
           "id": { "type": "string", "description": "Stable check identifier, for example dotnet-sdk, lock-file or browser." },
-          "status": { "enum": ["pass", "warn", "fail"] },
+          "status": { "enum": ["pass", "warn", "fail", "skip"], "description": "skip (added in 0.24): the check does not apply, such as the JavaScript checks with a prebuilt frontend; the message says why." },
           "message": { "type": "string" },
           "remediation": { "type": ["string", "null"], "description": "How to fix a warn or fail check; null when nothing is needed." },
           "helpUri": { "type": "string", "format": "uri", "description": "The check's section of this README at the release, under Doctor checks; its anchor is the check identifier. Added in 0.20." }
@@ -569,7 +580,8 @@ Added in 0.24.
 
 #### `web-bundle`
 
-Only with `doctor --bundle <dir>` (since 0.24). Checks a web bundle offline, as
+Only with `doctor --bundle <dir>`, or for the bundle that
+`RunicApplicationFrontendPrebuiltDirectory` names (since 0.24). Checks a web bundle offline, as
 `package --frontend-bundle` and the publishing build use it: the manifest's
 format (`rax.web-bundle/1`) and required members, that each entry's folders
 exist inside the bundle, that each page hashes to the files the manifest
