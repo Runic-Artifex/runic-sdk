@@ -27,6 +27,9 @@ import { loadHostCorpus } from "./conformance/host/corpus.ts";
 import { GuestRun, StepFailure, proof } from "./conformance/host/guest.ts";
 import { runHostCase } from "./conformance/host/run.ts";
 import { PAGE_TRANSPORTS } from "./conformance/host/page-transport.ts";
+import { HostRun } from "./conformance/host/host.ts";
+import { upgrade } from "./conformance/host/socket.ts";
+import { createConnection } from "node:net";
 
 const receipt = (results) => ({
   format: names.receipt,
@@ -514,6 +517,9 @@ test("a host protocol scenario of another role is excluded, and one needing an u
   const adapter = { call: () => assert.fail("the adapter was asked"), describe: {} };
   const scenario = (roles, requires) => ({ roles, requires, steps: [] });
   assert.deepEqual(await runHostCase(adapter, scenario(["host"], []), new Set(), new Set(["guest"]), { receiveMs: 1 }), { outcome: "excluded", detail: "role:host" });
+  // A host's features are describe's hostFeatures when it names them.
+  const host = { ...adapter, describe: { hostFeatures: ["menus/1"] } };
+  assert.deepEqual((await runHostCase(host, scenario(["host"], ["region/1"]), new Set(["region/1"]), new Set(["host"]), { receiveMs: 1 })).requires, ["region/1"]);
   const unsupported = await runHostCase(adapter, scenario(["guest"], ["region/1", "menus/1"]), new Set(["menus/1"]), new Set(["guest"]), { receiveMs: 1 });
   assert.equal(unsupported.outcome, "unsupported");
   assert.deepEqual(unsupported.requires, ["region/1"]);
@@ -540,4 +546,65 @@ test("the webui-compat page transport admits a page with the bootstrap's token c
   PAGE_TRANSPORTS["webui-compat/52f9e75"].admitFrame(socket, "const TOKEN=16909060;");
   PAGE_TRANSPORTS["webui-compat/52f9e75"].admitComponent(socket);
   assert.deepEqual(sent, [[0xdd, 4, 3, 2, 1, 0, 0, 0xf5, 0], [0xdd, 0, 0, 0, 0, 0, 0, 0xf5, 0]]);
+});
+
+test("the host runner writes new request ids, matches a left-out member as null, and refuses members the scenario does not name", () => {
+  const run = new HostRun(null, { ids: { r: { kind: "request" } } }, { receiveMs: 1, guestActivationMs: 0 });
+  assert.deepEqual(run.resolve({ id: { $id: "r" } }), { id: 1001 });
+  run.match({ id: { $id: "r" }, role: null }, { id: 1001 }, "m");
+  assert.throws(() => run.match({ a: 1 }, { a: 1, b: null }, "m"), /members b/);
+  assert.throws(() => run.match({ id: { $id: "r" } }, { id: 7 }, "m"), StepFailure);
+});
+
+// A host in the test's own process: it starts the relay guest, which here only connects to the relay port, writes the
+// offer and reads the channel line, then connects to the driver's channel and sends its hello.
+test("the host runner reads the offer from the relay, writes the channel line, accepts the host's connection and checks the start", async () => {
+  const nonce = Buffer.alloc(32, 7).toString("base64url");
+  let started;
+  const adapter = {
+    describe: {},
+    call: async (op, args) => {
+      if (op === "host.host.start") {
+        const relay = createConnection({ host: "127.0.0.1", port: args.relayPort });
+        relay.write(`RUNIC_HOST_OFFER=${JSON.stringify({ protocols: [1], nonce, host: args.host })}\n`);
+        started = new Promise((resolve) => {
+          let text = "";
+          relay.on("data", async (chunk) => {
+            text += chunk;
+            const line = /^RUNIC_HOST_CHANNEL=(.*)$/m.exec(text);
+            if (!line) return;
+            const channel = JSON.parse(line[1]);
+            const url = new URL(channel.url);
+            const result = await upgrade({ address: url.hostname, port: Number(url.port), target: url.pathname, host: url.host, timeoutMs: 2000 });
+            result.socket.sendText(JSON.stringify({ id: 1, kind: "hello", key: channel.key }));
+            const reply = JSON.parse((await result.socket.next(2000)).text);
+            relay.destroy();
+            result.socket.destroy();
+            resolve(reply);
+          });
+        });
+        return {};
+      }
+      if (op === "host.host.wait") {
+        const reply = await started;
+        return { state: "started", applicationId: reply.guest.applicationId };
+      }
+      return {};
+    },
+  };
+  const host = { name: "Fake Host", version: "1.0.0" };
+  const scenario = {
+    ids: { hello: { kind: "request" } },
+    arrange: { host },
+    steps: [
+      { start: { host: true } },
+      { offer: { protocols: [1], nonce: { $secret: "nonce" }, host } },
+      { line: { channel: { url: { $any: "string" }, key: { $any: "string" }, protocol: 1 } } },
+      { accept: "c1" },
+      { receive: { id: { $id: "hello" }, kind: "hello", key: { $secret: "key" } }, connection: "c1" },
+      { send: { id: { $id: "hello" }, ok: true, guest: { name: "G", version: "1", applicationId: "dev.example.guest" } }, connection: "c1" },
+      { expect: { started: true } },
+    ],
+  };
+  assert.deepEqual(await new HostRun(adapter, scenario, { receiveMs: 2000, guestActivationMs: 0 }).run(), { outcome: "pass" });
 });

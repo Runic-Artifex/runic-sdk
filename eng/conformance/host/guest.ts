@@ -44,7 +44,7 @@ export function deepEqual(a: any, b: any): boolean {
   return ka.length === kb.length && ka.every((k, i) => k === kb[i] && deepEqual(a[k], b[k]));
 }
 
-function isType(value: any, type: string): boolean {
+export function isType(value: any, type: string): boolean {
   switch (type) {
     case "null":
       return value === null || value === undefined;

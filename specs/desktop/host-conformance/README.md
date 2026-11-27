@@ -15,14 +15,14 @@ and in the engineering job): every scenario against [`scenario.schema.json`](sce
 path, and that it is self-contained.
 
 The language-neutral [conformance driver](../../../eng/conformance/README.md) runs the corpus as `host/1`: it plays the
-host for the `guest` role and talks to the implementation through a small adapter
-([`rax.conformance-adapter/1`](../../../eng/conformance/PROTOCOL.md#host-protocol-host1)). `bun run conformance
-dotnet-desktop` runs Runic's .NET guest; [`cases.json`](cases.json) is the case list and
-[`status/dotnet-desktop.json`](status/dotnet-desktop.json) the expected outcomes ([outcomes](#outcomes-and-statuses)).
-The driver has no steps for the `host` role yet. Until it does, `HostRoleConformanceTests` in
-`Runic.Application.Views.Desktop.Tests` is the .NET host runner: it plays the guest against `IRunicHostedApplications`,
-through a guest process that relays its standard input and output to the runner, which listens on its own channel.
-`HostConformanceTests` in the same suite is the earlier .NET guest runner, which runs the same scenarios in process.
+host for the `guest` role and the guest for the `host` role, and talks to the implementation through a small adapter
+([`rax.conformance-adapter/1`](../../../eng/conformance/PROTOCOL.md#host-protocol-host1)). For the `host` role, the
+host starts a relay guest that relays its standard input and output to the driver, which listens on its own channel.
+`bun run conformance dotnet-desktop` runs Runic's .NET guest and host (`IRunicHostedApplications`); [`cases.json`](cases.json)
+is the case list and [`status/dotnet-desktop.json`](status/dotnet-desktop.json) the expected outcomes
+([outcomes](#outcomes-and-statuses)). `HostConformanceTests` and `HostRoleConformanceTests` in
+`Runic.Application.Views.Desktop.Tests` are the earlier in-suite .NET runners of the same scenarios, the guest's in
+process and the host's through the same relay guest.
 
 ### Outcomes and statuses
 
@@ -69,11 +69,11 @@ implementation has (the ops of [`host/1`](../../../eng/conformance/PROTOCOL.md#h
 | Limits | guest, host | Configure the `arrange.limits` of the scenario | `RunicGuestOptions` (`StartTimeout`, `UnauthenticatedTimeout`, `HelloTimeout`, `RequestTimeout`, `MaximumWaitingRequests`) and `RunicHostedApplicationOptions` with `RunicHostedLimits` |
 | Privileges | guest | Play a standard user, or an elevated guest without running elevated | `ReadPrivileges`, `RunsElevated` |
 | Test application | guest | The Windows, actions and results of the [test application](#test-application), without loading pages | `HostConformanceAdapter` and `ConformanceMenus`, `ConformanceGuardedWindow`, `ConformanceDropWindow` |
-| Guest process | host | A guest the host starts that relays its standard input and output to the runner, which listens on its own channel | `--puppet-guest`, with the runner's port in `RUNIC_TEST_PUPPET_PORT` |
-| Headless windows and the user | host | Windows without a screen, their native menu bars, and the user's clicks, shortcuts, dialogs and context menus ([the host's user](#the-hosts-user)) | `HostedWindowHost`, `FakeHostDialogs`, `HostUser` |
+| Guest process | host | A guest the host starts that relays its standard input and output to the runner, which listens on its own channel | The driver's relay guest ([PROTOCOL](../../../eng/conformance/PROTOCOL.md#host-protocol-host1)): `--puppet-guest`, with the driver's relay port in `RUNIC_TEST_PUPPET_PORT` |
+| Headless windows and the user | host | Windows without a screen, their native menu bars, and the user's clicks, shortcuts, dialogs and context menus ([the host's user](#the-hosts-user)) | `ConformanceHost` with `HostFixture`, `HostedWindowHost`, `FakeHostDialogs`, `HostUser`, `ScenarioPolicy`, `HostedRegionTestPage` |
 | Clipboard, monitors and launches | host | Fakes whose content a step sets and an `expect` reads | `RunicTestPlatform` |
-| Time | guest, host | Real time: `advance` waits the named limit; the host role waits at least `guestActivation` | The driver waits the limit and 500 ms; .NET's host runner at least `RunicHostedWindow.GuestActivationWindow` (2,000 ms) and 100 ms |
-| Timeouts | guest, host | The runner's own wait for a message, a line or a result | The driver: twice its receive timeout (2 × 5 s, scaled by `RAX_TEST_TIMEOUT_SCALE`); .NET's host runner: 10 s, scaled |
+| Time | guest, host | Real time: `advance` waits the named limit; the host role waits at least `guestActivation` | The driver waits the limit and 500 ms, for `guestActivation` at least the adapter's `guestActivationMs`, `RunicHostedWindow.GuestActivationWindow` (2,000 ms) for .NET |
+| Timeouts | guest, host | The runner's own wait for a message, a line or a result | The driver: twice its receive timeout (2 × 5 s, scaled by `RAX_TEST_TIMEOUT_SCALE`) |
 
 ## Scenarios
 

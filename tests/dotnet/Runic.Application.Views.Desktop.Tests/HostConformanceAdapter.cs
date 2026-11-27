@@ -13,12 +13,13 @@ using Runic.Platform;
 
 namespace Runic.Application.Views.Desktop.Tests;
 
-// The conformance adapter of the .NET guest of the Runic host protocol (eng/conformance/PROTOCOL.md, "Host protocol";
-// rax.conformance-adapter/1): `bun run conformance dotnet-desktop` starts this executable with --conformance-adapter.
-// The driver plays the host: it writes the offer, connects to the channel and matches every message. This adapter only
-// runs RunicDesktopHost.Run in hosted mode, in this process, with the corpus's test application (ConformanceMainWindow,
-// ConformanceGuardedWindow, ConformanceDropWindow and ConformanceMenus), runs the test application's actions and reports
-// their results in the README's terms. It checks nothing of the protocol itself.
+// The conformance adapter of the .NET guest and host of the Runic host protocol (eng/conformance/PROTOCOL.md, "Host
+// protocol"; rax.conformance-adapter/1): `bun run conformance dotnet-desktop` starts this executable with
+// --conformance-adapter. For the guest role the driver plays the host: it writes the offer, connects to the channel and
+// matches every message. This adapter only runs RunicDesktopHost.Run in hosted mode, in this process, with the corpus's
+// test application (ConformanceMainWindow, ConformanceGuardedWindow, ConformanceDropWindow and ConformanceMenus), runs
+// the test application's actions and reports their results in the README's terms. For the host role the driver plays
+// the guest, and ConformanceHost (HostRoleConformanceAdapter.cs) runs the host. It checks nothing of the protocol itself.
 internal static class HostConformanceAdapter
 {
     public const string Argument = "--conformance-adapter";
@@ -33,6 +34,7 @@ internal static class HostConformanceAdapter
 #pragma warning restore TUnit0055
         using var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
         ConformanceGuest? guest = null;
+        ConformanceHost? host = null;
         while (await input.ReadLineAsync() is { } line)
         {
             if (line.Length == 0) continue;
@@ -49,6 +51,11 @@ internal static class HostConformanceAdapter
                     "shutdown" => new JsonObject(),
                     "host.guest.start" => Start(ref guest, args),
                     "host.guest.stop" => await StopAsync(guest, () => guest = null),
+                    "host.host.start" => await StartHostAsync(host, args, started => host = started),
+                    "host.host.stop" => await StopAsync(host, () => host = null),
+                    _ when op.StartsWith("host.host.", StringComparison.Ordinal) => host is null
+                        ? throw new InvalidOperationException($"{op} before host.host.start.")
+                        : await host.HandleAsync(op, args),
                     _ when guest is null => throw new InvalidOperationException($"{op} before host.guest.start."),
                     _ => await guest.HandleAsync(op, args),
                 };
@@ -67,11 +74,14 @@ internal static class HostConformanceAdapter
             if (op == "shutdown") break;
         }
         await StopAsync(guest);
+        await StopAsync(host);
         return 0;
     }
 
     // The features are those Runic's guest lists in its hello when its application allows component embedding
-    // (HostFeatures.GuestImplemented and RegionComponent); the page transport is Runic.Desktop's private profile.
+    // (HostFeatures.GuestImplemented and RegionComponent), and the host's those of its hello (HostImplemented); the page
+    // transport is Runic.Desktop's private profile. Runic's host fixes how long an activation after the guest's request
+    // counts as the guest's (RunicHostedWindow.GuestActivationWindow), so the driver waits at least that long.
     private static JsonObject Describe() => new()
     {
         ["protocol"] = "rax.conformance-adapter/1",
@@ -82,8 +92,10 @@ internal static class HostConformanceAdapter
             ["version"] = typeof(RunicDesktopHost).Assembly.GetName().Version?.ToString(),
         },
         ["corpora"] = new JsonArray("host/1"),
-        ["roles"] = new JsonArray("guest"),
+        ["roles"] = new JsonArray("guest", "host"),
         ["features"] = new JsonArray([.. HostFeatures.GuestImplemented.Append(HostFeatures.RegionComponent).Distinct().Select(static f => (JsonNode)f)]),
+        ["hostFeatures"] = new JsonArray([.. HostFeatures.HostImplemented.Select(static f => (JsonNode)f)]),
+        ["guestActivationMs"] = RunicHostedWindow.GuestActivationWindow.TotalMilliseconds,
         ["capabilities"] = new JsonArray(),
         ["pageTransport"] = "webui-compat/52f9e75",
     };
@@ -95,9 +107,16 @@ internal static class HostConformanceAdapter
         return [];
     }
 
-    private static async Task<JsonObject> StopAsync(ConformanceGuest? guest, Action? stopped = null)
+    private static async Task<JsonObject> StartHostAsync(ConformanceHost? host, JsonObject args, Action<ConformanceHost> started)
     {
-        if (guest is not null) await guest.DisposeAsync();
+        if (host is not null) throw new InvalidOperationException("A host is running: host.host.stop first.");
+        started(await ConformanceHost.StartAsync(args["host"]!.AsObject(), args["limits"] as JsonObject ?? [], args["relayPort"]!.GetValue<int>()));
+        return [];
+    }
+
+    private static async Task<JsonObject> StopAsync(IAsyncDisposable? running, Action? stopped = null)
+    {
+        if (running is not null) await running.DisposeAsync();
         stopped?.Invoke();
         return [];
     }
