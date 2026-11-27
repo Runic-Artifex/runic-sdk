@@ -7,3 +7,9 @@ adapter, so a guest or host in any language is checked by the same steps. `bun r
 Runic's .NET guest and host, which pass all 180 scenarios. The scenarios now name the seams a runner needs, how an
 outcome is derived from an implementation's features, and the page-transport profile that the region scenarios' frame
 and component requests use after their upgrade.
+
+The driver also runs the Desktop presentation contract's scenarios and codec vectors
+([`specs/desktop/conformance`](../../../specs/desktop/conformance/README.md)) as `desktop.presentation/1`:
+`bun run conformance dotnet-desktop-presentation` runs each abstract operation against a real Runic.Desktop host on
+loopback. Six of the ten cases pass; four are known failures, where the scenarios name error codes, a message or an
+order that Runic.Desktop does not produce.

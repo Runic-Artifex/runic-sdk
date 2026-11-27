@@ -1,0 +1,16 @@
+{
+  "format": "rax.conformance-cases/1",
+  "corpus": "desktop.presentation/1",
+  "cases": [
+    {"id":"cancellation.request-disconnect-stops-stream.v1","kind":"scenario","set":"cancellation-streaming","file":"scenarios/cancellation.request-disconnect-stops-stream.json","roles":["host"],"requires":["streaming-response","request-cancellation"],"sha256":"76cfcc8bdc630e2302e910787726e94bed364fe5cff2252719565238b048cb0c"},
+    {"id":"errors.handler-failure-redaction.v1","kind":"scenario","set":"errors","file":"scenarios/errors.handler-failure-redaction.json","roles":["host"],"requires":["correlated-invocation","structured-errors"],"sha256":"60b0f0e71c97ec03f8941c9189c2dc9f135e4aa1b390e601774c073a3242048d"},
+    {"id":"lifecycle.shared-listener-surface-close.v1","kind":"scenario","set":"lifecycle","file":"scenarios/lifecycle.shared-listener-surface-close.json","roles":["host"],"requires":["shared-listener","surface-isolation"],"sha256":"6edde2a23c6f61199471456d148d5a5d2f8d893874c99ea3e6f5a471b87fb1d5"},
+    {"id":"protocol.reconnect-new-session.v1","kind":"scenario","set":"protocol","file":"scenarios/protocol.reconnect-new-session.json","roles":["host"],"requires":["correlated-invocation","reconnect","session-authentication"],"sha256":"369883322ed916b41e91ae2316fb6ddd24abac91a5e42251825401b6743bc303"},
+    {"id":"requests.head-stream-metadata.v1","kind":"scenario","set":"requests","file":"scenarios/requests.head-stream-metadata.json","roles":["host"],"requires":["streaming-response","head-request"],"sha256":"75575f791540ddd58e04fd08d02f2a7b480b35d296b687e8ec6ab73b003b1af5"},
+    {"id":"security.default-admission.v1","kind":"scenario","set":"security","file":"scenarios/security.default-admission.json","roles":["host"],"requires":["session-authentication","origin-policy"],"sha256":"ee2f2967ee5b9aec0ceed4774ae481e2ee501f443e87dd98ba9081a576fd248c"},
+    {"id":"security.surface-credential-isolation.v1","kind":"scenario","set":"security","file":"scenarios/security.surface-credential-isolation.json","roles":["host"],"requires":["session-authentication","surface-isolation"],"sha256":"7659d812a49887af95b9eb521fb9101b87ee833ab9edd5c75e150ba726084c3c"},
+    {"id":"protocol.webui-compat-check-token.v1","kind":"vector","set":"protocol","file":"vectors/protocol.webui-compat-check-token.json","roles":["host"],"requires":[],"sha256":"3ae817c94fbc868294884b09db06d6803ae21a61649a76c9e36e330b47931ca6"},
+    {"id":"protocol.webui-compat-multi-header.v1","kind":"vector","set":"protocol","file":"vectors/protocol.webui-compat-multi-header.json","roles":["host"],"requires":[],"sha256":"1ac2d5df7dfe7ba0e8f9df1e14dffebef1f67a529ddeebac32759b176ebbd358"},
+    {"id":"serialization.duplicate-key-rejected.v1","kind":"vector","set":"serialization","file":"vectors/serialization.duplicate-key-rejected.json","roles":["host"],"requires":[],"sha256":"9f404f0ab8e1b35b78778735b80d37e42e716e1a78d281c45d718df6930027a1"}
+  ]
+}

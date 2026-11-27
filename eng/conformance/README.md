@@ -11,6 +11,7 @@ spike).
 | Assets archives (`assets/2`) | [`specs/assets/vectors`](../../specs/assets/vectors/README.md) | `dotnet-assets` (the .NET reader) |
 | Desktop server (`desktop-server/1`) | [`specs/desktop/server`](../../specs/desktop/server/README.md) | `rax-server` (runic-server) |
 | Runic host protocol (`host/1`) | [`specs/desktop/host-conformance`](../../specs/desktop/host-conformance/README.md) | `dotnet-desktop` (the .NET guest and host) |
+| Desktop presentation (`desktop.presentation/1`) | [`specs/desktop/conformance`](../../specs/desktop/conformance/README.md) | `dotnet-desktop-presentation` (Runic.Desktop) |
 
 ## Run it
 
@@ -96,11 +97,13 @@ example `known-failure` with the issue of the follow-up pull request, or `unsupp
 | [`assets/`](assets) | the Assets archive module: corpus loading and the `assets.read` comparison |
 | [`server/`](server) | the Desktop server module: corpus loading, and the client that runs a case's steps over sockets and checks the server's responses and frames |
 | [`host/`](host) | the Runic host protocol module: corpus loading, the guest role's steps (the driver plays the host over a real WebSocket), the host role's steps (the driver plays the guest through a relay guest and its own channel listener), the page-transport profiles of the region steps |
+| [`presentation/`](presentation) | the Desktop presentation module: corpus loading, and the comparison of a scenario's events, states and outcomes |
 | [`implementations.json`](implementations.json) | each implementation: corpus, roles, adapter build and command, status file |
 | [`packages/web/views/test/conformance-adapter.ts`](../../packages/web/views/test/conformance-adapter.ts) | the TypeScript client's adapter, on the package's production build, with the test Views and scripted host of [`test/support/conformance-client.ts`](../../packages/web/views/test/support/conformance-client.ts) |
 | [`tests/dotnet/Runic.Application.Views.Conformance`](../../tests/dotnet/Runic.Application.Views.Conformance) | the .NET producer's adapter, which compiles the in-repository test Views and scenario transport |
 | [`tests/dotnet/Runic.Assets.Conformance`](../../tests/dotnet/Runic.Assets.Conformance) | the .NET Assets reader's adapter, on `Runic.Assets`' public API |
 | [`tests/dotnet/Runic.Application.Views.Desktop.Tests`](../../tests/dotnet/Runic.Application.Views.Desktop.Tests/HostConformanceAdapter.cs) | the .NET guest's and host's adapter: the test executable with `--conformance-adapter`, which runs the guest in process with the suite's test application, and the host on a headless Desktop host with the suite's fakes ([`HostRoleConformanceAdapter.cs`](../../tests/dotnet/Runic.Application.Views.Desktop.Tests/HostRoleConformanceAdapter.cs)) |
+| [`tests/dotnet/Runic.Desktop.Tests`](../../tests/dotnet/Runic.Desktop.Tests/PresentationConformanceAdapter.cs) | Runic.Desktop's presentation adapter: the test executable with `--conformance-adapter`, which runs each operation against a real `DesktopHost` on loopback |
 | [`native/crates/server-conformance`](../../native/crates/server-conformance) | runic-server's adapter, on its Rust API, with the corpus's test application |
 | [`demo-gate.ts`](demo-gate.ts) | the status rules on a temporary copy of the corpus with three edits |
 

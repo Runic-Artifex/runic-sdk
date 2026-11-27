@@ -1,0 +1,17 @@
+{
+  "format": "rax.conformance-status/1",
+  "corpus": {"id":"desktop.presentation/1"},
+  "implementation": {"id":"dotnet-desktop-presentation","roles":["host"],"maturity":"development"},
+  "cases": {
+    "cancellation.request-disconnect-stops-stream.v1": {"status":"known-failure","issue":"TODO","reason":"Runic.Desktop sends the response head with the stream's first chunk, so response.committed follows stream.chunkAccepted, and it reports no outcome for a request its requester left (no requester-disconnected)"},
+    "errors.handler-failure-redaction.v1": {"status":"pass"},
+    "lifecycle.shared-listener-surface-close.v1": {"status":"pass"},
+    "protocol.reconnect-new-session.v1": {"status":"known-failure","issue":"TODO","reason":"the events match; Runic.Desktop reports no outcome for an invocation whose session closed (no session-transport-closed diagnostic)"},
+    "requests.head-stream-metadata.v1": {"status":"pass"},
+    "security.default-admission.v1": {"status":"known-failure","issue":"TODO","reason":"the events match; Runic.Desktop's capability-not-admitted message names the capability (WebUiWindow.cs:1982-1987)"},
+    "security.surface-credential-isolation.v1": {"status":"known-failure","issue":"TODO","reason":"Runic.Desktop refuses another surface's credential as credential-required, the code of a missing one (WebUiWindow.cs:4437-4446); it has no credential-scope-mismatch"},
+    "protocol.webui-compat-check-token.v1": {"status":"pass"},
+    "protocol.webui-compat-multi-header.v1": {"status":"pass"},
+    "serialization.duplicate-key-rejected.v1": {"status":"pass"}
+  }
+}

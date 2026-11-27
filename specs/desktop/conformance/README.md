@@ -52,6 +52,35 @@ Scenarios inject identifiers, clock values, limits, and policy. They never use
 wall-clock sleeps, ephemeral ports, random credentials, CLR exception names,
 Effect internals, browser process identifiers, or physical packet boundaries.
 
+### Running the cases
+
+The language-neutral [conformance driver](../../../eng/conformance/README.md) runs the scenarios and vectors as the
+corpus `desktop.presentation/1`, through an adapter in the implementation's language
+([`rax.conformance-adapter/1`](../../../eng/conformance/PROTOCOL.md#desktop-presentation-desktoppresentation1)).
+`bun run conformance dotnet-desktop-presentation` runs Runic.Desktop; [`cases.json`](cases.json) is the case list and
+[`status/dotnet-desktop-presentation.json`](status/dotnet-desktop-presentation.json) the expected outcomes. The driver
+hands each operation to the adapter in order and compares what the adapter observed of the host:
+
+- `events` exactly and in order, each by `type` and `subject` and each member of its expected `data` (the adapter may
+  report more data); events of `arrange` are not reported;
+- `absentEvents`, none of which may match a reported event;
+- `states`, each named subject's state;
+- `outcomes` exactly: the failed or cancelled terminal outcomes the host reported, one per subject. An outcome's
+  `category`, `code`, `message` and `retryable` are those the host reports (in .NET, its `DesktopDiagnostic`); a host
+  that reports nothing for a terminal has no outcome for it.
+
+How an adapter reads the operations:
+
+- `host.create` and `surface.create` before `host.start` are created when the host starts, in order, and report
+  `host.started` and then each `surface.started`;
+- a scenario `policy` is the host's: an adapter whose host cannot enforce it reports the scenario unsupported;
+- with `policy.credential: "required"`, `session.connect` admits and authenticates the session at its upgrade
+  (`session.authenticated`); without a policy it connects (`session.connected`), and `session.authenticate` authenticates
+  it. A `credential` is `valid` (the surface's own), `missing`, or the label a `surface.create` gave another surface's;
+- `stream.acceptNext` offers the stream's next chunk and ends when the host took it (`stream.chunkAccepted`); a stream's
+  state (`unopened`, `open`, `released`) says whether the host opened it;
+- a vector of a profile the adapter does not list is excluded (`profile:<id>`).
+
 ## Codec vectors
 
 Protocol and serialization use deterministic input/output vectors validated by
@@ -75,8 +104,10 @@ outside this directory as implementation evidence:
 - CS-WebUI differential classifications; and
 - performance and accessibility measurements.
 
-The .NET conformance receipt is retained at
-[`evidence/conformance/dotnet-m6.json`](../../../tests/fixtures/desktop/evidence/conformance/dotnet-m6.json).
+Runic.Desktop's conformance is the driver's run with its status file ([running the cases](#running-the-cases)). The
+earlier hand-kept receipt,
+[`evidence/conformance/dotnet-m6.json`](../../../tests/fixtures/desktop/evidence/conformance/dotnet-m6.json), mapped
+each case to a Runic.Desktop test and claimed all of them pass; it is superseded and kept until it is retired.
 CS-WebUI comparisons are classified in
 [`cs-webui-classification.md`](cs-webui-classification.md), and the native
 runner definition and current local evidence are recorded in
