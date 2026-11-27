@@ -587,7 +587,8 @@ export function scenarioProblems(scenario) {
   };
   const roles = new Set(scenario.roles);
   const connected = new Set(), created = new Set(), requests = new Map(), replied = new Set(), calls = new Set();
-  const started = { wait: new Set(), close: new Set(), flush: new Set() };
+  const started = { wait: new Set(), close: new Set(), flush: new Set(), upload: new Set() };
+  const endedUploads = new Set();
   const start = (kind, id, where) => {
     if (started[kind].has(id)) problem(`${where}: ${kind} ${id} is started twice`);
     use(id, kind, where);
@@ -638,13 +639,20 @@ export function scenarioProblems(scenario) {
         replied.add(step.replyTo);
       }
     }
-    if (step.upload && !(scenario.requires ?? []).includes("blobs/1")) problem(`${where}: upload needs blobs/1`);
-    if (step.mutate || step.delivery || step.closeWindow || step.flushFields || step.upload) {
+    if ((step.upload || step.endUpload) && !(scenario.requires ?? []).includes("blobs/1")) problem(`${where}: upload needs blobs/1`);
+    if (step.mutate || step.delivery || step.closeWindow || step.flushFields || step.upload || step.endUpload) {
       if (!roles.has("producer")) problem(`${where}: a producer step in a client-only scenario`);
     }
     for (const mutation of step.mutate ?? []) if (mutation.op === "waitPresented") start("wait", mutation.id, where);
     if (step.closeWindow) start("close", step.closeWindow.id, where);
     if (step.flushFields) start("flush", step.flushFields.id, where);
+    if (step.upload?.hold !== undefined) start("upload", step.upload.hold, where);
+    if (step.endUpload !== undefined) {
+      use(step.endUpload, "upload", where);
+      if (!started.upload.has(step.endUpload)) problem(`${where}: upload ${step.endUpload} is not held`);
+      else if (endedUploads.has(step.endUpload)) problem(`${where}: upload ${step.endUpload} is ended twice`);
+      endedUploads.add(step.endUpload);
+    }
     if (step.delivery && !(scenario.requires ?? []).includes("held-delivery")) problem(`${where}: delivery needs held-delivery`);
     if (step.advance && !(scenario.requires ?? []).includes("virtual-clock")) problem(`${where}: advance needs virtual-clock`);
     if (step.call) {
@@ -677,6 +685,7 @@ export function scenarioProblems(scenario) {
     if (producerSees && !replied.has(id)) problem(`request ${id} has no reply for the producer`);
   }
   for (const id of Object.keys(declared)) if (!used.has(id)) problem(`ids lists ${id}, which no step uses`);
+  for (const id of started.upload) if (!endedUploads.has(id)) problem(`upload ${id} is held and never ended`);
   for (const group of unorderedGroups(steps)) {
     const where = `the unordered steps ${group.map(index => index + 1).join(", ")}`;
     if (group.length < 2) problem(`${where}: a group needs two receive steps`);
@@ -721,6 +730,14 @@ test("the scenario check rejects references to resources that were not created",
     { closeWindow: { id: "x", timeout: 1 } }, { expect: { closed: { id: "x", acknowledged: true } } }] }), []);
   assert.ok(scenarioProblems({ ...waits, steps: [...exchange, { expect: { presented: { id: "w", result: true } } }, { closeWindow: { id: "x", timeout: 1 } }] }).some(p => p.includes("w was not started")));
   assert.ok(scenarioProblems({ ...waits, steps: [...exchange, { mutate: [{ op: "waitPresented", id: "x", timeout: 1 }] }, { closeWindow: { id: "w", timeout: 1 } }] }).some(p => p.includes("used as")));
+  // A held upload is ended once, by an endUpload step after it.
+  const uploads = { ...base, roles: ["producer"], requires: ["blobs/1"], ids: { ...base.ids, u: { kind: "upload" } } };
+  const held = { upload: { name: "a", type: "text/plain", text: "", hold: "u" } };
+  const ended = { endUpload: "u", answer: { status: 201, body: {} } };
+  assert.deepEqual(scenarioProblems({ ...uploads, steps: [...exchange, held, ended] }), []);
+  assert.ok(scenarioProblems({ ...uploads, steps: [...exchange, held] }).some(p => p.includes("never ended")));
+  assert.ok(scenarioProblems({ ...uploads, steps: [...exchange, ended, held] }).some(p => p.includes("is not held")));
+  assert.ok(scenarioProblems({ ...uploads, steps: [...exchange, held, ended, ended] }).some(p => p.includes("ended twice")));
 });
 
 test("the scenario check accepts unordered groups of two receives and rejects lone ones", () => {

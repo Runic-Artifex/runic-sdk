@@ -239,6 +239,7 @@ internal sealed class ScenarioState : IDisposable
     private readonly Dictionary<string, ScenarioConnection> _connections = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task<RunicWindowCloseResult>> _closes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task<bool>> _flushes = new(StringComparer.Ordinal);
+    private readonly ConformanceHost.HeldUploads _uploads = new();
 
     private ScenarioState(string view, JsonObject model, int? inputBytes, int? pendingUploads)
     {
@@ -309,7 +310,9 @@ internal sealed class ScenarioState : IDisposable
                 ConformanceHost.SetAppearance(_transport, args["appearance"] as JsonObject);
                 return new JsonObject();
             case "views.upload":
-                return await ConformanceHost.UploadAsync(_transport, Connection(args), args).ConfigureAwait(false);
+                return await ConformanceHost.UploadAsync(_transport, Connection(args), args, _uploads).ConfigureAwait(false);
+            case "views.endUpload":
+                return await ConformanceHost.EndUploadAsync(_uploads, AdapterProgram.Str(args, "hold")).ConfigureAwait(false);
             case "views.readMember":
                 return new JsonObject { ["value"] = _window.ReadMember(AdapterProgram.Str(args, "member"))?.DeepClone() };
             case "views.provide":
@@ -357,6 +360,7 @@ internal sealed class ScenarioState : IDisposable
     {
         foreach (var connection in _connections.Values.Where(connection => connection.IsOpen)) _transport.Disconnect(connection);
         _window.Dispose();
+        _uploads.Dispose();
         _transport.Dispose();
     }
 }

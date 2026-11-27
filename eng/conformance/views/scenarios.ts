@@ -83,6 +83,7 @@ class ScenarioRun {
   private requestKinds = new Map<string, string | null>();
   private closes = new Set<string>();
   private flushes = new Set<string>();
+  private uploads = new Map<string, boolean>(); // held upload -> ended
 
   constructor(private readonly adapter: Adapter, private readonly scenario: any, private readonly timing: Timing) {
     const ids: Record<string, Id> = scenario.ids ?? {};
@@ -153,13 +154,20 @@ class ScenarioRun {
     } else if ("upload" in step) {
       const conn = this.connectionOf(step);
       const u = step.upload;
-      const answer = await a.call("views.upload", { conn, name: u.name, type: u.type, text: u.text ?? "", size: u.size ?? null });
-      try {
-        this.messages.match(step.answer, { status: answer?.status, body: answer?.body }, null);
-      } catch (e) {
-        if (e instanceof ScenarioFailure) throw new ScenarioFailure(`The upload's answer: ${e.message}\n  actual: ${abbreviate(answer, 1200)}`);
-        throw e;
+      const hold = u.hold ?? null;
+      if (hold !== null) {
+        this.messages.id(hold, "upload");
+        if (this.uploads.has(hold)) throw new ScenarioFailure(`The upload ${hold} was held before.`);
+        this.uploads.set(hold, false);
       }
+      const answer = await a.call("views.upload", { conn, name: u.name, type: u.type, text: u.text ?? "", size: u.size ?? null, hold });
+      if (hold === null) this.matchUpload(step.answer, answer);
+    } else if ("endUpload" in step) {
+      const hold = step.endUpload;
+      this.messages.id(hold, "upload");
+      if (this.uploads.get(hold) !== false) throw new ScenarioFailure(`The upload ${hold} is not held.`);
+      this.uploads.set(hold, true);
+      this.matchUpload(step.answer, await a.call("views.endUpload", { hold }));
     } else if ("expect" in step) {
       await this.settle();
       const e = step.expect;
@@ -256,6 +264,16 @@ class ScenarioRun {
   // itself; the check that follows reports what is missing or left over.
   private async settle() {
     await this.adapter.call("views.settle", { waitMs: this.timing.receiveMs }, this.timing.receiveMs + 30_000);
+  }
+
+  // An upload's answer, {status, body}, against the step's answer.
+  private matchUpload(expected: unknown, answer: any) {
+    try {
+      this.messages.match(expected, { status: answer?.status, body: answer?.body }, null);
+    } catch (e) {
+      if (e instanceof ScenarioFailure) throw new ScenarioFailure(`The upload's answer: ${e.message}\n  actual: ${abbreviate(answer, 1200)}`);
+      throw e;
+    }
   }
 
   // At the end: no connection may have a message no receive step matched.

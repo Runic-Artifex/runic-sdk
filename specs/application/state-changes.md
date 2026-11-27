@@ -259,10 +259,13 @@ The producer delivers the pushes of each route in order. Frames do not coalesce,
 predecessor. Full states coalesce: a newer state replaces the frames and states of the route not yet delivered.
 
 - A route retains at most **64 undelivered entries or 1,048,576 bytes** (the UTF-8 length of the encoded pushes) in its
-  delivery queue. The entry being delivered does not count. The bounds are the route's, whatever the number of
-  connections: the .NET producer keeps one queue per route and hands each push to every connection that has the route
-  open. A producer that keeps a queue per route and connection applies the bounds to each queue; a client cannot tell
-  the two apart.
+  delivery queue. The entry being delivered does not count. While no entry of the route is being delivered, the next
+  entry the producer queues is being delivered from then on, also when other work of the producer, such as a
+  [publication unit](#publication-units) that waits for the model, hands it to the transport later: a burst of frames
+  that starts while nothing is being delivered retains 64 frames behind its first. A full state does not supersede the
+  entry being delivered. The bounds are the route's, whatever the number of connections: the .NET producer keeps one
+  queue per route and hands each push to every connection that has the route open. A producer that keeps a queue per
+  route and connection applies the bounds to each queue; a client cannot tell the two apart.
 - When a new frame would exceed either bound, the producer captures a **recovery state** at once. It supersedes
   everything queued and becomes the next frame's baseline. Later frames queue behind it, and it counts toward the
   bounds like a frame.
