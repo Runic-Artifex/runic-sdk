@@ -10,6 +10,7 @@ spike).
 | Views protocol 4 (`views/4`) | [`specs/application/conformance`](../../specs/application/conformance/README.md) | `dotnet-views` (the .NET producer), `ts-client` (the TypeScript client) |
 | Assets archives (`assets/2`) | [`specs/assets/vectors`](../../specs/assets/vectors/README.md) | `dotnet-assets` (the .NET reader) |
 | Desktop server (`desktop-server/1`) | [`specs/desktop/server`](../../specs/desktop/server/README.md) | `rax-server` (runic-server) |
+| Runic host protocol (`host/1`) | [`specs/desktop/host-conformance`](../../specs/desktop/host-conformance/README.md) | `dotnet-desktop` (the .NET guest; the driver has no host-role steps yet) |
 
 ## Run it
 
@@ -94,10 +95,12 @@ example `known-failure` with the issue of the follow-up pull request, or `unsupp
 | [`views/`](views) | the Views protocol 4 module: corpus loading, message writing and matching, producer steps, vectors |
 | [`assets/`](assets) | the Assets archive module: corpus loading and the `assets.read` comparison |
 | [`server/`](server) | the Desktop server module: corpus loading, and the client that runs a case's steps over sockets and checks the server's responses and frames |
+| [`host/`](host) | the Runic host protocol module: corpus loading, the guest role's steps (the driver plays the host over a real WebSocket), the page-transport profiles of the region steps |
 | [`implementations.json`](implementations.json) | each implementation: corpus, roles, adapter build and command, status file |
 | [`adapters/ts-client.ts`](adapters/ts-client.ts) | the TypeScript client's adapter (message vectors; client scenarios are #1350) |
 | [`tests/dotnet/Runic.Application.Views.Conformance`](../../tests/dotnet/Runic.Application.Views.Conformance) | the .NET producer's adapter, which compiles the in-repository test Views and scenario transport |
 | [`tests/dotnet/Runic.Assets.Conformance`](../../tests/dotnet/Runic.Assets.Conformance) | the .NET Assets reader's adapter, on `Runic.Assets`' public API |
+| [`tests/dotnet/Runic.Application.Views.Desktop.Tests`](../../tests/dotnet/Runic.Application.Views.Desktop.Tests/HostConformanceAdapter.cs) | the .NET guest's adapter: the test executable with `--conformance-adapter`, which runs the guest in process with the suite's test application |
 | [`native/crates/server-conformance`](../../native/crates/server-conformance) | runic-server's adapter, on its Rust API, with the corpus's test application |
 | [`demo-gate.ts`](demo-gate.ts) | the status rules on a temporary copy of the corpus with three edits |
 
