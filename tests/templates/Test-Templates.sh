@@ -1358,6 +1358,9 @@ verify_library_template() {
   local library_name="$project_name.Core"
   local output="$template_tmp/library-$framework-$manager-$host-$view_models"
   local app="$output/$project_name" library="$output/$library_name"
+  # The checks' logs stay outside the clone, whose git status must show no file that a build leaves.
+  local logs="$output.logs"
+  mkdir -p "$logs"
   local selected_lock
   case "$manager" in
     npm) selected_lock=package-lock.json ;;
@@ -1461,9 +1464,9 @@ verify_library_template() {
   phase build
   (cd "$output" && dotnet tool restore)
   # The first build of the solution: the workspace install, the library's clients and package, then the application.
-  if ! dotnet build "$output/$project_name.slnx" --configuration Release > "$output/build.log" 2>&1; then
+  if ! dotnet build "$output/$project_name.slnx" --configuration Release > "$logs/build.log" 2>&1; then
     echo "The library variant's solution did not build on a fresh clone." >&2
-    tail -n 80 "$output/build.log" >&2
+    tail -n 80 "$logs/build.log" >&2
     exit 1
   fi
   test -d "$output/node_modules"
@@ -1529,7 +1532,7 @@ verify_library_template() {
       angular-vite) served_module=src/app/about.ts ;;
     esac
     served_module_expect="$library_name/Frontend/dist/index.js"
-    serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
+    serve_and_fetch "$output" "$logs/dotnet-runic-dev.log" "$logs/dev-document.html" true \
       dotnet runic dev
     test -f "$library/Frontend/dist/index.js"
   fi
