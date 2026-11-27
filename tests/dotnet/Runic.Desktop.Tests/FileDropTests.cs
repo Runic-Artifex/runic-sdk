@@ -66,6 +66,22 @@ public sealed class FileDropSupportTests
     }
 
     [Test]
+    public void WebView2MessagesMatchTheWholeToken()
+    {
+        const string token = "0123abcd";
+        Assert.NotNull(FileDropMessage.Parse("""{"runicFileDrop":"0123abcd"}""", token));
+        // Same length, differing in the first or the last character.
+        Assert.Null(FileDropMessage.Parse("""{"runicFileDrop":"x123abcd"}""", token));
+        Assert.Null(FileDropMessage.Parse("""{"runicFileDrop":"0123abcx"}""", token));
+        // A prefix, an extension and an empty token.
+        Assert.Null(FileDropMessage.Parse("""{"runicFileDrop":"0123abc"}""", token));
+        Assert.Null(FileDropMessage.Parse("""{"runicFileDrop":"0123abcde"}""", token));
+        Assert.Null(FileDropMessage.Parse("""{"runicFileDrop":""}""", token));
+        // Equal UTF-16 length, different UTF-8 bytes.
+        Assert.Null(FileDropMessage.Parse("""{"runicFileDrop":"0123abc\u00e9"}""", token));
+    }
+
+    [Test]
     public void ScriptsRunInEveryFrameAndReadTheDropEffect()
     {
         var script = FileDropSupport.WebView2Script("feedface");

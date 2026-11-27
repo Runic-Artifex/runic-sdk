@@ -168,7 +168,7 @@ internal static class WindowsMenuKeys
             if (root.ValueKind != System.Text.Json.JsonValueKind.Object
                 || !root.TryGetProperty("runicMenuKey", out var marker)
                 || marker.ValueKind != System.Text.Json.JsonValueKind.String
-                || !string.Equals(marker.GetString(), token, StringComparison.Ordinal)
+                || !FixedTimeText.Matches(marker.GetString(), token)
                 || !root.TryGetProperty("keyCode", out var keyCode) || keyCode.ValueKind != System.Text.Json.JsonValueKind.Number
                 || !keyCode.TryGetInt32(out var code)
                 || !root.TryGetProperty("key", out var key) || key.ValueKind != System.Text.Json.JsonValueKind.String)
