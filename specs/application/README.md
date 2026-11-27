@@ -2282,9 +2282,11 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
 - A response to a blob URL has the blob's `type` as `Content-Type`, `X-Content-Type-Options: nosniff`, a
   `Content-Security-Policy` with `sandbox` and `default-src 'none'` (active content such as HTML or SVG never runs in
   the page's origin when it is opened), `Content-Disposition` `inline` or `attachment` with the blob's `name`,
-  `Cache-Control: private, max-age=31536000, immutable` and an `ETag`; the content behind a URL never changes. A blob
-  whose length the producer knows answers a single byte range (`Range: bytes=a-b`, `206`, `416`). A released or
-  unknown URL answers `404`.
+  `Cache-Control: private, max-age=31536000, immutable` and an `ETag`; the content behind a URL never changes. The
+  blob's policy is followed by the surface's `frame-ancestors`, as a directive of the same policy or as the surface's
+  own `Content-Security-Policy` beside it, so the surface's framing rule ([presentation
+  host](../desktop/presentation-host.md#security-policy)) holds for the blob too. A blob whose length the producer knows
+  answers a single byte range (`Range: bytes=a-b`, `206`, `416`). A released or unknown URL answers `404`.
 - **Row editors.** A member that holds a blob anywhere in its value is never a [field path](#field-paths), as it is
   never settable, so a `write` of it is `rejected` with `invalid-request` (step 2). The other members of its row or
   object are: a field path write of a row copies the producer's row, so the copy keeps the blobs the row holds, as it

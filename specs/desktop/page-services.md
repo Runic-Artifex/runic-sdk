@@ -121,10 +121,14 @@ the host, or an IPC handler), instead of over the surface's WebSocket, admits a 
 3. **Current document.** The message belongs to the document the host currently counts as the page's connection. A
    message for a connection that already ended is dropped.
 
-The host's replies and pushes go to that document only.
+The host's replies and pushes go to that document only. The host delivers them outside a user gesture: delivering a
+message gives the page no user activation, so page code that runs on it, such as the code after a bridge call returns,
+cannot open a window or follow a link as if the user had clicked; it has at most what is left of the user's own
+activation under the engine's rules. WebKitGTK runs a script that the host evaluates in the page
+(`webkit_web_view_evaluate_javascript`) as a user gesture, so a WebKitGTK host does not deliver messages that way.
 
-In .NET the Views transport uses the surface's WebSocket. The webview message channels carry only native services:
-on WebKitGTK and WKWebView in an isolated script world, which page scripts cannot reach; on WebView2 with a token captured
-before page scripts run, heard from the top-level document and frames of the presented origin
-(`packages/dotnet/Runic.Desktop/Internal/FileDropSupport.cs:42-101`,
+In .NET the Views transport uses the surface's WebSocket, whose messages the page receives outside a user gesture. The
+webview message channels carry only native services: on WebKitGTK and WKWebView in an isolated script world, which page
+scripts cannot reach; on WebView2 with a token captured before page scripts run, heard from the top-level document and
+frames of the presented origin (`packages/dotnet/Runic.Desktop/Internal/FileDropSupport.cs:42-101`,
 `packages/dotnet/Runic.Desktop/Internal/WindowsWebView2Interop.cs:726-751`).
