@@ -792,6 +792,40 @@ window opens on its own. `Modality` without `Owner` is invalid. Custom window
 hosts receive the owner in `DesktopWindowHostOptions.OwnerHandle` and `Modality`
 when they report `DesktopWindowCapabilities.Ownership`; every built-in host does.
 
+## Drag regions in a frameless window
+
+An embedded window opened with `DesktopWindowOptions.Frameless` has no title
+bar, so the page marks the parts that move the window with the custom property
+`--webui-app-region`:
+
+```css
+header { --webui-app-region: drag; }
+header button, header input { --webui-app-region: no-drag; }
+```
+
+The nearest of an element and its ancestors that declares the property decides:
+`drag` makes the element a drag region, `no-drag` takes it and its descendants
+out of one, and other values do not count as a declaration. A primary-button
+press in a drag region followed by a move with the button held moves the window
+as its title bar would; releasing the button ends the move. A click alone, such
+as one on a control, does not move the window. The window moves only while the
+page's Bridge is connected. Being a custom property, the declaration works in any stylesheet and is inherited, so mark the
+controls inside a drag region `no-drag`.
+
+This applies to every embedded window host: WebView2, WKWebView, WebKitGTK,
+`Runic.Desktop.Gtk4` and [custom window hosts](#custom-window-hosts), which move
+the window in `IDesktopWindowHost.BeginMoveAsync`. A window in an installed
+browser ignores `Frameless`. On macOS, the CSS `app-region` declarations of
+the [next section](#title-bar-and-drag-regions-on-macos) also apply.
+
+The page script that finds the regions and asks for the move is
+[`Internal/WebUiBridge.js`](Internal/WebUiBridge.js) (`resolveDragRegion` and
+`installCustomWindowDrag`); [`WebUiWindow.cs`](WebUiWindow.cs) turns it on for an
+embedded frameless window (`GetBootstrapScript`), and
+[`Internal/WebUiSession.cs`](Internal/WebUiSession.cs) passes the request to the
+host (`BeginEmbeddedWindowMoveAsync`). The rules for a host other than Runic
+Desktop are in [Desktop page services](../../../specs/desktop/page-services.md#window-drag-regions).
+
 ## Title bar and drag regions on macOS
 
 `DesktopWindowOptions.MacOS.TitleBar` gives the macOS window the custom header
