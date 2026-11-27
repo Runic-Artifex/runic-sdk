@@ -167,7 +167,7 @@ internal sealed class DotNetConformanceViews : IConformanceViews
             {
                 if (!eachUnit)
                 {
-                    using (BridgeSnapshotBatch.Begin(_model))
+                    using (_model.BeginUnit())
                         foreach (var mutation in mutations) _model.Apply(mutation!.AsObject(), unit: null);
                     return;
                 }
@@ -175,9 +175,9 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                 {
                     // appendRows makes each appended row its own unit; every other mutation is one unit.
                     if (mutation!["op"]!.GetValue<string>() == "appendRows")
-                        _model.Apply(mutation.AsObject(), unit: () => BridgeSnapshotBatch.Begin(_model));
+                        _model.Apply(mutation.AsObject(), unit: _model.BeginUnit);
                     else
-                        using (BridgeSnapshotBatch.Begin(_model)) _model.Apply(mutation.AsObject(), unit: null);
+                        using (_model.BeginUnit()) _model.Apply(mutation.AsObject(), unit: null);
                 }
             });
             return Task.CompletedTask;
@@ -211,6 +211,9 @@ internal interface IConformanceModel
     JsonNode? Read(string member);
 
     JsonNode? Provide(string id);
+
+    // Opens the publication unit of a mutation step (README "Mutations"): one unit for every View the step changes.
+    IDisposable BeginUnit() => BridgeSnapshotBatch.Begin(this);
 }
 
 // The base of the test Views' models: change notification and the mutations of the corpus.
@@ -221,6 +224,8 @@ internal abstract class ConformanceModel : INotifyPropertyChanged, IConformanceM
     JsonNode? IConformanceModel.Read(string member) => Read(member);
 
     JsonNode? IConformanceModel.Provide(string id) => Provide(id);
+
+    IDisposable IConformanceModel.BeginUnit() => BeginUnit();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -233,6 +238,8 @@ internal abstract class ConformanceModel : INotifyPropertyChanged, IConformanceM
     internal abstract JsonNode? Read(string member);
 
     internal virtual JsonNode? Provide(string id) => null;
+
+    internal virtual IDisposable BeginUnit() => BridgeSnapshotBatch.Begin(this);
 
 }
 
@@ -674,6 +681,25 @@ internal sealed partial class NotesViewModel : ConformanceModel
             case "due": Due = ConformanceWire.ReadDate(element); break;
             case "elapsed": Elapsed = ConformanceWire.ReadDuration(element); break;
             default: throw new NotSupportedException($"The notes View cannot assign {member}.");
+        }
+    }
+
+    // The step's unit spans the detail View, whose route publishes in the step's turn, after the notes route. Outside a
+    // batch the detail route's unit ran in a later turn of its delivery, which the next step's turn could precede
+    // (#1439: its frame took the revision after a burst of the next step).
+    internal override IDisposable BeginUnit()
+    {
+        if (_detail is not { } detail) return BridgeSnapshotBatch.Begin(this);
+        var outer = BridgeSnapshotBatch.Begin(detail);
+        return new StepUnit(BridgeSnapshotBatch.Begin(this), outer);
+    }
+
+    private sealed class StepUnit(IDisposable inner, IDisposable outer) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { inner.Dispose(); }
+            finally { outer.Dispose(); }
         }
     }
 
