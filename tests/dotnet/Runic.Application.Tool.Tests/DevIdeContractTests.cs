@@ -18,7 +18,7 @@ internal sealed partial class ToolTests
 {
     /// <summary>The regex tools/dotnet-runic/README.md documents for dev's diagnostics and the build's own errors.</summary>
     private const string DocumentedDiagnosticPattern =
-        @"^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$";
+        @"^(?:\[(?:host|app|vite)\] )?\s*(?:\d+>)?(?<file>\S(?:(?!:\s).)*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:[^\s:]+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$";
 
     /// <summary>The regex (API-26) tools/dotnet-runic/README.md documents for the [dev] Browser contract line.</summary>
     private const string DocumentedBrowserLinePattern = @"^\[dev\] Browser: Window serves at (?<url>http://\S+)$";
@@ -26,6 +26,13 @@ internal sealed partial class ToolTests
     /// <summary>VS Code 1.119's built-in <c>$msCompile</c> pattern.</summary>
     private const string MsCompilePattern =
         @"^\s*(?:\s*\d+>)?(\S.*?)(?:\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\))?\s*:\s+(?:(\S+)\s+)?((?:fatal +)?error|warning|info)\s+(\w+\d+)?\s*:\s*(.*)$";
+
+    /// <summary>
+    /// The template's <c>dev</c> task pattern (.vscode/tasks.json): <see cref="MsCompilePattern"/> after dev's optional label,
+    /// with no <c>": "</c> in the file and no colon in the subcategory, so a failure sentence is not a file.
+    /// </summary>
+    private const string DevTaskPattern =
+        @"^(?:\[(?:host|app|vite)\] )?\s*(?:\s*\d+>)?(\S(?:(?!:\s).)*?)(?:\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\))?\s*:\s+(?:([^\s:]+)\s+)?((?:fatal +)?error|warning|info)\s+(\w+\d+)?\s*:\s*(.*)$";
 
     [Test, DisplayName("dev prints the Window process and Ready lines in their documented form")]
     public void DevPrintsContractLines()
@@ -86,6 +93,31 @@ internal sealed partial class ToolTests
         Match bridge = Regex.Match("/src/App/CounterViewModel.cs(12,17): error RUNICBRIDGE004: The command has two overloads.", DocumentedDiagnosticPattern);
         Equal("RUNICBRIDGE004", bridge.Groups["code"].Value);
         False(Regex.IsMatch(DevApplication.WindowStartedLine(1), DocumentedDiagnosticPattern), "A contract line was taken for a diagnostic.");
+        foreach (string sample in new[] { line, "/src/App/CounterViewModel.cs(18,5): error CS1002: ; expected [/src/App/App.csproj]",
+            "[host] /src/App/CounterViewModel.cs(18,5): error CS1002: ; expected", "/src/App/CounterViewModel.cs(12,17): error RUNICBRIDGE004: The command has two overloads.",
+            "[vite] /src/App/Frontend/src/App.tsx(29,50): error RUNICP008: [vite:oxc] [PARSE_ERROR] Expected corresponding JSX closing tag for 'p'." })
+            Equal(Regex.Match(sample, DocumentedDiagnosticPattern).Groups["file"].Value, Regex.Match(sample, DevTaskPattern).Groups[1].Value);
+
+        // A frontend package's failed build (D081.6): dev's line names the project, and its message embeds tsc's error. dev
+        // prints that message again as a sentence, which $msCompile files under the sentence; the documented and the
+        // template's patterns take no file from it.
+        foreach (string source in new[] { "/src/Shared/Frontend/src/index.ts", @"C:\src\Shared\Frontend\src\index.ts" })
+        {
+            string message = $"A frontend package that the page depends on failed to build, so dev did not start: {source}(12,14): error TS2322: Type 'string' is not assignable to type 'number'.";
+            string failure = DevApplication.DiagnosticLine(project, "RAPPDEV1018", message);
+            Match documentedFailure = Regex.Match(failure, DocumentedDiagnosticPattern);
+            Equal((project, "", "RAPPDEV1018", message), (documentedFailure.Groups["file"].Value, documentedFailure.Groups["line"].Value,
+                documentedFailure.Groups["code"].Value, documentedFailure.Groups["message"].Value));
+            Match taskFailure = Regex.Match(failure, DevTaskPattern);
+            Equal((project, "RAPPDEV1018", message), (taskFailure.Groups[1].Value, taskFailure.Groups[5].Value, taskFailure.Groups[6].Value));
+            foreach (string sentence in new[] { message, "  " + message })
+            {
+                True(Regex.Match(sentence, MsCompilePattern).Groups[1].Value.StartsWith("A frontend package", StringComparison.Ordinal),
+                    "$msCompile no longer takes the sentence for a file; the template's narrower pattern may be unneeded.");
+                False(Regex.IsMatch(sentence, DocumentedDiagnosticPattern), $"The documented pattern took a sentence for a diagnostic: {sentence}");
+                False(Regex.IsMatch(sentence, DevTaskPattern), $"The template's pattern took a sentence for a diagnostic: {sentence}");
+            }
+        }
     }
 
     [Test, DisplayName("a failing dev prints its diagnostic line with the project")]
