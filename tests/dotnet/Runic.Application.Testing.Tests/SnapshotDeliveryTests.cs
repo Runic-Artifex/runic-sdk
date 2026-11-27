@@ -44,6 +44,38 @@ internal sealed class SnapshotDeliveryTests
         finally { slow.Release.Set(); }
     }
 
+    // #1387: the drain waited for a model turn to run a requested unit, as the route's first unit does after attach,
+    // while that turn queued a burst of frames. It took the first frame only after the turn, so that frame counted
+    // toward the bounds, and the 65th frame of the burst captured a recovery state although nothing was being
+    // delivered. The oldest frame is the one being delivered as soon as it is queued.
+    [Test]
+    public async Task TheFirstFrameIsBeingDeliveredWhileTheDrainWaitsForATurnAsync()
+    {
+        var model = new Model();
+        var turn = BridgeModelTurn.For(model);
+        var unitRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var transport = new RecordingTransport();
+        using var delivery = new BridgeSnapshotDelivery(transport, "rows", turn, static () => (byte[]?)null,
+            () => unitRan.TrySetResult(), nameof(Model));
+        transport.Hello();
+        turn.Run(() =>
+        {
+            // The unit needs this turn, so the drain cannot run it, or deliver anything, before the turn ends.
+            delivery.RequestUnit();
+            if (!delivery.EnqueueFrame(Bytes("first"))) throw new InvalidOperationException("The first frame was rejected.");
+            for (var index = 0; index < BridgeSnapshotDelivery.MaximumPendingEntries; index++)
+                if (!delivery.EnqueueFrame(Bytes($"frame {index}")))
+                    throw new InvalidOperationException($"Frame {index} behind the first was rejected: the first frame counted toward the bounds.");
+            if (delivery.EnqueueFrame(Bytes("overflow"))) throw new InvalidOperationException("The queue retained more than 64 frames behind the first.");
+            delivery.EnqueueState(Bytes("recovery state"));
+        });
+        await unitRan.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => transport.Count == 2);
+        var delivered = transport.Frames.Select(Encoding.UTF8.GetString).ToArray();
+        if (!delivered.SequenceEqual(["first", "recovery state"]))
+            throw new InvalidOperationException($"The recovery state did not follow the first frame: [{string.Join(", ", delivered)}].");
+    }
+
     // I-018: a transport receives exactly the bytes of the pushes that were queued, in order. (Protocol 3 also had
     // string transports, whose frames had to match; protocol 4 has only UTF-8 broadcasts.)
     [Test]
