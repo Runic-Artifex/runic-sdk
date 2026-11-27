@@ -1392,9 +1392,15 @@ process it started: the shallowest process that runs the project's program
 250 ms (every second on macOS, which runs `ps`), so the line follows the start
 by up to that long.
 
-A VS Code background task can wait for `Ready`, and the same task gets `dev`'s
-failures and the errors of the first build and of each rebuild in the Problems
-panel, as the template's `.vscode/tasks.json` does:
+A VS Code background task can wait for `Ready`, and while `dev` runs the same
+task gets `dev`'s failures and the errors of each build in the Problems panel,
+as the template's `.vscode/tasks.json` does. VS Code removes a background
+task's problems when its process ends, so a failure that ends `dev` (a failed
+first build, `RAPPDEV1018`) would leave Problems empty. Since 0.24 `dev` writes
+that failure into the [session file](#session-file) (`failure`) before it
+exits, and Runic DevKit shows it in Problems and its dependency tree, however
+the task was started (F5's `preLaunchTask`, Terminal > Run Task or DevKit's
+**Start dotnet runic dev**). Without DevKit it stays in the task's terminal:
 
 ```jsonc
 // .vscode/tasks.json
@@ -1477,7 +1483,11 @@ file by default. A project that sets `BaseIntermediateOutputPath` (for example i
 `dotnet msbuild <project> -getProperty:BaseIntermediateOutputPath` prints that
 folder. `dev` writes the file when it starts, and rewrites it when the
 development server is ready and each time the Window process starts or exits.
-When `dev` ends, the file stays with `"state": "stopped"`. A `dev` that is
+When `dev` ends, the file stays with `"state": "stopped"`; since 0.24, when a
+failure stopped it, the same write records that failure in `failure`, so an IDE
+can show it after `dev` has exited (a failure before `dev` evaluated the
+project, such as a project that does not exist, has no session file to go
+into). A `dev` that is
 killed (an IDE that quits while its task runs, `kill -9`, a closed terminal)
 can't write that, so the file keeps its last state. Before trusting `"starting"`
 or `"ready"`, a reader checks that `dev` still runs. A process with the
@@ -1586,7 +1596,25 @@ same project write the same file; the later one wins. `--dry-run` writes none.
       "watch": "rebuild", // "script" (its watch script), "rebuild" (dev reruns its build), "vite" (a source package) or "none"
       "message": null     // the last failure while state is "failed"
     }
-  ]
+  ],
+  // Since 0.24: why dev stopped, when a failure stopped it (D087), written with "state": "stopped" in the same write;
+  // null while dev runs and after a stop without a failure (Ctrl+C, the IDE's stop, a Window that exited normally).
+  // The next dev's file starts with null again.
+  "failure": {
+    "code": "RAPPDEV1018",   // dev's code, as in its diagnostic line and the JSON fault
+    "message": "A frontend package that the page depends on failed to build, so dev did not start: /path/to/shared-ui/src/index.ts(12,14): error TS2322: Type 'string' is not assignable to type 'number'.",
+    "project": "/path/to/SharedUi/SharedUi.csproj", // the .NET project that failed: the one that reported the first error, else the served project
+    "package": "/path/to/shared-ui",                // the frontend package that failed, or null; dependencies[] lists it as "failed"
+    // The errors and then the warnings of the step that failed (the build, the restore or the install), each once, and
+    // dev's own line last, on the served project. At most 100 entries; each message is one line of at most 2,000
+    // characters. line and column are 1-based, null when the diagnostic names no position.
+    "diagnostics": [
+      { "file": "/path/to/shared-ui/src/index.ts", "line": 12, "column": 14, "severity": "error", "code": "TS2322",
+        "message": "Type 'string' is not assignable to type 'number'." },
+      { "file": "/path/to/App/App.csproj", "line": null, "column": null, "severity": "error", "code": "RAPPDEV1018",
+        "message": "A frontend package that the page depends on failed to build, so dev did not start: …" }
+    ]
+  }
 }
 ```
 
@@ -1596,7 +1624,7 @@ gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
 added the `webkitgtk` endpoints, `devtoolsExtension`, `devtoolsExtensionId`, `browser` and, with
 `--no-window` on Linux, `WEBKIT_INSPECTOR_SERVER` in `window.environment`; 0.22 added the `chromium` endpoint and
-`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` in `window.environment`; 0.24 added `dependencies`. 0.23 added `browser.codeFile` and is the one exception
+`RUNIC_WEBUI_REMOTE_DEBUGGING_PORT` in `window.environment`; 0.24 added `dependencies` and `failure`. 0.23 added `browser.codeFile` and is the one exception
 to the rule: within `/1` it changed `browser.url` and `browser.windows[].url` from addresses
 (`http://127.0.0.1:9224/`) to `*` patterns of the per-session origin (`http://*.localhost:9224/`, D077.15). The address
 is secret since 0.23, so the file cannot hold it, and the old value would no longer open the page: a reader opens

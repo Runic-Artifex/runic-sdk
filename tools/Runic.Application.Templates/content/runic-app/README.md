@@ -193,8 +193,10 @@ Kit is not needed. Choose a configuration in Run and Debug:
 <!--#endif -->
 
 The tasks (Terminal > Run Task) are `runic: dev`, `runic: dev --no-window`,
-`runic: dev --browser`, `build` and `runic: doctor`. Failures of `dotnet runic dev` (its `RAPPDEV` codes)
-and build errors appear in the Problems panel. The `dev` tasks keep running
+`runic: dev --browser`, `build` and `runic: doctor`. While `dotnet runic dev` runs, its failures (its
+`RAPPDEV` codes) and build errors appear in the Problems panel. VS Code removes a task's problems when `dev`
+ends; a failure that stops `dev`, such as a failed first build, goes into `dev`'s session file, and Runic DevKit
+keeps it in Problems. Without DevKit it stays in the task's terminal. The `dev` tasks keep running
 after a debug session ends, so the next F5 starts faster; stop them with
 Terminal > Terminate Task. The launch configurations start the build output in
 `bin/Debug/`, which on macOS is not the development bundle that `dotnet run`
