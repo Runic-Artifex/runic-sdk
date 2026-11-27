@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { createHmac } from "node:crypto";
 import { root } from "./run.mjs";
 import { Adapter, AdapterError } from "./conformance/core/adapter.ts";
 import { names, sameFormat } from "./conformance/core/names.ts";
@@ -22,6 +23,10 @@ import { runAssetsVector } from "./conformance/assets/read.ts";
 import { loadServerCorpus } from "./conformance/server/corpus.ts";
 import { encodeFrame, expandText, runServerCase } from "./conformance/server/run.ts";
 import { createServer } from "node:net";
+import { loadHostCorpus } from "./conformance/host/corpus.ts";
+import { GuestRun, StepFailure, proof } from "./conformance/host/guest.ts";
+import { runHostCase } from "./conformance/host/run.ts";
+import { PAGE_TRANSPORTS } from "./conformance/host/page-transport.ts";
 
 const receipt = (results) => ({
   format: names.receipt,
@@ -488,4 +493,51 @@ test("a server case compares the response and the host's events, and fails on a 
   fake.close();
   const unsupported = await runServerCase({ call: () => assert.fail("the adapter was asked") }, { requires: ["stop"], steps: [] }, new Set(), timing);
   assert.equal(unsupported.outcome, "unsupported");
+});
+
+test("the host protocol corpus loads every scenario, and its case list and status files are current", () => {
+  const corpus = resolve(root, "specs/desktop/host-conformance");
+  const cases = loadHostCorpus(corpus);
+  assert.equal(cases.length, 180);
+  for (const c of cases) assert.ok(c.id.startsWith(`${c.set}.`) && c.roles.length === 1, c.id);
+  assert.equal(readFileSync(join(corpus, "cases.json"), "utf8"), coreFormatCases(names.cases, "host/1", cases), "run bun run conformance cases --write");
+  for (const file of readdirSync(join(corpus, "status"))) {
+    const status = JSON.parse(readFileSync(join(corpus, "status", file), "utf8"));
+    assert.deepEqual(lintStatus(status, anchorExists), [], file);
+    assert.deepEqual(Object.keys(status.cases), cases.map((c) => c.id), file);
+    // runic-host/1 is experimental: no implementation of it is stable.
+    assert.notEqual(status.implementation.maturity, "stable", file);
+  }
+});
+
+test("a host protocol scenario of another role is excluded, and one needing an unlisted feature unsupported, before the adapter is asked", async () => {
+  const adapter = { call: () => assert.fail("the adapter was asked"), describe: {} };
+  const scenario = (roles, requires) => ({ roles, requires, steps: [] });
+  assert.deepEqual(await runHostCase(adapter, scenario(["host"], []), new Set(), new Set(["guest"]), { receiveMs: 1 }), { outcome: "excluded", detail: "role:host" });
+  const unsupported = await runHostCase(adapter, scenario(["guest"], ["region/1", "menus/1"]), new Set(["menus/1"]), new Set(["guest"]), { receiveMs: 1 });
+  assert.equal(unsupported.outcome, "unsupported");
+  assert.deepEqual(unsupported.requires, ["region/1"]);
+});
+
+test("the guest runner matches by JSON value, binds ids once, and computes the proofs of host-protocol.md", () => {
+  const run = new GuestRun(null, { ids: { r: { kind: "request" }, w: { kind: "window" }, fixed: { kind: "wire", value: "x" } } }, { receiveMs: 1 });
+  run.match({ id: { $id: "w" }, n: { $any: ["integer", "null"] } }, { n: 3, id: "abc" }, "m");
+  run.match({ id: { $id: "w" } }, { id: "abc" }, "m");
+  assert.throws(() => run.match({ id: { $id: "w" } }, { id: "other" }, "m"), StepFailure);
+  assert.throws(() => run.match({ a: 1 }, { a: 1, b: 2 }, "m"), /members/);
+  assert.throws(() => run.match({ n: { $any: "integer" } }, { n: 1.5 }, "m"), StepFailure);
+  assert.deepEqual(run.resolve({ id: { $id: "r" }, v: { $id: "fixed" }, d: { $any: "string", default: "z" } }), { id: 1, v: "x", d: "z" });
+  assert.deepEqual(run.resolve({ id: { $id: "r" } }), { id: 1 });
+  // HMAC-SHA256 keyed with the nonce over "<label> <key>", base64url without padding.
+  const nonce = new Uint8Array(32).fill(1);
+  assert.equal(proof(nonce, "runic-host/1 host", "k"), Buffer.from(createHmac("sha256", nonce).update("runic-host/1 host k").digest()).toString("base64url"));
+  assert.equal(proof(nonce, "runic-host/1 host", "k").length, 43);
+});
+
+test("the webui-compat page transport admits a page with the bootstrap's token check", () => {
+  const sent = [];
+  const socket = { sendBinary: (data) => sent.push([...data]) };
+  PAGE_TRANSPORTS["webui-compat/52f9e75"].admitFrame(socket, "const TOKEN=16909060;");
+  PAGE_TRANSPORTS["webui-compat/52f9e75"].admitComponent(socket);
+  assert.deepEqual(sent, [[0xdd, 4, 3, 2, 1, 0, 0, 0xf5, 0], [0xdd, 0, 0, 0, 0, 0, 0, 0xf5, 0]]);
 });

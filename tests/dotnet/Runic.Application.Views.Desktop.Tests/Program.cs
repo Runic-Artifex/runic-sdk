@@ -5,8 +5,9 @@ using Runic.Application.Views.Desktop.Tests;
 /// The entry point is hand-written because the hosted application cases start this executable as the guest they host:
 /// <c>--hosted-guest &lt;mode&gt;</c> runs <see cref="HostedGuestProgram"/> in hosted mode, and <c>--puppet-guest</c>
 /// relays standard input and output to the host conformance runner, and <c>--region-browser-host &lt;folder&gt;</c> runs
-/// <see cref="RegionBrowserHostProgram"/>, a browser (serve-only) host for hosted-region-browser-smoke.mjs. Every other
-/// invocation is the TUnit test application.
+/// <see cref="RegionBrowserHostProgram"/>, a browser (serve-only) host for hosted-region-browser-smoke.mjs, and
+/// <c>--conformance-adapter</c> runs <see cref="HostConformanceAdapter"/>, the guest's adapter of the conformance driver
+/// (<c>bun run conformance dotnet-desktop</c>). Every other invocation is the TUnit test application.
 /// </summary>
 internal static class Program
 {
@@ -18,6 +19,7 @@ internal static class Program
         if (args is [HostedGuestProgram.Argument, var mode]) return HostedGuestProgram.Run(mode);
         if (args is [HostedGuestProgram.PuppetArgument]) return HostedGuestProgram.RunPuppet();
         if (args is [RegionBrowserHostProgram.Argument, var folder]) return RegionBrowserHostProgram.Run(folder);
+        if (args is [HostConformanceAdapter.Argument]) return await HostConformanceAdapter.RunAsync().ConfigureAwait(false);
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddSelfRegisteredExtensions(args);
         using ITestApplication application = await builder.BuildAsync().ConfigureAwait(false);

@@ -12,11 +12,68 @@ excluded (a role it does not implement).
 
 The repository checks the corpus itself in `eng/host-conformance.test.mjs` (`bun run test eng/host-conformance.test.mjs`,
 and in the engineering job): every scenario against [`scenario.schema.json`](scenario.schema.json), its id against its
-path, and that it is self-contained. The .NET guest runner is `HostConformanceTests` in
-`Runic.Application.Views.Desktop.Tests`: it plays the host against `RunicDesktopHost.Run` in hosted mode, in its own
-process. The .NET host runner is `HostRoleConformanceTests` in the same suite: it plays the guest against
-`IRunicHostedApplications`, through a guest process that relays its standard input and output to the runner, which
-listens on its own channel.
+path, and that it is self-contained.
+
+The language-neutral [conformance driver](../../../eng/conformance/README.md) runs the corpus as `host/1`: it plays the
+host for the `guest` role and talks to the implementation through a small adapter
+([`rax.conformance-adapter/1`](../../../eng/conformance/PROTOCOL.md#host-protocol-host1)). `bun run conformance
+dotnet-desktop` runs Runic's .NET guest; [`cases.json`](cases.json) is the case list and
+[`status/dotnet-desktop.json`](status/dotnet-desktop.json) the expected outcomes ([outcomes](#outcomes-and-statuses)).
+The driver has no steps for the `host` role yet. Until it does, `HostRoleConformanceTests` in
+`Runic.Application.Views.Desktop.Tests` is the .NET host runner: it plays the guest against `IRunicHostedApplications`,
+through a guest process that relays its standard input and output to the runner, which listens on its own channel.
+`HostConformanceTests` in the same suite is the earlier .NET guest runner, which runs the same scenarios in process.
+
+### Outcomes and statuses
+
+A case is one scenario. Its outcome for an implementation is:
+
+- `excluded`, for a scenario of a role the implementation does not have (reason `role:guest` or `role:host`);
+- `unsupported`, when its `requires` names a feature that the implementation does not list: a guest's features are those
+  its `hello` reply lists when its application opts in to everything the corpus uses (`allowComponentEmbedding`), and a
+  host's those its `hello` lists, which the adapter reports in `describe`. A scenario that needs a [page
+  transport](#page-transport) the driver does not know is `unsupported` too;
+- otherwise `pass` or `fail`.
+
+The status file records each case's expected outcome and the comparison follows the driver's rules
+([status files](../../../eng/conformance/README.md#status-files)). `runic-host/1` is experimental, so an implementation of
+it is at most `preview`.
+
+### Page transport
+
+The [region scenarios](#region-scenarios) make requests of a frame surface or a component as a host page would. The
+driver checks them at the HTTP and WebSocket upgrade level only: statuses, the redirect and its fragment, the
+`Content-Security-Policy`, `Referrer-Policy`, CORS and cookie headers, and the subprotocol `runic-desktop.<token>`. What a
+page sends after the upgrade so that the guest counts it, the bootstrap script's path and the page WebSocket's path belong
+to the surface's own page transport, which this corpus does not define. The adapter names its profile in `describe`
+(`pageTransport`). The driver knows one:
+
+| Profile | Bootstrap | Page WebSocket | After `101` |
+| --- | --- | --- | --- |
+| `webui-compat/52f9e75` ([wire profile](../wire-profile.md), private to `Runic.Desktop`) | `webui.js`; a bootstrap with `const SESSION_CREDENTIAL="` carries a credential | `_webui_ws_connect` | The token check: a binary message of 9 bytes, `0xDD`, the bootstrap's `const TOKEN=<n>;` as a little-endian 32-bit number (0 for a component), two zero bytes, `0xF5` and a zero byte |
+
+A guest without a profile the driver knows reports the `frame` and `component` requests, and the `component-url` secret,
+`unsupported`. A Runic-owned page transport for regions would be a new profile with its own vectors
+([wire profile](../wire-profile.md)).
+
+### Runner seams
+
+A runner drives an implementation only through these seams. An adapter gives the driver each one that its
+implementation has (the ops of [`host/1`](../../../eng/conformance/PROTOCOL.md#host-protocol-host1)); in .NET they are
+`RunicGuestOptions` members and the test suite's fakes.
+
+| Seam | Role | What the runner needs | In .NET |
+| --- | --- | --- | --- |
+| Standard input and output | guest | Write the offer line to the guest's standard input, close it, and read its output line by line | `RunicGuestOptions.FromStreams`: the guest runs in the adapter's process on two pipes |
+| Process exit | guest | See that the guest ends its process, without ending the runner | `RunicGuestOptions.ExitProcess` records the code |
+| Limits | guest, host | Configure the `arrange.limits` of the scenario | `RunicGuestOptions` (`StartTimeout`, `UnauthenticatedTimeout`, `HelloTimeout`, `RequestTimeout`, `MaximumWaitingRequests`) and `RunicHostedApplicationOptions` with `RunicHostedLimits` |
+| Privileges | guest | Play a standard user, or an elevated guest without running elevated | `ReadPrivileges`, `RunsElevated` |
+| Test application | guest | The Windows, actions and results of the [test application](#test-application), without loading pages | `HostConformanceAdapter` and `ConformanceMenus`, `ConformanceGuardedWindow`, `ConformanceDropWindow` |
+| Guest process | host | A guest the host starts that relays its standard input and output to the runner, which listens on its own channel | `--puppet-guest`, with the runner's port in `RUNIC_TEST_PUPPET_PORT` |
+| Headless windows and the user | host | Windows without a screen, their native menu bars, and the user's clicks, shortcuts, dialogs and context menus ([the host's user](#the-hosts-user)) | `HostedWindowHost`, `FakeHostDialogs`, `HostUser` |
+| Clipboard, monitors and launches | host | Fakes whose content a step sets and an `expect` reads | `RunicTestPlatform` |
+| Time | guest, host | Real time: `advance` waits the named limit; the host role waits at least `guestActivation` | The driver waits the limit and 500 ms; .NET's host runner at least `RunicHostedWindow.GuestActivationWindow` (2,000 ms) and 100 ms |
+| Timeouts | guest, host | The runner's own wait for a message, a line or a result | The driver: twice its receive timeout (2 × 5 s, scaled by `RAX_TEST_TIMEOUT_SCALE`); .NET's host runner: 10 s, scaled |
 
 ## Scenarios
 
@@ -115,7 +172,7 @@ Messages are compared by JSON value, never by bytes or member order.
 | `frame-url` | Matches a new frame launch address of the [`region-attach`](../host-protocol.md#region-attach) form, on the loopback family that the embedder of the latest `region-attach` the runner sent does not use, and binds it for `frame` steps |
 | `frame-token` | The frame token of the latest `frame` `launch` (only written, as a `frame` step's `token`) |
 | `component-module` | Matches the module address of a component attach ([`region-component/1`](../host-protocol.md#component-mode-region-component1)): `http://`, a loopback literal and a port, ending in `/_runic_component/component.js`, on `127.0.0.1`, or on `[::1]` when the latest `region-attach` the runner sent named a `127.0.0.1` embedder without `allowSameSite`, or with `browser: true` named an embedder other than `[::1]`; it binds it for `component` steps |
-| `component-url` | Matches the component's WebSocket address, `ws://` on the module's authority ending in `/_webui_ws_connect`, and binds it |
+| `component-url` | Matches the component's WebSocket address, `ws://` on the module's authority ending in the page WebSocket's path of the [page transport](#page-transport) (`/_webui_ws_connect`), and binds it |
 | `component-token` | Matches a new component token, 43 characters of base64url, and binds it; written as a `component` step's `token` |
 
 ## Test application
@@ -299,8 +356,8 @@ New steps and actions the runners need:
   | `request` | The request |
   | --- | --- |
   | `launch` | `GET` of the frame launch address, without following the redirect or sending a cookie. A `303` must redirect to the frame surface with `#runic-frame=<token>`, which binds `frame-token`, and carry `Content-Security-Policy: frame-ancestors <embedder>`, `Referrer-Policy: no-referrer` and no `X-Frame-Options` or `Set-Cookie` |
-  | `bootstrap` | `GET` of the frame surface's `webui.js`, which must carry no session credential |
-  | `upgrade` | The Bridge WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner sends the Bridge's token check, so the guest counts the page, and keeps the connection until the scenario ends |
+  | `bootstrap` | `GET` of the frame surface's bootstrap script ([page transport](#page-transport)), which must carry no session credential |
+  | `upgrade` | The page WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner admits the page as its [page transport](#page-transport) says, so the guest counts the page, and keeps the connection until the scenario ends |
   | `closed` | No request: waits until the guest closes the page connection that the latest `101` kept, as a `region-detach` does, and fails after the runner's timeout. It takes no `status` or `refused` |
 
   For [`region-component/1`](../host-protocol.md#component-mode-region-component1), the step `component` makes one
@@ -310,7 +367,7 @@ New steps and actions the runners need:
   | `request` | The request |
   | --- | --- |
   | `module` | `GET` of the bound `component-module`, without a cookie. A `200` must carry `Access-Control-Allow-Origin` with exactly the request's `Origin` and no `Set-Cookie` |
-  | `upgrade` | The WebSocket upgrade of the bound `component-url`, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "component-token"}`). After `101` the runner sends the token check with a packet token of 0, so the guest counts the page, and keeps the connection until the scenario ends |
+  | `upgrade` | The WebSocket upgrade of the bound `component-url`, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "component-token"}`). After `101` the runner admits the page as its [page transport](#page-transport) says for a component, so the guest counts the page, and keeps the connection until the scenario ends |
   | `closed` | As for `frame`: waits until the guest closes the page that the latest `101` kept |
 
   `region-detach` is a push without a reply, which the guest applies in its own time. A scenario checks a frame or

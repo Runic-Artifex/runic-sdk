@@ -198,12 +198,43 @@ that requires one the adapter does not list is `unsupported`.
 | `server.wsSend` | `{conn, kind, data}` | `{}`: the host sends the message (data in base64) on the WebSocket that the connection `conn` opened. |
 | `server.wsClose` | `{conn, code, reason}` | `{}`: the host closes that WebSocket after the messages it sent. |
 
+## Host protocol (`host/1`)
+
+The corpus is [`specs/desktop/host-conformance`](../../specs/desktop/host-conformance/README.md): the scenarios of the
+Runic host protocol, `runic-host/1`. For the `guest` role the driver plays the host. It writes the offer, reads the
+launch lines, connects to the guest's channel over a real loopback WebSocket, sends and matches every message, computes
+the nonce, keys and proofs, and makes the region scenarios' frame and component requests. The adapter starts the guest
+with the corpus's [test application](../../specs/desktop/host-conformance/README.md#test-application) and runs its
+actions. The driver has no steps for the `host` role yet.
+
+`describe` adds `pageTransport`, the guest's [page-transport profile](../../specs/desktop/host-conformance/README.md#page-transport)
+(`webui-compat/52f9e75` for Runic's .NET guest). `features` are the features the guest lists in its `hello` reply when
+its application opts in to everything the corpus uses.
+
+One guest runs at a time:
+
+| op | args | ok |
+| --- | --- | --- |
+| `host.guest.start` | `{application, limits}`: the scenario's `arrange` | `{}`: the guest starts in hosted mode with the test application and these limits, reading its standard input |
+| `host.guest.input` | `{line}` | `{}`: writes the line and a line feed to the guest's standard input; `null` writes nothing |
+| `host.guest.closeInput` | — | `{}`: closes the guest's standard input |
+| `host.guest.line` | `{waitMs}` | `{line}`: the guest's next line of standard output, or `null` when none came within `waitMs` |
+| `host.guest.output` | — | `{lines}`: every line of standard output so far, for failure output |
+| `host.guest.exit` | `{waitMs}` | `{state, code?, failure?, message?, processExits}` once the guest's hosted run ended, or after `waitMs`: `state` is `running`, `returned` (with Run's `code`) or `failed` (with the hosted start's `failure` code, or `unmapped:<what>`); `processExits` are the codes with which the guest tried to end its process |
+| `host.guest.act` | `{as, action}`: the step's `guest` object, its `$file` values resolved to paths, and its `as` (or `null`) | `{}` at once; the action runs on |
+| `host.guest.result` | `{as, waitMs}` | `{state}` once the action ended or after `waitMs`: `pending`; `cancelled`; `failed` with `codes`, the open's diagnostic codes; `faulted` with `message`; or `done` with `value`, the README's result members (`opened: true`, `closed`, `outcome`, `selected`, `dismissed`, `chosen`, `button`, `text`, `monitors`, or a state the driver waits for: `activity`, `appearance`, `dropped`, `invoked`, `locale`, `placement`, read again on each call) |
+| `host.guest.stop` | — | `{}` once the guest's run ended and everything it held is released |
+
+An outcome is `{"success": {}}`, `{"unavailable": <reason>}` or `{"failed": <code>}` in kebab case. The driver compares
+results by JSON value, and waits for a state by asking again until it matches or its timeout passes.
+
 ## Other corpora
 
 Each corpus module adds ops under its own prefix:
 
 - Command Line: `cl.parse {catalog, argv, env}`, `cl.readEnvelope {input}`, `cl.write {case}`;
 - Translations: `tr.loadPack {artifact}`, `tr.format {pack, message, args, locale}`, `tr.resolveReference {text}`;
-- the host protocol: `host.*`, with guest and host roles.
+- the host protocol's host role: `host.host.*`;
+- the Desktop presentation contract (`desktop.presentation/1`): `desktop.*`.
 
 The framing, the results, the statuses and the driver core are the same for every corpus.
