@@ -58,9 +58,10 @@ internal sealed class CreateTests
         Equal("Nix flake", model.Toggles[2].DisplayName);
         Equal("Packaging manifests", model.Toggles[3].DisplayName);
         Equal("Restore packages", model.Toggles[4].DisplayName);
-        // Text parameters are options generated from the model; --application-id is the template's only one.
-        Equal("application-id", string.Join(',', model.Texts.Select(text => text.LongName)));
-        Equal("Application ID", model.Texts[0].DisplayName);
+        // Text parameters are options generated from the model: --library and --application-id.
+        Equal("library,application-id", string.Join(',', model.Texts.Select(text => text.LongName)));
+        Equal("Library project", model.Texts[0].DisplayName);
+        Equal("Application ID", model.Texts[1].DisplayName);
         True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
         Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
@@ -103,6 +104,34 @@ internal sealed class CreateTests
         True(!output.Contains("--application-id", StringComparison.Ordinal), output);
         (_, string help, _) = Run("--help");
         True(help.Contains("--application-id", StringComparison.Ordinal), help);
+    }
+
+    // sdk#1386: --library does not support --translations or --nix yet. dotnet new leaves them out with a warning; the
+    // creator refuses them, naming each, so its JSON output never reports an option the project does not have.
+    [Test, DisplayName("--library with --translations or --nix is RCREATE006, naming the options")]
+    public void LibraryRefusesUnsupportedOptions()
+    {
+        foreach ((string[] options, string named) in new[]
+        {
+            (new[] { "--translations", "--nix" }, "--translations or --nix"),
+            (new[] { "--translations" }, "--translations"),
+            (new[] { "--nix" }, "--nix"),
+        })
+        {
+            (int exitCode, string output, _) = Run(["MyApp", "--library", "MyApp.Core", .. options, "--yes", "--dry-run", "--format", "json"]);
+            Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            using JsonDocument document = JsonDocument.Parse(output);
+            JsonElement fault = document.RootElement.GetProperty("fault");
+            Equal("RCREATE006", fault.GetProperty("code").GetString());
+            True(fault.GetProperty("message").GetString()!.StartsWith($"--library does not support {named} yet.", StringComparison.Ordinal), output);
+        }
+        // Without --library they apply; --library alone is a solution.
+        (int code, string plain, string error) = Run("MyApp", "--translations", "--nix", "--yes", "--dry-run", "--format", "json");
+        Equal("0", code.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        True(plain.Contains(" --translations --nix", StringComparison.Ordinal), plain);
+        (code, string library, error) = Run("MyApp", "--library", "MyApp.Core", "--tests", "--yes", "--dry-run", "--format", "json");
+        Equal("0", code.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        True(library.Contains(" --library MyApp.Core", StringComparison.Ordinal), library);
     }
 
     [Test, DisplayName("--force creates the project in a directory that is not empty")]

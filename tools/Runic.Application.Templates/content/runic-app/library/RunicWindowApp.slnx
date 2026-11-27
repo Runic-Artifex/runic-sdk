@@ -1,0 +1,8 @@
+<Solution>
+  <!-- The application comes first, so Visual Studio starts it. -->
+  <Project Path="RunicWindowApp/RunicWindowApp.csproj" />
+  <Project Path="RunicCoreLibrary/RunicCoreLibrary.csproj" />
+<!--#if (tests) -->
+  <Project Path="RunicWindowApp.Tests/RunicWindowApp.Tests.csproj" />
+<!--#endif -->
+</Solution>

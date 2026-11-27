@@ -25,6 +25,7 @@ dotnet runic dev
 | `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from | `native` |
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
 | `--editor` | `none`, `vscode`: adds `.vscode/` with tasks for `dotnet runic dev`, debug configurations for the C# extension and the recommended extensions | `none` |
+| `--library` | A library project's name, such as `MyApp.Core`: creates a solution of the application and that library, which holds shared ViewModels and Views and a frontend package with their TypeScript clients, in one JavaScript workspace. See [A solution with a library](#a-solution-with-a-library). Not with `--translations` or `--nix` yet: they are left out with a warning | One project, no solution |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 | `--translations` | Translates the application with [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk) 0.9: one catalog in English and German (`Frontend/translations`) for the page and C#, a language switch, the application's language for every window, `RUNIC_LOCALE` for test runs, and page and .NET tests of the translated text | English text in the code |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
@@ -87,6 +88,56 @@ lock file and a local `dotnet-runic` tool manifest. The project sets
 `RestorePackagesWithLockFile`, so its first restore writes `packages.lock.json`,
 which pins every NuGet package to its version and content hash; commit it with
 the frontend's lock file.
+
+## A solution with a library
+
+`--library <Name>` creates a solution instead of a single project: the
+application, and a library project beside it for ViewModels and Views that
+more than one application can present.
+
+```bash
+dotnet new runic-app -n MyApp --library MyApp.Core
+cd MyApp
+dotnet tool restore
+dotnet runic dev
+```
+
+In the solution's folder, `dotnet runic dev` and `dotnet runic doctor` take
+its one Window project, the application.
+
+| Path | What it holds |
+| --- | --- |
+| `MyApp.slnx` | The solution, with the application first, so Visual Studio starts it |
+| `MyApp/` | The application, as `dotnet new runic-app` creates it without `--library`; its page shows the library's about panel |
+| `MyApp.Core/` | The library: `AboutViewModel` and its View. `RunicApplicationFrontendClientLibrary` makes its build generate the View's TypeScript client into its frontend package, `MyApp.Core/Frontend` |
+| `MyApp.Core/Frontend/` | The library's frontend package, `myapp-core`: its `build` script compiles it into `dist/`, whose exports hold the clients (`myapp-core/generated`) and their mocks (`myapp-core/generated/mocks`) |
+| `package.json` and its lock | A JavaScript workspace of the two frontends, with the lock file of the selected package manager (and `pnpm-workspace.yaml` for pnpm) |
+| `.config/`, `.vscode/`, `.gitignore`, `global.json` | Shared by the solution's projects; `.vscode/` (with `--editor vscode`) runs and debugs the application from the solution's folder |
+
+The application references the library and maps it with
+`RunicApplicationFrontendClientModule`, so its page imports the library's
+clients from the package instead of generating copies. A fresh clone needs no
+manual step: `dotnet build` of the solution, and `dotnet runic dev`, install the
+workspace once at its root from the lock file, and build the library and its
+package before the application's frontend. Every frontend and package manager
+has a workspace lock in the template. The
+[Views guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#share-viewmodels-and-their-clients-through-a-library)
+describes client libraries.
+
+`--library` does not support `--translations` or `--nix` yet. With either,
+`dotnet new` creates the solution without it and prints a warning that names
+each option it left out:
+
+```text
+Processing post-creation actions...
+Description: Warning: --translations was left out. --library does not support Translations yet, so the solution has no translation catalog.
+Manual instructions: Create the application without --library to translate it (…).
+```
+
+`dnx Runic.Create` refuses the combination with
+[`RCREATE006`](../../docs/diagnostics.md#rcreate006). Visual Studio and Rider
+offer both options beside a library project; their descriptions say that they
+do not apply to it. Create the application without `--library` to use them.
 
 ## Add a View to an existing project
 
@@ -163,7 +214,13 @@ ReactiveUI, plus pairwise CS-WebUI and CommunityToolkit.Mvvm variants, and
 checks that `Runic.Create` produces the same project. The pairwise variants and
 the npm projects add `--tests` and run the generated tests; every project also
 gets a View and a Window from `runic-view`. CI builds the SvelteKit projects on
-Node 26.
+Node 26. A `--library` solution for each frontend, together covering every
+package manager, is checked as a fresh clone: `dotnet build` of the solution,
+the frontends' type checks and tests and, for CS-WebUI, `dotnet runic dev`
+from a clean checkout, whose development server must resolve the library's
+built package. `RUNIC_TEMPLATE_LIBRARY_VARIANTS` selects them, and an empty
+`RUNIC_TEMPLATE_MANAGERS` or `RUNIC_TEMPLATE_VARIANTS` skips the other
+projects.
 Setting `RUNIC_APPLICATION_SERVE_ONLY=1` starts an app's local server, on either host,
 without opening a browser and prints `RUNIC_APPLICATION_URL=<url>`. Setting
 `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` makes a Runic Desktop app print

@@ -70,7 +70,7 @@ return RunicCsWebUiHost.Run(provider, RunAsync);
 #endif
 
 // The application is the same on every host: open the Window, then wait until it closes.
-#if (translations)
+#if (withTranslations)
 async Task<int> RunAsync(IRunicWindowHost host)
 {
     // The application's language: RUNIC_LOCALE (RUNIC_LOCALE=de dotnet run starts in German), else the best match for

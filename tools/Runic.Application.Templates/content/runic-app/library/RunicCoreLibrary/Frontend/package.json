@@ -1,0 +1,40 @@
+{
+  "name": "runic-library-starter",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "__PACKAGE_MANAGER__",
+  "engines": {
+    "node": "^24.18.0 || ^26.0.0"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./generated": {
+      "types": "./dist/generated/runic-clients.d.ts",
+      "default": "./dist/generated/runic-clients.js"
+    },
+    "./generated/mocks": {
+      "types": "./dist/generated/runic-mocks.d.ts",
+      "default": "./dist/generated/runic-mocks.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@runic-artifex/views": "__RUNIC_NPM_VERSION__"
+  },
+  "devDependencies": {
+    "@runic-artifex/views": "__RUNIC_NPM_VERSION__",
+    "typescript": "6.0.3"
+  }
+}

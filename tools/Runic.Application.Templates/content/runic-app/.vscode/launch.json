@@ -7,11 +7,23 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "runic: window",
+//#if (hasLibrary)
+      "program": "${workspaceFolder}/RunicWindowApp/bin/Debug/net10.0/RunicWindowApp",
+//#else
       "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp",
+//#endif
       "windows": {
+//#if (hasLibrary)
+        "program": "${workspaceFolder}/RunicWindowApp/bin/Debug/net10.0/RunicWindowApp.exe"
+//#else
         "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp.exe"
+//#endif
       },
+//#if (hasLibrary)
+      "cwd": "${workspaceFolder}/RunicWindowApp",
+//#else
       "cwd": "${workspaceFolder}",
+//#endif
       "env": {
         "DOTNET_ENVIRONMENT": "Development"
       },
@@ -35,8 +47,16 @@
       "type": "chrome",
       "request": "launch",
       "preLaunchTask": "runic: dev --browser",
+//#if (hasLibrary)
+      "file": "${workspaceFolder}/RunicWindowApp/obj/runic/dev-browser.html",
+//#else
       "file": "${workspaceFolder}/obj/runic/dev-browser.html",
+//#endif
+//#if (hasLibrary)
+      "webRoot": "${workspaceFolder}/RunicWindowApp/Frontend"
+//#else
       "webRoot": "${workspaceFolder}/Frontend"
+//#endif
 //#if (desktopHost)
     },
     {
@@ -45,8 +65,16 @@
       "name": "Window with WebView2 debugging (Windows)",
       "type": "coreclr",
       "request": "launch",
+//#if (hasLibrary)
+      "program": "${workspaceFolder}/RunicWindowApp/bin/Debug/net10.0/RunicWindowApp.exe",
+//#else
       "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp.exe",
+//#endif
+//#if (hasLibrary)
+      "cwd": "${workspaceFolder}/RunicWindowApp",
+//#else
       "cwd": "${workspaceFolder}",
+//#endif
       "env": {
         "DOTNET_ENVIRONMENT": "Development",
         "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--remote-debugging-port=9222"
@@ -59,8 +87,16 @@
       "name": "Window with JavaScript debugging (Linux)",
       "type": "coreclr",
       "request": "launch",
+//#if (hasLibrary)
+      "program": "${workspaceFolder}/RunicWindowApp/bin/Debug/net10.0/RunicWindowApp",
+//#else
       "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp",
+//#endif
+//#if (hasLibrary)
+      "cwd": "${workspaceFolder}/RunicWindowApp",
+//#else
       "cwd": "${workspaceFolder}",
+//#endif
       "env": {
         "DOTNET_ENVIRONMENT": "Development",
         "WEBKIT_INSPECTOR_SERVER": "127.0.0.1:9223"
@@ -81,7 +117,11 @@
       "port": 9222,
       "useWebView": true,
       "timeout": 30000,
+//#if (hasLibrary)
+      "webRoot": "${workspaceFolder}/RunicWindowApp/Frontend"
+//#else
       "webRoot": "${workspaceFolder}/Frontend"
+//#endif
 //#endif
     }
 //#if (desktopHost)

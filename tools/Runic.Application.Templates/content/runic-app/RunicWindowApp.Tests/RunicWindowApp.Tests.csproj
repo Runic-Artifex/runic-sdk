@@ -7,7 +7,7 @@
     <IsPackable>false</IsPackable>
     <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-<!--#if (nix) -->
+<!--#if (withNix) -->
     <!-- flake.nix restores the tests from it in locked mode for linux-x64 and runs them (doCheck). They run under
          the JIT, also in the NativeAOT package. -->
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
@@ -19,6 +19,10 @@
   </ItemGroup>
   <ItemGroup>
     <!-- The tests need the application's assembly, not its built frontend. -->
+<!--#if (hasLibrary) -->
+    <ProjectReference Include="../RunicWindowApp/RunicWindowApp.csproj" AdditionalProperties="RunicApplicationFrontendBuildEnabled=false" />
+<!--#else -->
     <ProjectReference Include="../RunicWindowApp.csproj" AdditionalProperties="RunicApplicationFrontendBuildEnabled=false" />
+<!--#endif -->
   </ItemGroup>
 </Project>

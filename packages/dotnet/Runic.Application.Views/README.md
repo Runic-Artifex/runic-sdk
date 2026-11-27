@@ -1684,6 +1684,13 @@ TypeScript: **the assembly that declares its Views.**
 [`examples/shared-library-clients`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/shared-library-clients)
 is a library, a package and an application that maps both.
 
+To start with one, `dotnet new runic-app -n MyApp --library MyApp.Core`
+creates the whole setup for any frontend and package manager: a solution of
+the application and the library, the library's frontend package with a `build`
+script, and a JavaScript workspace of both frontends with its lock file at the
+root. A fresh clone builds and runs with `dotnet build` and `dotnet runic dev`
+alone ([the template's README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Application.Templates/README.md#a-solution-with-a-library)).
+
 ### The library
 
 Set `RunicApplicationFrontendClientLibrary` and point the frontend directory at

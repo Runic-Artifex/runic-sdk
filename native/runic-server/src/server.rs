@@ -10,7 +10,7 @@ use axum::Router;
 use axum::body::{Body as AxumBody, BodyDataStream};
 use axum::extract::connect_info::Connected;
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Version, header};
 use axum::response::Response;
 use axum::serve::IncomingStream;
 use bytes::Bytes;
@@ -686,12 +686,20 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
     if parts.headers.get_all(header::HOST).iter().nth(1).is_some() {
         return status_only(StatusCode::BAD_REQUEST);
     }
+    // RFC 9112 §3.2: so is an HTTP/1.1 request without Host. An HTTP/1.0 request without one meets the Host check.
+    if parts.version == Version::HTTP_11 && !parts.headers.contains_key(header::HOST) {
+        return status_only(StatusCode::BAD_REQUEST);
+    }
     if !inner.config.all_interfaces
         && !host::admits(parts.headers.get(header::HOST).map(HeaderValue::as_bytes), inner.port)
     {
         return status_only(StatusCode::MISDIRECTED_REQUEST);
     }
     let upgrade = if parts.method == Method::GET && is_upgrade(&parts.headers) {
+        // RFC 6455 §4.2.2, §4.4: another version gets 426 with the version the server understands.
+        if websocket::other_version(&parts.headers) {
+            return websocket::unsupported_version(status_only(StatusCode::UPGRADE_REQUIRED));
+        }
         websocket::Upgrade::from_parts(&mut parts)
     } else {
         None
@@ -739,7 +747,7 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
                 }
                 Payload::File(path) => {
                     guard.disarm();
-                    files::respond(path, status, headers, &parts.headers, parts.method == Method::HEAD).await
+                    files::respond(path, status, headers, &parts.headers, &parts.method).await
                 }
                 Payload::Stream(receiver) => {
                     // The guard moves into the body: dropping an unfinished body reports the abort.

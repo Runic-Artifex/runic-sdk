@@ -121,7 +121,7 @@ test("the shipped template has no hidden or version parameters, and the pack sta
     const symbols = JSON.parse(shipped).symbols;
     const parameters = Object.entries(symbols).filter(([, symbol]) => symbol.type === "parameter").map(([name]) => name);
     assert.deepEqual(parameters,
-      ["frontend", "angularBuild", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "editor", "tests", "translations", "nix", "packaging", "restore", "applicationId"]);
+      ["frontend", "angularBuild", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "editor", "library", "tests", "translations", "nix", "packaging", "restore", "applicationId"]);
     for (const name of parameters) {
       assert.doesNotMatch(`${name} ${symbols[name].replaces ?? ""}`, /version/i, `${name} sets a version`);
       assert.ok(host.symbolInfo[name], `${name} has no dotnetcli.host.json entry`);
@@ -418,6 +418,149 @@ test("the translated Vite frontends' package.json and locks are the frontend's o
         next++;
       }
     }
+  }
+});
+
+// D081.5: --library <Name> creates a solution: the application in a folder of its own, a client library with a View and its
+// frontend package, and one JavaScript workspace at the root with the lock of the selected manager
+// (runic-app/library/workspaces/<framework>). The application's frontend is the starter's with the library's about panel,
+// and its package.json is the starter's with the dependency on the library's package, so the two cannot drift apart.
+test("the library variants' application frontends are the starters' with a dependency on the library's package", () => {
+  const content = resolve(root, "tools/Runic.Application.Templates/content/runic-app");
+  for (const framework of ["react", "vue", "svelte", "sveltekit", "angular", "angular-vite"]) {
+    const read = (variant, file) => readFileSync(resolve(content, variant, framework, file), "utf8");
+    const manifest = JSON.parse(read("library/frontends", "package.json"));
+    assert.equal(manifest.dependencies["runic-library-starter"], "__LIBRARY_DEPENDENCY__", framework);
+    delete manifest.dependencies["runic-library-starter"];
+    assert.deepEqual(manifest, JSON.parse(read("frontends", "package.json")), framework);
+  }
+});
+
+test("--library scaffolds a solution of the application and a library for every frontend and package manager", () => {
+  const directory = mkdtempSync(join(tmpdir(), "runic-template-library-"));
+  try {
+    const content = join(directory, "content");
+    cpSync(templateContent, content, { recursive: true });
+    writeFileSync(join(content, ".template.config/template.json"), stampTemplateJson(join(directory, "stamp")));
+    const dotnet = (...args) => {
+      const result = spawnSync("dotnet", [...args, "--debug:custom-hive", join(directory, "hive")],
+        { cwd: directory, encoding: "utf8", env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1", DOTNET_NOLOGO: "1" } });
+      assert.equal(result.status, 0, `dotnet ${args.join(" ")}\n${result.stdout}${result.stderr}`);
+      return result.stdout;
+    };
+    dotnet("new", "install", content);
+    // What dotnet new printed for the last project created: the post-actions' messages.
+    let printed = "";
+    const create = (output, ...options) => {
+      printed = dotnet("new", "runic-app", "--name", "Notes", "--output", output, ...options);
+      return Object.fromEntries(readdirSync(join(directory, output), { recursive: true, withFileTypes: true })
+        .filter(entry => entry.isFile())
+        .map(entry => join(entry.parentPath, entry.name))
+        .map(path => [path.slice(join(directory, output).length + 1).replaceAll("\\", "/"), readFileSync(path, "utf8")]));
+    };
+    const panels = {
+      react: "Frontend/src/AboutPanel.tsx", vue: "Frontend/src/AboutPanel.vue", svelte: "Frontend/src/AboutPanel.svelte",
+      sveltekit: "Frontend/src/lib/AboutPanel.svelte", angular: "Frontend/src/app/about.ts", "angular-vite": "Frontend/src/app/about.ts",
+    };
+    const locks = { npm: "package-lock.json", pnpm: "pnpm-lock.yaml", bun: "bun.lock" };
+    const frontendOptions = frontend => frontend === "angular-vite" ? ["--frontend", "angular", "--angular-build", "vite"] : ["--frontend", frontend];
+    let index = 0;
+    for (const [frontend, panel] of Object.entries(panels)) {
+      for (const [manager, lock] of Object.entries(locks)) {
+        const viewModels = index++ % 2 ? "toolkit" : "reactiveui";
+        const label = `${frontend} ${manager} ${viewModels}`;
+        const plain = create(`${frontend}-${manager}`, ...frontendOptions(frontend), "--package-manager", manager, "--view-models", viewModels);
+        const files = create(`${frontend}-${manager}-library`, ...frontendOptions(frontend), "--package-manager", manager,
+          "--view-models", viewModels, "--library", "Notes.Core", "--tests", "--editor", "vscode");
+        // The application's own files move into Notes/, with their content unchanged apart from the library's additions.
+        for (const file of ["Program.cs", "Views.cs", "ApplicationIdentity.cs", "Properties/launchSettings.json", "icons/icon.svg", "Frontend/package.json"]) {
+          assert.ok(files[`Notes/${file}`], `${label}: no Notes/${file}`);
+          assert.ok(!files[file], `${label}: ${file} stayed in the solution's folder`);
+        }
+        assert.equal(files["Notes/Program.cs"], plain["Program.cs"], `${label}: Program.cs`);
+        for (const file of [".config/dotnet-tools.json", ".gitignore", ".vsconfig", ".vscode/launch.json", "global.json", "README.md", "Notes.slnx", "package.json", ".npmrc", lock,
+          "Notes.Tests/Notes.Tests.csproj", "Notes.Core/Notes.Core.csproj", "Notes.Core/AboutViewModel.cs", "Notes.Core/Views.cs",
+          "Notes.Core/Frontend/package.json", "Notes.Core/Frontend/tsconfig.json", "Notes.Core/Frontend/src/index.ts", "Notes/README.md", `Notes/${panel}`]) {
+          assert.ok(files[file] !== undefined, `${label}: no ${file}`);
+        }
+        // One lock, at the workspace root.
+        const lockFiles = Object.keys(files).filter(path => /(^|\/)(package-lock\.json|pnpm-lock\.yaml|bun\.lock)$/.test(path));
+        assert.deepEqual(lockFiles, [lock], `${label}: lock files`);
+        assert.equal(Object.hasOwn(files, "pnpm-workspace.yaml"), manager === "pnpm", `${label}: pnpm-workspace.yaml`);
+        assert.ok(!Object.keys(files).some(path => path.endsWith("flake.nix") || path.includes("/translations/")), `${label}: --nix or --translations files`);
+        assert.doesNotMatch(printed, /Warning:/, `${label}: a warning without --translations or --nix`);
+        // The solution: the application first, then the library and the tests.
+        assert.deepEqual([...files["Notes.slnx"].matchAll(/<Project Path="([^"]+)"/g)].map(match => match[1]),
+          ["Notes/Notes.csproj", "Notes.Core/Notes.Core.csproj", "Notes.Tests/Notes.Tests.csproj"], label);
+        // The workspace and its two packages.
+        const root = JSON.parse(files["package.json"]);
+        const app = JSON.parse(files["Notes/Frontend/package.json"]);
+        const library = JSON.parse(files["Notes.Core/Frontend/package.json"]);
+        assert.deepEqual(root.workspaces, ["Notes.Core/Frontend", "Notes/Frontend"], label);
+        assert.equal(root.name, "notes-workspace", label);
+        assert.equal(library.name, "notes-core", label);
+        assert.equal(app.name, "notes", label);
+        for (const manifest of [root, app, library]) assert.match(manifest.packageManager, new RegExp(`^${manager}@`), label);
+        assert.equal(app.dependencies["notes-core"], manager === "npm" ? "*" : "workspace:*", label);
+        delete app.dependencies["notes-core"];
+        assert.deepEqual(app, JSON.parse(plain["Frontend/package.json"]), `${label}: the application frontend's package.json`);
+        assert.equal(library.peerDependencies["@runic-artifex/views"], versions.npm, label);
+        assert.ok(library.scripts.build, label);
+        assert.match(files[lock], manager === "npm" ? /"node_modules\/notes-core": \{\n\s+"resolved": "Notes\.Core\/Frontend",\n\s+"link": true/
+          : manager === "pnpm" ? /^  Notes\/Frontend:$/m : /"notes-core": \["notes-core@workspace:Notes\.Core\/Frontend"\]/, `${label}: the lock links the library`);
+        // The projects.
+        assert.match(files["Notes.Core/Notes.Core.csproj"], /<RunicApplicationFrontendClientLibrary>true<\/RunicApplicationFrontendClientLibrary>/);
+        assert.match(files["Notes.Core/Notes.Core.csproj"], viewModels === "reactiveui" ? /Include="Runic\.Application\.Views\.ReactiveUI" Version="9\.8\.7"/ : /Include="CommunityToolkit\.Mvvm"/);
+        assert.match(files["Notes.Core/AboutViewModel.cs"], /^namespace Notes\.Core;$/m);
+        assert.match(files["Notes.Core/AboutViewModel.cs"], /public string Library => "Notes\.Core";/);
+        assert.match(files["Notes/Notes.csproj"], /<ProjectReference Include="\.\.\/Notes\.Core\/Notes\.Core\.csproj" \/>/);
+        assert.match(files["Notes/Notes.csproj"], /<RunicApplicationFrontendClientModule Include="Notes\.Core" Specifier="notes-core\/generated" \/>/);
+        assert.doesNotMatch(files["Notes/Notes.csproj"], /DefaultItemExcludes/);
+        assert.match(files["Notes.Tests/Notes.Tests.csproj"], /<ProjectReference Include="\.\.\/Notes\/Notes\.csproj"/);
+        assert.match(files["Notes/WorkspaceViewModel.cs"], /public AboutViewModel About \{ get; \}/);
+        assert.match(files["Notes/WorkspaceServices.cs"], /services\.AddScoped<AboutViewModel>\(\);/);
+        assert.match(files[`Notes/${panel}`], /from "notes-core\/generated"/);
+        // VS Code opens the solution's folder (F10).
+        assert.match(files[".vscode/launch.json"], /"program": "\$\{workspaceFolder\}\/Notes\/bin\/Debug\/net10\.0\/Notes"/);
+        assert.doesNotMatch(files[".vscode/launch.json"], /"\$\{workspaceFolder\}\/(bin|obj|Frontend)\//);
+        assert.match(files[".vscode/tasks.json"], /"args": \["runic", "dev", "--project", "Notes\/Notes\.csproj"\]/);
+        assert.match(files[".gitignore"], /^\*\*\/Frontend\/dist\/$/m);
+        for (const [path, text] of Object.entries(files)) {
+          if (/lock/.test(path) || path.endsWith(".png")) continue;
+          assert.doesNotMatch(text, /^\s*(#|\/\/#)(if|elif|else|endif)\b|<!--#|__[A-Z][A-Z_]+__|RunicCoreLibrary|RunicCoreNamespace|runic-library-starter|runic-app-starter/m, `${label}: ${path} keeps template syntax`);
+        }
+        // The project without --library has none of it.
+        assert.ok(!Object.keys(plain).some(path => /\.slnx$|^Notes\.Core\/|AboutPanel|about\.ts/.test(path)), `${label}: plain project`);
+        assert.doesNotMatch(plain["WorkspaceViewModel.cs"] + plain["Notes.csproj"], /About|ClientModule/, `${label}: plain project`);
+      }
+    }
+    // --translations and --nix do not combine with --library yet (sdk#1386): the template leaves them out and warns,
+    // naming each option it left out. The template engine cannot refuse a combination of parameters: a disabled
+    // parameter (isEnabled) is dropped silently, and a template constraint cannot read parameters.
+    const translationsWarning = /^Description: Warning: --translations was left out\. --library does not support Translations yet/m;
+    const nixWarning = /^Description: Warning: --nix was left out\. --library does not support the Nix flake yet/m;
+    for (const [output, options, warnings] of [
+      ["combined", ["--translations", "--nix"], [translationsWarning, nixWarning]],
+      ["combined-translations", ["--translations"], [translationsWarning]],
+      ["combined-nix", ["--nix"], [nixWarning]],
+    ]) {
+      const label = `--library ${options.join(" ")}`;
+      const combined = create(output, "--library", "Notes.Core", ...options);
+      assert.ok(!Object.keys(combined).some(path => path.endsWith("flake.nix") || path.includes("translations/")), label);
+      assert.doesNotMatch(combined["Notes/Notes.csproj"], /Translation|RuntimeIdentifiers/, label);
+      assert.doesNotMatch(combined["Notes/WorkspaceViewModel.cs"] + combined["Notes/Program.cs"], /Translation|Catalog/, label);
+      for (const warning of [translationsWarning, nixWarning]) {
+        assert.equal(warning.test(printed), warnings.includes(warning), `${label}: ${warning}\n${printed}`);
+      }
+      assert.match(printed, /Create the application without --library/, label);
+    }
+    // Without --library, the options apply and nothing warns.
+    const single = create("single", "--translations", "--nix");
+    assert.ok(single["flake.nix"] && single["Frontend/translations/en.rmf2"] !== undefined, "--translations --nix");
+    assert.match(single["Notes.csproj"], /Runic\.Translations/);
+    assert.doesNotMatch(printed, /Warning:/, "--translations --nix");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

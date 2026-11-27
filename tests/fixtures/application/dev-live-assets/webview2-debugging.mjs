@@ -10,9 +10,10 @@ export const variable = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 export const cdpEndpoint = port => `http://127.0.0.1:${port}/`;
 
 // A template JSON file as `dotnet new runic-app` generates it for Runic Desktop, but for the project name: the
-// //#if (<symbol>), //#if (<symbol> == "<value>"), //#else and //#endif blocks evaluated with `symbols` (desktopHost by
-// default), then whole-line comments removed, as the template's JSONC has them. A symbol missing from `symbols` throws.
-export function parseTemplateJson(text, symbols = { desktopHost: true }) {
+// //#if (<symbol>), //#if (<symbol> == "<value>"), //#else and //#endif blocks evaluated with `symbols` (by default
+// desktopHost, without --library), then whole-line comments removed, as the template's JSONC has them. A symbol missing
+// from `symbols` throws.
+export function parseTemplateJson(text, symbols = { desktopHost: true, hasLibrary: false }) {
   const kept = [], open = [];
   for (const line of text.split("\n")) {
     const directive = /^\s*\/\/#(if|else|endif)\b\s*(?:\((\w+)(?:\s*(==|!=)\s*"([^"]*)")?\))?\s*$/.exec(line);

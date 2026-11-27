@@ -3694,6 +3694,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             """;
     }
 
+    // A WebSocket upgrade (RFC 6455 §4.2.1: Upgrade: websocket and a Connection with the upgrade token) that names a
+    // Sec-WebSocket-Version other than 13 (runic-sdk#1418).
+    private static bool IsOtherWebSocketVersion(PresentationExchange context)
+    {
+        var version = context.GetRequestHeader("Sec-WebSocket-Version");
+        return version.Length != 0
+            && !string.Equals(version.Trim(), "13", StringComparison.Ordinal)
+            && context.GetRequestHeader("Upgrade").Contains("websocket", StringComparison.OrdinalIgnoreCase)
+            && PresentationCookies.SplitList(context.GetRequestHeader("Connection"))
+                .Contains("upgrade", StringComparer.OrdinalIgnoreCase);
+    }
+
     private async Task AcceptWebSocketAsync(PresentationExchange context)
     {
         if (!context.IsWebSocketRequest)
@@ -3701,6 +3713,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ReportConnectionProgress(context, ConnectionProgress.WebSocketRejected);
             HandshakeLog.RecordRejection("not a WebSocket upgrade");
             context.StatusCode = PresentationStatus.UpgradeRequired;
+            // RFC 9110 §15.5.22: a 426 names the protocol it requires. An upgrade with a Sec-WebSocket-Version other
+            // than 13 also learns the version this host understands (RFC 6455 §4.2.2, §4.4), as runic-server answers it
+            // (#1414); an upgrade without a version keeps the plain 426. PrepareResponseAsync already set Cache-Control
+            // (no-store among it) and the other default headers.
+            context.SetResponseHeader("Upgrade", "websocket");
+            if (IsOtherWebSocketVersion(context))
+            {
+                context.SetResponseHeader("Sec-WebSocket-Version", "13");
+                context.SetResponseHeader("Connection", "upgrade");
+            }
             return;
         }
 

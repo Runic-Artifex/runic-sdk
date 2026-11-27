@@ -1,0 +1,6 @@
+<aside class="about">
+  <h2>{{ heading() }}</h2>
+  @if (state()?.expanded) { <p>Shared ViewModels and Views, with their TypeScript clients in the library's frontend package.</p> }
+  <button [disabled]="!about.client() || toggle.pending()" (click)="toggle.run()">{{ state()?.expanded ? "Hide details" : "Show details" }}</button>
+  @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
+</aside>

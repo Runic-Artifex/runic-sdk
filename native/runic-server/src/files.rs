@@ -6,7 +6,7 @@ use std::io::SeekFrom;
 use std::path::PathBuf;
 
 use axum::body::Body;
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::response::Response;
 use bytes::BytesMut;
 use futures_util::stream;
@@ -27,7 +27,7 @@ pub(crate) async fn respond(
     status: StatusCode,
     mut headers: HeaderMap,
     request: &HeaderMap,
-    head: bool,
+    method: &Method,
 ) -> Response {
     let file = match File::open(&path).await {
         Ok(file) => file,
@@ -38,7 +38,8 @@ pub(crate) async fn respond(
         _ => return plain(StatusCode::NOT_FOUND, headers),
     };
     let ranged = status == StatusCode::OK && !headers.contains_key(header::CONTENT_ENCODING);
-    let range = if ranged { select(request, length) } else { Range::Full };
+    // RFC 9110 §14.2: range handling is defined for GET only; any other method gets the whole file.
+    let range = if ranged && method == Method::GET { select(request, length) } else { Range::Full };
     if ranged {
         headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
     }
@@ -57,7 +58,8 @@ pub(crate) async fn respond(
         }
     };
     headers.insert(header::CONTENT_LENGTH, HeaderValue::from(count));
-    let body = if head || count == 0 { Body::empty() } else { Body::from_stream(read(file, start, count)) };
+    let body =
+        if method == Method::HEAD || count == 0 { Body::empty() } else { Body::from_stream(read(file, start, count)) };
     let mut response = Response::new(body);
     *response.status_mut() = status;
     *response.headers_mut() = headers;

@@ -1,6 +1,6 @@
 import {test, expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {bindTemplateLock, templateLockDirectories, templateTranslationsVitePlugin, verifyTemplateLock} from './template-locks.mjs';
+import {bindTemplateLock, templateLibraryDependency, templateLibraryPackageName, templateLockDirectories, templateTranslationsVitePlugin, verifyTemplateLock} from './template-locks.mjs';
 
 const name = '@runic-artifex/svelte';
 const version = '0.2.0-preview.1';
@@ -36,7 +36,8 @@ for (const {directory, runicPackages, independentPackages} of templateLockDirect
   test(`${directory} real locks parse every Runic package and reject a changed candidate`, () => {
     const base = new URL(`../../tools/Runic.Application.Templates/content/${directory}/`, import.meta.url);
     const npm = JSON.parse(readFileSync(new URL('package-lock.json', base), 'utf8'));
-    const resolved = Object.entries(npm.packages).filter(([p]) => p.startsWith('node_modules/@runic-artifex/')).map(([p, v]) => [p.slice('node_modules/'.length), {version: v.version, integrity: v.integrity}]);
+    // A library variant's workspace links its own packages, the application's frontend among them.
+    const resolved = Object.entries(npm.packages).filter(([p, v]) => p.startsWith('node_modules/@runic-artifex/') && !v.link).map(([p, v]) => [p.slice('node_modules/'.length), {version: v.version, integrity: v.integrity}]);
     expect(resolved.map(([name]) => name).sort()).toEqual([...runicPackages, ...independentPackages].sort());
     // The candidates; the independently released packages are npm's, which the checks leave alone.
     const real = new Map(resolved.filter(([name]) => !independentPackages.includes(name)));
@@ -115,4 +116,35 @@ test('a pnpm or Bun lock whose Translations resolution the binding cannot parse 
   const bun = `  "packages": {\n    "${templateTranslationsVitePlugin}": ["${templateTranslationsVitePlugin}@0.13.0", "", {}],\n  },\n`;
   expect(() => bindTemplateLock(bun, 'bun.lock', train, registry)).toThrow('unparsed resolution');
   expect(() => bindTemplateLock('', 'yarn.lock', train, registry)).toThrow('Unsupported template lock');
+});
+// --library: each frontend's workspace root locks the application's frontend and the library's package, linked to each
+// other, with the members' package.json files the template writes.
+test('the library variants lock a workspace of the application frontend and the library package for every frontend', () => {
+  const library = templateLockDirectories.filter(entry => entry.library);
+  expect(library.map(entry => entry.framework)).toEqual(['react', 'vue', 'svelte', 'sveltekit', 'angular', 'angular-vite']);
+  const content = new URL('../../tools/Runic.Application.Templates/content/', import.meta.url);
+  const read = path => readFileSync(new URL(path, content), 'utf8');
+  for (const {directory, members} of library) {
+    const root = JSON.parse(read(`${directory}/package.json`));
+    expect(root.workspaces).toEqual(Object.keys(members));
+    expect(read(`${directory}/pnpm-workspace.yaml`)).toContain(Object.keys(members).map(folder => `  - ${folder}`).join('\n'));
+    const manifests = Object.fromEntries(Object.entries(members).map(([folder, file]) => [folder, JSON.parse(read(file))]));
+    expect(manifests['RunicCoreLibrary/Frontend'].name).toBe(templateLibraryPackageName);
+    expect(manifests['RunicWindowApp/Frontend'].dependencies[templateLibraryPackageName]).toBe('__LIBRARY_DEPENDENCY__');
+    const npm = JSON.parse(read(`${directory}/package-lock.json`));
+    expect(npm.packages[`node_modules/${templateLibraryPackageName}`]).toEqual({resolved: 'RunicCoreLibrary/Frontend', link: true});
+    expect(npm.packages['RunicWindowApp/Frontend'].dependencies[templateLibraryPackageName]).toBe(templateLibraryDependency('npm'));
+    expect(read(`${directory}/pnpm-lock.yaml`)).toMatch(/^  RunicWindowApp\/Frontend:\n[\s\S]*?      runic-library-starter:\n        specifier: workspace:\*\n        version: link:\.\.\/\.\.\/RunicCoreLibrary\/Frontend$/m);
+    const bun = read(`${directory}/bun.lock`);
+    expect(bun).toContain(`"${templateLibraryPackageName}": "workspace:*",`);
+    expect(bun).toContain(`"${templateLibraryPackageName}": ["${templateLibraryPackageName}@workspace:RunicCoreLibrary/Frontend"],`);
+  }
+});
+test('a workspace link to a Runic-scoped member resolves nothing and fails nothing', () => {
+  const app = '@runic-artifex/runic-app-starter';
+  const lock = JSON.parse(fixtures['package-lock.json']);
+  lock.packages[`node_modules/${app}`] = {resolved: 'RunicWindowApp/Frontend', link: true};
+  expect(verifyTemplateLock(JSON.stringify(lock), 'package-lock.json', candidates)).toBe(1);
+  const bun = fixtures['bun.lock'].replace('  "packages": {', `  "packages": {\n    "${app}": ["${app}@workspace:RunicWindowApp/Frontend"],`);
+  expect(verifyTemplateLock(bun, 'bun.lock', candidates)).toBe(1);
 });
