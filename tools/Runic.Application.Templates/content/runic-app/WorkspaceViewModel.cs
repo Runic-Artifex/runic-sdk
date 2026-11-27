@@ -1,7 +1,10 @@
 #if (viewModels == "reactiveui")
 using ReactiveUI;
 using ReactiveUI.Primitives;
-#if (translations)
+#if (hasLibrary)
+using RunicCoreNamespace;
+#endif
+#if (withTranslations)
 using System.ComponentModel;
 using Runic.Application.Views;
 using Runic.Translations;
@@ -11,14 +14,14 @@ namespace RunicWindowApp;
 
 public interface IWorkspacePage { }
 
-#if (translations)
+#if (withTranslations)
 public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
 #else
 public sealed class WorkspaceViewModel : ReactiveObject
 #endif
 {
     private IWorkspacePage _main;
-#if (translations)
+#if (withTranslations)
     private readonly IRunicWindowLocale _locale;
     private string _language;
 #endif
@@ -28,17 +31,22 @@ public sealed class WorkspaceViewModel : ReactiveObject
     // so a command needs no scheduler argument. The generated Bridge logs a command's
     // unexpected exception, and a command needs disposing only when its canExecute
     // observes an object that outlives this ViewModel, so these need neither.
-#if (translations)
+#if (withTranslations)
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter,
         IRunicApplicationLocale application, IRunicWindowLocale locale, TranslationContext translations)
+#elif (hasLibrary)
+    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter, AboutViewModel about)
 #else
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)
 #endif
     {
         _main = welcome;
+#if (hasLibrary)
+        About = about;
+#endif
         ShowWelcomeCommand = ReactiveCommand.Create(() => { Main = welcome; });
         ShowCounterCommand = ReactiveCommand.Create(() => { Main = counter; });
-#if (translations)
+#if (withTranslations)
         // The Window follows the application's language; Language shows it to the page's language list.
         _locale = locale;
         _language = locale.Locale ?? AppTextCatalog.DefaultLocale;
@@ -61,7 +69,13 @@ public sealed class WorkspaceViewModel : ReactiveObject
 
     public ReactiveCommand<RxVoid, RxVoid> ShowWelcomeCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ShowCounterCommand { get; }
-#if (translations)
+#if (hasLibrary)
+
+    // The RunicCoreLibrary library's ViewModel. Its View and TypeScript client come from the library, and the page
+    // shows it beside the Main page.
+    public AboutViewModel About { get; }
+#endif
+#if (withTranslations)
 
     // The language every Window shows, such as "en" or "de".
     public string Language
@@ -84,7 +98,7 @@ public sealed class WorkspaceViewModel : ReactiveObject
 
 public sealed class WelcomeViewModel : ReactiveObject, IWorkspacePage
 {
-#if (translations)
+#if (withTranslations)
     // A text reference of the catalog (Frontend/translations): the page shows it in the Window's language.
     public TranslationReference Greeting { get; } = AppText.References.welcome_greeting();
 #else
@@ -128,7 +142,10 @@ public sealed class CounterViewModel : ReactiveObject, IWorkspacePage
 #else
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-#if (translations)
+#if (hasLibrary)
+using RunicCoreNamespace;
+#endif
+#if (withTranslations)
 using System.ComponentModel;
 using Runic.Application.Views;
 using Runic.Translations;
@@ -138,7 +155,7 @@ namespace RunicWindowApp;
 
 public interface IWorkspacePage { }
 
-#if (translations)
+#if (withTranslations)
 public sealed partial class WorkspaceViewModel : ObservableObject, IDisposable
 #else
 public sealed partial class WorkspaceViewModel : ObservableObject
@@ -147,7 +164,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
     private readonly WelcomeViewModel _welcome;
     private readonly CounterViewModel _counter;
     private IWorkspacePage _main;
-#if (translations)
+#if (withTranslations)
     private readonly IRunicApplicationLocale _application;
     private readonly IRunicWindowLocale _locale;
     private readonly TranslationContext _translations;
@@ -165,6 +182,19 @@ public sealed partial class WorkspaceViewModel : ObservableObject
         Language = locale.Locale ?? AppTextCatalog.DefaultLocale;
         _locale.PropertyChanged += OnLocaleChanged;
     }
+#elif (hasLibrary)
+
+    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter, AboutViewModel about)
+    {
+        _welcome = welcome;
+        _counter = counter;
+        _main = welcome;
+        About = about;
+    }
+
+    // The RunicCoreLibrary library's ViewModel. Its View and TypeScript client come from the library, and the page
+    // shows it beside the Main page.
+    public AboutViewModel About { get; }
 #else
 
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)
@@ -186,7 +216,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
 
     [RelayCommand]
     private void ShowCounter() => Main = _counter;
-#if (translations)
+#if (withTranslations)
 
     // The language every Window shows, such as "en" or "de".
     [ObservableProperty]
@@ -213,7 +243,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
 
 public sealed partial class WelcomeViewModel : ObservableObject, IWorkspacePage
 {
-#if (translations)
+#if (withTranslations)
     // A text reference of the catalog (Frontend/translations): the page shows it in the Window's language.
     public TranslationReference Greeting { get; } = AppText.References.welcome_greeting();
 #else

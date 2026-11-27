@@ -70,6 +70,13 @@
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/svelte/*" Pack="true" PackagePath="content/content/runic-app/translations/svelte/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/sveltekit/*" Pack="true" PackagePath="content/content/runic-app/translations/sveltekit/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/angular-vite/*" Pack="true" PackagePath="content/content/runic-app/translations/angular-vite/" />
+      <!-- The workspace roots of the library variants (the library option). -->
+      <Content Include="$(TemplatePackContentRoot)runic-app/library/workspaces/react/*" Pack="true" PackagePath="content/content/runic-app/library/workspaces/react/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/library/workspaces/vue/*" Pack="true" PackagePath="content/content/runic-app/library/workspaces/vue/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/library/workspaces/svelte/*" Pack="true" PackagePath="content/content/runic-app/library/workspaces/svelte/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/library/workspaces/sveltekit/*" Pack="true" PackagePath="content/content/runic-app/library/workspaces/sveltekit/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/library/workspaces/angular/*" Pack="true" PackagePath="content/content/runic-app/library/workspaces/angular/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/library/workspaces/angular-vite/*" Pack="true" PackagePath="content/content/runic-app/library/workspaces/angular-vite/" />
     </ItemGroup>
   </Target>
   <Import Project="../../eng/build/application.targets" />

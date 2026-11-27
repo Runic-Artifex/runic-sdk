@@ -33,23 +33,48 @@ export const isIndependentRunicPackage = name =>
 export const templateTranslationsVitePlugin = '@runic-artifex/vite-plugin-runic-translations';
 export const templateTranslationsFrontends = Object.freeze(templateFrontends.filter(framework => framework !== 'angular'));
 
+// --library <Name> creates a solution whose root is a JavaScript workspace: the application's frontend, the frontend's
+// package.json with a dependency on the library's package (runic-app/library/frontends/<framework>), and the library's
+// frontend package (runic-app/library/RunicCoreLibrary/Frontend). Its lock files are the workspace root's,
+// runic-app/library/workspaces/<framework>, with the root package.json and pnpm-workspace.yaml they resolve. The
+// placeholders RunicWindowApp, RunicCoreLibrary and runic-library-starter in their paths and names are the template's
+// replacements, as @runic-artifex/runic-app-starter is in every lock.
+export const templateLibraryFrontends = templateFrontends;
+export const templateLibraryPackage = 'runic-app/library/RunicCoreLibrary/Frontend';
+export const templateLibraryPackageName = 'runic-library-starter';
+// How the application's frontend depends on the library's package: the workspace protocol, which npm does not have; npm
+// links the workspace whose name it has (template.json's libraryDependency).
+export const templateLibraryDependency = manager => manager === 'npm' ? '*' : 'workspace:*';
+
 // Every directory of the template with a package.json and its three lock files: the frontends, then their translated
-// variants. runicPackages are the candidate packages each lock resolves; independentPackages the published ones.
+// variants, then the library variants' workspace roots. runicPackages are the candidate packages each lock resolves;
+// independentPackages the published ones. A workspace root's members map each member folder below it to the
+// package.json the template writes there.
 export const templateLockDirectories = Object.freeze([
   ...templateFrontends.map(framework => ({
-    framework, translations: false, directory: templateFrontendDirectory(framework),
+    framework, translations: false, library: false, directory: templateFrontendDirectory(framework),
     runicPackages: templateRunicPackages[framework], independentPackages: [],
   })),
   ...templateTranslationsFrontends.map(framework => ({
-    framework, translations: true, directory: `runic-app/translations/${framework}`,
+    framework, translations: true, library: false, directory: `runic-app/translations/${framework}`,
     runicPackages: templateRunicPackages[framework], independentPackages: [templateTranslationsVitePlugin],
+  })),
+  ...templateLibraryFrontends.map(framework => ({
+    framework, translations: false, library: true, directory: `runic-app/library/workspaces/${framework}`,
+    runicPackages: templateRunicPackages[framework], independentPackages: [],
+    members: Object.freeze({
+      'RunicCoreLibrary/Frontend': `${templateLibraryPackage}/package.json`,
+      'RunicWindowApp/Frontend': `runic-app/library/frontends/${framework}/package.json`,
+    }),
   })),
 ].map(entry => Object.freeze({ ...entry, pnpmWorkspace: templatePnpmWorkspace(entry) })));
 
 // The pnpm-workspace.yaml whose overrides a pnpm lock resolves with, if it exists: pnpm reads none from package.json.
 // The Angular frontend's file reaches only --angular-build vite projects (template.json), which keep its vite override;
-// the Angular CLI starter has none since @angular/build depends on a fixed Vite (D072.3).
-function templatePnpmWorkspace({ framework, directory }) {
+// the Angular CLI starter has none since @angular/build depends on a fixed Vite (D072.3). A library variant's workspace
+// root has its own, which lists the workspace's packages.
+function templatePnpmWorkspace({ framework, directory, library }) {
+  if (library) return `${directory}/pnpm-workspace.yaml`;
   if (framework === 'angular') return null;
   return framework === 'angular-vite' ? 'runic-app/frontends/angular/pnpm-workspace.yaml' : `${directory}/pnpm-workspace.yaml`;
 }
@@ -89,7 +114,8 @@ export function verifyTemplateLock(text, filename, candidates, { requireRunic = 
     assert.ok(lock.packages?.[''], `${filename}: missing root package`);
     for (const [path, value] of Object.entries(lock.packages)) {
       const name = path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length);
-      if (!path.includes('node_modules/') || !name.startsWith('@runic-artifex/')) continue;
+      // A workspace's link to one of its own packages (a library variant's application frontend) resolves nothing.
+      if (!path.includes('node_modules/') || !name.startsWith('@runic-artifex/') || value.link) continue;
       entry(name, value.version, value.integrity);
       assert.equal(new URL(value.resolved).hostname, 'registry.npmjs.org', `${filename}: nonpublic Runic URL`);
     }
@@ -107,12 +133,15 @@ export function verifyTemplateLock(text, filename, candidates, { requireRunic = 
       assert.equal(match[3], candidates.get(match[1]).version, `${filename}: stale pnpm importer resolution`);
     }
   } else if (filename.endsWith('bun.lock')) {
+    // A workspace's own packages (a library variant's application frontend) resolve to their folder.
+    const workspacePackages = [...text.matchAll(/^    "(@runic-artifex\/[^"/]+)": \["\1@workspace:[^"]*"\],?$/gm)].length;
     for (const match of text.matchAll(/^    "(@runic-artifex\/[^"/]+)": \[(.+)\],?$/gm)) {
       const record = JSON.parse(`[${match[2]}]`);
       assert.ok(record[0].startsWith(`${match[1]}@`), `${filename}: unexpected Bun resolution`);
+      if (record.length === 1 && record[0].startsWith(`${match[1]}@workspace:`)) continue;
       entry(match[1], record[0].slice(match[1].length + 1), record.at(-1));
     }
-    assert.equal(count + independent.size, [...text.matchAll(/^    "@runic-artifex\//gm)].length, `${filename}: unparsed Runic Bun resolution`);
+    assert.equal(count + independent.size + workspacePackages, [...text.matchAll(/^    "@runic-artifex\//gm)].length, `${filename}: unparsed Runic Bun resolution`);
     for (const match of text.matchAll(/^        "(@runic-artifex\/[^"/]+)": "([^"]+)"/gm)) declarations({[match[1]]: match[2]});
   } else throw new Error(`Unsupported template lock: ${filename}`);
   if (requireRunic) assert.ok(count > 0, `${filename}: no Runic resolutions verified`);

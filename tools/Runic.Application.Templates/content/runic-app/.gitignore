@@ -2,6 +2,14 @@ bin/
 obj/
 TestResults/
 node_modules/
+#if (hasLibrary)
+# The application's and the library's frontends: their build output, and the typed View clients, which dotnet build and
+# dotnet runic dev regenerate.
+**/Frontend/dist/
+**/Frontend/.angular/
+**/Frontend/.svelte-kit/
+**/Frontend/src/generated/
+#else
 Frontend/dist/
 Frontend/.angular/
 Frontend/.svelte-kit/
@@ -9,9 +17,13 @@ Frontend/.svelte-kit/
 Frontend/src/generated/
 # The translation catalog's ESM and types for the page; the build and the development server regenerate them.
 Frontend/.runic/
+#endif
 # dotnet runic package output
 /artifacts/
-#if (nix)
+#if (hasLibrary)
+**/artifacts/
+#endif
+#if (withNix)
 # nix build output
 /result
 /result-*

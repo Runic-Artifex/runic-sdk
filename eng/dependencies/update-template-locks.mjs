@@ -5,7 +5,9 @@
 //   bun eng/dependencies/update-template-locks.mjs [directory...]
 //
 // Directories, such as runic-app/frontends/react, limit the run to those starters, so that a change to one starter's
-// dependencies leaves the other locks as they are; without them every starter's locks are regenerated.
+// dependencies leaves the other locks as they are; without them every starter's locks are regenerated. A library
+// variant's workspace root, such as runic-app/library/workspaces/react, is locked with its members' package.json files
+// (templateLockDirectories' members) in their folders below it.
 import { spawn } from "node:child_process";
 import { copyFile, mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,7 +15,7 @@ import { basename, join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
 import { readToolchain } from "../toolchain.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
-import { isIndependentRunicPackage, templateLockDirectories } from "../release/template-locks.mjs";
+import { isIndependentRunicPackage, templateLibraryDependency, templateLockDirectories } from "../release/template-locks.mjs";
 import { trainFeedNpm } from "../ci/train-feed.mjs";
 import { firstPartyScope, minimumReleaseAge, publishedBefore } from "./release-age.mjs";
 
@@ -30,8 +32,21 @@ const servedArchives = [
   ...workspace.npm.map(entry => ({ name: entry.name, version: workspace.version, file: `${entry.name.replace('@', '').replace('/', '-')}-${workspace.version}.tgz` })),
   ...Object.entries(trainFeedNpm()).map(([name, item]) => ({ name, version: item.version, file: basename(item.file) })),
 ];
-function independentRunicPackages(manifest) {
-  return Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).filter(isIndependentRunicPackage);
+function independentRunicPackages(manifests) {
+  return [...new Set(manifests.flatMap(manifest =>
+    Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).filter(isIndependentRunicPackage)))];
+}
+const content = join(root, "tools/Runic.Application.Templates/content");
+// The Runic packages of this repository at the checkout's version; an independently released package keeps the published
+// version the template pins.
+async function readManifest(file) {
+  const manifest = JSON.parse(await readFile(join(content, file), "utf8"));
+  for (const section of ["dependencies", "devDependencies", "peerDependencies"]) {
+    for (const name of Object.keys(manifest[section] ?? {})) {
+      if (name.startsWith("@runic-artifex/") && !isIndependentRunicPackage(name)) manifest[section][name] = workspace.version;
+    }
+  }
+  return manifest;
 }
 const selected = process.argv.slice(2).map(argument => argument.replace(/\/+$/u, ""));
 const directories = selected.length === 0 ? templateLockDirectories
@@ -58,29 +73,36 @@ try {
     if (!address) await new Promise(resolve => setTimeout(resolve, 25));
   }
   if (!address) throw new Error("Candidate registry did not become ready.");
-  for (const { directory: templateDirectory, pnpmWorkspace } of directories) {
-    const source = join(root, "tools/Runic.Application.Templates/content", templateDirectory);
-    const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
-    for (const section of ["dependencies", "devDependencies"]) {
-      for (const name of Object.keys(manifest[section] ?? {})) {
-        // An independently released package keeps the published version the template pins.
-        if (name.startsWith("@runic-artifex/") && !isIndependentRunicPackage(name)) manifest[section][name] = workspace.version;
-      }
-    }
+  for (const { directory: templateDirectory, pnpmWorkspace, members = {} } of directories) {
+    const source = join(content, templateDirectory);
+    const manifest = await readManifest(join(templateDirectory, "package.json"));
+    const memberManifests = await Promise.all(Object.entries(members).map(async ([folder, file]) => [folder, await readManifest(file)]));
+    const manifests = [manifest, ...memberManifests.map(([, member]) => member)];
     for (const [manager, filename, args] of [
       ["bun", "bun.lock", ["install", "--lockfile-only", "--ignore-scripts", `--minimum-release-age=${minimumReleaseAge}`,
-        ...[...runicPackages, ...independentRunicPackages(manifest)].map(name => `--minimum-release-age-excludes=${name}`)]],
+        ...[...runicPackages, ...independentRunicPackages(manifests)].map(name => `--minimum-release-age-excludes=${name}`)]],
       ["npm", "package-lock.json", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", `--before=${publishedBefore()}`]],
       ["pnpm", "pnpm-lock.yaml", ["install", "--lockfile-only", "--ignore-scripts", `--config.minimumReleaseAge=${minimumReleaseAge / 60}`,
         `--config.minimumReleaseAgeExclude=${firstPartyScope}`]],
     ]) {
       const directory = join(temporary, templateDirectory, manager);
       await mkdir(directory, { recursive: true });
-      manifest.packageManager = `${manager}@${toolchain[manager]}`;
-      await writeFile(join(directory, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
+      for (const [folder, written] of [["", manifest], ...memberManifests]) {
+        const copy = structuredClone(written);
+        copy.packageManager = `${manager}@${toolchain[manager]}`;
+        // The library variant's application frontend depends on the library's package as template.json's
+        // libraryDependency writes it for this manager.
+        for (const section of ["dependencies", "devDependencies"]) {
+          for (const [name, version] of Object.entries(copy[section] ?? {})) {
+            if (version === "__LIBRARY_DEPENDENCY__") copy[section][name] = templateLibraryDependency(manager);
+          }
+        }
+        await mkdir(join(directory, folder), { recursive: true });
+        await writeFile(join(directory, folder, "package.json"), JSON.stringify(copy, null, 2) + "\n");
+      }
       await writeFile(join(directory, ".npmrc"), `@runic-artifex:registry=${address}\n`);
       // pnpm reads overrides only from pnpm-workspace.yaml.
-      if (manager === "pnpm" && pnpmWorkspace) await copyFile(join(root, "tools/Runic.Application.Templates/content", pnpmWorkspace), join(directory, "pnpm-workspace.yaml")).catch(error => { if (error.code !== "ENOENT") throw error; });
+      if (manager === "pnpm" && pnpmWorkspace) await copyFile(join(content, pnpmWorkspace), join(directory, "pnpm-workspace.yaml")).catch(error => { if (error.code !== "ENOENT") throw error; });
       run(manager, args, directory, nodeCompatibility().env);
       let lock = await readFile(join(directory, filename), "utf8");
       for (const entry of servedArchives) {

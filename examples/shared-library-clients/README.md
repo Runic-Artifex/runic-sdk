@@ -38,6 +38,12 @@ fails the frontend's type check with `TS2344`, naming both contracts.
 The Views README has the full guide:
 [Share ViewModels and their clients through a library](../../packages/dotnet/Runic.Application.Views/README.md#share-viewmodels-and-their-clients-through-a-library).
 
+To start a new solution in this shape, run
+`dotnet new runic-app -n MyApp --library MyApp.Core`: it creates the
+application, a client library with a View and its frontend package, and the
+workspace that installs both, for every frontend and package manager
+([A solution with a library](../../tools/Runic.Application.Templates/README.md#a-solution-with-a-library)).
+
 ## How the page finds the package
 
 Inside this repository nothing installs the examples' frontends: the

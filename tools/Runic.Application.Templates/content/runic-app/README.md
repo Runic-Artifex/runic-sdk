@@ -6,6 +6,13 @@ __FRONTEND_NAME__ renders it.
 
 ## Run it
 
+<!--#if (hasLibrary) -->
+This application is part of a solution with the RunicCoreLibrary library; the
+solution's README, one folder up, describes the two together. Run the commands
+below in this folder. The solution's folder has the tool manifest, the
+JavaScript workspace and its lock file, and `.gitignore`.
+
+<!--#endif -->
 ```sh
 dotnet tool restore
 dotnet runic dev
@@ -338,7 +345,7 @@ Angular plugin (`@analogjs/vite-plugin-angular`), with the Runic Vite plugin
 the other frontends use. The project was created with `--angular-build vite`;
 the template's default is the Angular CLI. What Vite adds:
 
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
 - **The Translations development loop**: `runicTranslations()` compiles the
   catalog, and a message you edit, add or remove under `dotnet runic dev`
   reaches the page without a build. See [Translate it](#translate-it).
@@ -396,7 +403,7 @@ and the component build target.
 <!--#else -->
 | `ApplicationIdentity.cs` | The application ID and name from the project file. |
 <!--#endif -->
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
 <!--#if (translationsVitePlugin) -->
 | `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.1/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The .NET build generates `AppText` for C#, and `runicTranslations()` in `Frontend/vite.config.ts` compiles the page's modules into `Frontend/.runic/translations`. See [Translate it](#translate-it). |
 <!--#else -->
@@ -404,9 +411,11 @@ and the component build target.
 <!--#endif -->
 <!--#endif -->
 | `Properties/launchSettings.json` | Launch profiles for Visual Studio, Rider and `dotnet run`. See [Debug it in your IDE](#debug-it-in-your-ide). |
+<!--#if (!hasLibrary) -->
 | `.vsconfig` | The Visual Studio components the launch profiles need. See [Debug it in your IDE](#debug-it-in-your-ide). |
 <!--#if (editor == "vscode") -->
 | `.vscode/` | VS Code tasks for `dotnet runic dev`, debug configurations and the recommended extensions. See [VS Code](#vs-code). |
+<!--#endif -->
 <!--#endif -->
 | `icons/` | The application's placeholder icon: `icon.svg` and `icon.png` (512 px), from which the build derives the Windows and macOS icons. |
 <!--#if (packaging) -->
@@ -448,7 +457,20 @@ and the component build target.
 <!--#else -->
 | `Frontend/src/App.test.tsx` | A frontend test: Vitest runs the page against the generated mocks. See [Test it](#test-it). |
 <!--#endif -->
-<!--#if (tests) -->
+<!--#if (hasLibrary) -->
+<!--#if (frontend == "angular") -->
+| `Frontend/src/app/about.ts`, `Frontend/src/app/about.html` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#elif (frontend == "sveltekit") -->
+| `Frontend/src/lib/AboutPanel.svelte` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#elif (frontend == "svelte") -->
+| `Frontend/src/AboutPanel.svelte` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#elif (frontend == "vue") -->
+| `Frontend/src/AboutPanel.vue` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#else -->
+| `Frontend/src/AboutPanel.tsx` | The RunicCoreLibrary library's about panel: it connects to `WorkspaceViewModel.About` with the client that the page imports from the library's package, `runic-library-starter/generated`. |
+<!--#endif -->
+<!--#endif -->
+<!--#if (tests && !hasLibrary) -->
 | `RunicWindowApp.Tests/WorkspaceWindowTests.cs` | TUnit tests that drive the Window through `Runic.Application.Testing`. |
 | `global.json` | Runs `dotnet test` on Microsoft.Testing.Platform, which TUnit uses. |
 <!--#endif -->
@@ -464,7 +486,7 @@ writes from the catalog whenever Vite runs (`dotnet build`, `dotnet runic dev`,
 the frontend's `build` script and its test). The `build` script runs
 `vite build` before the type check, so they exist when the check runs on a
 clean checkout.
-<!--#elif (translations) -->
+<!--#elif (withTranslations) -->
 The page's Runic Translations modules are not committed either: `.gitignore`
 excludes `Frontend/.runic`, and `dotnet build` writes them from the catalog, so
 build once before the type check or the frontend test.
@@ -474,7 +496,7 @@ modules that a Vite plugin generates exist when the check runs on a clean
 checkout.
 <!--#endif -->
 
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
 ## Translate it
 
 The application shows one language in every window, English or German. Its
@@ -828,7 +850,7 @@ does not add it. On Windows these are app URI handlers: the MSIX manifest lists 
 host in a `uap3:AppUriHandler`, and each host serves
 `https://notes.example.org/.well-known/windows-app-web-link` with
 `[{"packageFamilyName":"<family name>","paths":["*"]}]`. Treat opened URLs and files as untrusted input.
-<!--#if (nix) -->
+<!--#if (withNix) -->
 
 ## Build it with Nix
 

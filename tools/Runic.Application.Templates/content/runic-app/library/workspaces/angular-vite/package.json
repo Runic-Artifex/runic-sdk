@@ -1,0 +1,13 @@
+{
+  "name": "@runic-artifex/runic-app-starter-workspace",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "__PACKAGE_MANAGER__",
+  "workspaces": [
+    "RunicCoreLibrary/Frontend",
+    "RunicWindowApp/Frontend"
+  ],
+  "overrides": {
+    "vite": "8.3.4"
+  }
+}

@@ -33,8 +33,9 @@ if (lockPath.endsWith("pnpm-lock.yaml")) {
       `'${name}': ${previousVersion}`,
       `'${name}': ${candidate.version}`,
     );
+    // Every importer that declares it: the root, or a workspace's members.
     lock = lock.replace(
-      new RegExp(`(^      '${escapedName}':\\n        specifier: )[^\\n]+(\\n        version: )[^\\n(]+`, "m"),
+      new RegExp(`(^      '${escapedName}':\\n        specifier: )[^\\n]+(\\n        version: )[^\\n(]+`, "gm"),
       `$1${candidate.version}$2${candidate.version}`,
     );
     const marker = `  '${name}@${candidate.version}':\n`;
@@ -96,25 +97,32 @@ if (!lockPath.endsWith("package-lock.json")) {
 const lock = JSON.parse(readFileSync(lockPath, "utf8"));
 const root = lock.packages?.[""];
 if (!root) throw new Error("Template lock does not contain a root package entry.");
+// The root package declares the frontend's dependencies; a workspace root's members (a --library variant's two frontend
+// packages) declare their own, and the root none.
 const declared = new Set();
-for (const sectionName of ["dependencies", "devDependencies"]) {
-  const section = root[sectionName] ?? {};
-  for (const name of Object.keys(section).filter((item) => candidates.has(item))) {
-    section[name] = candidates.get(name).version;
-    declared.add(name);
+for (const [path, entry] of Object.entries(lock.packages)) {
+  if (path.includes("node_modules/")) continue;
+  for (const sectionName of ["dependencies", "devDependencies", "peerDependencies"]) {
+    const section = entry[sectionName] ?? {};
+    for (const name of Object.keys(section).filter((item) => candidates.has(item))) {
+      section[name] = candidates.get(name).version;
+      declared.add(name);
+    }
   }
 }
 if (declared.size === 0) throw new Error("Template lock does not declare any supplied candidates.");
 for (const name of declared) {
-  const entry = lock.packages?.[`node_modules/${name}`];
+  const entries = Object.entries(lock.packages).filter(([path, entry]) => path.endsWith(`node_modules/${name}`) && !entry.link);
   const candidate = candidates.get(name);
-  if (!entry) throw new Error(`Template lock does not contain candidate ${name}.`);
-  entry.version = candidate.version;
-  entry.integrity = candidate.integrity;
-  entry.resolved = `https://registry.npmjs.org/${name}/-/${name.slice(name.lastIndexOf("/") + 1)}-${candidate.version}.tgz`;
-  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
-    for (const dependency of Object.keys(entry[field] ?? {})) {
-      if (candidates.has(dependency)) entry[field][dependency] = candidates.get(dependency).version;
+  if (entries.length === 0) throw new Error(`Template lock does not contain candidate ${name}.`);
+  for (const [, entry] of entries) {
+    entry.version = candidate.version;
+    entry.integrity = candidate.integrity;
+    entry.resolved = `https://registry.npmjs.org/${name}/-/${name.slice(name.lastIndexOf("/") + 1)}-${candidate.version}.tgz`;
+    for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+      for (const dependency of Object.keys(entry[field] ?? {})) {
+        if (candidates.has(dependency)) entry[field][dependency] = candidates.get(dependency).version;
+      }
     }
   }
 }

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- A client library: its build generates the TypeScript clients of the Views below into its frontend package,
+         Frontend/src/generated, and builds the package with its build script. Applications that reference this project
+         import the clients from the package instead of generating copies, and copy none of it to their www/. -->
+    <RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>
+    <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package.
+         Commit it. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- A direct reference turns the Views build on: it generates the Bridges and the TypeScript clients. -->
+    <PackageReference Include="Runic.Application.Views" Version="__RUNIC_NUGET_VERSION__" />
+<!--#if (viewModels == "reactiveui") -->
+    <PackageReference Include="Runic.Application.Views.ReactiveUI" Version="__RUNIC_NUGET_VERSION__" />
+<!--#else -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+<!--#endif -->
+  </ItemGroup>
+</Project>

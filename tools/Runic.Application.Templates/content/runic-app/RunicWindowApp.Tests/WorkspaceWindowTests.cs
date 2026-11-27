@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Testing;
-#if (translations)
+#if (withTranslations)
 using Runic.Translations;
 #endif
 
@@ -24,7 +24,7 @@ public sealed class WorkspaceWindowTests : IAsyncDisposable
         _window = RunicWindowTestHost.Create<WorkspaceViewModel>(_scope.ServiceProvider);
     }
 
-#if (translations)
+#if (withTranslations)
     [Test]
     public async Task The_window_opens_on_the_welcome_page_in_the_applications_language()
     {
