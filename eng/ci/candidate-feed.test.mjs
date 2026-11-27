@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { request } from 'node:http';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cleanScript, editorsRunOf, encodedPowerShell, machineBunfig, machineNpmrc, machineNugetConfig, scpPath, sshOptions, windowsPath } from './candidate-feed.mjs';
 import { bindNpmLock } from './candidate-feed/bind-npm-lock.mjs';
@@ -80,6 +83,80 @@ test('an npm lock binds every @runic-artifex entry to the registry and checks th
     /locks @runic-artifex\/react 0.23.0, but the candidate is 0.24.0/);
   assert.throws(() => bindNpmLock(lock({ 'node_modules/@runic-artifex/react': entry('@runic-artifex/react', '0.24.0', 'sha512-other') }), candidates, 'http://x'),
     /other bytes of @runic-artifex\/react 0.24.0/);
+});
+
+test('an npm lock entry that pins no bytes is bound to the candidate\'s; an unpinned non-candidate is refused', () => {
+  const candidates = [{ name: '@runic-artifex/views', version: '0.24.0', integrity: 'sha512-views' }];
+  const lock = packages => JSON.stringify({ name: 'app', lockfileVersion: 3, packages: { '': { name: 'app' }, ...packages } });
+  // examples/split-ci locks its Runic entries without resolved and integrity.
+  const { text, bound } = bindNpmLock(lock({ 'node_modules/@runic-artifex/views': { version: '0.24.0', license: 'MIT' } }), candidates, 'http://127.0.0.1:48731');
+  assert.equal(bound, 1);
+  assert.deepEqual(JSON.parse(text).packages['node_modules/@runic-artifex/views'],
+    { version: '0.24.0', license: 'MIT', integrity: 'sha512-views', resolved: 'http://127.0.0.1:48731/@runic-artifex/views/-/views-0.24.0.tgz' });
+  assert.throws(() => bindNpmLock(lock({ 'node_modules/@runic-artifex/views': { version: '0.23.0' } }), candidates, 'http://x'),
+    /locks @runic-artifex\/views 0.23.0, but the candidate is 0.24.0/);
+  assert.throws(() => bindNpmLock(lock({ 'node_modules/@runic-artifex/vite-plugin-runic-translations': { version: '0.15.1' } }), candidates, 'http://x'),
+    /locks no integrity for @runic-artifex\/vite-plugin-runic-translations 0.15.1, which is not a candidate/);
+});
+
+const pwsh = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
+test('Use-Candidate.ps1 -Path takes a project whose bunfig.toml is the candidate\'s with CRLF line endings, and refuses another', { skip: !pwsh && 'pwsh is not on PATH' }, () => {
+  const work = mkdtempSync(join(tmpdir(), 'use-candidate-'));
+  try {
+    const feed = join(work, 'runic-candidate');
+    mkdirSync(feed);
+    copyFileSync(join(import.meta.dirname, 'candidate-feed', 'Use-Candidate.ps1'), join(feed, 'Use-Candidate.ps1'));
+    writeFileSync(join(feed, 'candidate.json'), JSON.stringify({ sdk: { version: '0.24.0', run: { id: 1, headSha: 'abc' } }, machine: { port: 48731 } }));
+    writeFileSync(join(feed, 'candidate.npmrc'), machineNpmrc(remote, 48731));
+    writeFileSync(join(feed, 'bunfig.toml'), machineBunfig(remote));
+    writeFileSync(join(feed, 'NuGet.config'), machineNugetConfig(remote));
+    const project = (name, bunfig) => {
+      const folder = join(work, name);
+      mkdirSync(folder);
+      writeFileSync(join(folder, 'package.json'), '{}');
+      writeFileSync(join(folder, 'bunfig.toml'), bunfig);
+      return folder;
+    };
+    const run = folder => spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', join(feed, 'Use-Candidate.ps1'), '-Path', folder], { encoding: 'utf8' });
+    // A git clone with core.autocrlf=true.
+    const clone = project('clone', machineBunfig(remote).replaceAll('\n', '\r\n'));
+    const ok = run(clone);
+    assert.equal(ok.status, 0, ok.stderr || ok.stdout);
+    assert.equal(readFileSync(join(clone, 'bunfig.toml'), 'utf8'), machineBunfig(remote).replaceAll('\n', '\r\n'));
+    assert.match(readFileSync(join(clone, '.npmrc'), 'utf8'), /@runic-artifex:registry=http:\/\/127\.0\.0\.1:48731\//);
+    const other = run(project('other', '[install]\r\nexact = true\r\n'));
+    assert.notEqual(other.status, 0);
+    assert.match(other.stderr + other.stdout, /other[/\\]bunfig\.toml exists: add the/);
+  } finally { rmSync(work, { recursive: true, force: true }); }
+});
+
+test('the npm registry writes tarball URLs on the origin the client asked, so a forwarded port works', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'candidate-registry-'));
+  let registry;
+  try {
+    mkdirSync(join(work, 'package'));
+    writeFileSync(join(work, 'package', 'package.json'), JSON.stringify({ name: '@runic-artifex/views', version: '0.24.0' }));
+    const archive = join(work, 'views-0.24.0.tgz');
+    assert.equal(spawnSync('tar', ['-czf', archive, '-C', work, 'package']).status, 0);
+    const ready = join(work, 'ready');
+    registry = spawn(process.execPath, [join(import.meta.dirname, '../../tests/templates/template-npm-registry.mjs'), ready, archive], { stdio: 'ignore' });
+    for (let attempt = 0; attempt < 200 && !(existsSync(ready) && readFileSync(ready, 'utf8').trim()); attempt++) await new Promise(done => setTimeout(done, 50));
+    const port = Number(new URL(readFileSync(ready, 'utf8').trim()).port);
+    const tarball = host => new Promise((done, fail) => {
+      request({ host: '127.0.0.1', port, path: '/@runic-artifex%2fviews', headers: { host } }, response => {
+        let body = '';
+        response.on('data', chunk => { body += chunk; });
+        response.on('end', () => done(JSON.parse(body).versions['0.24.0'].dist.tarball));
+      }).on('error', fail).end();
+    });
+    // ssh -R 127.0.0.1:48731 on the machine: the client asks for port 48731, not the registry's own.
+    assert.equal(await tarball('127.0.0.1:48731'), 'http://127.0.0.1:48731/archives/views-0.24.0.tgz');
+    assert.equal(await tarball(`127.0.0.1:${port}`), `http://127.0.0.1:${port}/archives/views-0.24.0.tgz`);
+    assert.equal(await tarball('evil.example:80'), `http://127.0.0.1:${port}/archives/views-0.24.0.tgz`);
+  } finally {
+    registry?.kill();
+    rmSync(work, { recursive: true, force: true });
+  }
 });
 
 test('push copies the machine scripts, and Use-Candidate.ps1 reads the files push writes', () => {

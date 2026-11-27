@@ -21,7 +21,8 @@
 // outside <remote> changes. A folder of an earlier push is replaced; any other existing folder is refused.
 //
 // serve runs runic-sdk's candidate npm registry (tests/templates/template-npm-registry.mjs) on the host and forwards
-// 127.0.0.1:<port> on the machine to it (ssh -R) until it is stopped. clean removes <remote> and the machine's .NET tool
+// 127.0.0.1:<port> on the machine to it (ssh -R) until it is stopped; its tarball URLs name the port the machine asked
+// (the request's Host), so an unbound lock fetches through the tunnel too. clean removes <remote> and the machine's .NET tool
 // resolver cache entries that point into it. SSH runs with BatchMode and strict host key checking against the given
 // known-hosts file only; the script never reads key material.
 import { spawn, spawnSync } from 'node:child_process';
