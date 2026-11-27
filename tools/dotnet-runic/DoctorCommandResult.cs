@@ -48,7 +48,7 @@ internal sealed record DoctorCommandResult(
             HostName(project.Host),
             target?.Value,
             report.IsHealthy,
-            new DoctorSummary(report.Passed, report.Warnings, report.Failed),
+            new DoctorSummary(report.Passed, report.Warnings, report.Failed) { Skipped = report.Skipped },
             [.. report.Checks.Select(static check => new DoctorCheckResult(
                 check.Name, StatusName(check.Status), check.Message, check.Remediation, CheckHelpUri(check.Name)))])
         {
@@ -80,7 +80,7 @@ internal sealed record DoctorCommandResult(
         return
         [
             .. report.Checks
-                .Where(static check => check.Status != DoctorStatus.Pass)
+                .Where(static check => check.Status >= DoctorStatus.Warning)
                 .OrderBy(static check => check.Status == DoctorStatus.Failure ? 0 : 1)
                 .Take(maximumDiagnostics)
                 .Select(check => new CommandDiagnostic(
@@ -100,6 +100,7 @@ internal sealed record DoctorCommandResult(
     internal static string StatusName(DoctorStatus status) =>
         status switch
         {
+            DoctorStatus.Skipped => "skip",
             DoctorStatus.Pass => "pass",
             DoctorStatus.Warning => "warn",
             DoctorStatus.Failure => "fail",
@@ -174,7 +175,7 @@ internal static class DoctorOutcome
         const int maximumDetails = 32;
         var details = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (DoctorCheck check in run.Report.Checks
-            .Where(static check => check.Status != DoctorStatus.Pass)
+            .Where(static check => check.Status >= DoctorStatus.Warning)
             .OrderByDescending(static check => check.Status))
         {
             if (details.Count == maximumDetails) break;
@@ -193,7 +194,12 @@ internal static class DoctorOutcome
 internal sealed record DoctorSummary(
     [property: JsonPropertyName("passed")] int Passed,
     [property: JsonPropertyName("warnings")] int Warnings,
-    [property: JsonPropertyName("failed")] int Failed);
+    [property: JsonPropertyName("failed")] int Failed)
+{
+    /// <summary>The checks that do not apply (status skip), such as the JavaScript checks with a prebuilt frontend. Added in 0.24.</summary>
+    [JsonPropertyName("skipped")]
+    public int Skipped { get; init; }
+}
 
 internal sealed record DoctorCheckResult(
     [property: JsonPropertyName("id")] string Id,

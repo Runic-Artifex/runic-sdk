@@ -2475,6 +2475,8 @@ internal sealed partial class ToolTests
 
         public DoctorHostPlatform Platform { get; init; } = new("linux", "x64", false, "6.12");
         public HashSet<string> Executables { get; init; } = [];
+        /// <summary>Executables that this machine lacks, such as node and npm on a publish runner (#1421).</summary>
+        public HashSet<string> Missing { get; init; } = [];
         public HashSet<string> Libraries { get; init; } = [];
         public Dictionary<string, string> Environment { get; init; } = [];
         public string? WebView2Version { get; init; }
@@ -2499,7 +2501,8 @@ internal sealed partial class ToolTests
         public string? GetEnvironmentVariable(string name) => Environment.GetValueOrDefault(name);
 
         public string? FindExecutable(string name) =>
-            name.EndsWith("vswhere.exe", StringComparison.Ordinal) ? (Executables.Contains("vswhere") ? VsWhere : null)
+            Missing.Contains(name) ? null
+            : name.EndsWith("vswhere.exe", StringComparison.Ordinal) ? (Executables.Contains("vswhere") ? VsWhere : null)
             : name is "dotnet" or "node" or "npm" || Executables.Contains(name) ? name : null;
 
         public Task<bool> IsNativeLibraryAvailableAsync(string fileName, CancellationToken cancellationToken) =>

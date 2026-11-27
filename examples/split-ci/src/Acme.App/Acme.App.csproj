@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Windows builds are GUI applications, also when a Linux runner publishes them for win-x64. -->
+    <OutputType Condition="$(RuntimeIdentifier.StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
+    <!-- dotnet runic package reads the identity: the MSIX package name on Windows, the deb package on Linux. -->
+    <ApplicationId>com.example.AcmeApp</ApplicationId>
+    <ApplicationTitle>Acme App</ApplicationTitle>
+    <Version>1.0.0</Version>
+    <Description>The split CI example of Runic</Description>
+    <PackageProjectUrl>https://example.com</PackageProjectUrl>
+    <RunicApplicationPublisher>CN=Example</RunicApplicationPublisher>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Runic.Application.Views.Desktop" />
+    <!-- The server Runic Desktop serves the page from. -->
+    <PackageReference Include="Runic.Desktop.Kestrel" />
+  </ItemGroup>
+</Project>

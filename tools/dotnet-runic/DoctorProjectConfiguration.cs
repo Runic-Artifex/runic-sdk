@@ -137,6 +137,12 @@ internal sealed record DoctorProjectConfiguration(
     internal string AssemblyName { get; init; } = string.Empty;
 
     /// <summary>
+    /// <c>RunicApplicationFrontendPrebuiltDirectory</c>, as the project or the environment sets it: the web bundle that
+    /// the build takes its pages from, so it runs no install or frontend build (#1421). Empty when it builds them.
+    /// </summary>
+    internal string PrebuiltFrontendDirectory { get; init; } = string.Empty;
+
+    /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
     /// SelfContained for the --aot, --no-aot, --self-contained and --no-self-contained switches.
     /// </summary>
@@ -156,7 +162,8 @@ internal sealed record DoctorProjectConfiguration(
         string project,
         string configuration,
         CancellationToken cancellationToken,
-        IReadOnlyList<string>? publishProperties = null)
+        IReadOnlyList<string>? publishProperties = null,
+        bool prebuiltFrontend = false)
     {
         // A multi-targeted project stops in DevProjectConfiguration (RAPPDEV1005), so this evaluation has one
         // TargetFramework, and references conditioned on it are present.
@@ -171,9 +178,13 @@ internal sealed record DoctorProjectConfiguration(
             ? value.GetString() ?? string.Empty
             : string.Empty;
         IReadOnlyList<string> references = ReferenceIdentities(document.RootElement);
-        DoctorFrontendGraph? graph = await DoctorFrontendGraph.ReadAsync(dotnetHost, development, configuration,
-            NormalizeScript(Value("_RunicViewsFrontendGraphScript"), development.ProjectDirectory), Value("RunicApplicationFrontendCodegenRuntime").Trim(),
-            cancellationToken).ConfigureAwait(false);
+        string prebuiltDirectory = Value("RunicApplicationFrontendPrebuiltDirectory").Trim();
+        // A prebuilt frontend (#1421) skips the checks that read the graph, whose resolver may need Node.js or Bun.
+        DoctorFrontendGraph? graph = prebuiltFrontend || prebuiltDirectory.Length != 0
+            ? null
+            : await DoctorFrontendGraph.ReadAsync(dotnetHost, development, configuration,
+                NormalizeScript(Value("_RunicViewsFrontendGraphScript"), development.ProjectDirectory), Value("RunicApplicationFrontendCodegenRuntime").Trim(),
+                cancellationToken).ConfigureAwait(false);
         return new(
             development.ProjectPath,
             development.ProjectDirectory,
@@ -211,6 +222,7 @@ internal sealed record DoctorProjectConfiguration(
             FrontendGraph = graph,
             ClientModules = ReadClientModules(document.RootElement),
             AssemblyName = Value("AssemblyName"),
+            PrebuiltFrontendDirectory = prebuiltDirectory,
         };
     }
 
@@ -296,7 +308,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime,AssemblyName",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime,AssemblyName,RunicApplicationFrontendPrebuiltDirectory",
             "-getItem:PackageReference,ProjectReference,RunicApplicationFrontendClientModule",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));
