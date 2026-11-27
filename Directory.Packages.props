@@ -91,7 +91,7 @@
     <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.Desktop" Version="$(RunicSdkVersion)" />
     <!-- Command Line is released independently from this SDK. -->
-    <PackageVersion Include="Runic.CommandLine" Version="0.15.0" TrainCommit="027d8a8ec3c936eb5be1fd30eb2f584a510ce903" />
+    <PackageVersion Include="Runic.CommandLine" Version="0.15.0" />
     <PackageVersion Include="Runic.CommandLine.Spectre" Version="0.15.0" />
     <PackageVersion Include="Runic.Desktop.Gtk4" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux.Gtk4" Version="$(RunicSdkVersion)" />
