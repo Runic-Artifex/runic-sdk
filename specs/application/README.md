@@ -1310,10 +1310,16 @@ it, the window's disposal and the host's shutdown. The push happens once per win
 
 **The close waits.** A close with a timeout also waits until each connection it pushed `closing` to replied with
 `closing-reply` or closed. It waits concurrently with the work the close already waits for
-([limits and window close](#limits-and-window-close)), within the same timeout, and for at most 5 seconds. The close
-reports whether every such connection acknowledged it; a close that pushed `closing` to no connection is
-acknowledged. A close without a timeout pushes `closing` and does not wait. A later close of the same window does not
-push or wait again, and reports the first close's result.
+([limits and window close](#limits-and-window-close)), within the same timeout, and for at most 5 seconds. The 5
+seconds bound only this wait for the pages: the close waits for running work until its own timeout, also a longer one,
+and requests its cancellation only then (`interactions.the-close-waits-for-running-work-past-the-page-limit`; in .NET,
+`WindowContentSession.AcknowledgeCloseAsync` caps its own wait at `CloseAcknowledgementLimit`, while
+`BridgeOperationRegistry.BeginCloseAsync` waits for the work with the close's timeout). The close reports whether every
+such connection acknowledged it; a close that pushed `closing` to no connection is acknowledged. A close without a
+timeout (a timeout of zero) pushes `closing` and waits neither for the pages nor for the work, whose cancellation it
+requests at once ([limits and window close](#limits-and-window-close)). A later close of the same window does not
+push or wait for the pages again, and reports the first close's acknowledgement; without a timeout, while the first
+close still waits for it, it reports the close unacknowledged.
 
 **`closing-reply`.** The reply is `{ok:true}`, also without a pending `closing`: the request is idempotent. On a
 connection that does not use the feature it is `rejected` with `invalid-request`.
@@ -1740,8 +1746,8 @@ find again, for example after a reload.
   input that is not valid JSON of the [profile](values.md#json-profile) (`rejected` admission, `invalid-input`); the
   window's close (`owner-closing`, or `owner-disposed` once it is gone); the operation id (`duplicate`,
   `identity-conflict`, `expired`); the input's decoding (`invalid-input`), the key (`unresolved-key`) and
-  availability (`unavailable`); then the window's operation capacity (`capacity`: it retains 64 operations). As for
-  `command`, availability comes before capacity: `unavailable` tells the page that the command cannot run in this
+  availability (`unavailable`); then the window's operation capacity (`capacity`: it retains 64 operations,
+  [limits](#limits-and-window-close)). As for `command`, availability comes before capacity: `unavailable` tells the page that the command cannot run in this
   state, which retrying does not change, while `capacity` only says that the window is busy for now.
 - A `start`, `status`, `watch`, `unwatch`, `cancel` or `stream` whose `member` is not an asynchronous command of the
   route, such as a synchronous command, is `rejected` with `invalid-request`, without `admission` or `revision`, and
@@ -1816,17 +1822,37 @@ values that are not numbers. `progress` stays absent until the first report.
 ### Limits and window close
 
 - A window retains at most 64 operations, 32 terminal results, 128 expired ids and 256 KiB of results, declared
-  failures and stream replay. A result that would exceed the 256 KiB expires the oldest other terminal operations until
-  it fits, rather than being refused, never the operation whose result it is: that one is not terminal before its result
-  is stored. One that still does not fit is kept without its value, with
-  `delivery` `result-too-large`, and a declared failure without `failure`, with the same `delivery`. The .NET producer
+  failures and stream replay. A result's size is the UTF-8 length of its JSON encoding, and a declared failure's that of
+  its encoded `failure` (in .NET, `BridgeOperationResult.EncodedByteCount`). A result that would exceed the 256 KiB
+  expires the oldest other terminal operations, in the order they became terminal, until it fits, rather than being
+  refused, never the operation whose result it is: that one is not terminal before its result is stored. An operation
+  kept without a value takes no bytes, so it stays when the result fits once older ones expired. A result larger than
+  256 KiB on its own expires nothing and is kept without its value, with `delivery` `result-too-large`; so is one that
+  still does not fit, and a declared failure that does not fit is kept without `failure`, with the same `delivery`.
+  A result of exactly 256 KiB fits (`operations.a-result-expires-the-oldest-results-until-it-fits`). The .NET producer
   trims the retention before it marks the operation terminal (`BridgeOperationRegistry`, whose trim takes only terminal
   operations). Running streams
   reserve their bound against a 256 KiB window budget; the default stream bound is 128 items and 64 KiB. An overflowing stream is terminal and reports `stream-overflow`.
+- The 32 terminal results count operations, also those kept without a value. When an operation becomes terminal while
+  the window retains 32 terminal operations, the one that became terminal first expires, which need not be the one that
+  started first (`operations.the-33rd-terminal-operation-expires-the-one-that-ended-first`; in .NET,
+  `BridgeOperationRegistry.TrimTerminalEntries` takes `_terminals` in the order `Run` added them). A `start` that finds
+  64 retained operations first expires terminal ones in the same order, so it is `capacity` only while all 64 run.
+- An expired operation's id is kept, with its member and input, among the 128 latest expired ids. Until it is forgotten,
+  `status`, `watch` and `unwatch` of it answer the status `expired` and add no watch, `cancel` answers `expired`,
+  `stream` a page of kind `expired` without items, a `start` with the same member and a canonically equal input is
+  admitted `expired` and runs nothing, and one with another member or input is `identity-conflict`; for another member
+  the id is `unknown` (in .NET, `BridgeOperationRegistry.RetainExpiredId`, `StatusForMissing` and `AcceptCore`). A
+  forgotten id is `unknown`, and a `start` with it starts a new operation.
 - Closing a window stops admission: `start` answers `owner-closing`, and an asynchronous `command` answers `released`.
   The window waits up to its close timeout for running operations and asynchronous commands, and, with `presented/1`,
   for the pages to acknowledge the close ([window close](#window-close)), then requests the cancellation of what
-  remains, and keeps its resources until that work ends. A pending interaction request of the work it cancels ends with
+  remains, and keeps its resources until that work ends. The pages' wait of at most 5 seconds does not shorten the
+  wait for the work. A close without a timeout requests the cancellation at once, as it starts, with the same effects
+  (`interactions.a-close-without-a-timeout-ends-a-pending-request-at-once`; in .NET, `BeginCloseAsync`'s wait with a
+  zero timeout ends at once and cancels the window's token); a close that waits without a limit (in .NET,
+  `Timeout.InfiniteTimeSpan`) never requests it. Each close waits with its own timeout for the work that still runs, so
+  a later close without a timeout cancels it at once. A pending interaction request of the work it cancels ends with
   its scope, as when its command is cancelled ([interactions](#interactions), "Cancellation"): while its presentation is
   still open, the producer pushes `interaction-cancelled`, and the waiting interaction fails as cancelled
   (`interactions.the-close-timeout-ends-a-pending-request-with-its-command`). A request still pending when the window
@@ -1870,7 +1896,8 @@ confirmation.
   `ownerEpoch` differs from its request's is `stale`. `input` is encoded as the interaction's input type.
 - **Cancellation.** When a request that the producer pushed ends before the page answered while its presentation is
   still open, the producer pushes `interaction-cancelled` with a human-readable `message`: when it times out, when its
-  scope ends (its command ends or is cancelled), or when the application cancels it. The page stops the handler. A request that ends because its presentation closed, was replaced by an `open`
+  scope ends (its command ends or is cancelled, also by an operation's `cancel` or the window's close:
+  `interactions.an-operation-cancel-ends-its-pending-request`), or when the application cancels it. The page stops the handler. A request that ends because its presentation closed, was replaced by an `open`
   of the same presentation on another connection, or lost its connection, or because the window closed, ends without
   a push: the page closed it, or no longer reaches the producer. A request not pushed yet ends without a push too.
 - **Replies.** `outcome` is `answered` (with `output`, encoded as the interaction's output type), `cancelled` or

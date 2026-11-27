@@ -28,7 +28,7 @@
       "type": "string",
       "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
     },
-    "view": { "enum": ["list", "log", "notes", "form", "wizard", "invoice", "tabs", "catalog", "files"] },
+    "view": { "enum": ["list", "log", "notes", "form", "wizard", "invoice", "tabs", "catalog", "files", "retention"] },
     "requires": {
       "type": "array",
       "uniqueItems": true,

@@ -739,6 +739,41 @@
         }
       ],
       "commands": []
+    },
+    {
+      "id": "Runic.Application.Testing.Tests.Conformance.RetentionViewModel",
+      "name": "Retention",
+      "route": "retention",
+      "fingerprint": "A33CB37E43A0AA7115DC6558129D83D9E0207985D11B60C883CE085E23214178",
+      "kinds": [
+        "retention"
+      ],
+      "members": [],
+      "commands": [
+        {
+          "name": "Produce",
+          "wire": "produce",
+          "parameter": "length",
+          "input": {
+            "direction": "from-page",
+            "type": {
+              "kind": "int32"
+            }
+          },
+          "result": {
+            "direction": "to-page",
+            "type": {
+              "kind": "string"
+            }
+          },
+          "async": true
+        },
+        {
+          "name": "Hold",
+          "wire": "hold",
+          "async": true
+        }
+      ]
     }
   ],
   "types": {
