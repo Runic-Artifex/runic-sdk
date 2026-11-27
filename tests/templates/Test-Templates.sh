@@ -1381,7 +1381,9 @@ verify_library_template() {
   grep -Fq "<Project Path=\"$library_name/$library_name.csproj\" />" "$output/$project_name.slnx"
   if [[ "$tests" == tests ]]; then
     grep -Fq "<Project Path=\"$project_name.Tests/$project_name.Tests.csproj\" />" "$output/$project_name.slnx"
-    grep -Fq "<ProjectReference Include=\"../$project_name/$project_name.csproj\"" "$output/$project_name.Tests/$project_name.Tests.csproj"
+    # #1424: the reference passes no properties, so the solution build builds the application once, not a second time
+    # with other properties at the same time and into the same folders.
+    grep -Fq "<ProjectReference Include=\"../$project_name/$project_name.csproj\" />" "$output/$project_name.Tests/$project_name.Tests.csproj"
     test -f "$output/global.json"
   fi
   # The solution's folder has what every project shares; the application's folder has only the application.

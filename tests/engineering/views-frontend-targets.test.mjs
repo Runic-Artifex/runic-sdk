@@ -1482,6 +1482,53 @@ test("the bootstrap pass builds transitive references with their own output path
     assert.deepEqual(properties.filter(property => removed.includes(property)), [], name);
 });
 
+// #1424: the bootstrap pass passed PublishAot=false and the other publish properties it clears on to its references,
+// so a library that the solution also builds was built a second time with them, a second instance writing the
+// library's bin/ and obj/, and its own bootstrap pass ran twice into one directory. With a test project that builds the
+// application alongside, the instances ran at once and a build failed with an IOException on a file in bin/ or
+// obj/runic-bridge/bootstrap/. The solution is the library template's: an application, its library and a test project
+// that references the application. Each instance of a project runs its Build target once and leaves a file, so a
+// project built with two property sets leaves two; with -m, the count is the same whichever instances overlap.
+test("a solution builds an application and its library once each, with one bootstrap pass each", () => {
+  const solution = join(directory, "solution-instances");
+  const project = (name, { exe = false, reference = "", views = true } = {}) => {
+    mkdirSync(join(solution, name), { recursive: true });
+    writeFileSync(join(solution, name, `${name}.csproj`), `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>${exe ? "<OutputType>Exe</OutputType>" : ""}<TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  ${reference && `<ItemGroup><ProjectReference Include="../${reference}/${reference}.csproj" /></ItemGroup>`}
+  ${views ? `<Import Project="${targets}" />` : ""}
+</Project>
+`);
+    writeFileSync(join(solution, name, exe ? "Program.cs" : "Library.cs"),
+      exe ? "System.Console.WriteLine();\n" : `namespace ${name};\npublic static class Library { }\n`);
+  };
+  project("Lib");
+  project("App", { exe: true, reference: "Lib" });
+  project("App.Tests", { exe: true, reference: "App", views: false });
+  writeFileSync(join(solution, "Directory.Build.props"), "<Project />\n");
+  writeFileSync(join(solution, "Directory.Build.targets"), `<Project>
+  <Target Name="RecordInstance" AfterTargets="Build">
+    <WriteLinesToFile File="$(MSBuildThisFileDirectory)instances/$(MSBuildProjectName).$([MSBuild]::ValueOrDefault('$(RunicApplicationFrontendBootstrap)', 'false')).$([System.Guid]::NewGuid().ToString('N'))" Lines="$(MSBuildProjectName)" />
+  </Target>
+</Project>
+`);
+  writeFileSync(join(solution, "Solution.slnx"), `<Solution>
+  <Project Path="App/App.csproj" />
+  <Project Path="Lib/Lib.csproj" />
+  <Project Path="App.Tests/App.Tests.csproj" />
+</Solution>
+`);
+  const result = spawnSync("dotnet", ["build", join(solution, "Solution.slnx"), `-p:Configuration=${configuration}`, "-m",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: solution, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const instances = {};
+  for (const file of readdirSync(join(solution, "instances"))) {
+    const key = file.split(".").slice(0, -1).join(".");
+    instances[key] = (instances[key] ?? 0) + 1;
+  }
+  assert.deepEqual(instances, { "App.false": 1, "App.true": 1, "App.Tests.false": 1, "Lib.false": 1, "Lib.true": 1 });
+});
+
 // W319-003 msbuild backlog: the targets wrote to obj/ whatever UseArtifactsOutput, BaseIntermediateOutputPath or
 // IntermediateOutputPath said. The generated code follows IntermediateOutputPath, which has the runtime identifier.
 test("the generated Bridge code lives in IntermediateOutputPath, else below BaseIntermediateOutputPath", () => {
