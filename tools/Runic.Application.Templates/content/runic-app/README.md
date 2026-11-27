@@ -134,6 +134,17 @@ Without step 1, F5 builds the production frontend and the Window shows that.
 In Rider, you can add `dotnet runic dev --no-window` to the run configuration's
 "Before launch" list as an external tool.
 
+To pass an argument to Debug builds only, such as a `/mock` mode, set it in the
+project file's `StartArguments`, in a `PropertyGroup` with
+`Condition="'$(Configuration)' == 'Debug'"`. `dotnet run`, `dotnet runic dev`,
+Visual Studio and Runic DevKit read it, and Release builds don't get it.
+<!--#if (editor == "vscode") -->
+VS Code's `coreclr` configurations below don't read the project file: add the
+argument to their `args` too.
+<!--#endif -->
+[Arguments for Debug builds](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#arguments-for-debug-builds)
+shows how, and which surface reads which.
+
 To keep `dotnet runic dev` starting the Window instead, attach the IDE's
 debugger to the process that `[dev] Window started: process <pid>` names. That
 debugger ends when `dotnet watch` restarts the Window after a C# edit.

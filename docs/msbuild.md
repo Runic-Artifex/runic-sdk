@@ -39,6 +39,12 @@ names are listed in
 [Moved and renamed since 0.7.0-preview.6](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
 and the [migration guide](migration-1.0.md).
 
+The .NET SDK's own `EnableWindowsTargeting` is not on this page, but a Windows
+target framework (WPF on `net10.0-windows`) needs it to restore and build on
+Linux and macOS. Set it in the application's `Directory.Build.props`, since no
+package can set it before the restore; see
+[Building a Windows application on Linux or macOS](packaging.md#building-a-windows-application-on-linux-or-macos).
+
 ## Runic.Application.Views
 
 See [Build properties](../packages/dotnet/Runic.Application.Views/README.md#build-properties).
@@ -58,6 +64,9 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendWorkspaceRoot` | property | the nearest folder above the frontend with `workspaces` in its `package.json` or a `pnpm-workspace.yaml` | The JavaScript workspace root where a frontend without its own lock file installs (0.24); `none` installs the frontend on its own. |
 | `RunicApplicationFrontendNodeModulesDirectory` | property | none | A `node_modules` installed elsewhere, such as by the Nix builder. |
 | `RunicApplicationFrontendBuildEnabled` | property | `true`, `auto` in a client library | `false` when another tool builds the frontend; `auto` builds it when its `package.json` has a `build` script (0.24). |
+| `RunicApplicationFrontendBundleDirectory` | property | none | A folder where every project that declares Views writes its built page, generated clients and its entry of `web-bundle.json` (`rax.web-bundle/1`) after its build, for a publish on another machine (0.24, D082). A relative path is relative to the directory the build starts in. |
+| `RunicApplicationFrontendPrebuiltDirectory` | property | none | A web bundle that a build with `RunicApplicationFrontendBundleDirectory` wrote: every project that declares Views takes its page from its entry, after checking the entry's View fingerprints and host against this build, and runs no install, frontend build or client emission, so no Node.js or Bun (0.24, D082). Also read from the environment. |
+| `RunicApplicationFrontendPrebuiltCheck` | property | `error` | `warning` publishes a prebuilt frontend whose Views or host differ from the build's, with a warning (`RUNICBRIDGE094`, `RUNICBRIDGE095`). |
 | `RunicApplicationFrontendCopyEnabled` | property | `true`, `false` in a client library | Mirror the frontend output to the web root. |
 | `RunicApplicationFrontendDevSessionEnabled` | property | `true` | `false` makes a build ignore a running `dotnet runic dev` session, which otherwise skips the frontend build and keeps dev's development pages in the web root (since 0.20). |
 | `RunicApplicationFrontendOutputDirectory` | property | `dist` | The frontend build's output, relative to the frontend directory. |

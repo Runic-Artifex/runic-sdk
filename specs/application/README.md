@@ -772,6 +772,13 @@ version it reported then. Steps 1, 2 and 6, and a step 3 that does not match, re
 receipts of at least the latest 64 path writes of a route and remembers the ids it forgot, as for any checked write;
 the .NET producer keeps 64 and 256 KiB per route and the latest 64 forgotten ids.
 
+The path writes of a route share their receipts: a `requestId` names one path write of the route, whatever its member.
+A path write that reuses it with another `member` or `path` is a step 3 that does not match, so it is `conflict` with
+the value at its own path, or `rejected` when its path has no value (its row is gone, or an object on it is `null`),
+and writes nothing; this holds across the members of a
+route, such as a row cell and a member of a checked object. A write without `path` keeps its receipts per field, apart
+from those of path writes (`edits.a-request-id-names-one-path-write-of-a-route`).
+
 A producer keeps, for each route and field path whose member or row it publishes, the revision of the last publication
 that changed it, and a digest of the value it published, to compare the next publication with. A frame's indexed
 changes carry the rows that changed, so a publication compares only those; a `set` of the collection and a full state
@@ -2246,7 +2253,8 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   (`too-large`, larger than `maximumBytes`; a `Content-Length` above it is refused before the body is read), `429` or
   `507` (`capacity`, the window receives too many uploads at once, or its unclaimed uploads fill its space or reach
   their number), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
-  (`invalid-request` or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
+  (`invalid-request`, a `Content-Length` that is not a number or a body whose length is not its `Content-Length`,
+  shorter or longer; or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
   (`failed`, the host could not store it). An upload that fails in any way, including a client that goes away, keeps
   none of the window's upload slots or space.
 - An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and

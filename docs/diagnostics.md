@@ -119,6 +119,11 @@ and severities are open.
 | [`RUNICBRIDGE089`](#runicbridge089) | Warning | Build targets | A workspace member declares another package manager than its workspace |
 | [`RUNICBRIDGE090`](#runicbridge090) | Error | Build targets | The frontend's package manager or JavaScript runtime does not run |
 | [`RUNICBRIDGE091`](#runicbridge091) | Warning | Build targets | `RunicApplicationFrontendInstallMode` is not Auto, Always or Never |
+| [`RUNICBRIDGE092`](#runicbridge092) | Error | Build targets | A web bundle cannot be written for a project whose frontend build is off |
+| [`RUNICBRIDGE093`](#runicbridge093) | Error | Build targets | The prebuilt frontend directory has no usable entry for the project |
+| [`RUNICBRIDGE094`](#runicbridge094) | Error | Build targets | A prebuilt frontend was built from other Views than the build's |
+| [`RUNICBRIDGE095`](#runicbridge095) | Error | Build targets | A prebuilt frontend was built for another host |
+| [`RUNICBRIDGE096`](#runicbridge096) | Warning | Build targets | An optimized build takes a development build of a prebuilt frontend |
 
 ### Errors and warnings while you type
 
@@ -1318,6 +1323,69 @@ incomplete.
 **Fix:** set `Auto`, `Always` or `Never`, or remove the property. See
 [Fast iteration](../packages/dotnet/Runic.Application.Views/README.md#fast-iteration).
 
+### RUNICBRIDGE092
+
+An error from the `Runic.Application.Views` build targets (since 0.24):
+`RunicApplicationFrontendBundleDirectory` asks for a web bundle, but the
+project cannot write its entry. Either its frontend build is off in this
+build (`RunicApplicationFrontendBuildEnabled=false`, or `dotnet runic dev`
+serves its page), so the bundle would carry an old page or none, or
+`RunicApplicationFrontendPrebuiltDirectory` is set too, and a build either
+writes a bundle or takes its frontend from one. A frontend build that wrote no
+files to its output directory is reported with this code by the generator.
+
+**Fix:** write the bundle with a build that builds the frontend, such as
+`dotnet build -c Release -p:RunicApplicationFrontendBundleDirectory=<dir>`
+while `dotnet runic dev` does not run, and set only one of the two
+directories. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE093
+
+An error from the `Runic.Application.Views` build targets (since 0.24): a
+build with `RunicApplicationFrontendPrebuiltDirectory` cannot use the web
+bundle there for a project that declares Views. The folder has no
+`web-bundle.json`, or one of another format; the manifest has no entry for the
+project's assembly; or the entry's `www/` is not the one the bundle recorded
+(its files' SHA-256 differs, as after a truncated download). It is also
+reported for a `RunicApplicationFrontendPrebuiltCheck` other than `error` or
+`warning`.
+
+**Fix:** point the property at the whole downloaded bundle, written by a build
+of the solution or project that builds the reported assembly, with the same
+Runic release. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE094
+
+An error from the `Runic.Application.Views` build targets (since 0.24): the
+prebuilt frontend was built from other ViewModels than this build's. For each
+View whose [fingerprint](../specs/application/contract-ir.md#fingerprint)
+differs, or that only one side has, the message names the View and both
+fingerprints, such as `Acme.App.CounterViewModel is 09A0D538… in this build and
+2B0C9276… in the bundle`. Such a page would fail at run time: an operation
+finds `unknown`, or members do not match.
+
+**Fix:** write the bundle from the same commit as the publish. To publish
+anyway, set `RunicApplicationFrontendPrebuiltCheck=warning`, which reports this
+as a warning. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE095
+
+An error from the `Runic.Application.Views` build targets (since 0.24): the
+prebuilt frontend was built for another host (`RUNIC_APPLICATION_HOST`, from
+`RunicApplicationHost`) than this build runs it on.
+
+**Fix:** write the bundle with the same `RunicApplicationHost`, or set
+`RunicApplicationFrontendPrebuiltCheck=warning` to publish anyway. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
+### RUNICBRIDGE096
+
+A warning from the `Runic.Application.Views` build targets (since 0.24): an
+optimized build (Release, `dotnet publish`) takes a prebuilt page that was not
+built with `NODE_ENV=production`, so it carries the development builds of
+`@runic-artifex/views` and its framework.
+
+**Fix:** write the bundle with `-c Release`. See [Building the frontend in another job](../packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
@@ -1337,6 +1405,40 @@ exception to standard error; include it when you report the problem. See
 [Output and exit codes](../tools/dotnet-runic/README.md#output-and-exit-codes).
 `dotnet runic support` moved to `runic-translations support` in 0.9; its
 `RAPPSUP` codes are in the runic-translations-sdk catalog as `RTRSUP`.
+
+### RAPPBUNDLE1001
+
+The output directory of `dotnet runic bundle` holds files other than a web
+bundle, which `bundle` would mix into the manifest or delete. Exit code 2. Since
+0.24.
+
+**Fix:** choose a new or empty directory with `--output-directory`, or one that
+an earlier `dotnet runic bundle` wrote.
+
+### RAPPBUNDLE1002
+
+The build that writes the web bundle failed. The output above names the error.
+Since 0.24.
+
+**Fix:** fix the build error; `dotnet build -c Release` reports the same.
+
+### RAPPBUNDLE1003
+
+The build succeeded, but the web bundle is missing or does not check, as
+`dotnet runic doctor --bundle` checks it. A project whose frontend build is off
+writes no entry (`RUNICBRIDGE092` stops the build first). Since 0.24.
+
+**Fix:** turn the frontend build on for the bundle's build, and build from an
+empty output directory.
+
+### RAPPBUNDLE1004
+
+A `--property` or `-p:` value of `bundle` is not `NAME=VALUE`, or sets
+`Configuration`, `RunicApplicationFrontendBundleDirectory` or
+`RunicApplicationFrontendPrebuiltDirectory`, which `bundle` sets itself or which
+would build a bundle from another bundle. Exit code 2. Since 0.24.
+
+**Fix:** use `--configuration` and `--output-directory`.
 
 ### RAPPCLI1000
 
@@ -1421,9 +1523,10 @@ found. Exit code 1.
 
 The project cannot be selected: the given project does not exist or is not a
 `.csproj`, or the directory has no `.csproj` or several. Exit code 1. From a
-solution root, `dev` and `doctor` take the solution's one Window project (since
-0.24); they report this code when the directory holds several solutions, or
-when the solution has no Window project or several, which the message lists.
+solution root, `dev`, `doctor`, `size` and `package` take the solution's one
+Window project (since 0.24); they report this code when the directory holds
+several solutions, or when the solution has no Window project or several, which
+the message lists.
 
 **Fix:** pass the project with `--project`, for example
 `dotnet runic dev --project Acme.App/Acme.App.csproj`.
@@ -1484,6 +1587,13 @@ packages without starting Vite, as its
 [`client-modules`](../tools/dotnet-runic/README.md#client-modules) check, and
 its [`views-dedupe`](../tools/dotnet-runic/README.md#views-dedupe) check asks
 for `resolve.dedupe` of `@runic-artifex/views` when a linked package imports it.
+
+A terminal Ctrl+C reaches the development server too, which can exit before
+`dev` handles the signal. Since 0.24, `dev` treats an exit with a stop signal's
+code (130 for SIGINT, 143 for SIGTERM, 129, 131, or Windows' Ctrl+C status) as
+its own stop when its signal follows within 2 seconds, and ends with 130.
+Such an exit without the signal to `dev`, and every other exit, is
+`RAPPDEV1007`.
 
 For Vite, the application entry must come back as a JavaScript module. Vite
 answers a path that is not below its `root` with its `index.html` fallback, so
@@ -1571,12 +1681,15 @@ same problem in its `dotnet-runtime` check.
 
 `dev --no-window` was combined with an option that only describes how `dev`
 starts the Window or that stops the frontend from being served:
-`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`, `-e` or
+`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`,
+`--no-launch-profile` (since 0.24), `-e` or
 application arguments after `--`. With `--no-window` the IDE starts the Window.
 Exit code 2. Since 0.20.
 
-**Fix:** drop the option and set the Window's launch profile, environment and
-arguments in the IDE's launch configuration. See
+**Fix:** drop the option. The IDE starts the Window: put Debug-only arguments
+in the project's `StartArguments`, and the launch profile, its arguments and
+environment in `Properties/launchSettings.json`, which the IDEs and `dev` read
+([Arguments for Debug builds](debugging.md#arguments-for-debug-builds)). See
 [Debug the Window in your IDE](../tools/dotnet-runic/README.md#debug-the-window-in-your-ide).
 
 ### RAPPDEV1015
@@ -1645,6 +1758,20 @@ to resolve it.
 
 **Fix:** update the project's Runic packages to the tool's version. See
 [Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
+
+### RAPPDEV1020
+
+A warning from `dev` (since 0.24): the project sets `StartArguments` and the
+launch profile that `dev` uses sets `commandLineArgs`. `dotnet run` alone would
+drop the profile's arguments; `dev`, Visual Studio and Runic DevKit pass both,
+the project's first, so `dev` passes the profile's after `--` itself and goes
+on. The line names both values:
+`<project> : warning RAPPDEV1020: The project sets StartArguments (/mock) and launch profile 'Acme.App' sets commandLineArgs (/verbose). …`.
+`dotnet runic doctor`'s `launch-arguments` check reports the same.
+
+**Fix:** keep each argument in one place: an argument for Debug builds only in a
+configuration-conditioned `StartArguments`, a per-run argument in the profile.
+See [Arguments for Debug builds](debugging.md#arguments-for-debug-builds).
 
 ### RAPPPKG1001
 
@@ -1723,6 +1850,19 @@ Since 0.11.
 
 **Fix:** pass `--git-commit` or `--git-tag`, restore with lock files
 (`RestorePackagesWithLockFile`) and list both Linux runtime identifiers.
+
+### RAPPPKG1008
+
+A `--property` or `-p:` value of `package` is not `NAME=VALUE`, or sets
+`Configuration`, `RuntimeIdentifier`, `PublishAot` or
+`RunicApplicationFrontendPrebuiltDirectory`, which `package` sets from its own
+options (exit code 2); or `--frontend-bundle` names a folder that is not a
+usable web bundle: no `web-bundle.json`, another format, or a page that does
+not hash to the files the manifest records (exit code 1). Since 0.24.
+
+**Fix:** use `--configuration`, `--runtime` and `--frontend-bundle`; `package`
+always publishes with Native AOT. Write the bundle with `dotnet runic bundle`
+and download the whole artifact; `dotnet runic doctor --bundle <dir>` checks it.
 
 ### RAPPPKG2001
 

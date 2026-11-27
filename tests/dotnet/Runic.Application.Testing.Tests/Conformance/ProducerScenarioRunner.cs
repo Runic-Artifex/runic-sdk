@@ -29,10 +29,13 @@ internal sealed class ProducerScenarioRunner
     private readonly Dictionary<string, Task<RunicWindowCloseResult>> _closes = new(StringComparer.Ordinal);
     // The flushes the flushFields steps started, by id (field-flush/1).
     private readonly Dictionary<string, Task<bool>> _flushes = new(StringComparer.Ordinal);
+    // The uploads whose body's end an upload step with hold holds, until its endUpload step (blobs/1).
+    private readonly ConformanceHost.HeldUploads _uploads;
     private ScenarioConnection? _first;
 
-    private ProducerScenarioRunner(ConformanceScenario scenario, ScenarioTransport transport)
+    private ProducerScenarioRunner(ConformanceScenario scenario, ScenarioTransport transport, ConformanceHost.HeldUploads uploads)
     {
+        _uploads = uploads;
         _scenario = scenario;
         _transport = transport;
         _messages = new(scenario.Ids);
@@ -41,7 +44,9 @@ internal sealed class ProducerScenarioRunner
     internal static async Task RunAsync(ConformanceScenario scenario, IConformanceViews views)
     {
         using var transport = new ScenarioTransport();
-        var runner = new ProducerScenarioRunner(scenario, transport);
+        // Disposed after the window: it ends every body still held.
+        using var uploads = new ConformanceHost.HeldUploads();
+        var runner = new ProducerScenarioRunner(scenario, transport, uploads);
         using var window = views.CreateWindow(scenario.View, scenario.Model,
             new(transport, runner._clock, scenario.InputBytes, scenario.PendingUploads));
         runner._messages.Provider = window.Provide;
@@ -117,8 +122,15 @@ internal sealed class ProducerScenarioRunner
         else if (step.ContainsKey("setAppearance")) ConformanceHost.SetAppearance(_transport, step["setAppearance"] as JsonObject);
         else if (step["upload"] is JsonObject upload)
         {
-            var answer = await ConformanceHost.UploadAsync(_transport, ConnectionOf(step), upload).ConfigureAwait(false);
-            _messages.Match(step["answer"]!, answer);
+            if (upload["hold"] is JsonNode hold) _messages.Id(hold.GetValue<string>(), "upload");
+            var answer = await ConformanceHost.UploadAsync(_transport, ConnectionOf(step), upload, _uploads).ConfigureAwait(false);
+            if (upload["hold"] is null) _messages.Match(step["answer"]!, answer);
+        }
+        else if (step["endUpload"] is JsonNode end)
+        {
+            var hold = end.GetValue<string>();
+            _messages.Id(hold, "upload");
+            _messages.Match(step["answer"]!, await ConformanceHost.EndUploadAsync(_uploads, hold).ConfigureAwait(false));
         }
         else if (step["expect"] is JsonObject expect)
         {

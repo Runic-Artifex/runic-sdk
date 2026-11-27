@@ -1,0 +1,30 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.an-upload-whose-body-is-not-its-size-is-invalid-request.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1"],
+  "description": "An upload whose body is shorter or longer than its Content-Length is refused with 400 invalid-request and stores nothing: with a bound of 1 unclaimed upload, an upload of the right length still fits after both.",
+  "view": "files",
+  "options": {"pendingUploads":1},
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-files": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "stored": {"kind":"provided"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[]},"presentation":"ok"},"replyTo":"open-files"},
+    {"upload":{"name":"short.txt","type":"text/plain","text":"abc","size":5},"answer":{"status":400,"body":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}}}},
+    {"upload":{"name":"long.txt","type":"text/plain","text":"abc","size":1},"answer":{"status":400,"body":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}}}},
+    {"upload":{"name":"right.txt","type":"text/plain","text":"abc","size":3},"answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"stored"},"name":"right.txt","type":"text/plain","size":3}}}}
+  ]
+}

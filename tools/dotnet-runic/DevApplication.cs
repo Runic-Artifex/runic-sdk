@@ -109,10 +109,7 @@ internal static class DevApplication
             ProjectSelection selection = await ProjectDiscovery.FindWindowProjectAsync(Environment.CurrentDirectory, options.Project, "dev",
                 ProjectDiscovery.EvaluateWindowProject(ResolveDotNetHost()), cancellationToken).ConfigureAwait(false);
             project = selection.Project;
-            if (selection.Solution is { } solution)
-            {
-                Console.WriteLine($"[dev] Solution: {solution}, whose one Window project is {Path.GetRelativePath(Path.GetDirectoryName(solution)!, project).Replace('\\', '/')}");
-            }
+            if (ProjectDiscovery.SolutionLine(selection) is { } line) Console.WriteLine("[dev] " + line);
             return await RunProjectAsync(context, options, project, evaluated, cancellationToken).ConfigureAwait(false);
         }
         catch (DevDevelopmentException error)
@@ -140,6 +137,8 @@ internal static class DevApplication
             .EvaluateAsync(dotnetHost, project, options.Configuration, cancellationToken)
             .ConfigureAwait(false);
         evaluation.Complete();
+        // The launch profile, as dotnet run chooses it, and the profile's arguments that dotnet run would drop (D084.2, D084.3).
+        options = DevLaunch.Resolve(configuration, options, Console.Error.WriteLine);
         WriteConfiguration(configuration, options);
         evaluated?.Invoke(configuration);
         RequireWindowFrontend(configuration, options);
@@ -226,6 +225,9 @@ internal static class DevApplication
                 debuggingHints.Add(WebKitDebugging.CdpUnavailableHint);
             }
         }
+        // sdk#1405: a killed dev's frontend marker would make this dev's first build skip the frontend build and install.
+        // Before this session's file replaces the one that names that dev's process.
+        if (DevSession.RemoveStaleFrontendMarker(configuration.SessionDirectory) is { } removed) Console.WriteLine(removed);
         // The session file says where the running session is, for IDEs; it is marked stopped when dev ends.
         var session = DevSession.Create(configuration, options, webKitEndpoints);
         foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints.Where(static endpoint => endpoint.UnavailableReason == DevSession.ElevatedReason))
@@ -382,6 +384,16 @@ internal static class DevApplication
             // Stopping dev with Ctrl+C is how it ends normally, but it is still a cancellation: 130, as every Runic
             // tool reports it, after the frontend and application process trees have stopped.
             return Program.Cancelled;
+        }
+        catch (DevDevelopmentException error) when (DevStop.MayBeStop(error, stop.Token))
+        {
+            // #1396: a terminal Ctrl+C reaches the whole process group, so the development server can exit with 130
+            // before dev's own handler has run, or a request fails because the stop ended the server.
+            if (await DevStop.IsStopAsync(error, DevStop.SignalGrace, TimeProvider.System, stop.Token).ConfigureAwait(false))
+            {
+                return Program.Cancelled;
+            }
+            throw;
         }
         finally
         {
@@ -541,7 +553,10 @@ internal static class DevApplication
                         : $"The frontend watcher exited unexpectedly with code {exitCode}.",
                 completed == host.Completion
                     ? CommandRunner.LocalDetail(configuration.ProjectDirectory, CommandRunner.DoctorHint(configuration.ProjectPath))
-                    : null);
+                    : null)
+            {
+                ChildExitCode = exitCode,
+            };
         }
         finally
         {
@@ -627,7 +642,10 @@ internal static class DevApplication
                 "RAPPDEV1007",
                 developmentServer is not null
                     ? $"The {configuration.DevelopmentServerKind} development server exited unexpectedly with code {exitCode}{ServerError(developmentServer)}"
-                    : $"The frontend watcher exited unexpectedly with code {exitCode}.");
+                    : $"The frontend watcher exited unexpectedly with code {exitCode}.")
+            {
+                ChildExitCode = exitCode,
+            };
         }
         finally
         {
@@ -724,6 +742,25 @@ internal static class DevApplication
         }
         return false;
     }
+
+    /// <summary>
+    /// The Window's arguments and where each part comes from, for example
+    /// <c>[dev] Window arguments: /mock (StartArguments) /verbose (profile Acme.App)</c>; null when there are none or
+    /// dotnet run takes them from the profile alone.
+    /// </summary>
+    internal static string? WindowArguments(DevProjectConfiguration configuration, DevOptions options)
+    {
+        var parts = new List<string>();
+        if (configuration.StartArguments.Trim() is { Length: > 0 } project) parts.Add($"{project} (StartArguments)");
+        if (options.ProfileArguments.Count != 0) parts.Add($"{JoinArguments(options.ProfileArguments)} (profile {options.LaunchProfile})");
+        if (options.ApplicationArguments.Count != 0) parts.Add($"{JoinArguments(options.ApplicationArguments)} (after --)");
+        return parts.Count == 0 ? null : "[dev] Window arguments: " + string.Join(' ', parts);
+    }
+
+    private static string JoinArguments(IEnumerable<string> arguments) =>
+        string.Join(' ', arguments.Select(static argument => argument.Length == 0 || argument.Any(static c => c is ' ' or '\t' or '"')
+            ? "\"" + argument.Replace("\"", "\\\"", StringComparison.Ordinal) + "\""
+            : argument));
 
     /// <summary>
     /// RAPPDEV1019: the project's Views targets are older than the tool (no <c>_RunicViewsDevSessionProtocol</c>), so dev
@@ -1109,7 +1146,13 @@ internal static class DevApplication
         }
         if (options.LaunchProfile is not null)
         {
-            Console.WriteLine($"[dev] Launch profile: {options.LaunchProfile}");
+            Console.WriteLine(options.LaunchProfileIsDefault
+                ? $"[dev] Launch profile: {options.LaunchProfile} (the first Project profile; --no-launch-profile runs without one)"
+                : $"[dev] Launch profile: {options.LaunchProfile}");
+        }
+        if (options.StartWindow && WindowArguments(configuration, options) is { } windowArguments)
+        {
+            Console.WriteLine(windowArguments);
         }
         if (options.Environment.Count != 0)
         {

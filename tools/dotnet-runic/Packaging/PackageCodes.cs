@@ -33,6 +33,12 @@ internal static class PackageCodes
     /// </summary>
     internal const string FlathubSourcesUnavailable = "RAPPPKG1007";
 
+    /// <summary>
+    /// A <c>--property</c> or <c>-p:</c> value is not NAME=VALUE, or sets a property that package sets itself; or
+    /// <c>--frontend-bundle</c> names a folder without a web bundle (D082.5, split CI F5).
+    /// </summary>
+    internal const string PropertyInvalid = "RAPPPKG1008";
+
     // Warnings: the payload's warnings[].code. The command still succeeds.
 
     /// <summary>Warning: the package, repository or bundle is unsigned.</summary>

@@ -206,7 +206,10 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         {
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
-                $"The {server} development server exited before readiness with code {completion.Result}.");
+                $"The {server} development server exited before readiness with code {completion.Result}.")
+            {
+                ChildExitCode = completion.Result,
+            };
         }
     }
 
@@ -326,7 +329,10 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                         "RAPPDEV1007",
                         $"The Vite development server exited before readiness with code {exitCode}" +
                         (output is null ? "." : $": {output}") +
-                        (output is not null && explain?.Invoke(output) is { } named ? " " + named : ""));
+                        (output is not null && explain?.Invoke(output) is { } named ? " " + named : ""))
+                    {
+                        ChildExitCode = exitCode,
+                    };
                 }
 
                 try

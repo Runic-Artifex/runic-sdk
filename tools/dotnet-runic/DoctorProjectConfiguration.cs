@@ -87,6 +87,12 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>The evaluated ApplicationId, the application's reverse-DNS identity; empty when the project sets none.</summary>
     internal string ApplicationId { get; init; } = string.Empty;
 
+    /// <summary>The evaluated <c>StartArguments</c> of the configuration doctor checks, for <c>launch-arguments</c>.</summary>
+    internal string StartArguments { get; init; } = string.Empty;
+
+    /// <summary>The build configuration doctor evaluated, such as Debug.</summary>
+    internal string Configuration { get; init; } = "Debug";
+
     /// <summary>The package and project references the project declares directly, by package identity.</summary>
     internal IReadOnlyList<string> DirectReferences { get; init; } = [];
 
@@ -126,6 +132,9 @@ internal sealed record DoctorProjectConfiguration(
 
     /// <summary>The project's <c>RunicApplicationFrontendClientModule</c> items: the client libraries whose generated clients the page imports.</summary>
     internal IReadOnlyList<DoctorClientModule> ClientModules { get; init; } = [];
+
+    /// <summary>The evaluated AssemblyName, by which a web bundle's entry is found; empty when unknown.</summary>
+    internal string AssemblyName { get; init; } = string.Empty;
 
     /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
@@ -192,6 +201,8 @@ internal sealed record DoctorProjectConfiguration(
             UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
             DirectReferences = references,
             ApplicationId = Value("ApplicationId"),
+            StartArguments = development.StartArguments,
+            Configuration = configuration,
             JavaScriptWorkspaceRoot = development.JavaScriptWorkspaceRoot,
             WorkspaceRootSetting = development.WorkspaceRootSetting,
             PackageManagerName = development.PackageManagerName,
@@ -199,6 +210,7 @@ internal sealed record DoctorProjectConfiguration(
             EnableWindowsTargeting = IsTrue(Value("EnableWindowsTargeting")),
             FrontendGraph = graph,
             ClientModules = ReadClientModules(document.RootElement),
+            AssemblyName = Value("AssemblyName"),
         };
     }
 
@@ -284,7 +296,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId,TargetPlatformIdentifier,EnableWindowsTargeting,_RunicViewsFrontendGraphScript,RunicApplicationFrontendCodegenRuntime,AssemblyName",
             "-getItem:PackageReference,ProjectReference,RunicApplicationFrontendClientModule",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));
