@@ -1406,6 +1406,40 @@ exception to standard error; include it when you report the problem. See
 `dotnet runic support` moved to `runic-translations support` in 0.9; its
 `RAPPSUP` codes are in the runic-translations-sdk catalog as `RTRSUP`.
 
+### RAPPBUNDLE1001
+
+The output directory of `dotnet runic bundle` holds files other than a web
+bundle, which `bundle` would mix into the manifest or delete. Exit code 2. Since
+0.24.
+
+**Fix:** choose a new or empty directory with `--output-directory`, or one that
+an earlier `dotnet runic bundle` wrote.
+
+### RAPPBUNDLE1002
+
+The build that writes the web bundle failed. The output above names the error.
+Since 0.24.
+
+**Fix:** fix the build error; `dotnet build -c Release` reports the same.
+
+### RAPPBUNDLE1003
+
+The build succeeded, but the web bundle is missing or does not check, as
+`dotnet runic doctor --bundle` checks it. A project whose frontend build is off
+writes no entry (`RUNICBRIDGE092` stops the build first). Since 0.24.
+
+**Fix:** turn the frontend build on for the bundle's build, and build from an
+empty output directory.
+
+### RAPPBUNDLE1004
+
+A `--property` or `-p:` value of `bundle` is not `NAME=VALUE`, or sets
+`Configuration`, `RunicApplicationFrontendBundleDirectory` or
+`RunicApplicationFrontendPrebuiltDirectory`, which `bundle` sets itself or which
+would build a bundle from another bundle. Exit code 2. Since 0.24.
+
+**Fix:** use `--configuration` and `--output-directory`.
+
 ### RAPPCLI1000
 
 The `dev` or `size` command did not complete successfully. The output above the
@@ -1489,9 +1523,10 @@ found. Exit code 1.
 
 The project cannot be selected: the given project does not exist or is not a
 `.csproj`, or the directory has no `.csproj` or several. Exit code 1. From a
-solution root, `dev` and `doctor` take the solution's one Window project (since
-0.24); they report this code when the directory holds several solutions, or
-when the solution has no Window project or several, which the message lists.
+solution root, `dev`, `doctor`, `size` and `package` take the solution's one
+Window project (since 0.24); they report this code when the directory holds
+several solutions, or when the solution has no Window project or several, which
+the message lists.
 
 **Fix:** pass the project with `--project`, for example
 `dotnet runic dev --project Acme.App/Acme.App.csproj`.
@@ -1646,12 +1681,15 @@ same problem in its `dotnet-runtime` check.
 
 `dev --no-window` was combined with an option that only describes how `dev`
 starts the Window or that stops the frontend from being served:
-`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`, `-e` or
+`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`,
+`--no-launch-profile` (since 0.24), `-e` or
 application arguments after `--`. With `--no-window` the IDE starts the Window.
 Exit code 2. Since 0.20.
 
-**Fix:** drop the option and set the Window's launch profile, environment and
-arguments in the IDE's launch configuration. See
+**Fix:** drop the option. The IDE starts the Window: put Debug-only arguments
+in the project's `StartArguments`, and the launch profile, its arguments and
+environment in `Properties/launchSettings.json`, which the IDEs and `dev` read
+([Arguments for Debug builds](debugging.md#arguments-for-debug-builds)). See
 [Debug the Window in your IDE](../tools/dotnet-runic/README.md#debug-the-window-in-your-ide).
 
 ### RAPPDEV1015
@@ -1720,6 +1758,20 @@ to resolve it.
 
 **Fix:** update the project's Runic packages to the tool's version. See
 [Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
+
+### RAPPDEV1020
+
+A warning from `dev` (since 0.24): the project sets `StartArguments` and the
+launch profile that `dev` uses sets `commandLineArgs`. `dotnet run` alone would
+drop the profile's arguments; `dev`, Visual Studio and Runic DevKit pass both,
+the project's first, so `dev` passes the profile's after `--` itself and goes
+on. The line names both values:
+`<project> : warning RAPPDEV1020: The project sets StartArguments (/mock) and launch profile 'Acme.App' sets commandLineArgs (/verbose). …`.
+`dotnet runic doctor`'s `launch-arguments` check reports the same.
+
+**Fix:** keep each argument in one place: an argument for Debug builds only in a
+configuration-conditioned `StartArguments`, a per-run argument in the profile.
+See [Arguments for Debug builds](debugging.md#arguments-for-debug-builds).
 
 ### RAPPPKG1001
 
@@ -1798,6 +1850,19 @@ Since 0.11.
 
 **Fix:** pass `--git-commit` or `--git-tag`, restore with lock files
 (`RestorePackagesWithLockFile`) and list both Linux runtime identifiers.
+
+### RAPPPKG1008
+
+A `--property` or `-p:` value of `package` is not `NAME=VALUE`, or sets
+`Configuration`, `RuntimeIdentifier`, `PublishAot` or
+`RunicApplicationFrontendPrebuiltDirectory`, which `package` sets from its own
+options (exit code 2); or `--frontend-bundle` names a folder that is not a
+usable web bundle: no `web-bundle.json`, another format, or a page that does
+not hash to the files the manifest records (exit code 1). Since 0.24.
+
+**Fix:** use `--configuration`, `--runtime` and `--frontend-bundle`; `package`
+always publishes with Native AOT. Write the bundle with `dotnet runic bundle`
+and download the whole artifact; `dotnet runic doctor --bundle <dir>` checks it.
 
 ### RAPPPKG2001
 

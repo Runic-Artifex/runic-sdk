@@ -28,6 +28,38 @@ missing tool stops it before it builds anything (`RAPPPKG1002`, which names the
 package that provides the tool). Run every target in a CI job of its operating
 system to ship all of them.
 
+That job needs no Node.js or Bun when a Linux job builds the frontends: write
+a web bundle there with `dotnet runic bundle`, upload it as an artifact, and
+package from it with `--frontend-bundle` (since 0.24). The publish checks that
+the bundle was built from the same ViewModels. `-p:NAME=VALUE` passes MSBuild
+properties, such as `Version`, to every target but `flathub`. See
+[Write a web bundle](../tools/dotnet-runic/README.md#write-a-web-bundle).
+
+### Building a Windows application on Linux or macOS
+
+A project of a Windows target framework, such as a WPF application or model
+project on `net10.0-windows`, restores and builds on Linux and macOS only with
+`EnableWindowsTargeting=true`. Without it the restore stops with `NETSDK1100`.
+The property must be set before the restore imports any package's build files,
+so a Runic package can't set it. Put it in the application's own
+`Directory.Build.props`, as the
+[WPF hybrid editor](../examples/wpf-hybrid-editor/Directory.Build.props) does:
+
+```xml
+<PropertyGroup>
+  <EnableWindowsTargeting Condition="'$(EnableWindowsTargeting)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))">true</EnableWindowsTargeting>
+</PropertyGroup>
+```
+
+`dotnet runic doctor` on Linux or macOS reports a Windows target framework
+without it as its
+[`windows-targeting`](../tools/dotnet-runic/README.md#windows-targeting) check.
+With the property, a Linux CI job builds and tests such a project, writes its
+[web bundle](../tools/dotnet-runic/README.md#write-a-web-bundle), and can
+publish it framework-dependent for `win-x64`. The application still runs only
+on Windows, so WPF and WebView2 tests, a NativeAOT `win-x64` publish, MSIX
+packaging and signing need a Windows runner.
+
 ## Publishing with dotnet publish
 
 Without the packaging command, `dotnet publish` produces a framework-dependent,

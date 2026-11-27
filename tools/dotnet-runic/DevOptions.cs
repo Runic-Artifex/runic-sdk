@@ -17,8 +17,32 @@ internal sealed record DevOptions(
     /// <summary>The MSBuild verbosity for the builds dev runs, from <c>--verbosity</c>; null leaves each tool's default.</summary>
     internal string? Verbosity { get; init; }
 
-    /// <summary>The <c>launchSettings.json</c> profile from <c>--launch-profile</c>; null runs without a launch profile.</summary>
+    /// <summary>
+    /// The <c>launchSettings.json</c> profile from <c>--launch-profile</c>, or after <see cref="DevLaunch.Resolve"/> the one
+    /// dev runs the Window with; null runs without a launch profile.
+    /// </summary>
     internal string? LaunchProfile { get; init; }
+
+    /// <summary>
+    /// False with <c>--no-launch-profile</c>: the Window runs without a launch profile, as before 0.24. Otherwise dev uses
+    /// <see cref="LaunchProfile"/>, or by default the first <c>Project</c> profile, as dotnet run does (D084.3).
+    /// </summary>
+    internal bool UseLaunchProfile { get; init; } = true;
+
+    /// <summary>True when <see cref="DevLaunch.Resolve"/> chose the first <c>Project</c> profile because none was named.</summary>
+    internal bool LaunchProfileIsDefault { get; init; }
+
+    /// <summary>
+    /// The profile's <c>commandLineArgs</c>, split, which dev passes after <c>--</c> before <see cref="ApplicationArguments"/>
+    /// when dotnet run would otherwise drop them (D084.2); empty when dotnet run applies them itself.
+    /// </summary>
+    internal IReadOnlyList<string> ProfileArguments { get; init; } = [];
+
+    /// <summary>
+    /// The <c>-e</c> values whose names the launch profile also sets: dev passes them to dotnet run's own <c>-e</c>, which
+    /// wins over the profile's variables, while the others reach the Window through its environment.
+    /// </summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> RunEnvironment { get; init; } = [];
 
     /// <summary>False with <c>--no-build</c>: dev runs no .NET restore or build of its own before starting the Window.</summary>
     internal bool Build { get; init; } = true;
@@ -102,13 +126,15 @@ internal static class ToolOptionValues
         if (!options.WatchFrontend) conflicts.Add("--no-frontend-watch");
         if (!options.WatchHost) conflicts.Add("--no-dotnet-watch");
         if (options.LaunchProfile is not null) conflicts.Add("--launch-profile");
+        if (!options.UseLaunchProfile) conflicts.Add("--no-launch-profile");
         if (options.Environment.Count != 0) conflicts.Add("-e");
         if (options.ApplicationArguments.Count != 0) conflicts.Add("application arguments after --");
         if (conflicts.Count != 0)
         {
             throw new DevUsageException(NoWindowConflictCode,
                 $"--no-window runs only the frontend, so it cannot be combined with {string.Join(", ", conflicts)}. " +
-                "Set the Window's launch profile, environment and arguments in the IDE.");
+                "The IDE starts the Window: put Debug-only arguments in the project's StartArguments, and the launch profile, " +
+                "its arguments and environment in Properties/launchSettings.json, which the IDE and dotnet runic dev read.");
         }
     }
     internal const string ReservedEnvironmentCode = "RAPPDEV1012";
@@ -160,9 +186,21 @@ internal static class ToolOptionValues
     /// Reads <c>--property Name=Value</c> values into MSBuild <c>-property:</c> arguments. A semicolon or comma in a
     /// value is escaped, so each value sets exactly one property; other MSBuild escapes such as %3B pass through.
     /// </summary>
-    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values)
+    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values) =>
+        ParseProperties(values, SizeOptionProperties, PropertyFormatCode, ReservedPropertyCode,
+            name => $"--property cannot set {name}: use --configuration, --runtime, --aot or --no-aot, and --self-contained or --no-self-contained.");
+
+    /// <summary>
+    /// Reads <c>--property Name=Value</c> values for a command whose own options set <paramref name="reserved"/>: a
+    /// malformed value is <paramref name="formatCode"/>, a reserved name <paramref name="reservedCode"/> with
+    /// <paramref name="reservedMessage"/>.
+    /// </summary>
+    internal static IReadOnlyList<KeyValuePair<string, string>> ParseProperties(IReadOnlyList<string> values, IReadOnlyList<string> reserved,
+        string formatCode, string reservedCode, Func<string, string> reservedMessage)
     {
         ArgumentNullException.ThrowIfNull(values);
+        ArgumentNullException.ThrowIfNull(reserved);
+        ArgumentNullException.ThrowIfNull(reservedMessage);
         var properties = new List<KeyValuePair<string, string>>(values.Count);
         foreach (string value in values)
         {
@@ -170,13 +208,12 @@ internal static class ToolOptionValues
             string name = separator < 0 ? value : value[..separator];
             if (separator <= 0 || !IsPropertyName(name))
             {
-                throw new DevUsageException(PropertyFormatCode,
+                throw new DevUsageException(formatCode,
                     "--property takes Name=Value: an MSBuild property name of letters, digits, '_' and '-', starting with a letter or '_', then '=' and the value.");
             }
-            if (Array.FindIndex(SizeOptionProperties, reserved => reserved.Equals(name, StringComparison.OrdinalIgnoreCase)) >= 0)
+            if (reserved.Any(entry => entry.Equals(name, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new DevUsageException(ReservedPropertyCode,
-                    $"--property cannot set {name}: use --configuration, --runtime, --aot or --no-aot, and --self-contained or --no-self-contained.");
+                throw new DevUsageException(reservedCode, reservedMessage(name));
             }
             properties.Add(new(name, value[(separator + 1)..]));
         }

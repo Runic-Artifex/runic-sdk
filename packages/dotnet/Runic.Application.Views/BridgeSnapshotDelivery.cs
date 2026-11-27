@@ -11,6 +11,9 @@ namespace Runic.Application.Views;
 // - A route retains at most 64 undelivered entries or 1 MiB of them; the entry being delivered does not count. A frame
 //   that does not fit is refused (EnqueueFrame returns false) and the producer captures a recovery state (EnqueueState),
 //   or requests one when a captured state is already queued.
+// - While the drain holds no entry, the oldest queued one is taken at once, as the entry being delivered (#1387): also
+//   while the drain waits for a model turn to run a requested unit, which the code that queues the entry can hold, or
+//   has not started yet. A full state does not supersede it.
 // - A requested state is captured when the transport takes it, in a model turn, with the revision current then.
 // - A publication unit can be requested too (RequestUnit): the drain runs it in a model turn before it takes the next
 //   entry, so a burst of notifications publishes one frame. Requested units start at least MinimumUnitInterval apart
@@ -49,6 +52,10 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
     private bool _stateQueued;
     private bool _unitRequested;
     private bool _running;
+    // Whether the drain holds an entry: it delivers it, or a state it captures, until it settles it.
+    private bool _holding;
+    // The entry taken while the drain held none (Start), which it delivers before anything else.
+    private Entry? _taken;
     private bool _disposed;
     // When the last requested unit started (Stopwatch ticks), or 0 before the first.
     private long _lastUnit;
@@ -254,18 +261,24 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
     }
 
     // Starts the drain, or wakes it while it waits for a unit's interval. The gate is held. A queued entry is taken
-    // at once, so the entry being delivered is known as soon as it is queued and does not count toward the bounds.
+    // at once when the drain holds none, so the entry being delivered is known as soon as it is queued and does not
+    // count toward the bounds, however late the drain gets to it.
     private void Start()
     {
         if (_running)
         {
+            if (!_holding && _taken is null && _pending.Count > 0) _taken = Take();
             Wake();
             return;
         }
         _running = true;
         _replyOrder.Add(this);
         Entry? first = null;
-        if (!_unitRequested && !_stateRequested && _pending.Count > 0) first = Take();
+        if (!_unitRequested && !_stateRequested && _pending.Count > 0)
+        {
+            first = Take();
+            _holding = true;
+        }
         _ = Task.Run(() => DrainAsync(first));
     }
 
@@ -309,7 +322,15 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
                 var delay = TimeSpan.Zero;
                 lock (_gate)
                 {
-                    if (!_disposed && _unitRequested)
+                    _holding = false;
+                    if (_taken is { } taken)
+                    {
+                        // Taken while the drain held none: it is delivered first, before a requested unit runs.
+                        _taken = null;
+                        next = taken;
+                        _holding = true;
+                    }
+                    else if (!_disposed && _unitRequested)
                     {
                         delay = UnitDelay();
                         if (delay == TimeSpan.Zero)
@@ -319,12 +340,18 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
                             _lastUnit = Stopwatch.GetTimestamp();
                         }
                     }
-                    if (!unit)
+                    if (!unit && next is null)
                     {
                         capture = !_disposed && _pending.Count == 0 && _stateRequested;
-                        if (!capture)
+                        // A failure queued while the state is captured stays queued behind it.
+                        if (capture) _holding = true;
+                        else
                         {
-                            if (!_disposed && _pending.Count > 0) next = Take();
+                            if (!_disposed && _pending.Count > 0)
+                            {
+                                next = Take();
+                                _holding = true;
+                            }
                             else if (!_disposed && _unitRequested)
                             {
                                 // Nothing else to deliver: wait for the unit's interval, or for an entry, a state
@@ -441,6 +468,8 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
         {
             _disposed = true;
             ClearPending();
+            _taken?.Message.Release();
+            _taken = null;
             _unitRequested = false;
             Wake();
             waiters = _waiters;

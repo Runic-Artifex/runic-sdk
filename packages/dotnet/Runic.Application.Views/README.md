@@ -2997,6 +2997,11 @@ so `RunicApplicationFrontendPrebuiltDirectory=web-bundle dotnet runic package
 windows` publishes the MSIX from a bundle. Write the bundle with the same
 commit, configuration and Runic release as the publish.
 
+`dotnet runic bundle` builds and checks the bundle in one step, and
+`dotnet runic package <target> --frontend-bundle <dir>` publishes from it; see
+[Write a web bundle](../../../tools/dotnet-runic/README.md#write-a-web-bundle).
+`dotnet runic doctor --bundle <dir>` checks a downloaded bundle offline.
+
 ## Adding a Window to an existing web app
 
 A Window's frontend can reuse the components, styles and translations of a web

@@ -22,8 +22,13 @@ bun run --cwd packages/web/views --bun build
 dotnet run --project examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj
 ```
 
-WPF runs on Windows. The projects also compile on Linux and macOS with Windows
-targeting enabled.
+WPF runs on Windows. The projects also compile on Linux and macOS, because
+[Directory.Build.props](Directory.Build.props) sets `EnableWindowsTargeting`
+there; without it the restore stops with `NETSDK1100`. Copy that line into your
+own application's `Directory.Build.props`: it must be set before the restore,
+so no package can set it for you. `dotnet runic doctor` reports a missing one as
+its `windows-targeting` check. See
+[Building a Windows application on Linux or macOS](../../docs/packaging.md#building-a-windows-application-on-linux-or-macos).
 
 ## Reuse the editor in an existing app
 

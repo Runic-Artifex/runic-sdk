@@ -20,8 +20,9 @@ internal static partial class ProjectDiscovery
     private static readonly string[] SolutionExtensions = [".sln", ".slnx"];
 
     /// <summary>
-    /// The project of a command that takes any project (size, package): <paramref name="requestedProject"/>, a
-    /// directory's single .csproj, or the working directory's.
+    /// The project in a folder or named by <paramref name="requestedProject"/>: a .csproj, a directory's single .csproj,
+    /// or the working directory's. dev, doctor, size and package also take a solution root
+    /// (<see cref="FindWindowProjectAsync"/>).
     /// </summary>
     internal static string Find(string workingDirectory, string? requestedProject)
     {
@@ -51,7 +52,7 @@ internal static partial class ProjectDiscovery
     }
 
     /// <summary>
-    /// The Window project of dev and doctor (devtools-library-dx F9): as <see cref="Find"/>, and from a solution
+    /// The project of dev, doctor, size and package (devtools-library-dx F9, ide-run-debug K1): as <see cref="Find"/>, and from a solution
     /// (.sln or .slnx) its single Window project (<c>RunicApplicationFrontendWindowProject=true</c>). A directory with
     /// one .csproj is that project, as before; otherwise its one solution decides. <paramref name="isWindowProject"/>
     /// evaluates a project: true or false, or null when MSBuild could not evaluate it.
@@ -106,6 +107,40 @@ internal static partial class ProjectDiscovery
         }
         return new ProjectSelection(FindSingleProject(directory));
     }
+
+    /// <summary>
+    /// The project of doctor, size and package: <see cref="FindWindowProjectAsync"/> with MSBuild's evaluation, writing
+    /// <see cref="SolutionLine"/> when a solution gave the project (unless <paramref name="writeSolution"/> is false, as
+    /// for doctor, whose header names the project). A failed selection's code and message go to standard error first, as
+    /// dev writes them: the fault's own message names relative paths, which Runic.CommandLine redacts.
+    /// </summary>
+    internal static async Task<string> SelectProjectAsync(
+        string workingDirectory, string? requestedProject, string command, string dotnetHost, CancellationToken cancellationToken,
+        bool writeSolution = true)
+    {
+        ProjectSelection selection;
+        try
+        {
+            selection = await FindWindowProjectAsync(workingDirectory, requestedProject, command, EvaluateWindowProject(dotnetHost),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (DevDevelopmentException error)
+        {
+            Console.Error.WriteLine(DevApplication.DiagnosticLine(null, error.Code, error.Message));
+            throw;
+        }
+        if (writeSolution && SolutionLine(selection) is { } line) Console.WriteLine(line);
+        return selection.Project;
+    }
+
+    /// <summary>
+    /// The line that names the Window project a solution gave, for example <c>Solution: …/Acme.slnx, whose one Window
+    /// project is Acme.App/Acme.App.csproj</c>; null when <paramref name="selection"/> came from no solution.
+    /// </summary>
+    internal static string? SolutionLine(ProjectSelection selection) =>
+        selection.Solution is { } solution
+            ? $"Solution: {solution}, whose one Window project is {Relative(Path.GetDirectoryName(solution)!, selection.Project)}"
+            : null;
 
     /// <summary>The single Window project of <paramref name="solution"/>, or RAPPDEV1002 that lists the candidates.</summary>
     private static async Task<ProjectSelection> FromSolutionAsync(

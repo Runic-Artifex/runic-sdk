@@ -35,9 +35,6 @@ internal static partial class Program
     internal const string FormatOptionName = "--format";
     internal const string FormerFormatOptionName = "--output";
 
-    private const string ProjectDescription =
-        "The project file, or a directory with one .csproj. Defaults to the current directory.";
-
     private const string WindowProjectDescription =
         "The project file, a directory with one .csproj, or a solution (.sln, .slnx) or its directory, whose one Window project is used. Defaults to the current directory.";
 
@@ -63,6 +60,7 @@ internal static partial class Program
                 return await ToolExtensions.RunAsync(resolved, [.. leading, .. rest], Environment.CurrentDirectory).ConfigureAwait(false);
             arguments = [.. leading, extension!.Name];
         }
+        arguments = RewritePropertyArguments(arguments);
         // Command Line handles Ctrl+C, SIGTERM and SIGQUIT and reports 0, 1, 2, 3 and 130 as every Runic tool does;
         // dev protects its cleanup from a repeated signal with CommandExecutionContext.ProtectShutdown.
         return await new CommandApp(CreateCatalog())
@@ -105,13 +103,14 @@ internal static partial class Program
         [Option("--debug-endpoint", Description = "CS-WebUI: open the DevTools Protocol endpoint of the Window's Chrome or Edge on a free loopback port, for an IDE's JavaScript debugger. For an IDE to pass when it starts dev; off by default. --no-window lists port 9225 for the IDE's Window instead. --no-debug-endpoint wins.")] bool debugEndpoint,
         [Option("--no-debug-endpoint", ConflictsWith = ["webkit-inspector"], Description = "Open no endpoint for debugging the Window's pages: on Linux neither Runic's CDP adapter for JavaScript debuggers (port 9222) nor WebKit's remote inspector, and for CS-WebUI no DevTools Protocol port of the Window's browser.")] bool noDebugEndpoint,
         [Option("--webkit-inspector", ConflictsWith = ["no-debug-endpoint", "browser"], Description = "Linux: open WebKit's own Web Inspector over HTTP, for a browser, instead of the CDP adapter that JavaScript debuggers attach to. Needs WebKitGTK 2.54.3 or later; older versions get the inspector:// server.")] bool webkitInspector,
+        [Option("--no-launch-profile", ConflictsWith = ["launch-profile"], Description = "Run the Window without a launch profile. By default dev uses the first Project profile of Properties/launchSettings.json, as dotnet run does.")] bool noLaunchProfile,
         [Option("--no-devtools-extension", Description = "Windows: do not load the Runic DevTools extension into the Window's WebView2. By default dev adds it to RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS in Development.")] bool noDevToolsExtension,
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug",
-        [Option("--launch-profile", ValueName = "NAME", Description = "Run the Window with this profile from Properties/launchSettings.json. By default dev uses no launch profile.")] string launchProfile = "",
+        [Option("--launch-profile", ValueName = "NAME", ConflictsWith = ["no-launch-profile"], Description = "Run the Window with this profile from Properties/launchSettings.json. By default dev uses the first Project profile, as dotnet run does.")] string launchProfile = "",
         [Option("--verbosity", "-v", ValueName = "LEVEL", Choices = ["q", "quiet", "m", "minimal", "n", "normal", "d", "detailed", "diag", "diagnostic"], Description = VerbosityDescription)] string verbosity = "")
     {
         DevCommandResult? result = null;
@@ -129,6 +128,7 @@ internal static partial class Program
                 {
                     Verbosity = string.IsNullOrEmpty(verbosity) ? null : verbosity,
                     LaunchProfile = string.IsNullOrWhiteSpace(launchProfile) ? null : launchProfile,
+                    UseLaunchProfile = !noLaunchProfile,
                     Build = !noBuild,
                     StartWindow = !noWindow,
                     Environment = ToolOptionValues.ParseEnvironment(environment),
@@ -159,7 +159,7 @@ internal static partial class Program
         [Option("--no-self-contained", ConflictsWith = ["self-contained"], Description = "Publish framework-dependent, with -p:SelfContained=false, for example to compare with a self-contained build. Combine it with --no-aot.")] bool noSelfContained,
         [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Pass an MSBuild property to the evaluation and publish, as dotnet publish -p does, for example OptimizationPreference=Speed. Repeat it for several properties. Configuration, RuntimeIdentifier, PublishAot and SelfContained have their own options.")] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
-        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--runtime", "--rid", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
         [Option("--report", Description = "The JSON report to write. The file must not exist yet. Default: runic-size-<runtime>-<UTC time>.json in the current directory.")] string report = "",
@@ -182,6 +182,28 @@ internal static partial class Program
         }, () => result, stream: true);
     }
 
+    [Command("bundle", Description = "Build the frontends into a web bundle (rax.web-bundle/1) that a publish on another machine uses without Node.js or Bun, as dotnet runic package --frontend-bundle does.",
+        Examples = ["dotnet runic bundle", "dotnet runic bundle --project Acme.slnx --output-directory artifacts/web-bundle", "dotnet runic bundle -p:RunicApplicationHost=desktop"])]
+    [CommandResult(BundleCommandResult.PayloadType, typeof(BundleCommandJsonContext))]
+    internal static Task<CommandOutcome<BundleCommandResult>> Bundle(
+        CommandExecutionContext context,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Pass an MSBuild property to the build, as dotnet build -p does; -p:NAME=VALUE is the same. Repeat it for several properties.")] IReadOnlyList<string> properties,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p", Description = "The project or solution (.sln, .slnx) to build, or a directory with one. Defaults to the current directory.")] string project = "",
+        [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
+        [Option("--output-directory", "-o", Description = "The bundle's directory: new, empty, or an earlier bundle, which bundle replaces. Defaults to artifacts/web-bundle beside the project.")] string outputDirectory = "") =>
+        ExecuteAsync<BundleCommandResult>(context, stream: true, async _ =>
+        {
+            BundleCommandResult result = await BundleApplication.RunAsync(new BundleOptions
+            {
+                Project = string.IsNullOrWhiteSpace(project) ? null : project,
+                Configuration = string.IsNullOrWhiteSpace(configuration) ? "Release" : configuration,
+                OutputDirectory = string.IsNullOrWhiteSpace(outputDirectory) ? null : outputDirectory,
+                Properties = BundleApplication.ParseProperties(properties),
+            }, cancellationToken).ConfigureAwait(false);
+            return CommandOutcome.Success(result);
+        });
+
     [Command("doctor", Description = "Check the project and development environment.",
         Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --runtime linux-x64 --aot", "dotnet runic doctor --format json"])]
     [CommandResult(DoctorCommandResult.PayloadType, typeof(DoctorCommandJsonContext))]
@@ -195,7 +217,8 @@ internal static partial class Program
         [Option("--project", "-p", Description = WindowProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --runtime as dotnet publish does.")] string configuration = "",
         [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail in both output modes.")] string failOn = "",
-        [Option("--runtime", "--rid", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
+        [Option("--runtime", "--rid", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "",
+        [Option("--bundle", ValueName = "DIR", Description = "Also check this web bundle offline, as a publish with --frontend-bundle uses it: its manifest, the hash of each page and an entry for the project.")] string bundle = "")
     {
         return ExecuteAsync<DoctorCommandResult>(context, stream: false, async output =>
         {
@@ -208,7 +231,10 @@ internal static partial class Program
             string evaluated = configuration.Length != 0 ? configuration : target is null ? "Debug" : "Release";
             DoctorRun run = await DoctorApplication.InspectAsync(
                 new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, evaluated, target, aot ? true : noAot ? false : null,
-                    selfContained ? true : noSelfContained ? false : null),
+                    selfContained ? true : noSelfContained ? false : null)
+                {
+                    Bundle = string.IsNullOrWhiteSpace(bundle) ? null : bundle,
+                },
                 cancellationToken).ConfigureAwait(false);
             DoctorApplication.WriteReport(run.Project, run.Report, run.Target);
             return DoctorOutcome.Create(
@@ -246,6 +272,38 @@ internal static partial class Program
         return Failure<CommandUnit>(CommandExitCategory.Unavailable, ToolExtensions.MissingCode,
             ToolExtensions.MissingMessage(extension, version, Environment.CurrentDirectory));
     }
+
+    /// <summary>
+    /// D082.5: <c>package</c> and <c>bundle</c> take MSBuild properties as <c>dotnet build</c> and <c>dotnet run</c> do,
+    /// <c>-p:NAME=VALUE</c> (also <c>-property:</c>, <c>--property:</c> and <c>/p:</c>), which this rewrites to
+    /// <c>--property NAME=VALUE</c>. <c>-p</c> with a separate value stays <c>--project</c>, as for <c>dotnet run</c>.
+    /// Arguments after <c>--</c> and other commands are unchanged.
+    /// </summary>
+    internal static string[] RewritePropertyArguments(string[] arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (arguments is not ["package" or "bundle", ..]) return arguments;
+        var rewritten = new List<string>(arguments.Length + 2);
+        bool literal = false;
+        foreach (string argument in arguments)
+        {
+            if (!literal && argument == "--") literal = true;
+            string? value = literal ? null : PropertyPrefixes
+                .Where(prefix => argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .Select(prefix => argument[prefix.Length..])
+                .FirstOrDefault();
+            if (value is null)
+            {
+                rewritten.Add(argument);
+                continue;
+            }
+            rewritten.Add("--property");
+            rewritten.Add(value);
+        }
+        return [.. rewritten];
+    }
+
+    private static readonly string[] PropertyPrefixes = ["--property:", "-property:", "/property:", "-p:", "/p:"];
 
     /// <summary>
     /// Runs a command that reports an exit code, and its payload once known. A failure carries the payload in the
