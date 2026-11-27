@@ -48,10 +48,16 @@ internal sealed class SnapshotDeliveryTests
     // while that turn queued a burst of frames. It took the first frame only after the turn, so that frame counted
     // toward the bounds, and the 65th frame of the burst captured a recovery state although nothing was being
     // delivered. The oldest frame is the one being delivered as soon as it is queued.
+    //
+    // #1439: the burst starts only once the drain waits for the turn. A drain that started after the first frame was
+    // queued took that frame before the unit and delivered it while the turn still ran, which needs no turn; the next
+    // frame was then the one being delivered, so the queue rightly had room for the overflow frame.
     [Test]
     public async Task TheFirstFrameIsBeingDeliveredWhileTheDrainWaitsForATurnAsync()
     {
         var model = new Model();
+        await using var context = new HeldTurnContext();
+        using var ownership = RunicModelContextRegistry.Shared.Bind(context, model);
         var turn = BridgeModelTurn.For(model);
         var unitRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var transport = new RecordingTransport();
@@ -60,8 +66,11 @@ internal sealed class SnapshotDeliveryTests
         transport.Hello();
         turn.Run(() =>
         {
-            // The unit needs this turn, so the drain cannot run it, or deliver anything, before the turn ends.
             delivery.RequestUnit();
+            // The drain took the unit and waits for this turn: it can neither run the unit nor deliver anything
+            // before the turn ends.
+            if (!context.TurnRequested.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))))
+                throw new TimeoutException("The drain did not wait for a turn to run the requested unit.");
             if (!delivery.EnqueueFrame(Bytes("first"))) throw new InvalidOperationException("The first frame was rejected.");
             for (var index = 0; index < BridgeSnapshotDelivery.MaximumPendingEntries; index++)
                 if (!delivery.EnqueueFrame(Bytes($"frame {index}")))
@@ -165,6 +174,79 @@ internal sealed class SnapshotDeliveryTests
             // The memory is valid only until the returned task completes.
             lock (_frames) _frames.Add(message.ToArray());
             return ValueTask.CompletedTask;
+        }
+    }
+
+    // A model context whose turns run on the thread that starts them. A turn requested from another thread while one
+    // runs is queued, sets TurnRequested and runs when the running turn ends, so a test knows when the drain waits.
+    private sealed class HeldTurnContext : IRunicModelContext
+    {
+        private readonly object _gate = new();
+        private readonly Queue<(Action Turn, TaskCompletionSource Done)> _queued = new();
+        private int _executing;
+
+        public ManualResetEventSlim TurnRequested { get; } = new();
+
+        public bool IsExecuting => Volatile.Read(ref _executing) == Environment.CurrentManagedThreadId;
+
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException { add { } remove { } }
+
+        // The delivery neither posts turns nor asks for a result.
+        public bool TryPost(Action turn) => throw new NotSupportedException();
+
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
+        {
+            if (IsExecuting)
+            {
+                turn();
+                return ValueTask.CompletedTask;
+            }
+            lock (_gate)
+            {
+                if (_executing != 0)
+                {
+                    var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _queued.Enqueue((turn, done));
+                    TurnRequested.Set();
+                    return new(done.Task);
+                }
+                _executing = Environment.CurrentManagedThreadId;
+            }
+            try { turn(); }
+            finally { RunQueuedTurns(); }
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            TurnRequested.Dispose();
+            return ValueTask.CompletedTask;
+        }
+
+        // The thread that ran a turn runs the turns queued meanwhile before another thread can start one.
+        private void RunQueuedTurns()
+        {
+            while (true)
+            {
+                (Action Turn, TaskCompletionSource Done) next;
+                lock (_gate)
+                {
+                    if (!_queued.TryDequeue(out next))
+                    {
+                        _executing = 0;
+                        return;
+                    }
+                }
+                try
+                {
+                    next.Turn();
+                    next.Done.TrySetResult();
+                }
+                catch (Exception error) { next.Done.TrySetException(error); }
+            }
         }
     }
 
