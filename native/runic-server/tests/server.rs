@@ -162,6 +162,40 @@ async fn two_host_lines_are_a_bad_request_before_the_host_check() {
         assert!(response.starts_with("HTTP/1.1 400"), "{response}");
         assert!(response.to_ascii_lowercase().contains("x-content-type-options: nosniff"), "{response}");
     }
+    // So does an HTTP/1.1 request without Host; HTTP/1.0 has no such rule and meets the Host check (421).
+    for (version, status) in [("HTTP/1.1", "400"), ("HTTP/1.0", "421")] {
+        let response = exchange(port, format!("GET / {version}\r\nConnection: close\r\nX-Runic-Test: 1\r\n\r\n")).await;
+        assert!(response.starts_with(&format!("{version} {status}")), "{version}: {response}");
+        assert!(response.to_ascii_lowercase().contains("x-content-type-options: nosniff"), "{response}");
+    }
+    assert!(events.try_recv().is_err(), "the handler saw no request");
+}
+
+#[tokio::test]
+async fn an_upgrade_with_another_websocket_version_gets_426_with_version_13() {
+    // RFC 6455 §4.2.2, §4.4: the server answers before the host, with the version it understands.
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    for version in ["8", "14"] {
+        // The connection stays open after the 426, so the client reads the response head only.
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let request = format!(
+            "GET /socket HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\
+             Sec-WebSocket-Version: {version}\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nX-Runic-Test: 1\r\n\r\n"
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            head.push(tokio::time::timeout(Duration::from_secs(5), stream.read_u8()).await.expect("in time").unwrap());
+        }
+        let head = String::from_utf8(head).unwrap().to_ascii_lowercase();
+        assert!(head.starts_with("http/1.1 426"), "{version}: {head}");
+        assert!(head.contains("sec-websocket-version: 13\r\n"), "{head}");
+        assert!(head.contains("upgrade: websocket\r\n"), "{head}");
+        assert!(head.contains("cache-control: no-store\r\n"), "{head}");
+        assert!(head.contains("x-content-type-options: nosniff"), "{head}");
+        assert!(!head.contains("sec-websocket-accept"), "{head}");
+    }
     assert!(events.try_recv().is_err(), "the handler saw no request");
 }
 
@@ -305,26 +339,33 @@ async fn a_file_body_answers_one_byte_range() {
     std::fs::File::create(&path).unwrap().write_all(b"0123456789").unwrap();
     let (server, mut events) = start(ServerConfig::default());
     let port = server.port();
-    for (range, status, body, content_range) in [
-        ("Range: bytes=2-4\r\n", "206", "234", Some("bytes 2-4/10")),
-        ("Range: bytes=-3\r\n", "206", "789", Some("bytes 7-9/10")),
-        ("Range: bytes=20-\r\n", "416", "", Some("bytes */10")),
-        ("", "200", "0123456789", None),
+    // RFC 9110 §14.2: a Range on any method but GET is ignored; HEAD keeps the whole file's length.
+    for (method, range, status, body, content_range, length) in [
+        ("GET", "Range: bytes=2-4\r\n", "206", "234", Some("bytes 2-4/10"), "3"),
+        ("GET", "Range: bytes=-3\r\n", "206", "789", Some("bytes 7-9/10"), "3"),
+        ("GET", "Range: bytes=20-\r\n", "416", "", Some("bytes */10"), "0"),
+        ("GET", "", "200", "0123456789", None, "10"),
+        ("HEAD", "Range: bytes=2-4\r\n", "200", "", None, "10"),
+        ("POST", "Range: bytes=2-4\r\nContent-Length: 0\r\n", "200", "0123456789", None, "10"),
     ] {
-        let client = tokio::spawn(exchange(port, get(port, "/media.bin", range)));
+        let request = get(port, "/media.bin", range).replacen("GET", method, 1);
+        let client = tokio::spawn(exchange(port, request));
         let Event::Request { id, .. } = next(&mut events).await else { panic!("a request") };
         let mut headers = HeaderMap::new();
         headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
         headers.insert(header::CONTENT_LENGTH, HeaderValue::from_static("10"));
         server.respond(id, StatusCode::OK, headers, Body::File(path.clone())).unwrap();
         let response = client.await.unwrap();
-        assert!(response.starts_with(&format!("HTTP/1.1 {status}")), "{range}: {response}");
+        assert!(response.starts_with(&format!("HTTP/1.1 {status}")), "{method} {range}: {response}");
         let (head, received) = response.split_once("\r\n\r\n").unwrap();
-        assert_eq!(received, body, "{range}");
-        if let Some(content_range) = content_range {
-            assert!(head.to_ascii_lowercase().contains(&format!("content-range: {content_range}")), "{head}");
+        assert_eq!(received, body, "{method} {range}");
+        let head = head.to_ascii_lowercase();
+        match content_range {
+            Some(content_range) => assert!(head.contains(&format!("content-range: {content_range}")), "{head}"),
+            None => assert!(!head.contains("content-range:"), "{head}"),
         }
-        assert!(head.to_ascii_lowercase().contains("accept-ranges: bytes"), "{head}");
+        assert!(head.contains(&format!("content-length: {length}\r\n")), "{head}");
+        assert!(head.contains("accept-ranges: bytes"), "{head}");
     }
     let _ = std::fs::remove_dir_all(directory);
 }

@@ -487,6 +487,22 @@ impl Upgrade {
     }
 }
 
+/// Whether a handshake request names a `Sec-WebSocket-Version` other than 13. A request without one is left to
+/// [`Upgrade::from_parts`], which refuses it.
+pub(crate) fn other_version(headers: &HeaderMap) -> bool {
+    headers.get(header::SEC_WEBSOCKET_VERSION).is_some_and(|version| version.as_bytes() != b"13")
+}
+
+/// The answer to a handshake with another version (RFC 6455 §4.2.2, §4.4; RFC 9110 §15.5.22): the version the server
+/// understands, and the protocol a 426 requires.
+pub(crate) fn unsupported_version(mut response: Response) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(header::SEC_WEBSOCKET_VERSION, HeaderValue::from_static("13"));
+    headers.insert(header::UPGRADE, HeaderValue::from_static("websocket"));
+    headers.insert(header::CONNECTION, HeaderValue::from_static("upgrade"));
+    response
+}
+
 fn accept_key(key: &[u8]) -> HeaderValue {
     use base64::Engine as _;
     use sha1::{Digest, Sha1};
