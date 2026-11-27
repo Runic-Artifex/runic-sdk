@@ -19,17 +19,17 @@
     "w2": {"kind":"wire","value":"w-2"},
     "previewUrl": {"kind":"provided"}
   },
-  "arrange": {"model":{"attachments":[{"id":1,"name":"a.txt","preview":{"type":"text/plain","text":"a","name":"a.txt"}}]}},
+  "arrange": {"model":{"attachments":[{"id":1,"name":"a.txt","preview":{"type":"text/plain","text":"a","name":"a.txt"},"cover":{"caption":"","image":null},"pages":[]}]}},
   "steps": [
     {"connect":"c1"},
     {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1","field-paths/1"]}},"id":"hello-c1"},
     {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1","field-paths/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
     {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
-    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[{"id":1,"name":"a.txt","preview":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"}}]},"presentation":"ok"},"replyTo":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[{"id":1,"name":"a.txt","preview":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"},"cover":{"caption":"","image":null},"pages":[]}]},"presentation":"ok"},"replyTo":"open-files"},
     {"send":{"kind":"write","route":"files","member":"attachments","path":["1","preview"],"requestId":{"$id":"w1"},"expectedVersion":0,"expectedValue":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"},"value":{"url":"http://conformance.test/_runic/blobs/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC","type":"text/plain","size":1,"name":"b.txt"}},"id":"preview"},
     {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"replyTo":"preview"},
     {"send":{"kind":"write","route":"files","member":"attachments","path":["1","name"],"requestId":{"$id":"w2"},"expectedVersion":0,"expectedValue":"a.txt","value":"b.txt"},"id":"name"},
-    {"receive":{"kind":"frame","route":"files","baseRevision":0,"revision":1,"changes":[{"field":"attachments","kind":"replace","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"name":"b.txt","preview":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"}}]}]}},
+    {"receive":{"kind":"frame","route":"files","baseRevision":0,"revision":1,"changes":[{"field":"attachments","kind":"replace","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"name":"b.txt","preview":{"url":{"$id":"previewUrl"},"type":"text/plain","size":1,"name":"a.txt"},"cover":{"caption":"","image":null},"pages":[]}]}]}},
     {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"b.txt","version":1}}},"replyTo":"name"}
   ]
 }

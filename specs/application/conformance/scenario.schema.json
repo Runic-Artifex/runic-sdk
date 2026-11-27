@@ -54,7 +54,7 @@
         "additionalProperties": false,
         "required": ["kind"],
         "properties": {
-          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close", "flush"] },
+          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close", "flush", "upload"] },
           "value": { "type": "string", "minLength": 1, "maxLength": 128 }
         },
         "if": { "properties": { "kind": { "const": "wire" } } },
@@ -107,6 +107,13 @@
       }
     },
     "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
+    "uploadAnswer": {
+      "description": "The host's answer to an upload: its HTTP status and JSON body, compared as a message.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "body"],
+      "properties": { "status": { "type": "integer" }, "body": { "$ref": "#/$defs/message" } }
+    },
     "role": { "enum": ["producer", "client"] },
     "message": { "type": ["object", "string"] },
     "step": {
@@ -221,10 +228,10 @@
           "patternProperties": { "^(note)$": true }
         },
         {
-          "required": ["upload", "answer"],
+          "required": ["upload"],
           "properties": {
             "upload": {
-              "description": "Producer (blobs/1): the page uploads one file, a POST to the window's upload URL with the connection's token (README, Uploads). text is the body as UTF-8; size the Content-Length the page declares, the body's length by default.",
+              "description": "Producer (blobs/1): the page uploads one file, a POST to the window's upload URL with the connection's token (README, Uploads). text is the body as UTF-8; size the Content-Length the page declares, the body's length by default. hold names an upload id: the page sends the body and holds its end until the endUpload step that names it.",
               "type": "object",
               "additionalProperties": false,
               "required": ["name", "type", "text"],
@@ -232,17 +239,27 @@
                 "name": { "type": "string" },
                 "type": { "type": "string" },
                 "text": { "type": "string" },
-                "size": { "type": "integer", "minimum": 0 }
+                "size": { "type": "integer", "minimum": 0 },
+                "hold": { "$ref": "#/$defs/name" }
               }
             },
-            "answer": {
-              "description": "The host's answer: its HTTP status and JSON body, compared as a message.",
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["status", "body"],
-              "properties": { "status": { "type": "integer" }, "body": { "$ref": "#/$defs/message" } }
-            },
+            "answer": { "$ref": "#/$defs/uploadAnswer" },
             "connection": { "$ref": "#/$defs/name" }
+          },
+          "if": { "properties": { "upload": { "required": ["hold"] } } },
+          "then": { "not": { "required": ["answer"] } },
+          "else": { "required": ["answer"] },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["endUpload", "answer"],
+          "properties": {
+            "endUpload": {
+              "description": "Producer (blobs/1): the page ends the body of the held upload of that id.",
+              "$ref": "#/$defs/name"
+            },
+            "answer": { "$ref": "#/$defs/uploadAnswer" }
           },
           "additionalProperties": false,
           "patternProperties": { "^(note)$": true }
