@@ -9,12 +9,20 @@ dotnet runic dev
 ```
 
 All commands find the single `.csproj` in the current directory; pass
-`--project path/to/App.csproj` (`-p`) otherwise. `dev` and `doctor` also start
-from a solution root: in a directory without one `.csproj` but with one solution
-(`.sln` or `.slnx`), or with `--project` naming a solution or its directory, they
-evaluate the solution's projects and take its one Window project
-(`RunicApplicationFrontendWindowProject=true`). With several Window projects
-they list them and stop (`RAPPDEV1002`); choose one with `--project`. `--configuration` (`-c`)
+`--project path/to/App.csproj` (`-p`) otherwise. `dev`, `doctor`, `size` and
+`package` also start from a solution root: in a directory without one `.csproj`
+but with one solution (`.sln` or `.slnx`), or with `--project` naming a solution
+or its directory, they evaluate the solution's projects and take its one Window
+project (`RunicApplicationFrontendWindowProject=true`), and `dev`, `size` and
+`package` print `Solution: …/Acme.slnx, whose one Window project is
+Acme.App/Acme.App.csproj`. With several Window projects they list them and stop
+(`RAPPDEV1002`); choose one with `--project`. At a solution root, `dotnet runic`
+needs a tool manifest there: the template writes `.config/dotnet-tools.json`
+into the project folder, and `dotnet` looks for one in the current folder and
+its parents only. Move it to the solution root, or run
+`dotnet new tool-manifest` and `dotnet tool install dotnet-runic`
+there, so `dotnet runic` works from the root and from each project folder.
+`--configuration` (`-c`)
 selects the build configuration. `dotnet runic <command> --help` describes
 every option.
 
@@ -155,7 +163,8 @@ Since 0.11, `dev` takes these options of `dotnet run` and `dotnet build`:
 
 | Option | Effect |
 | --- | --- |
-| `--launch-profile <name>` | Runs the Window with that profile from `Properties/launchSettings.json`, so its `environmentVariables` and `commandLineArgs` apply, under `dotnet watch` too. Without it the Window runs with `--no-launch-profile`, as before. A profile's variables replace `dev`'s defaults and `-e` values of the same name. |
+| `--launch-profile <name>` | Runs the Window with that profile from `Properties/launchSettings.json`, so its `environmentVariables` and `commandLineArgs` apply, under `dotnet watch` too. Since 0.24 `dev` uses the first `Project` profile without it, as `dotnet run` does, and prints `[dev] Launch profile: <name> (the first Project profile; …)`. A profile's variables replace `dev`'s defaults; a `-e` value of a name the profile sets is passed to `dotnet run -e`, so it wins. |
+| `--no-launch-profile` | Runs the Window without a launch profile, as `dev` did before 0.24. Cannot be combined with `--launch-profile` or `--no-window`. Since 0.24. |
 | `--no-build` | Skips `dev`'s own .NET restore and build, as `dotnet run --no-build` does, and starts from the existing build output; build the project with the same `--configuration` first. The frontend packages are still installed unless you pass `--no-restore`. `dotnet watch` still builds after C# edits. |
 | `-e`, `--environment NAME=VALUE` | Sets an environment variable for the Window process, as `dotnet run -e` does; repeat it for several. It wins over the defaults in the table below, so `-e DOTNET_ENVIRONMENT=Staging` runs the Window in `Staging`. The variables `dev` uses to describe the development server (`RUNIC_APPLICATION_*` below) are refused with `RAPPDEV1012`, and a value without `=` with `RAPPDEV1011`. `--dry-run` prints the names, never the values. |
 | `-v`, `--verbosity <level>` | Passes the MSBuild verbosity (`q[uiet]`, `m[inimal]`, `n[ormal]`, `d[etailed]` or `diag[nostic]`) to the restore, the build and `dotnet watch`. |
@@ -295,6 +304,10 @@ Since 0.11, two more checks warn without failing:
   The template's packaging script applies the same rule. Another value warns;
   a project without `ApplicationId` passes.
 
+`dotnet runic doctor --bundle <dir>` (since 0.24) also checks a web bundle that
+a publish with `package --frontend-bundle` would use, as its
+[`web-bundle`](#web-bundle) check.
+
 ### Deployment checks for a target
 
 `dotnet runic doctor --runtime <rid>` (also `--rid` or `-r`) adds checks for
@@ -401,12 +414,13 @@ redacts the message key, which always names the check. `payload.checks` is the
 complete list.
 Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `windows-targeting`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `frontend-workspace`, `package-manager-agreement`,
-`frontend-dependencies`, `client-modules`, `views-dedupe`, `compatibility-set`, `views-package-versions`,
+`frontend-dependencies`, `client-modules`, `views-dedupe`, `web-bundle`, `compatibility-set`, `views-package-versions`,
+`launch-arguments`,
 `application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
 `browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
 `platform-services`; `views-package-versions` and `application-id` were added
 in 0.11, `dotnet-runtime` in 0.18, and `windows-targeting`, `frontend-workspace`,
-`package-manager-agreement`, `frontend-dependencies`, `client-modules` and `views-dedupe` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
+`package-manager-agreement`, `frontend-dependencies`, `client-modules`, `views-dedupe`, `web-bundle` and `launch-arguments` in 0.24. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
@@ -553,6 +567,17 @@ export default defineConfig({ resolve: { dedupe: ["@runic-artifex/views"] } });
 
 Added in 0.24.
 
+#### `web-bundle`
+
+Only with `doctor --bundle <dir>` (since 0.24). Checks a web bundle offline, as
+`package --frontend-bundle` and the publishing build use it: the manifest's
+format (`rax.web-bundle/1`) and required members, that each entry's folders
+exist inside the bundle, that each page hashes to the files the manifest
+records (a truncated download), and that the bundle has an entry for the
+project's assembly. Fails otherwise; the fix writes the bundle again with
+`dotnet runic bundle`. The View fingerprints need this build's contract IR, so
+the publish checks them (`RUNICBRIDGE094`).
+
 #### `compatibility-set`
 
 Once the project is restored, checks the packages of the release train that
@@ -577,6 +602,21 @@ set's Translations release (minor version before 1.0). Warns for an older
 release of that line, for a later line (Translations releases between trains),
 or for a tool that reports no version. The remediation is the
 `dotnet tool update` command. Passes when no extension is installed.
+Added in 0.24.
+
+#### `launch-arguments`
+
+Compares the Window's arguments of the evaluated configuration (`--configuration`,
+Debug by default) on each surface: the project's `StartArguments` and the
+`commandLineArgs` of the `Project` profiles in `Properties/launchSettings.json`.
+Warns when both are set, naming each such profile with what `dotnet run` passes
+(the project's only) and what `dotnet runic dev`, Visual Studio and Runic DevKit
+pass (both, the project's first), as `dev`'s `RAPPDEV1020` does. Also warns
+when `launchSettings.json` cannot be read, and when a profile's `rax` object
+has a key or value that Runic DevKit does not read: `dev` is `"no-window"` or
+`"off"`, `page` is `true` or `false`, and `devArguments` is an array of
+strings. Otherwise passes, with the arguments and the first profile. See
+[Arguments for Debug builds](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#arguments-for-debug-builds).
 Added in 0.24.
 
 #### `views-package-versions`
@@ -752,6 +792,17 @@ the options that describe how `dev` starts the Window (`RAPPDEV1014`).
    IDE task. It prints `[dev] Ready` when the frontend is served.
 2. Start the Window with the IDE's debugger (F5) from a launch profile with
    `DOTNET_ENVIRONMENT=Development`.
+
+The Window gets the project's arguments and those of its launch profile, which
+each IDE combines in its own way. `dev` passes both too, the project's first:
+when the project sets `StartArguments` and the profile `commandLineArgs`,
+`dotnet run` alone would drop the profile's, so `dev` passes them after `--`
+itself, before the arguments of `dev -- <args>`, and warns with `RAPPDEV1020`.
+`[dev] Window arguments:` lists each part, also with `--dry-run`, and doctor's
+[`launch-arguments`](#launch-arguments) check compares the surfaces. Set an argument for Debug builds only, such as
+`/mock`, in a Debug-conditioned `StartArguments`, which every IDE and `dev`
+read; [Arguments for Debug builds](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#arguments-for-debug-builds)
+shows how and lists which surface reads which.
 
 Since 0.20, projects from the `runic-app` template have that launch profile,
 named after the project, and with `--editor vscode` VS Code tasks and
@@ -1273,7 +1324,10 @@ stays), deletes `dev-frontend` and `dev-pages/`, touches `dev-stopped` and
 exits with 130. The next build copies the frontend's pages back. A process
 killed by force does none of this: its development pages stay until the next
 build, a build within 30 seconds still keeps them, and the session file keeps
-its state.
+its state. The next `dev` checks the session file when it starts (see
+[Session file](#session-file)) and, before its first build, removes the
+`dev-frontend` and `dev-pages/` of a `dev` that no longer runs, so its own build
+installs and builds the frontend (since 0.24).
 On Windows, the frontend's development server or watcher runs in a Job object
 with everything it starts (the package manager, Node.js below it and the
 `runic-translations serve` that the Vite plugin starts), so the stop ends all of
@@ -1804,6 +1858,50 @@ a usage error, exit code 2. An existing `--report` (`RAPPSIZE1003`), a project
 whose publish settings MSBuild cannot evaluate (`RAPPSIZE1004`), a failed
 publish or a failed verification exits 1.
 
+## Write a web bundle
+
+`bundle` (since 0.24, split CI, D082) builds the frontends into a **web bundle**
+(`rax.web-bundle/1`) that a publish on another machine takes with
+`package <target> --frontend-bundle`, for a CI whose Linux jobs build and test
+everything web and whose Windows or macOS job only publishes:
+
+```bash
+dotnet runic bundle --output-directory artifacts/web-bundle   # on Linux, with Node.js or Bun
+dotnet runic package windows --frontend-bundle artifacts/web-bundle   # on Windows, without them
+```
+
+It runs `dotnet build -c Release` with
+`RunicApplicationFrontendBundleDirectory`, so every project that declares
+Views, the application's references included, writes its entry. Then it checks
+the bundle and prints one line per project: its kind, its Views, and the
+files, size and SHA-256 of its page. `--project` (`-p`) takes a project, a
+solution (`.sln`, `.slnx`) or a directory with one; `--configuration` (`-c`)
+is `Release` by default; `--property` (`-p:NAME=VALUE`) passes MSBuild
+properties to the build. `--output-directory` (`-o`, `artifacts/web-bundle`
+beside the project or solution by default) must be new, empty, or an earlier
+bundle, whose entries `bundle` deletes so that none stays in the manifest. A
+folder with other files is refused (`RAPPBUNDLE1001`). A failed build is
+`RAPPBUNDLE1002`, and a bundle that does not check is `RAPPBUNDLE1003`, for
+example when a project's frontend build is off (`RUNICBRIDGE092`). The payload
+of `--format json` is `runic.application.tool.bundle/1`:
+
+```json
+{
+  "directory": "/repo/artifacts/web-bundle",
+  "format": "rax.web-bundle/1",
+  "projects": [
+    { "assembly": "Acme.App", "kind": "application", "views": 2, "files": 12, "bytes": 184320,
+      "sha256": "7f3c…", "host": "desktop", "nodeEnv": "production" }
+  ]
+}
+```
+
+`sha256`, `host` and `nodeEnv` are null when the entry has none, as for a client
+library, which has no page. The format of the bundle is in
+[specs/application/web-bundle.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/web-bundle.md),
+and the build properties in
+[Building the frontend in another job](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#building-the-frontend-in-another-job).
+
 ## Package the application
 
 `package <target>` (since 0.11) publishes the application with Native AOT and
@@ -1823,7 +1921,8 @@ dotnet runic package flathub --git-url https://github.com/example/notes.git --gi
 The [packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/packaging.md)
 lists each format's tools and how to sign with your own credentials.
 
-Every target takes `--project` (`-p`), `--configuration` (`-c`, `Release` by
+Every target takes `--project` (`-p`: a project, or a solution whose one Window
+project it packages, as described at the top), `--configuration` (`-c`, `Release` by
 default), `--runtime` (`--rid`, `-r`; the host's architecture by default) and
 `--output-directory` (`-o`; `artifacts/package/<target>` beside the project by
 default). The output directory is not `--output`, which stays the hidden alias
@@ -1831,6 +1930,29 @@ of `--format`. A target of another operating system, or a runtime identifier of
 another operating system, several runtime identifiers, or a runtime identifier
 that Runic does not support (`osx-x64`), is refused with `RAPPPKG1004` before
 anything is built.
+
+Since 0.24 every target except `flathub` also takes:
+
+- `--property NAME=VALUE`, or `-p:NAME=VALUE` as for `dotnet publish` (also
+  `-property:` and `/p:`), repeated for several properties. The identity's
+  evaluation and the publish receive them, so a CI job can set `ApplicationId`,
+  `Version` or `RunicApplicationHost` without editing the project. `-p` with a
+  separate value stays `--project`, as for `dotnet run`. `Configuration`,
+  `RuntimeIdentifier` and `PublishAot` have their own options, and
+  `RunicApplicationFrontendPrebuiltDirectory` is `--frontend-bundle`
+  (`RAPPPKG1008`, exit code 2).
+- `--frontend-bundle <dir>`: publish with the pages of a web bundle that
+  [`dotnet runic bundle`](#write-a-web-bundle) wrote on another machine,
+  through `RunicApplicationFrontendPrebuiltDirectory`. The publish runs no
+  frontend install or build, so the runner needs neither Node.js nor Bun.
+  Before it publishes, `package` checks the bundle as `doctor --bundle` does
+  (`RAPPPKG1008` for a missing or truncated one). The build then compares each
+  View's fingerprint with its own (`RUNICBRIDGE094`) and the host
+  (`RUNICBRIDGE095`).
+
+```bash
+dotnet runic package windows --frontend-bundle web-bundle -p:Version=1.4.0
+```
 
 The package's identity comes from the project file:
 

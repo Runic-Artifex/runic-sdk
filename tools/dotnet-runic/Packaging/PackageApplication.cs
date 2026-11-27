@@ -8,8 +8,12 @@ using System.Threading.Tasks;
 namespace Runic.Application.Tool.Packaging;
 
 /// <summary>What one target run needs: the options, the identity, the resolved runtimes and the output directory.</summary>
-internal sealed class PackageContext(PackageOptions options, PackageIdentity identity, IReadOnlyList<string> runtimes, string output, string dotnet)
+internal sealed class PackageContext(PackageOptions options, PackageIdentity identity, IReadOnlyList<string> runtimes, string output, string dotnet,
+    string? frontendBundle = null)
 {
+    /// <summary>The full path of <c>--frontend-bundle</c>'s web bundle, or null when the publish builds the frontends.</summary>
+    internal string? FrontendBundle { get; } = frontendBundle;
+
     internal PackageOptions Options { get; } = options;
     internal PackageIdentity Identity { get; } = identity;
     internal IReadOnlyList<string> Runtimes { get; } = runtimes;
@@ -37,7 +41,8 @@ internal sealed class PackageContext(PackageOptions options, PackageIdentity ide
         PackageTools.Delete(directory);
         await PackageTools.RunAsync(DotNet,
             ["publish", Identity.ProjectPath, "--nologo", "-c", Options.Configuration, "-r", runtime, "-p:PublishAot=true",
-                "-p:PublishDocumentationFiles=false", "-p:PublishReferencesDocumentationFiles=false", "-o", directory],
+                "-p:PublishDocumentationFiles=false", "-p:PublishReferencesDocumentationFiles=false",
+                .. Options.PropertyArguments(FrontendBundle), "-o", directory],
             Identity.ProjectDirectory, cancellationToken, PackageCodes.PublishFailed).ConfigureAwait(false);
         foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
         {
@@ -63,17 +68,22 @@ internal static class PackageApplication
     internal static async Task<PackageCommandResult> RunAsync(PackageOptions options, CancellationToken cancellationToken)
     {
         string target = PackageOptions.Name(options.Target);
+        options = options with { Properties = PackageOptions.ParseProperties(options.PropertyValues) };
         IReadOnlyList<string> runtimes = ResolveRuntimes(options);
+        string? frontendBundle = ResolveFrontendBundle(options.FrontendBundle, Environment.CurrentDirectory);
         if (options.Target == PackageTarget.Flathub) FlathubPackager.Validate(options, PackageOptions.CurrentFamily);
-        string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnet = DevApplication.ResolveDotNetHost();
-        PackageIdentity identity = await PackageIdentity.ReadAsync(dotnet, project, options.Configuration, options.Publisher, cancellationToken)
-            .ConfigureAwait(false);
+        // From a solution root, the solution's one Window project, as dev and doctor select it (ide-run-debug K1).
+        string project = await ProjectDiscovery.SelectProjectAsync(Environment.CurrentDirectory, options.Project, $"package {target}", dotnet,
+            cancellationToken).ConfigureAwait(false);
+        PackageIdentity identity = await PackageIdentity.ReadAsync(dotnet, project, options.Configuration, options.Publisher, cancellationToken,
+            options.PropertyArguments(frontendBundle)).ConfigureAwait(false);
         string output = Path.GetFullPath(options.OutputDirectory is { Length: > 0 } selected
             ? Path.GetFullPath(selected, Environment.CurrentDirectory)
             : Path.Combine(identity.ProjectDirectory, "artifacts", "package", target));
         Directory.CreateDirectory(output);
-        var context = new PackageContext(options, identity, runtimes, output, dotnet);
+        var context = new PackageContext(options, identity, runtimes, output, dotnet, frontendBundle);
+        if (frontendBundle is not null) Console.Out.WriteLine($"Taking the pages from the web bundle {frontendBundle}: the publish builds no frontend.");
         Func<PackageContext, CancellationToken, Task> run = options.Target switch
         {
             PackageTarget.Windows => WindowsPackager.RunAsync,
@@ -89,6 +99,25 @@ internal static class PackageApplication
         foreach (PackageCommandPackage package in context.Packages)
             Console.Out.WriteLine($"Packaged {identity.Id} {identity.Version}: {package.Path} ({package.Format}, signing: {package.Signing})");
         return new PackageCommandResult(target, new(identity.Id, identity.Version), context.Packages, context.Warnings);
+    }
+
+    /// <summary>
+    /// The full path of <c>--frontend-bundle</c> (split CI F5), checked offline as <c>doctor --bundle</c> checks it, so a
+    /// missing or truncated download fails before the publish; null without the option. The publish's own check then
+    /// compares the View fingerprints (RUNICBRIDGE094) and the host (RUNICBRIDGE095).
+    /// </summary>
+    internal static string? ResolveFrontendBundle(string? frontendBundle, string workingDirectory)
+    {
+        if (frontendBundle is null) return null;
+        string bundle = Path.TrimEndingDirectorySeparator(Path.GetFullPath(frontendBundle, workingDirectory));
+        (_, IReadOnlyList<string> problems) = WebBundle.Read(bundle);
+        if (problems.Count != 0)
+        {
+            throw new DevDevelopmentException(PackageCodes.PropertyInvalid,
+                $"--frontend-bundle does not name a usable web bundle: {string.Join("; ", problems)}. Write it with 'dotnet runic bundle', and download the whole artifact.",
+                $"Bundle: {bundle}\n");
+        }
+        return bundle;
     }
 
     /// <summary>

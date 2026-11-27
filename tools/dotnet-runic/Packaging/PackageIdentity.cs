@@ -116,11 +116,12 @@ internal sealed partial record PackageIdentity
 
     /// <summary>Evaluates the project with <c>dotnet msbuild -getProperty</c> and validates what it reads.</summary>
     internal static async Task<PackageIdentity> ReadAsync(
-        string dotnet, string project, string configuration, string? publisher, CancellationToken cancellationToken)
+        string dotnet, string project, string configuration, string? publisher, CancellationToken cancellationToken,
+        IReadOnlyList<string>? propertyArguments = null)
     {
         string directory = Path.GetDirectoryName(project)!;
         CommandResult result = await CommandRunner.RunAsync(dotnet, directory,
-            ["msbuild", project, "-nologo", $"-p:Configuration={configuration}", $"-getProperty:{string.Join(',', Properties)}",
+            ["msbuild", project, "-nologo", $"-p:Configuration={configuration}", .. propertyArguments ?? [], $"-getProperty:{string.Join(',', Properties)}",
                 "-getItem:PackageReference", "-getItem:ProjectReference", "-getItem:RunicApplicationLocale"], cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {

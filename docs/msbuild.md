@@ -39,6 +39,12 @@ names are listed in
 [Moved and renamed since 0.7.0-preview.6](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
 and the [migration guide](migration-1.0.md).
 
+The .NET SDK's own `EnableWindowsTargeting` is not on this page, but a Windows
+target framework (WPF on `net10.0-windows`) needs it to restore and build on
+Linux and macOS. Set it in the application's `Directory.Build.props`, since no
+package can set it before the restore; see
+[Building a Windows application on Linux or macOS](packaging.md#building-a-windows-application-on-linux-or-macos).
+
 ## Runic.Application.Views
 
 See [Build properties](../packages/dotnet/Runic.Application.Views/README.md#build-properties).

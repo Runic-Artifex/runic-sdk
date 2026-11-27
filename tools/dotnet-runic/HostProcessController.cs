@@ -190,11 +190,7 @@ internal sealed class HostProcessController : IAsyncDisposable
         var arguments = _options.WatchHost
             ? new List<string>(CreateWatchArguments(_configuration, _options))
             : new List<string>(CreateRunArguments(_configuration, _options));
-        if (_options.ApplicationArguments.Count != 0)
-        {
-            arguments.Add("--");
-            arguments.AddRange(_options.ApplicationArguments);
-        }
+        arguments.AddRange(ApplicationArguments(_options));
 
         RunningProcess process = RunningProcess.Start(
             _options.WatchHost ? "host" : "app",
@@ -282,11 +278,23 @@ internal sealed class HostProcessController : IAsyncDisposable
     }
 
     /// <summary>
+    /// The Window's arguments after <c>--</c>: the profile's when dev passes them itself (D084.2), then the command line's.
+    /// dotnet run puts them after the project's <c>RunArguments</c>.
+    /// </summary>
+    internal static IReadOnlyList<string> ApplicationArguments(DevOptions options) =>
+        options.ProfileArguments.Count == 0 && options.ApplicationArguments.Count == 0
+            ? []
+            : ["--", .. options.ProfileArguments, .. options.ApplicationArguments];
+
+    /// <summary>
     /// <c>--launch-profile</c> selects a profile from <c>Properties/launchSettings.json</c>, whose variables and
-    /// arguments dotnet run applies; without it the Window runs with <c>--no-launch-profile</c>, as before 0.11.
+    /// arguments dotnet run applies. <see cref="DevLaunch.Resolve"/> names the first <c>Project</c> profile by default
+    /// (0.24); without one, or with <c>--no-launch-profile</c>, the Window runs with <c>--no-launch-profile</c>.
     /// </summary>
     private static IReadOnlyList<string> LaunchProfileArguments(DevOptions options) =>
-        options.LaunchProfile is { } profile ? ["--launch-profile", profile] : ["--no-launch-profile"];
+        options.LaunchProfile is { } profile
+            ? ["--launch-profile", profile, .. options.RunEnvironment.SelectMany(static variable => new[] { "-e", $"{variable.Key}={variable.Value}" })]
+            : ["--no-launch-profile"];
 
     internal static IReadOnlyList<string> CreateRestartBuildArguments(
         DevProjectConfiguration configuration,

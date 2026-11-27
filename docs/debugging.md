@@ -8,6 +8,7 @@ Each section links the README that describes its tool in full.
 | You want to… | Use |
 | --- | --- |
 | Stop on a breakpoint in a ViewModel | [Your IDE's .NET debugger](#the-net-debugger-in-your-ide) |
+| Pass an argument such as `/mock` to Debug builds only, from every IDE and `dotnet runic dev` | [Arguments for Debug builds](#arguments-for-debug-builds) |
 | Inspect the page's DOM, console, network, and scripts | [The browser's developer tools](#the-browsers-developer-tools-per-engine) |
 | Stop on C# and `Frontend/src` breakpoints in one Visual Studio session | [Runic DevKit's Debug the Window](#visual-studio) |
 | Stop on a breakpoint in the frontend's sources from your IDE, on any OS | [The page in Chrome](#the-page-in-chrome-dotnet-runic-dev---browser) |
@@ -34,6 +35,9 @@ C#, let the IDE start the Window instead:
 
 1. Run `dotnet runic dev --no-window`. It serves only the frontend and prints `[dev] Ready` when the page can load.
 2. Start the Window with the IDE's debugger (F5) from a launch profile with `DOTNET_ENVIRONMENT=Development`.
+
+The Window's arguments come from the project and the launch profile, which each IDE combines in its own way: see
+[Arguments for Debug builds](#arguments-for-debug-builds).
 
 The IDE's build keeps the development page that `dev` wrote, so frontend edits still reach the Window while you
 debug. `dev` does not restart the Window behind the debugger: apply C# edits with the IDE's Hot Reload, and restart
@@ -162,6 +166,76 @@ IDE tasks and extensions read `dotnet runic dev` through stable lines and a sess
   SIGTERM to a local tool on Linux ([dotnet/sdk#57091](https://github.com/dotnet/sdk/issues/57091); set
   `DOTNET_CLI_ENABLEAOT=0` to make it), and no SDK forwards a SIGINT that reaches only that process. See
   [Stopping `dev`](../tools/dotnet-runic/README.md#ide-contract).
+
+## Arguments for Debug builds
+
+Some applications take an argument only while you develop them: `/mock`, for example, starts a mock mode that talks
+to nothing outside and changes nothing on the system. Set such an argument once, in MSBuild's `StartArguments`, in a
+property group for the Debug configuration:
+
+```xml
+<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+  <StartArguments>/mock</StartArguments>
+</PropertyGroup>
+```
+
+The application reads it as any argument. Here a Debug build refuses to start without it:
+
+```csharp
+#if DEBUG
+if (!args.Contains("/mock"))
+{
+    Console.Error.WriteLine("A Debug build starts only with /mock.");
+    return 2;
+}
+#endif
+```
+
+- **Where it applies.** The .NET SDK computes `RunArguments` from `StartArguments`: the arguments alone with an
+  application host, `exec "<dll>" /mock` without one (`UseAppHost=false`). `dotnet run`, `dotnet runic dev`, Visual
+  Studio and Runic DevKit read `RunArguments`, so `/mock` reaches the Window from each of them.
+- **Release builds don't get it.** `dotnet run -c Release`, and `dotnet publish` and `dotnet runic package` by default,
+  evaluate the Release configuration, where the property group doesn't apply.
+- **Set `StartArguments`, not `RunArguments`.** Without an application host, a `RunArguments` of your own replaces the
+  SDK's `exec "<dll>"`, and the Window doesn't start.
+- **Not in `launchSettings.json`.** A launch profile has no configuration condition, and `dotnet run -c Release` uses
+  the same first profile, so a profile's `commandLineArgs` reach Release runs too. Keep in profiles what holds for
+  every configuration: per-run arguments, environment variables and the working directory.
+
+### Which surface reads which
+
+"Profile" is a `Project` profile in `Properties/launchSettings.json`. Profiles of another `commandName` are not
+applied by `dotnet run` or `dev`.
+
+| Surface | `StartArguments` | The profile's `commandLineArgs` | When both are set |
+| --- | --- | --- | --- |
+| `dotnet run` | ✓ | the first profile, or `--launch-profile <name>` | the profile's arguments are dropped |
+| `dotnet runic dev` | ✓, through `dotnet run` and `dotnet watch run` | the first profile, as `dotnet run` (since 0.24), `--launch-profile <name>`, or none with `--no-launch-profile` | both, the project's first, with a warning (`RAPPDEV1020`, since 0.24) |
+| `dotnet runic dev --no-window`, the Window from the IDE | — | — | the IDE's rule below |
+| Visual Studio, F5 | ✓ | the active profile (the toolbar) | both, the project's first |
+| Runic DevKit for Visual Studio, Debug the Window | ✓ | the active profile, from the release after runic-editors 0.23.1 ([runic-editors#79](https://github.com/Runic-Artifex/runic-editors/pull/79)); none before | both, the project's first |
+| Runic DevKit for VS Code, the `runic` launch | ✓ | the first profile, the one `launchProfile` names, or none with `null`, from the release after runic-editors 0.23.1 ([runic-editors#80](https://github.com/Runic-Artifex/runic-editors/pull/80)) | both, the project's first, then the configuration's `args` |
+| VS Code, the template's `coreclr` `Window` configuration | ✗: a plain `coreclr` launch reads no MSBuild, so put `/mock` in its `args` | the first profile, applied by the C# debugger, or `launchSettingsProfile` | `args` replaces the profile's arguments |
+
+In Runic DevKit for VS Code 0.23.1 and earlier, the `runic` launch passes only `RunArguments` and drops the
+configuration's `args`. The C# debugger then applies the first profile only while `RunArguments` is empty. So with
+those versions, too, `StartArguments` is the place for `/mock`.
+
+`dotnet run` drops a profile's `commandLineArgs` whenever the project sets arguments; `dotnet runic dev`, Visual
+Studio and Runic DevKit pass both. `dev` warns with `RAPPDEV1020`, and `dotnet runic doctor`'s `launch-arguments`
+check lists what each surface passes. Keep each argument in one of the two places, so that every surface starts the
+Window the same way.
+
+### Arguments on the command line
+
+- **After `--`.** `dotnet runic dev -- /verbose` appends `/verbose` to the project's arguments and the profile's, as
+  `dotnet run -- /verbose` appends it to the project's. `dev` also takes a slash argument without `--` (`dotnet runic dev /verbose`), but an
+  argument that starts with `-` needs it.
+- **Slash arguments with quoted values** stay one argument: `/config:"C:\Program Files\Acme\dev.json"` reaches the
+  application as `/config:C:\Program Files\Acme\dev.json`. `dotnet run` splits `RunArguments` with .NET's
+  `ProcessStartInfo.Arguments` rules on every operating system, and Runic DevKit does the same from the release
+  after runic-editors 0.23.1.
+- **MSBuild expands `$(…)` and `%XX`** in `StartArguments`. Write a literal `$` as `%24` and `%` as `%25`.
 
 ## The browser's developer tools per engine
 
