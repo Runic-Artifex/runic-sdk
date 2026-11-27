@@ -44,7 +44,7 @@
     "outcomes": [
       { "subject": "session-missing", "terminal": "failed", "category": "authenticationDenied", "code": "credential-required", "message": "A valid session credential is required.", "retryable": false },
       { "subject": "session-foreign", "terminal": "failed", "category": "originDenied", "code": "origin-not-allowed", "message": "The browser origin is not allowed.", "retryable": false },
-      { "subject": "invocation-denied", "terminal": "failed", "category": "capabilityDenied", "code": "capability-not-admitted", "message": "The presentation capability is not admitted for this session.", "retryable": false }
+      { "subject": "invocation-denied", "terminal": "failed", "category": "capabilityDenied", "code": "capability-not-admitted", "message": "The presentation capability 'undeclared.capability' is not admitted for this session.", "retryable": false }
     ],
     "absentEvents": [
       { "type": "capability.handlerEntered", "subject": "invocation-denied" }

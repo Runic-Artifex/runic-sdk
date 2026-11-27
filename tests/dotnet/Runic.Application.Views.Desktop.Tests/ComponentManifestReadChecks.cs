@@ -6,7 +6,7 @@ using TUnit.Core;
 
 // The guest's read of its component manifest (HostedRegion.ReadComponentModuleAsync) over LoopbackGet, its own HTTP/1.1
 // GET without HttpClient (D072.2, S3), against a loopback server that answers with the bytes each case gives. The whole
-// component attach runs in HostConformanceTests and HostedRegionBrowserHostTests.
+// component attach runs in the conformance driver's host/1 run and HostedRegionBrowserHostTests.
 internal sealed class ComponentManifestReadChecks
 {
     private const string Embedder = "http://127.0.0.1:43123";

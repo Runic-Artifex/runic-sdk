@@ -316,7 +316,7 @@ internal static class HostedGuestProgram
         _ => "unknown",
     });
 
-    // The host conformance runner's guest (HostRoleConformanceTests): a relay of standard input and output to the runner,
+    // The conformance driver's relay guest for the host role (--puppet-guest): a relay of standard input and output to the runner,
     // which plays the guest's side of the protocol over a loopback connection. A line from the runner is written to
     // standard output, except "exit <code>", which ends the process with that code.
     public static int RunPuppet()

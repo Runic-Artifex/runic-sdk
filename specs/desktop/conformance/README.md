@@ -104,10 +104,7 @@ outside this directory as implementation evidence:
 - CS-WebUI differential classifications; and
 - performance and accessibility measurements.
 
-Runic.Desktop's conformance is the driver's run with its status file ([running the cases](#running-the-cases)). The
-earlier hand-kept receipt,
-[`evidence/conformance/dotnet-m6.json`](../../../tests/fixtures/desktop/evidence/conformance/dotnet-m6.json), mapped
-each case to a Runic.Desktop test and claimed all of them pass; it is superseded and kept until it is retired.
+Runic.Desktop's conformance is the driver's run with its status file ([running the cases](#running-the-cases)).
 CS-WebUI comparisons are classified in
 [`cs-webui-classification.md`](cs-webui-classification.md), and the native
 runner definition and current local evidence are recorded in

@@ -22,10 +22,6 @@
     <Using Include="Runic.Application.Views.Generated" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The Runic host protocol's conformance scenarios, which HostConformanceTests runs against the guest. -->
-    <None Include="../../../specs/desktop/host-conformance/scenarios/**/*.json" LinkBase="host-conformance" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="TUnit.Core" />
     <PackageReference Include="TUnit.Engine" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />

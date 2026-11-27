@@ -7,7 +7,7 @@ using Runic.Desktop;
 using Runic.Platform;
 
 // The fakes of the host role of the Runic host protocol corpus (specs/desktop/host-conformance, "Runner seams"), which the
-// in-suite runner (HostRoleConformanceTests) and the driver's adapter (HostRoleConformanceAdapter) share.
+// driver's adapter (HostRoleConformanceAdapter) uses.
 
 // The scenario's policy: the defaults, or one that fails for window services, or one that asks the user before each
 // launch in a prompt of the host's own (prompts-launches), which a user step answers with the button allow or deny.

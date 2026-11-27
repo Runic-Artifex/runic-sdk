@@ -20,9 +20,7 @@ host for the `guest` role and the guest for the `host` role, and talks to the im
 host starts a relay guest that relays its standard input and output to the driver, which listens on its own channel.
 `bun run conformance dotnet-desktop` runs Runic's .NET guest and host (`IRunicHostedApplications`); [`cases.json`](cases.json)
 is the case list and [`status/dotnet-desktop.json`](status/dotnet-desktop.json) the expected outcomes
-([outcomes](#outcomes-and-statuses)). `HostConformanceTests` and `HostRoleConformanceTests` in
-`Runic.Application.Views.Desktop.Tests` are the earlier in-suite .NET runners of the same scenarios, the guest's in
-process and the host's through the same relay guest.
+([outcomes](#outcomes-and-statuses)).
 
 ### Outcomes and statuses
 
