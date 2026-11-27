@@ -1,0 +1,30 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-reused-request-id-whose-path-has-no-value-retains-nothing.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "requires": ["field-paths/1"],
+  "description": "A requestId that a path write of a row cell used, reused for a path write below a null object, is rejected, since its path has no value, and retains nothing: once the object is set, the same write is a conflict with the value at its path, and a retry of the first write still gets that write's receipt.",
+  "view": "invoice",
+  "ids": {"c1":{"kind":"connection"},"hello-c1":{"kind":"request"},"open-invoice":{"kind":"request"},"label":{"kind":"request"},"while-null":{"kind":"request"},"with-billing":{"kind":"request"},"label-retry":{"kind":"request"},"session":{"kind":"wire","value":"s-1"},"presentation":{"kind":"wire","value":"p-1"},"writeId":{"kind":"wire","value":"w-1"}},
+  "arrange": {"model":{"lines":[{"id":1,"label":"Pens","quantity":1}]}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"invoice","presentation":{"$id":"presentation"}},"id":"open-invoice"},
+    {"receive":{"ok":true,"revision":0,"state":{"address":{"street":"","city":""},"billing":null,"lines":[{"id":1,"label":"Pens","quantity":1}]},"fields":{"address":{"version":0},"billing":{"version":0}},"presentation":"ok"},"replyTo":"open-invoice"},
+    {"send":{"kind":"write","route":"invoice","member":"lines","path":["1","label"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"Pens","value":"Pen"},"id":"label"},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":0,"revision":1,"changes":[{"field":"lines","kind":"replace","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"label":"Pen","quantity":1}]}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"Pen","version":1}}},"replyTo":"label"},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["name"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"","value":"Acme"},"id":"while-null"},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"rejected","message":{"$any":"string"}}},"replyTo":"while-null"},
+    {"mutate":[{"op":"assign","member":"billing","value":{"name":"Beta","address":{"street":"","city":"Bern"}}}]},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":1,"revision":2,"changes":[{"field":"billing","kind":"set","value":{"name":"Beta","address":{"street":"","city":"Bern"}},"version":1}]}},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["name"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"","value":"Acme"},"id":"with-billing","note":"The rejected answer retained nothing: the same write now has a value at its path, so it is a conflict with it."},
+    {"receive":{"ok":true,"revision":2,"receipt":{"kind":"conflict","incoming":{"value":"Beta","version":2},"message":{"$any":"string"}}},"replyTo":"with-billing"},
+    {"send":{"kind":"write","route":"invoice","member":"lines","path":["1","label"],"requestId":{"$id":"writeId"},"expectedVersion":0,"expectedValue":"Pens","value":"Pen"},"id":"label-retry","note":"The requestId still names the first write, whose retry gets its receipt."},
+    {"receive":{"ok":true,"revision":2,"receipt":{"kind":"applied","snapshot":{"value":"Pen","version":1}}},"replyTo":"label-retry"}
+  ]
+}

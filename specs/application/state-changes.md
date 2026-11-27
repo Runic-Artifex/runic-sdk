@@ -180,7 +180,10 @@ revision. It starts at 0 when the producer starts serving the View, and takes 1 
 
 - for each change of the field that the model announces, also to an equal value. A producer whose model has no change
   notifications counts each change that its model API makes to the field, such as a setter call, as announced;
-- for each write the producer applies;
+- once for each write the producer applies, however many changes of the field its setter announces while the
+  producer applies it: they are the write's own and add nothing (`edits.checked-write`). The .NET producer does not
+  count an announcement made while it runs a write's setter; a producer that writes the field without its setter has
+  no such announcement;
 - once when a write compares the field and finds a value that changed without an announcement. That write is a
   `conflict` whose `incoming` snapshot has the new version.
 
@@ -264,8 +267,15 @@ predecessor. Full states coalesce: a newer state replaces the frames and states 
   [publication unit](#publication-units) that waits for the model, hands it to the transport later: a burst of frames
   that starts while nothing is being delivered retains 64 frames behind its first. A full state does not supersede the
   entry being delivered. The bounds are the route's, whatever the number of connections: the .NET producer keeps one
-  queue per route and hands each push to every connection that has the route open. A producer that keeps a queue per
-  route and connection applies the bounds to each queue; a client cannot tell the two apart.
+  queue per route and hands each push to every connection of the window ([publication](README.md#publication)). A
+  producer that keeps a queue per route and connection applies the bounds to each queue; a client cannot tell the two
+  apart.
+- Whether an entry is being delivered is the route's own: each route has at most one, also while the transport or a
+  connection is still busy with an entry of another route. A producer that sends the pushes of several routes through
+  one queue per connection counts, for each route, the first entry it queues while none of the route is being
+  delivered as that route's entry being delivered, although the connection takes the other route's entry first. The
+  .NET producer's routes each hand their own entry to the transport, which no other route waits for
+  (`state-changes.recovery-each-route-has-its-own-entry-being-delivered`).
 - When a new frame would exceed either bound, the producer captures a **recovery state** at once. It supersedes
   everything queued and becomes the next frame's baseline. Later frames queue behind it, and it counts toward the
   bounds like a frame.

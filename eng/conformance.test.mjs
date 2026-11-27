@@ -256,6 +256,21 @@ test("the Views corpus loads with unique ids, and its case list is stable", () =
   assert.equal(JSON.parse(text).cases.length, cases.length);
 });
 
+test("no read-request case names the list route, at which a window that always has a root View roots it", () => {
+  // README "Messages": the fresh window serves no route that a case names.
+  const cases = loadViewsCorpus(resolve(root, "specs/application/conformance")).filter((c) => c.body.operation === "read-request");
+  assert.ok(cases.length > 50);
+  const routes = (value) => typeof value !== "object" || value === null ? []
+    : [...(typeof value.route === "string" ? [value.route] : []), ...Object.values(value).flatMap(routes)];
+  for (const c of cases) {
+    const { encoding, value } = c.body.input;
+    let parsed = value;
+    // A utf8 input is text, which may or may not be JSON.
+    if (encoding !== "json") try { parsed = JSON.parse(value); } catch { parsed = value; }
+    assert.ok(!routes(parsed).includes("list") && !/"route"\s*:\s*"list"/.test(JSON.stringify(value)), `${c.id} names the list route`);
+  }
+});
+
 test("the adapter client speaks JSON lines, reports errors and survives a hang", async () => {
   const dir = mkdtempSync(join(tmpdir(), "rax-conformance-adapter-"));
   try {

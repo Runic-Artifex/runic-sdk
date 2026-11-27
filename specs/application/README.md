@@ -758,7 +758,7 @@ paths below it. The receipts are those of a checked write, with these difference
    member, is `rejected` with `invalid-request`. A row's key member is not a field path.
 3. A retained `requestId` answers with the original receipt when the retry repeats `path`, `expectedVersion`,
    `expectedValue` and `value`, canonically equal to the original's, and with `conflict` otherwise, as any `write`
-   (`rejected` when the row is gone).
+   (`rejected` when the write's own path has no value: its row is gone, or an object on it is `null`).
 4. No row has the key, or an object on the path is `null`: `rejected`.
 5. The field path's version (the row's, with row conflicts) is above `expectedVersion`, or its value is not
    canonically equal to `expectedValue`: `conflict`, with the value at the path in `incoming`.
@@ -768,7 +768,10 @@ paths below it. The receipts are those of a checked write, with these difference
 
 The receipts of steps 4, 5 and 7 are retained for the `requestId`, so a retry receives the same receipt: the
 `rejected` of a row that was gone, also after a row with the key was added again, and the `conflict` with the value and
-version it reported then. Steps 1, 2 and 6, and a step 3 that does not match, retain nothing. A producer retains the
+version it reported then. Steps 1, 2 and 6, and a step 3 that does not match, retain nothing: the `requestId` keeps
+naming the original write, whose retry still gets its receipt, and the same mismatched write sent again is judged
+again, a `conflict` once its path has a value (`edits.a-reused-request-id-whose-path-has-no-value-retains-nothing`;
+in .NET, `BridgeRuntime.Requests.cs` answers it without retaining it). A producer retains the
 receipts of at least the latest 64 path writes of a route and remembers the ids it forgot, as for any checked write;
 the .NET producer keeps 64 and 256 KiB per route and the latest 64 forgotten ids.
 
@@ -1732,7 +1735,8 @@ find again, for example after a reload.
 - A start reply with an `admission` always carries `revision`, the route's last published revision when nothing
   changed.
 - **Order of checks.** A producer checks a `start` in this order and answers the first that fails: the envelope and
-  the contract (`invalid-request`, below; also an `input` that the command does not take, or a missing one); an
+  the contract (`invalid-request`, below: a `member` that is not an asynchronous command of the route, an `input` that
+  the command does not take or a missing one, and another build's `contract`); an
   input that is not valid JSON of the [profile](values.md#json-profile) (`rejected` admission, `invalid-input`); the
   window's close (`owner-closing`, or `owner-disposed` once it is gone); the operation id (`duplicate`,
   `identity-conflict`, `expired`); the input's decoding (`invalid-input`), the key (`unresolved-key`) and
@@ -1741,7 +1745,10 @@ find again, for example after a reload.
   state, which retrying does not change, while `capacity` only says that the window is busy for now.
 - A `start`, `status`, `watch`, `unwatch`, `cancel` or `stream` whose `member` is not an asynchronous command of the
   route, such as a synchronous command, is `rejected` with `invalid-request`, without `admission` or `revision`, and
-  starts nothing.
+  starts nothing. The producer checks the member before it looks at the operation id, so a `start` of a synchronous
+  command with the id of a known operation is `invalid-request`, not `identity-conflict`, and that operation is
+  unchanged (`operations.start-of-a-synchronous-command-with-a-known-operation-id`; in .NET,
+  `HandleOperationAsync` finds the member's operation before `StartAsync` reads the id).
 - A `start` whose `contract` is not the contract of the route's View comes from a generated client of another build. It
   is answered `{"ok":false,"error":{"kind":"rejected","reason":"invalid-request",…}}`, without `admission` or
   `revision`, and starts nothing; the other requests find no operation under that contract (`unknown`).
@@ -1795,6 +1802,10 @@ A status is an object with `kind`:
 - A `stream` page is `{kind, cursor, completed, items:[{sequence, value}], delivery?}`: `kind` is the operation's
   status kind, `items` the values from `cursor` on, and `cursor` the cursor of the next page. A stream operation that
   fails as declared keeps the values it published; its pages have `kind: "domain-failed"` and `completed: true`.
+- A `stream` of an operation that publishes no stream, or of one the window does not know, answers a page without
+  items: `kind` the operation's status kind (`unknown`, `expired`), `cursor` the request's `cursor`, and `completed`
+  whether the operation is no longer running (`operations.stream-of-an-operation-that-is-not-a-stream`; in .NET,
+  `BridgeOperationRouter.EncodePage`).
 
 ### Progress
 
@@ -1805,14 +1816,21 @@ values that are not numbers. `progress` stays absent until the first report.
 ### Limits and window close
 
 - A window retains at most 64 operations, 32 terminal results, 128 expired ids and 256 KiB of results, declared
-  failures and stream replay. A result that would exceed the 256 KiB expires the oldest terminal operations until it
-  fits, rather than being refused; one that still does not fit is kept without its value, with
-  `delivery` `result-too-large`, and a declared failure without `failure`, with the same `delivery`. Running streams
+  failures and stream replay. A result that would exceed the 256 KiB expires the oldest other terminal operations until
+  it fits, rather than being refused, never the operation whose result it is: that one is not terminal before its result
+  is stored. One that still does not fit is kept without its value, with
+  `delivery` `result-too-large`, and a declared failure without `failure`, with the same `delivery`. The .NET producer
+  trims the retention before it marks the operation terminal (`BridgeOperationRegistry`, whose trim takes only terminal
+  operations). Running streams
   reserve their bound against a 256 KiB window budget; the default stream bound is 128 items and 64 KiB. An overflowing stream is terminal and reports `stream-overflow`.
 - Closing a window stops admission: `start` answers `owner-closing`, and an asynchronous `command` answers `released`.
   The window waits up to its close timeout for running operations and asynchronous commands, and, with `presented/1`,
   for the pages to acknowledge the close ([window close](#window-close)), then requests the cancellation of what
-  remains, and keeps its resources until that work ends.
+  remains, and keeps its resources until that work ends. A pending interaction request of the work it cancels ends with
+  its scope, as when its command is cancelled ([interactions](#interactions), "Cancellation"): while its presentation is
+  still open, the producer pushes `interaction-cancelled`, and the waiting interaction fails as cancelled
+  (`interactions.the-close-timeout-ends-a-pending-request-with-its-command`). A request still pending when the window
+  itself closes, after that, ends without a push.
 
 ### Client-only behaviour
 
@@ -1863,6 +1881,12 @@ confirmation.
   `already-completed`. A reply on a route the producer does not serve is `released`, as every request on such a route
   is. A request that ends because its presentation closed fails the interaction as cancelled; one that times out
   fails it with a timeout.
+- **Identity.** A reply matches its request when `requestId`, `route`, `presentation`, `ownerEpoch`, `name` and
+  `contract` are the request's and it comes from the request's connection, the one its presentation is open on. The
+  connection is part of the identity: a reply from another connection of the window, also one of the same client, is
+  `stale` and settles nothing, and a repeat of an accepted reply is `already-completed` only on that connection too
+  (`interactions.a-reply-from-another-connection-is-stale`; in .NET, `BridgeInteractionRouter`'s `PendingRequest.Matches`
+  and its receipts compare the connection and client keys).
 
 **Scope.** Only work of the same window can reach the page, and an interaction never crosses to another window, client
 or connection. An interaction object (a ViewModel's member) can be presented on several routes of the window; the
@@ -2257,6 +2281,14 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   shorter or longer; or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
   (`failed`, the host could not store it). An upload that fails in any way, including a client that goes away, keeps
   none of the window's upload slots or space.
+- **Order.** Before it reads the body, the host refuses a `Content-Length` above `maximumBytes` (`413`), then a window
+  that closed (`410`), then one at its capacity (`429`, `507`); an upload it refuses then is never being received. While
+  it reads the body, it refuses a body that grows above `maximumBytes` (`413`), a window that closed (`410`) and
+  unclaimed uploads that fill the window's space (`507`) once it reads the bytes that show them. When the body ends, it
+  compares the body's length with its `Content-Length` first (`400`), and only then refuses an upload whose connection
+  or window closed meanwhile (`410`): a body of the wrong length is `invalid-request` also after its connection closed
+  (`blobs.a-body-of-the-wrong-size-is-invalid-request-after-its-connection-closed`). The .NET host checks them in this
+  order (`BridgeBlobs.StoreCoreAsync`).
 - An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and
   only while no request claimed it; any other id is `invalid-input`. The producer's model claims an upload when it
   reads it; afterwards the id is invalid. An unclaimed upload is deleted when its connection closes, when the window

@@ -450,6 +450,32 @@ test("each value position has the direction contract-ir.md gives it, in every IR
   assert.deepEqual([...writer].sort(), ["both false", "to-page true"], "the .NET writer's row editors, with and without blobs");
 });
 
+// contract-ir.md, "Named types": a member is optional exactly when a reader fills it in, so every nullable member is
+// optional, whatever its direction; the .NET writer decides it so (BridgeTypeGraph.MarkOptionalMembers), also for a
+// nullable blob in an object that only goes to the page (the field-paths golden's PathSticker.image).
+test("every nullable object member is optional, in every IR document", () => {
+  const all = [
+    { label: "conformance/views.ir.json", ir: conformanceIr },
+    ...documents.map(({ entry, ir }) => ({ label: entry.ir, ir })),
+    ...goldenDocuments,
+  ];
+  const wrong = [];
+  let writerBlob = false;
+  for (const { label, ir } of all)
+    for (const [id, definition] of Object.entries(ir.types ?? {}))
+      for (const member of definition.kind === "object" ? definition.members : []) {
+        if (member.type.nullable === true && member.optional !== true) wrong.push(`${label}: ${id} ${member.wire}`);
+        if (goldenDocuments.some(golden => golden.ir === ir) && member.type.kind === "blob" && member.type.nullable) writerBlob ||= member.optional === true;
+      }
+  assert.deepEqual(wrong, [], "nullable members without optional");
+  assert.ok(writerBlob, "no .NET writer golden has a nullable blob member");
+  const ir = structuredClone(conformanceIr);
+  const cover = ir.types["Runic.Application.Testing.Tests.Conformance.FilesCover"].members.find(member => member.wire === "image");
+  delete cover.optional;
+  const files = ir.views.find(view => view.route === "files");
+  assert.notEqual(fingerprint(ir, files), files.fingerprint, "optional left the fingerprint as it was");
+});
+
 test("a value position's direction enters the fingerprint", () => {
   const ir = structuredClone(conformanceIr);
   const files = ir.views.find(view => view.route === "files");
