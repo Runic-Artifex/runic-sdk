@@ -1,0 +1,11 @@
+<Project>
+  <!-- The example is a repository of its own: nothing above this folder applies to it. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- A project of a Windows target framework, such as a WPF application or model project on net10.0-windows,
+         restores and builds on the Linux runners only with this. It must be set before the restore imports any
+         package's build files, so it belongs here rather than in a package. -->
+    <EnableWindowsTargeting Condition="'$(EnableWindowsTargeting)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))">true</EnableWindowsTargeting>
+  </PropertyGroup>
+</Project>

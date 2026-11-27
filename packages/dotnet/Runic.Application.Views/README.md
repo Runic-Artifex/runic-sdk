@@ -3002,6 +3002,10 @@ commit, configuration and Runic release as the publish.
 [Write a web bundle](../../../tools/dotnet-runic/README.md#write-a-web-bundle).
 `dotnet runic doctor --bundle <dir>` checks a downloaded bundle offline.
 
+The [split CI example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/split-ci/README.md) is a
+complete application with this pipeline. It has a workflow for GitHub Actions and Gitea, a variant for Forgejo, and a
+script that runs both halves on one Linux machine.
+
 ## Adding a Window to an existing web app
 
 A Window's frontend can reuse the components, styles and translations of a web

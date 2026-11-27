@@ -166,8 +166,10 @@ test("development workspaces and workflows use the SDK layout", () => {
       !path.startsWith("packages/runic-"),
       `retired package root: ${path}`,
     );
+    // The split CI example (D082.5) is a repository of its own, whose workflow runs once it is copied out; GitHub
+    // never runs a workflow below the repository root.
     assert.ok(
-      !path.includes("/.github/workflows/"),
+      !path.includes("/.github/workflows/") || path.startsWith("examples/split-ci/.github/workflows/"),
       `nested active CI: ${path}`,
     );
   }

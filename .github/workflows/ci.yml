@@ -565,6 +565,9 @@ jobs:
           echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
           tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color
+          # The split CI example's GitHub/Gitea and Forgejo workflows, which tests/engineering/split-ci-example.test.mjs
+          # keeps in step.
+          "$RUNNER_TEMP/actionlint" -color examples/split-ci/.github/workflows/ci.yml examples/split-ci/.forgejo/workflows/ci.yml
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   views:
@@ -741,6 +744,10 @@ jobs:
           bun run --cwd packages/web/views --bun build
           node examples/first-window/package-smoke.mjs
           node examples/first-window-desktop/package-smoke.mjs
+      # D082: the split CI example's two halves on this runner, from the packed packages: tests and web bundle, then a
+      # win-x64 publish from the bundle with neither Node.js nor Bun on PATH, and a ViewModel change that RUNICBRIDGE094 stops.
+      - name: Verify the split CI example, publishing from its web bundle without Node.js
+        run: bun examples/split-ci/package-smoke.mjs artifacts/packages
       - name: Verify the packaged navigation consumer with JIT and NativeAOT
         run: bun tests/fixtures/application/navigation-consumer/package-smoke.mjs
       - name: Verify packaged operation controls, selection and accepted-work shutdown

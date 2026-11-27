@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- The Runic release. .config/dotnet-tools.json (dotnet-runic) and src/Acme.App/Frontend/package.json
+         (@runic-artifex/views) name the same version; update the three together. -->
+    <RunicVersion>0.24.0</RunicVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageVersion Include="Runic.Application.Testing" Version="$(RunicVersion)" />
+    <PackageVersion Include="Runic.Application.Views.Desktop" Version="$(RunicVersion)" />
+    <PackageVersion Include="Runic.Desktop.Kestrel" Version="$(RunicVersion)" />
+    <PackageVersion Include="TUnit" Version="1.73.19" />
+  </ItemGroup>
+</Project>
