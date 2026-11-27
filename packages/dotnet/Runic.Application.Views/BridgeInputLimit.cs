@@ -27,6 +27,11 @@ internal static class BridgeInputLimit
         ? throw new ArgumentOutOfRangeException(name, value, $"An upload limit must be at least {Minimum} bytes.")
         : value;
 
+    // Validates the bound of a window's unclaimed uploads (blobs/1, runic-sdk#1392); null stays null, the default.
+    internal static int? ResolveUploadCount(int? value, string name) => value is < 1
+        ? throw new ArgumentOutOfRangeException(name, value, "The number of unclaimed uploads must be at least 1.")
+        : value;
+
     // Whether the UTF-8 encoding of the value fits; a UTF-16 code unit is one to three bytes.
     internal static bool Fits(string value, int maximumBytes) =>
         value.Length <= maximumBytes

@@ -642,7 +642,7 @@ describe("injectBridgeConnection", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
       "FieldError", "RUNIC_INSTANCE", "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
-      "configureTranslatedText", "createRunicInstance", "fieldErrorText", "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectCommands", "injectField", "injectForm", "injectInteraction",
+      "configureTranslatedText", "createRunicInstance", "fieldDefinition", "fieldErrorText", "fieldMembers", "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectCommands", "injectField", "injectForm", "injectInteraction",
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectRunicInstance", "injectText",
       "injectTextField", "injectTextLocale", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
       "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath", "openNavigationPath",

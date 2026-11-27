@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
@@ -53,6 +53,15 @@ if (existsSync("emits-build")) {
   writeFileSync("build/index.html", "<p>build</p>");
 }
 if (existsSync("build-fails")) { console.error("error during build:"); console.error("[vite]: Rollup failed to resolve import"); process.exit(1); }
+if (existsSync("unresolved-import")) { console.error(\`[vite]: Rolldown failed to resolve import "\${readFileSync("unresolved-import", "utf8").trim()}" from "src/main.ts".\`); process.exit(1); }
+if (existsSync("emits-package")) {
+  // A compiled library package, as tsc writes it: no .contract.d.ts in dist/generated.
+  rmSync("dist", { recursive: true, force: true });
+  mkdirSync("dist/generated", { recursive: true });
+  if (!existsSync("skips-index")) writeFileSync("dist/index.js", "export {};");
+  writeFileSync("dist/generated/runic-clients.js", "export {};");
+  writeFileSync("dist/generated/runic-clients.d.ts", "export * from './about.contract';");
+}
 if (existsSync("build-reports")) { console.log("src/App.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'."); process.exit(2); }
 if (existsSync("build-warns")) console.log("src/App.ts(1,1): warning TS6133: 'unused' is declared but never read.");
 if (existsSync("svelte-check-human")) {
@@ -174,11 +183,30 @@ function packageManagers() {
   mkdirSync(bin, { recursive: true });
   for (const name of ["npm", "pnpm", "bun"]) {
     writeFileSync(join(bin, `${name}.mjs`), `
-import { appendFileSync, mkdirSync } from "node:fs";
-// The build asks Bun for its version (RUNICBRIDGE033).
-if (process.argv[2] === "--version") { console.log(process.env.RUNIC_TEST_VERSION ?? "1.4.4"); process.exit(0); }
-appendFileSync("../commands.log", ["${name}", ...process.argv.slice(2)].join(" ") + "\\n");
+import { spawnSync } from "node:child_process";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// The build asks the manager for its version (RUNICBRIDGE090, and RUNICBRIDGE033 for Bun).
+if (process.argv[2] === "--version") {
+  if (process.env.RUNIC_TEST_VERSION_LOG) appendFileSync(process.env.RUNIC_TEST_VERSION_LOG, "${name} --version\\n");
+  console.log(process.env.RUNIC_TEST_VERSION ?? "1.4.4");
+  process.exit(0);
+}
+// The build runs the workspace resolver with Bun in a Bun workspace.
+if (process.argv[2]?.endsWith(".mjs")) process.exit(spawnSync(process.execPath, process.argv.slice(2), { stdio: "inherit" }).status ?? 1);
+// RUNIC_TEST_COMMANDS logs to one file with the folder the command ran in, as the workspace install runs at the root.
+const log = process.env.RUNIC_TEST_COMMANDS;
+appendFileSync(log ?? "../commands.log", ["${name}", ...process.argv.slice(2)].join(" ") + (log ? " in " + process.cwd() : "") + "\\n");
+// "run <script>" runs the package's script, as a package build does.
+const run = process.argv.indexOf("run");
+if (run >= 2) {
+  const script = JSON.parse(readFileSync("package.json", "utf8")).scripts?.[process.argv.at(-1)];
+  process.exit(script === undefined ? 1 : spawnSync(script, { shell: true, stdio: "inherit" }).status ?? 1);
+}
+if (process.env.RUNIC_TEST_INSTALL_DELAY) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.RUNIC_TEST_INSTALL_DELAY));
 mkdirSync("node_modules", { recursive: true });
+// The record a complete install leaves: npm's hidden lock file, pnpm's .modules.yaml.
+const record = { npm: ".package-lock.json", pnpm: ".modules.yaml" }["${name}"];
+if (record) writeFileSync("node_modules/" + record, "{}");
 `);
     writeFileSync(join(bin, name), `#!/bin/sh\nexec node "$(dirname "$0")/${name}.mjs" "$@"\n`, { mode: 0o755 });
     writeFileSync(join(bin, `${name}.cmd`), `@node "%~dp0${name}.mjs" %*\r\n`);
@@ -237,6 +265,209 @@ test("the default install is locked, and RunicApplicationFrontendAllowUnlockedIn
   result = build(explicit, { env });
   assert.equal(result.status, 0, result.output);
   assert.deepEqual(result.commands, ["install", "build"]);
+});
+
+// devtools-library-dx M1: a member of a JavaScript workspace installs once at the workspace root, with the root's
+// package manager and lock file. Each workspace has an application frontend (app/frontend) and a library package (lib).
+function workspace(name, rootPackageJson, rootFiles = {}, { members = ["app/frontend", "lib"], appPackageJson } = {}) {
+  const root = join(directory, name);
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "root", private: true, ...rootPackageJson }));
+  for (const [file, text] of Object.entries(rootFiles)) writeFileSync(join(root, file), text);
+  const app = fixture(`${name}/app`, appPackageJson ?? { name: "@acme/app", private: true, dependencies: { "@acme/lib": "workspace:*" } }, "", { defaultInstall: true });
+  mkdirSync(join(root, "lib"), { recursive: true });
+  writeFileSync(join(root, "lib/package.json"), JSON.stringify({ name: "@acme/lib", private: true, devDependencies: { typescript: "6.0.3" } }));
+  return { root, app, members };
+}
+
+const realRoot = path => realpathSync(path);
+
+test("a workspace member installs once at the workspace root with the root's manager and lock file", () => {
+  for (const [name, rootPackageJson, rootFiles, command] of [
+    ["ws-bun", { workspaces: ["app/frontend", "lib"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" }, "bun install --frozen-lockfile --ignore-scripts"],
+    // npm hoists every member's packages into the root's node_modules and creates none in the member (F8).
+    ["ws-npm", { workspaces: ["app/*", "lib"] }, { "package-lock.json": "{}" }, "npm ci --ignore-scripts"],
+    ["ws-pnpm", {}, { "pnpm-workspace.yaml": "packages:\n  - 'app/**'\n  - lib\n", "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" }, "pnpm install --frozen-lockfile --ignore-scripts"],
+  ]) {
+    const { root, app } = workspace(name, rootPackageJson, rootFiles);
+    const env = { ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+    let result = build(app, { env });
+    assert.equal(result.status, 0, `${name}: ${result.output}`);
+    assert.deepEqual(result.commands, [`${command} in ${realRoot(root)}`, "build"], name);
+    assert.ok(existsSync(join(root, "node_modules/.runic-install")), `${name}: the root's install records its hash.`);
+    assert.ok(!existsSync(join(app.frontend, "node_modules")), `${name}: nothing is installed in the member.`);
+    const graph = JSON.parse(readFileSync(join(app.project, "obj/runic/frontend-graph.json"), "utf8"));
+    assert.equal(graph.schema, "rax.frontend-graph/1");
+    assert.equal(graph.member, true);
+    assert.deepEqual(graph.members.map(member => member.package).sort(), ["@acme/app", "@acme/lib"], name);
+
+    result = build(app, { env });
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.commands, [], `${name}: an unchanged workspace runs no JavaScript command.`);
+
+    // A member's package.json is an input of the install.
+    writeFileSync(join(root, "lib/package.json"), JSON.stringify({ name: "@acme/lib", private: true, devDependencies: { typescript: "6.0.4" } }));
+    result = build(app, { env });
+    assert.deepEqual(result.commands, [`${command} in ${realRoot(root)}`, "build"], `${name}: a changed member installs again, and the page builds with it.`);
+    result = build(app, { env });
+    assert.deepEqual(result.commands, [], `${name}: and then neither again.`);
+    rmSync(join(root, "node_modules"), { recursive: true });
+    result = build(app, { env });
+    assert.deepEqual(result.commands, [`${command} in ${realRoot(root)}`], `${name}: a deleted node_modules installs again; the same packages rebuild nothing.`);
+    // A touched lock file with the same content is current; a changed one installs.
+    const lock = Object.keys(rootFiles).find(file => file.includes("lock"));
+    age(join(root, lock), -60);
+    assert.deepEqual(build(app, { env }).commands, [], `${name}: a touched lock file is current.`);
+    writeFileSync(join(root, lock), `${readFileSync(join(root, lock), "utf8")}\n`);
+    assert.deepEqual(build(app, { env }).commands, [`${command} in ${realRoot(root)}`, "build"], `${name}: a changed lock file installs.`);
+    if (name !== "ws-bun") {
+      // node_modules without the manager's own record is a half-written install.
+      rmSync(join(root, "node_modules", name === "ws-npm" ? ".package-lock.json" : ".modules.yaml"));
+      assert.deepEqual(build(app, { env }).commands, [`${command} in ${realRoot(root)}`], `${name}: an incomplete node_modules installs again.`);
+    }
+  }
+});
+
+test("RunicApplicationFrontendInstallMode: Always installs on every build, Never and InstallEnabled=false never", () => {
+  const env = packageManagers();
+  const app = fixture("install-mode", { name: "app", private: true, packageManager: "bun@1.4.4", devDependencies: { vite: "8.3.2" } }, "", { defaultInstall: true });
+  writeFileSync(join(app.frontend, "bun.lock"), "{}");
+  const install = "bun install --frozen-lockfile --ignore-scripts";
+  assert.deepEqual(build(app, { env }).commands, [install, "build"]);
+  assert.deepEqual(build(app, { env }).commands, [], "Auto: an unchanged frontend installs nothing.");
+  for (const mode of ["Always", "always"]) {
+    const result = build(app, { env, properties: [`RunicApplicationFrontendInstallMode=${mode}`] });
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.commands, [install], `${mode}: the locked install runs again; the unchanged packages rebuild nothing.`);
+  }
+  rmSync(join(app.frontend, "node_modules"), { recursive: true });
+  for (const properties of [["RunicApplicationFrontendInstallMode=Never"], ["RunicApplicationFrontendInstallEnabled=false"]]) {
+    const result = build(app, { env, properties });
+    assert.ok(!result.commands.some(command => command.startsWith("bun install")), `${properties}: ${result.commands}`);
+  }
+  // The mode wins over the older switch.
+  assert.deepEqual(build(app, { env, properties: ["RunicApplicationFrontendInstallMode=Auto", "RunicApplicationFrontendInstallEnabled=false"] }).commands, [install]);
+  // An unknown mode warns and installs as Auto.
+  const result = build(app, { env, targets: "RunicViewsCheckFrontendPackageManager;RunicViewsCollectFrontendInputs", properties: ["RunicApplicationFrontendInstallMode=sometimes"] });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /warning RUNICBRIDGE091: RunicApplicationFrontendInstallMode is 'sometimes', which is not Auto, Always or Never, so the build uses Auto/);
+  assert.deepEqual(result.commands, []);
+});
+
+test("an upgraded package manager installs again; a no-change build runs no package manager", () => {
+  const env = packageManagers();
+  const app = fixture("manager-identity", { name: "app", private: true, packageManager: "pnpm@10.0.0", devDependencies: { vite: "8.3.2" } }, "", { defaultInstall: true });
+  writeFileSync(join(app.frontend, "pnpm-lock.yaml"), "{}");
+  const log = join(app.project, "versions.log");
+  // The stand-in records every run, --version too.
+  const runs = { ...env, RUNIC_TEST_VERSION_LOG: log };
+  assert.deepEqual(build(app, { env: runs }).commands, ["pnpm install --frozen-lockfile --ignore-scripts", "build"]);
+  rmSync(log, { force: true });
+  assert.deepEqual(build(app, { env: runs }).commands, []);
+  assert.ok(!existsSync(log), "A no-change build does not even ask the manager for its version.");
+  const bin = env.PATH.split(process.platform === "win32" ? ";" : ":")[0];
+  age(join(bin, process.platform === "win32" ? "pnpm.cmd" : "pnpm"), -120);
+  assert.deepEqual(build(app, { env: runs }).commands, ["pnpm install --frozen-lockfile --ignore-scripts", "build"],
+    "Another manager may install other packages, so the page builds again.");
+});
+
+test("RUNICBRIDGE026 names the workspace root whose lock file is missing", () => {
+  const { app } = workspace("ws-unlocked", { workspaces: ["app/frontend", "lib"], packageManager: "bun@1.4.4" });
+  const env = { ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  let result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(result.commands, []);
+  const reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE026: The frontend .*ws-unlocked\/app\/frontend is a member of the bun workspace at .*ws-unlocked, which has no bun\.lock, so the workspace install would not be locked\. Run 'bun install' in .*ws-unlocked and commit bun\.lock/);
+  result = build(app, { env, properties: ["RunicApplicationFrontendAllowUnlockedInstall=true"] });
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.commands[0], /^bun install --ignore-scripts in /);
+});
+
+test("RUNICBRIDGE087: a frontend below a workspace that does not list it; RunicApplicationFrontendWorkspaceRoot=none installs it alone", () => {
+  const { app } = workspace("ws-not-member", { workspaces: ["lib"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" });
+  const env = { ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  let result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(result.commands, []);
+  const reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE087: The frontend .*ws-not-member\/app\/frontend is below the bun workspace at .*ws-not-member, but the workspaces of .*package\.json do not include it.*RunicApplicationFrontendWorkspaceRoot=none/);
+  // On its own, the frontend needs its own lock file (and, without a declaration, npm).
+  result = build(app, { env, properties: ["RunicApplicationFrontendWorkspaceRoot=none"] });
+  assert.match(errors(result.output).join("\n"), /error RUNICBRIDGE026: .*app\/frontend declares dependencies but has no package-lock\.json/);
+  writeFileSync(join(app.frontend, "package-lock.json"), "{}");
+  result = build(app, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [`npm ci --ignore-scripts in ${realRoot(app.frontend)}`, "build"], "A frontend with its own lock file is its own root.");
+});
+
+test("RUNICBRIDGE089: a member's own packageManager loses to its workspace's", () => {
+  const { root, app } = workspace("ws-disagree", { workspaces: ["app/frontend", "lib"] }, { "bun.lock": "{}" },
+    { appPackageJson: { name: "@acme/app", private: true, packageManager: "npm@11.0.0", dependencies: { "@acme/lib": "workspace:*" } } });
+  const env = { ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  const result = build(app, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [`bun install --frozen-lockfile --ignore-scripts in ${realRoot(root)}`, "build"]);
+  const warnings = [...new Set(result.output.split("\n").filter(line => / warning RUNICBRIDGE089:/.test(line)).map(line => line.trim()))];
+  assert.equal(warnings.length, 1, result.output);
+  assert.match(warnings[0], /declares npm \(packageManager\), but its workspace .*ws-disagree uses bun \(.*bun\.lock\), so the build installs and builds it with bun/);
+  // The workspace detection is the build's only when it installs: with the install off, the member's declaration wins.
+  const evaluated = spawnSync("dotnet", ["msbuild", join(app.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+    "-p:RunicApplicationFrontendInstallEnabled=false", "-getProperty:RunicApplicationFrontendPackageManager"], { cwd: app.project, encoding: "utf8" });
+  assert.equal(evaluated.stdout.trim(), "npm", evaluated.stdout + evaluated.stderr);
+});
+
+test("RUNICBRIDGE090: a package manager or runtime that does not run is named before the install and build", () => {
+  // Only node and the shell are on PATH.
+  const bin = join(directory, "only-node");
+  mkdirSync(bin, { recursive: true });
+  if (!existsSync(join(bin, "node"))) symlinkSync(process.execPath, join(bin, "node"));
+  if (!existsSync(join(bin, "sh"))) symlinkSync(spawnSync("sh", ["-c", "command -v sh"], { encoding: "utf8" }).stdout.trim(), join(bin, "sh"));
+  const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
+  const run = (project, properties = []) => {
+    const result = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-t:RunicViewsCollectFrontendInputs", ...properties.map(property => `-p:${property}`),
+      "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"],
+      { cwd: project, encoding: "utf8", env: { ...process.env, PATH: bin } });
+    return errors(`${result.stdout}${result.stderr}`);
+  };
+  // A Bun workspace: Bun resolves the workspace.
+  const bunWorkspace = workspace("ws-no-bun", { workspaces: ["app/frontend", "lib"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" });
+  let reported = run(bunWorkspace.app.project);
+  assert.equal(reported.length, 1, reported.join("\n"));
+  assert.match(reported[0], /error RUNICBRIDGE090: The frontend workspace .*ws-no-bun uses bun \(packageManager in .*ws-no-bun\/package\.json\), and the build runs 'bun' to resolve it, but 'bun' did not run: it is not on PATH\. Install Bun 1\.4\.4 or later/);
+  // An npm frontend: Node.js runs, npm does not.
+  const npm = fixture("no-npm", { name: "app", private: true, devDependencies: { vite: "8.3.2" } }, "", { defaultInstall: true });
+  writeFileSync(join(npm.frontend, "package-lock.json"), "{}");
+  reported = run(npm.project);
+  assert.equal(reported.length, 1, reported.join("\n"));
+  assert.match(reported[0], /error RUNICBRIDGE090: The frontend .*no-npm\/frontend uses npm \(the default, as nothing declares a package manager\), but 'npm --version' failed with exit code 127: npm is not on PATH or does not run\. Install Node\.js, which includes npm/);
+  // The frontend build of a Bun frontend that some other tool installed.
+  const bun = fixture("no-bun-build", { name: "app", private: true, packageManager: "bun@1.4.4" });
+  const project = readFileSync(join(bun.project, "App.proj"), "utf8").replace(/\s*<RunicApplicationFrontendBuildCommand>.*<\/RunicApplicationFrontendBuildCommand>/, "");
+  writeFileSync(join(bun.project, "App.proj"), project);
+  reported = run(bun.project, ["RunicApplicationFrontendInstallEnabled=false"]);
+  assert.equal(reported.length, 1, reported.join("\n"));
+  assert.match(reported[0], /error RUNICBRIDGE090: The frontend .*no-bun-build\/frontend uses bun \(packageManager in .*package\.json\), but 'bun --version' failed: bun is not on PATH or does not run, so the frontend build 'bun run --bun build' could not run/);
+});
+
+test("an application and a library of one workspace built at once install the workspace once", async () => {
+  const { root, app } = workspace("ws-parallel", { workspaces: ["app/frontend", "lib/frontend"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" });
+  const library = fixture("ws-parallel/lib", { name: "@acme/lib", private: true, devDependencies: { typescript: "6.0.3" } }, "", { defaultInstall: true });
+  const log = join(root, "commands.log");
+  const env = { ...process.env, ...packageManagers(), RUNIC_TEST_COMMANDS: log, RUNIC_TEST_INSTALL_DELAY: "1500" };
+  const runs = [app, library].map(({ project }) => new Promise(resolvePromise => {
+    const child = spawn("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsCollectFrontendInputs", "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m"],
+      { cwd: project, env });
+    let output = "";
+    child.stdout.on("data", chunk => { output += chunk; });
+    child.stderr.on("data", chunk => { output += chunk; });
+    child.on("close", status => resolvePromise({ status, output }));
+  }));
+  for (const result of await Promise.all(runs)) assert.equal(result.status, 0, result.output);
+  const installs = readFileSync(log, "utf8").split("\n").filter(line => line.startsWith("bun install"));
+  assert.deepEqual(installs, [`bun install --frozen-lockfile --ignore-scripts in ${realRoot(root)}`]);
 });
 
 test("RunicApplicationFrontendNodeModulesDirectory links prepared dependencies instead of installing", () => {
@@ -1732,6 +1963,204 @@ test("a changed runic-client-modules.ts rebuilds the frontend", () => {
   const result = build(app);
   assert.equal(result.status, 0, result.output);
   assert.equal(builds(result), 1, "A changed library contract does not rebuild the frontend.");
+});
+
+// devtools-library-dx S2 (M2–M5, M7, D081.6): library packages and plain workspace packages are built, incrementally.
+// A node first on PATH that logs each run, so that a test sees every JavaScript process a build starts.
+function nodeSpy(log) {
+  const bin = join(directory, "node-spy");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "node"), `#!/bin/sh\necho "node $*" >> "$RUNIC_TEST_NODE_LOG"\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  return { PATH: `${bin}:${process.env.PATH}`, RUNIC_TEST_NODE_LOG: log };
+}
+
+const evaluateProperty = (project, name, extra = []) => {
+  const result = spawnSync("dotnet", ["msbuild", project, "-nologo", "-noAutoResponse", "-nodeReuse:false", ...extra, `-getProperty:${name}`], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return result.stdout.trim();
+};
+
+test("a client library builds its package when it has a build script, copies its contracts and checks its exports", { skip: process.platform === "win32" }, () => {
+  const library = fixture("library-package", { name: "@acme/shared-ui", private: true, scripts: { build: "node build.mjs" },
+    exports: { ".": "./dist/index.js", "./generated": { types: "./dist/generated/runic-clients.d.ts", default: "./dist/generated/runic-clients.js" } } });
+  writeFileSync(join(library.frontend, "emits-package"), "");
+  mkdirSync(join(library.frontend, "generated"), { recursive: true });
+  for (const file of ["about.contract.d.ts", "about.contract.d.ts.map", "runic-clients.ts"]) writeFileSync(join(library.frontend, "generated", file), "export {};\n");
+  const properties = ["RunicApplicationFrontendClientLibrary=true"];
+  const project = join(library.project, "App.proj");
+  assert.equal(evaluateProperty(project, "RunicApplicationFrontendBuildEnabled", ["-p:RunicApplicationFrontendClientLibrary=true"]), "true", "auto: a build script builds.");
+  assert.equal(evaluateProperty(project, "RunicApplicationFrontendBuildEnabled", ["-p:RunicApplicationFrontendClientLibrary=true", "-p:RunicApplicationFrontendBuildEnabled=false"]), "false");
+
+  const log = join(library.project, "node.log");
+  const env = nodeSpy(log);
+  let result = build(library, { properties, env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install", "build"]);
+  assert.deepEqual(readdirSync(join(library.frontend, "dist/generated")).sort(),
+    ["about.contract.d.ts", "about.contract.d.ts.map", "runic-clients.d.ts", "runic-clients.js"], "tsc's output gets the contract declarations (F5).");
+  rmSync(log, { force: true });
+  result = build(library, { properties, env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, []);
+  assert.ok(!existsSync(log), `A no-change build starts no JavaScript process: ${existsSync(log) ? readFileSync(log, "utf8") : ""}`);
+
+  // A changed contract rebuilds the package, which deletes dist/, and is copied again.
+  writeFileSync(join(library.frontend, "generated/about.contract.d.ts"), "export type About = {};\n");
+  result = build(library, { properties, env });
+  assert.deepEqual(result.commands, ["build"]);
+  assert.equal(readFileSync(join(library.frontend, "dist/generated/about.contract.d.ts"), "utf8"), "export type About = {};\n");
+
+  // An export that the build does not write names the project and the package (F3).
+  writeFileSync(join(library.frontend, "skips-index"), "");
+  result = build(library, { properties, env });
+  assert.notEqual(result.status, 0, result.output);
+  const reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE088: App's frontend package @acme\/shared-ui exports .*library-package\/frontend\/dist\/index\.js, which its build 'node build\.mjs' did not write, so applications that import it fail to resolve it/);
+
+  result = build(library, { properties: [...properties, "RunicApplicationFrontendBuildEnabled=false"], env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [], "RunicApplicationFrontendBuildEnabled=false turns the package build off.");
+});
+
+test("a workspace package that no .NET project owns is built before the frontend, once, and again when it changes (D081.6)", () => {
+  const { root, app } = workspace("ws-plain", { workspaces: ["app/frontend", "lib"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" });
+  const lib = join(root, "lib");
+  writeFileSync(join(lib, "package.json"), JSON.stringify({ name: "@acme/lib", private: true, scripts: { build: "node build-lib.mjs" }, exports: { ".": "./dist/index.js" } }));
+  mkdirSync(join(lib, "src"), { recursive: true });
+  writeFileSync(join(lib, "src/index.ts"), "export const answer = 42;\n");
+  writeFileSync(join(lib, "build-lib.mjs"), `import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+if (!existsSync("no-output")) { mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.js", "export {};"); }
+`);
+  const env = { ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  const install = `bun install --frozen-lockfile --ignore-scripts in ${realRoot(root)}`;
+  const libraryBuild = `bun run --bun build in ${realRoot(lib)}`;
+  let result = build(app, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [install, libraryBuild, "build"]);
+  assert.match(result.output, /Building the frontend package @acme\/lib in .*ws-plain\/lib, which .*app\/frontend depends on and no \.NET project builds\./);
+  const graph = JSON.parse(readFileSync(join(app.project, "obj/runic/frontend-graph.json"), "utf8"));
+  assert.deepEqual(graph.packages.map(entry => [entry.package, entry.kind, entry.build, entry.exports, entry.outputs]),
+    [["@acme/lib", "compiled", "bun run --bun build", ["./dist/index.js"], ["./dist"]]]);
+  assert.deepEqual(readFileSync(join(app.project, "obj/runic/frontend-dependencies.txt"), "utf8").trim().split("\n"), [realRoot(lib)]);
+
+  result = build(app, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [], "Nothing changed: neither the package nor the page builds.");
+  // A source edit rebuilds the package and the page that bundles it; its output alone does not count as an edit.
+  writeFileSync(join(lib, "src/index.ts"), "export const answer = 43;\n");
+  assert.deepEqual(build(app, { env }).commands, [libraryBuild, "build"]);
+  assert.deepEqual(build(app, { env }).commands, []);
+  rmSync(join(lib, "dist"), { recursive: true });
+  assert.deepEqual(build(app, { env }).commands, [libraryBuild, "build"], "A deleted export builds the package again.");
+
+  writeFileSync(join(lib, "no-output"), "");
+  rmSync(join(lib, "dist"), { recursive: true });
+  result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [libraryBuild]);
+  const reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE088: .*ws-plain\/app\/frontend depends on @acme\/lib \(.*ws-plain\/lib\), a workspace package that no \.NET project owns, but its package\.json exports .*lib\/dist\/index\.js, which do not exist: its build 'bun run --bun build' did not write them/);
+});
+
+test("RunicViewsGetFrontendDependencies returns the packages of the referenced libraries and the workspace; a library builds its own", () => {
+  const { root, app } = workspace("ws-owned", { workspaces: ["app/frontend", "lib", "tokens"], packageManager: "bun@1.4.4" }, { "bun.lock": "{}" },
+    { appPackageJson: { name: "@acme/app", private: true, dependencies: { "@acme/lib": "workspace:*", "@acme/tokens": "workspace:*" } } });
+  const lib = join(root, "lib");
+  writeFileSync(join(lib, "package.json"), JSON.stringify({ name: "@acme/lib", private: true, scripts: { build: "tsc" }, exports: { ".": "./dist/index.js", "./generated": "./dist/generated/runic-clients.js" } }));
+  mkdirSync(join(root, "tokens"), { recursive: true });
+  writeFileSync(join(root, "tokens/package.json"), JSON.stringify({ name: "@acme/tokens", private: true }));
+  mkdirSync(join(root, "SharedUi"), { recursive: true });
+  // A client library whose package build is off: the application names it instead of failing the bundler's import.
+  writeFileSync(join(root, "SharedUi/SharedUi.proj"), `<Project>
+  <PropertyGroup>
+    <AssemblyName>SharedUi</AssemblyName>
+    <RunicApplicationFrontendClientLibrary>true</RunicApplicationFrontendClientLibrary>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../lib</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const appProject = join(app.project, "App.proj");
+  writeFileSync(appProject, readFileSync(appProject, "utf8").replace("  <Import Project=", `  <PropertyGroup><UsingMicrosoftNETSdk>true</UsingMicrosoftNETSdk></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SharedUi/SharedUi.proj" />
+    <RunicApplicationFrontendClientModule Include="SharedUi" Specifier="@acme/lib/generated" />
+  </ItemGroup>
+  <Target Name="AssignProjectConfiguration" />
+  <Target Name="_GetProjectReferenceTargetFrameworkProperties" />
+  <Target Name="_SplitProjectReferencesByFileExistence">
+    <ItemGroup><_MSBuildProjectReferenceExistent Include="@(ProjectReference)" Condition="'%(Extension)' == '.proj'" /></ItemGroup>
+  </Target>
+  <Import Project=`));
+  const env = { ...process.env, ...packageManagers(), RUNIC_TEST_COMMANDS: join(app.project, "commands.log") };
+  const query = spawnSync("dotnet", ["msbuild", appProject, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-getTargetResult:RunicViewsGetFrontendDependencies"],
+    { cwd: app.project, encoding: "utf8", env });
+  assert.equal(query.status, 0, query.stdout + query.stderr);
+  const items = JSON.parse(query.stdout).TargetResults.RunicViewsGetFrontendDependencies.Items;
+  assert.deepEqual(items.map(item => [item.PackageName, item.Kind, item.OwnerName ?? "", item.BuildEnabled ?? "", item.Specifier ?? ""]), [
+    ["@acme/lib", "compiled", "SharedUi", "false", "@acme/lib/generated"],
+    ["@acme/tokens", "source", "", "", ""],
+    ["@acme/app", "application", "App", "", ""],
+  ]);
+  assert.ok(!existsSync(join(app.project, "commands.log")), "The query installs and builds nothing.");
+
+  let result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(result.commands, [`bun install --frozen-lockfile --ignore-scripts in ${realRoot(root)}`], "The application does not build a package that a library owns.");
+  let reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE088: .*app\/frontend depends on @acme\/lib \(.*ws-owned\/lib\), the frontend package of SharedUi, but its package\.json exports .*lib\/dist\/index\.js, .*lib\/dist\/generated\/runic-clients\.js, which do not exist: its package build is off in SharedUi \(RunicApplicationFrontendBuildEnabled=false\)/);
+
+  // M7: a bundler error that names a package of the graph says what that package is.
+  mkdirSync(join(lib, "dist/generated"), { recursive: true });
+  writeFileSync(join(lib, "dist/index.js"), "export {};");
+  writeFileSync(join(lib, "dist/generated/runic-clients.js"), "export {};");
+  writeFileSync(join(app.frontend, "unresolved-import"), "@acme/tokens");
+  result = build(app, { env });
+  assert.notEqual(result.status, 0, result.output);
+  reported = errors(result.output);
+  assert.equal(reported.length, 1, result.output);
+  assert.match(reported[0], /error RUNICBRIDGE016: The frontend build 'node build\.mjs' in .* exited with code 1\. Its output is above\. @acme\/tokens \(.*ws-owned\/tokens\) is a workspace package that no \.NET project owns; check that it is built and that this frontend installs it\./);
+
+  // M5: Visual Studio's up-to-date check gets the dependency packages that the last build recorded, without node_modules.
+  mkdirSync(join(lib, "node_modules/x"), { recursive: true });
+  writeFileSync(join(lib, "node_modules/x/index.js"), "");
+  const evaluated = spawnSync("dotnet", ["msbuild", appProject, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-p:BuildingInsideVisualStudio=true", "-getItem:UpToDateCheckInput"],
+    { cwd: app.project, encoding: "utf8", env });
+  assert.equal(evaluated.status, 0, evaluated.stdout + evaluated.stderr);
+  const inputs = JSON.parse(evaluated.stdout).Items.UpToDateCheckInput.map(item => item.FullPath);
+  assert.ok(inputs.some(input => input.endsWith("ws-owned/lib/dist/index.js")) && inputs.some(input => input.endsWith("ws-owned/tokens/package.json")), inputs.join("\n"));
+  assert.ok(!inputs.some(input => input.includes("node_modules")), inputs.join("\n"));
+});
+
+// devtools-library-dx §3.4 (S3): dotnet runic dev names the project it serves; only that project skips its frontend
+// build and copy, so a library that the page imports still builds its package (F6).
+test("RunicApplicationFrontendDevSessionProject skips only the served project's frontend build", () => {
+  const app = fixture("dev-served-app", { name: "app", private: true, devDependencies: { vite: "8.3.2" } });
+  writeFileSync(join(app.frontend, "emits-dist"), "");
+  const library = fixture("dev-served-library", { name: "@acme/shared-ui", private: true, scripts: { build: "node build.mjs" }, exports: { ".": "./dist/index.html" } });
+  writeFileSync(join(library.frontend, "emits-dist"), "");
+  const served = `RunicApplicationFrontendDevSessionProject=${join(app.project, "App.proj")}`;
+  const output = join(app.project, "out") + "/";
+  assert.equal(evaluateProperty(join(app.project, "App.proj"), "_RunicViewsDevSessionProtocol"), "1");
+  assert.equal(evaluateProperty(join(app.project, "App.proj"), "RunicApplicationFrontendBuildEnabled", [`-p:${served}`]), "false");
+  assert.equal(evaluateProperty(join(app.project, "App.proj"), "RunicApplicationFrontendCopyEnabled", [`-p:${served}`]), "false");
+
+  let result = build(app, { targets: "RunicViewsCollectFrontendInputs;RunicViewsCopyFrontend", properties: [served, `TargetDir=${output}`] });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install"], "The served project installs its packages but neither builds nor copies its frontend.");
+  assert.ok(!existsSync(join(output, "www")));
+  result = build(library, { properties: [served, "RunicApplicationFrontendClientLibrary=true"] });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install", "build"], "Another project, such as a client library, builds its package.");
+  // What older dev passed to every project: the library's package stayed unbuilt (F6).
+  rmSync(join(library.frontend, "dist"), { recursive: true });
+  result = build(library, { properties: ["RunicApplicationFrontendBuildEnabled=false", "RunicApplicationFrontendInstallEnabled=false", "RunicApplicationFrontendClientLibrary=true"] });
+  assert.deepEqual(result.commands, []);
 });
 
 // R7 G6: a source-tree build of a Views consumer has the TypeScript emitter without building the npm package first. The

@@ -1,4 +1,4 @@
-// Field descriptors (F1): `fieldErrors`, which generated `BridgeField.errors` calls.
+// Field descriptors (F1): `fieldErrors`, which a generated descriptor's `errors` calls.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fieldErrors } from "../dist/generated.js";

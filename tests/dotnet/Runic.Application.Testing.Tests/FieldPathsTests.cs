@@ -26,7 +26,42 @@ internal sealed class FieldPathsTests
             ("pathInvoice.ts", Path.Combine(generated, "pathInvoice.ts")),
             ("pathInvoice.contract.d.ts", Path.Combine(generated, "pathInvoice.contract.d.ts")),
             ("pathRows.ts", Path.Combine(generated, "pathRows.ts")),
+            ("pathGallery.ts", Path.Combine(generated, "pathGallery.ts")),
         ]);
+    }
+
+    // runic-sdk#1391: a blob member of a row is not a field path, since the page never sends a blob, so a write of it is
+    // invalid-request; a member of an object that holds a blob is, and its copy keeps the blob. A row that is copied
+    // through its wire form holds a blob, so none of its cells is a field path.
+    [Test]
+    public async Task ABlobInARowIsNotAFieldPathAsync()
+    {
+        var model = new PathGalleryViewModel();
+        using var host = new RunicWindowTestHost<PathGalleryViewModel>(model,
+            (transport, content, vm) => new PathGalleryBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pathGallery", ViewLocator = new TestViewLocator() });
+        var image = model.Pictures[0].Image;
+        foreach (var (member, path) in new (System.Linq.Expressions.Expression<Func<PathGalleryViewModel, object?>>, string[])[]
+        {
+            (vm => vm.Pictures, ["1", "image"]),
+            (vm => vm.Pictures, ["1", "frame"]),
+            (vm => vm.Pictures, ["1", "frame", "mat"]),
+            (vm => vm.Stickers, ["1", "label"]),
+            (vm => vm.Stickers, ["1", "image"]),
+        })
+        {
+            var refused = await host.Root.WritePathAsync(member, path, (string?)null);
+            Require(refused.Kind == RunicFieldWriteReceiptKind.Failed && refused.Json.Contains("\"invalid-request\"", StringComparison.Ordinal),
+                $"{string.Join('.', path)}: {refused.Json}");
+        }
+
+        var caption = await host.Root.WritePathAsync(vm => vm.Pictures, ["1", "caption"], "Lake at dawn");
+        Require(caption.Kind == RunicFieldWriteReceiptKind.Applied && model.Pictures[0].Caption == "Lake at dawn"
+            && ReferenceEquals(model.Pictures[0].Image, image), caption.Json);
+        var color = await host.Root.WritePathAsync(vm => vm.Pictures, ["1", "frame", "color"], "walnut");
+        Require(color.Kind == RunicFieldWriteReceiptKind.Applied && model.Pictures[0].Frame == new PathFrame("walnut", null)
+            && ReferenceEquals(model.Pictures[0].Image, image), color.Json);
+        Require(model.Stickers[0].Label == "Star", model.Stickers[0].Label);
     }
 
     [Test]

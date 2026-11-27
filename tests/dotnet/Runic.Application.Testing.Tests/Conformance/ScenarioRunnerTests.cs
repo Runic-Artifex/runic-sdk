@@ -114,7 +114,7 @@ public sealed class ScenarioRunnerTests
                 ["r1"] = new("r1", "request", null),
                 ["r2"] = new("r2", "request", null),
             },
-            [], null,
+            [], null, null,
             [
                 Step("""{"connect":"c1"}"""),
                 Step("""{"send":{"n":1},"id":"r1"}"""),

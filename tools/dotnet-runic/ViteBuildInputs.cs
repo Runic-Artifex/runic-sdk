@@ -31,9 +31,7 @@ internal static class ViteBuildInputs
     {
         ArgumentNullException.ThrowIfNull(configuration);
         using PhaseTimer phase = PhaseTimer.Start("Reading Vite build inputs");
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
         // Bun projects may have no Node.js; the probe runs on the runtime that runs Vite.
         string runtime = packageManager.Name == "bun" ? "bun" : "node";
         IReadOnlyList<string> arguments = ["-e", CreateProbe(configuration.ViteConfigurationPath)];

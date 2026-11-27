@@ -10,20 +10,48 @@ internal sealed record JavaScriptPackageManager(
     string Executable,
     string LockFileName)
 {
+    /// <summary>
+    /// The package manager of a frontend, as the Views targets choose it (devtools-library-dx §2.2):
+    /// <paramref name="explicitName"/> (<c>RunicApplicationFrontendPackageManager</c>), else the workspace root's
+    /// <c>packageManager</c>, then the root's lock file, then, for a member below the root, its own declaration and lock
+    /// file, then npm.
+    /// </summary>
     internal static JavaScriptPackageManager Resolve(
         string workspaceRoot,
-        string packageDirectory)
+        string packageDirectory,
+        string? explicitName = null) =>
+        ResolveWithSource(workspaceRoot, packageDirectory, explicitName).Manager;
+
+    /// <summary><see cref="Resolve"/>, with where the choice came from, such as <c>packageManager in /repo/package.json</c>.</summary>
+    internal static (JavaScriptPackageManager Manager, string Source) ResolveWithSource(
+        string workspaceRoot,
+        string packageDirectory,
+        string? explicitName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
-
-        string? declared = ReadDeclaration(Path.Combine(workspaceRoot, "package.json"));
-        if (declared is null && !StringComparer.Ordinal.Equals(workspaceRoot, packageDirectory))
+        if (!string.IsNullOrWhiteSpace(explicitName))
         {
-            declared = ReadDeclaration(Path.Combine(packageDirectory, "package.json"));
+            return (FromName(explicitName.Trim()), "RunicApplicationFrontendPackageManager");
         }
+        var folders = new List<string> { workspaceRoot };
+        if (!string.IsNullOrWhiteSpace(packageDirectory) &&
+            !StringComparer.Ordinal.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspaceRoot)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(packageDirectory))))
+        {
+            folders.Add(packageDirectory);
+        }
+        foreach (string folder in folders)
+        {
+            string manifest = Path.Combine(folder, "package.json");
+            if (ReadDeclaration(manifest) is { } declared) return (FromName(declared), $"packageManager in {manifest}");
+            if (InferFromLockFile(folder) is { } locked) return (FromName(locked.Name), locked.Path);
+        }
+        return (FromName("npm"), "the default (no packageManager and no lock file)");
+    }
 
-        string name = declared ?? InferFromLockFile(workspaceRoot) ?? "npm";
-        return name.ToLowerInvariant() switch
+    /// <summary>The package manager called <paramref name="name"/>: npm, pnpm or bun.</summary>
+    internal static JavaScriptPackageManager FromName(string name) =>
+        name.ToLowerInvariant() switch
         {
             "npm" => new("npm", "npm", "package-lock.json"),
             "pnpm" => new("pnpm", "pnpm", "pnpm-lock.yaml"),
@@ -32,7 +60,6 @@ internal sealed record JavaScriptPackageManager(
                 "RAPPDEV1005",
                 $"Unsupported JavaScript package manager '{name}'. Use npm, pnpm, or Bun."),
         };
-    }
 
     internal IReadOnlyList<string> InstallArguments() => Name switch
     {
@@ -132,12 +159,14 @@ internal sealed record JavaScriptPackageManager(
         }
     }
 
-    private static string? InferFromLockFile(string workspaceRoot) =>
-        File.Exists(Path.Combine(workspaceRoot, "pnpm-lock.yaml"))
-            ? "pnpm"
-            : File.Exists(Path.Combine(workspaceRoot, "bun.lock"))
-                ? "bun"
-                : File.Exists(Path.Combine(workspaceRoot, "package-lock.json"))
-                    ? "npm"
-                    : null;
+    private static (string Name, string Path)? InferFromLockFile(string folder)
+    {
+        foreach ((string file, string name) in (ReadOnlySpan<(string, string)>)[
+            ("pnpm-lock.yaml", "pnpm"), ("bun.lock", "bun"), ("bun.lockb", "bun"), ("package-lock.json", "npm"), ("npm-shrinkwrap.json", "npm")])
+        {
+            string path = System.IO.Path.Combine(folder, file);
+            if (File.Exists(path)) return (name, path);
+        }
+        return null;
+    }
 }

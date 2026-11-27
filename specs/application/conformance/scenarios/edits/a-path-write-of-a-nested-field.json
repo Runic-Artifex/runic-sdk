@@ -1,0 +1,35 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-of-a-nested-field.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "requires": ["field-paths/1"],
+  "description": "A field path two deep (billing's address street) writes the nested member, and each path has its own version: a write of the city based on the version before the street's change still applies.",
+  "view": "invoice",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-invoice": {"kind":"request"},
+    "street": {"kind":"request"},
+    "city": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "streetId": {"kind":"wire","value":"w-1"},
+    "cityId": {"kind":"wire","value":"w-2"}
+  },
+  "arrange": {"model":{"billing":{"name":"Acme","address":{"street":"","city":"Bern"}}}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"invoice","presentation":{"$id":"presentation"}},"id":"open-invoice"},
+    {"receive":{"ok":true,"revision":0,"state":{"address":{"street":"","city":""},"billing":{"name":"Acme","address":{"street":"","city":"Bern"}},"lines":[]},"fields":{"address":{"version":0},"billing":{"version":0}},"presentation":"ok"},"replyTo":"open-invoice"},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["address","street"],"requestId":{"$id":"streetId"},"expectedVersion":0,"expectedValue":"","value":"Main Street 1"},"id":"street"},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":0,"revision":1,"changes":[{"field":"billing","kind":"set","value":{"name":"Acme","address":{"street":"Main Street 1","city":"Bern"}},"version":1}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"Main Street 1","version":1}}},"replyTo":"street"},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["address","city"],"requestId":{"$id":"cityId"},"expectedVersion":0,"expectedValue":"Bern","value":"Basel"},"id":"city"},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":1,"revision":2,"changes":[{"field":"billing","kind":"set","value":{"name":"Acme","address":{"street":"Main Street 1","city":"Basel"}},"version":2}]}},
+    {"receive":{"ok":true,"revision":2,"receipt":{"kind":"applied","snapshot":{"value":"Basel","version":2}}},"replyTo":"city"}
+  ]
+}

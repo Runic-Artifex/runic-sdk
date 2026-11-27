@@ -1,0 +1,42 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-below-an-object-that-became-null-and-back.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "requires": ["field-paths/1"],
+  "description": "A path write below an object member that is null is rejected. When the member is an object again, its field paths start at the revision that set it: a write based on an earlier version conflicts, and one based on that revision applies.",
+  "view": "invoice",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "open-invoice": {"kind":"request"},
+    "while-null": {"kind":"request"},
+    "stale": {"kind":"request"},
+    "current": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "nullId": {"kind":"wire","value":"w-1"},
+    "staleId": {"kind":"wire","value":"w-2"},
+    "currentId": {"kind":"wire","value":"w-3"}
+  },
+  "arrange": {"model":{"billing":{"name":"Acme","address":{"street":"","city":"Bern"}}}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","field-paths/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"invoice","presentation":{"$id":"presentation"}},"id":"open-invoice"},
+    {"receive":{"ok":true,"revision":0,"state":{"address":{"street":"","city":""},"billing":{"name":"Acme","address":{"street":"","city":"Bern"}},"lines":[]},"fields":{"address":{"version":0},"billing":{"version":0}},"presentation":"ok"},"replyTo":"open-invoice"},
+    {"mutate":[{"op":"assign","member":"billing","value":null}]},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":0,"revision":1,"changes":[{"field":"billing","kind":"set","value":null,"version":1}]}},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["name"],"requestId":{"$id":"nullId"},"expectedVersion":0,"expectedValue":"Acme","value":"Beta"},"id":"while-null"},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"rejected","message":{"$any":"string"}}},"replyTo":"while-null"},
+    {"mutate":[{"op":"assign","member":"billing","value":{"name":"Acme","address":{"street":"","city":"Bern"}}}]},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":1,"revision":2,"changes":[{"field":"billing","kind":"set","value":{"name":"Acme","address":{"street":"","city":"Bern"}},"version":2}]}},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["name"],"requestId":{"$id":"staleId"},"expectedVersion":1,"expectedValue":"Acme","value":"Beta"},"id":"stale"},
+    {"receive":{"ok":true,"revision":2,"receipt":{"kind":"conflict","incoming":{"value":"Acme","version":2},"message":{"$any":"string"}}},"replyTo":"stale"},
+    {"send":{"kind":"write","route":"invoice","member":"billing","path":["name"],"requestId":{"$id":"currentId"},"expectedVersion":2,"expectedValue":"Acme","value":"Beta"},"id":"current"},
+    {"receive":{"kind":"frame","route":"invoice","baseRevision":2,"revision":3,"changes":[{"field":"billing","kind":"set","value":{"name":"Beta","address":{"street":"","city":"Bern"}},"version":3}]}},
+    {"receive":{"ok":true,"revision":3,"receipt":{"kind":"applied","snapshot":{"value":"Beta","version":3}}},"replyTo":"current"}
+  ]
+}

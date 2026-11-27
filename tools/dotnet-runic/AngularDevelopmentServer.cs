@@ -60,9 +60,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         // A new value for each attempt: a server from an earlier attempt cannot answer for this one.
         string session = ViteDevelopmentServer.CreateSession();
         bool confirmSession = ConfirmsSession(configuration);
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
         var conflict = new PortConflictWatch();
         RunningProcess process = RunningProcess.Start(
             "angular",
@@ -147,9 +145,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         DevProjectConfiguration configuration,
         int port)
     {
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
         return packageManager.RunScriptArguments(
             "dev",
             configuration.Workspace,

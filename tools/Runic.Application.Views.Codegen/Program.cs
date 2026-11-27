@@ -2081,7 +2081,7 @@ static class BridgeDiagnosticCodes
     internal const string NoBuildReuse = "RUNICBRIDGE022";
     /// <summary>The application references Runic ReactiveUI adapters of both ReactiveUI flavors.</summary>
     internal const string ReactiveUiFlavors = "RUNICBRIDGE023";
-    /// <summary>The frontend declares dependencies but has no lock file for the default install.</summary>
+    /// <summary>The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install.</summary>
     internal const string FrontendLock = "RUNICBRIDGE026";
     /// <summary>A RunicCommandKey declaration is misplaced, or its resolver is missing or has an unsupported shape.</summary>
     internal const string CommandKey = "RUNICBRIDGE027";
@@ -2164,6 +2164,16 @@ static class BridgeDiagnosticCodes
     internal const string FormerPackage = "RUNICBRIDGE085";
     /// <summary>An environment variable of a former name is set (old-name guards, D079.11; reported by Runic.Sdk.RenamedNames.targets).</summary>
     internal const string FormerEnvironmentVariable = "RUNICBRIDGE086";
+    /// <summary>The frontend is below a JavaScript workspace that does not list it (reported by the Views targets).</summary>
+    internal const string FrontendWorkspaceMember = "RUNICBRIDGE087";
+    /// <summary>A file that a frontend package exports does not exist after its build (reported by the Views targets).</summary>
+    internal const string FrontendPackageExports = "RUNICBRIDGE088";
+    /// <summary>A workspace member declares another package manager than its workspace (reported by the Views targets).</summary>
+    internal const string FrontendWorkspacePackageManager = "RUNICBRIDGE089";
+    /// <summary>The frontend's package manager or JavaScript runtime does not run (reported by the Views targets).</summary>
+    internal const string FrontendPackageManagerMissing = "RUNICBRIDGE090";
+    /// <summary>RunicApplicationFrontendInstallMode is not Auto, Always or Never (reported by the Views targets).</summary>
+    internal const string FrontendInstallMode = "RUNICBRIDGE091";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2195,7 +2205,7 @@ static class BridgeDiagnosticCodes
         (ReactiveUiFlavors, "error", "The application references Runic ReactiveUI adapters of both ReactiveUI flavors"),
         (Internal, "error", "An internal generator error"),
         (ReactiveUiAdapter, "error", "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"),
-        (FrontendLock, "error", "The frontend declares dependencies but has no lock file for the default install"),
+        (FrontendLock, "error", "The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install"),
         (CommandKey, "error", "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"),
         (OperationRetirement, "warning", "A [RunicOperationRetirement] declaration reaches no operation"),
         (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
@@ -2232,6 +2242,11 @@ static class BridgeDiagnosticCodes
         (ClientEmitter, "error", "The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's @runic-artifex/views"),
         (FormerPackage, "error", "A package of a former ID is in the package graph"),
         (FormerEnvironmentVariable, "error", "An environment variable of a former name is set"),
+        (FrontendWorkspaceMember, "error", "The frontend is below a JavaScript workspace that does not list it"),
+        (FrontendPackageExports, "error", "A file that a frontend package exports does not exist after its build"),
+        (FrontendWorkspacePackageManager, "warning", "A workspace member declares another package manager than its workspace"),
+        (FrontendPackageManagerMissing, "error", "The frontend's package manager or JavaScript runtime does not run"),
+        (FrontendInstallMode, "warning", "RunicApplicationFrontendInstallMode is not Auto, Always or Never"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -2516,6 +2531,10 @@ sealed record GeneratedKeyPlan(MethodInfo Resolver, BridgeTypeGraph KeyGraph, Ty
 // field-paths/1: one field path below a member or a row: its wire names and the members it passes through. A path
 // names a member that the page reads and that the copy of its object can change, down to three objects deep; an
 // object member has its own descriptor and those of its members. [RunicNoField] leaves a member out.
+//
+// blobs/1 (runic-sdk#1391): the page never sends a blob, so a member whose value can hold one is not a field path,
+// though the members of its object may be: the copy of the object keeps the blob. An object copied through its wire
+// form cannot copy a blob in it, so no member of it, or below it, is a field path.
 internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
 {
     internal BridgeTypeNode Node => Chain[^1].Type;
@@ -2530,6 +2549,7 @@ internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
         void Visit(BridgeTypeNode node, string[] prefix, BridgeTypeMember[] chain)
         {
             var copy = CopyOf(node).Kind;
+            if (copy == BridgeFieldCopy.Wire && HoldsBlob(node)) return;
             var parameters = node.Constructor?.GetParameters() ?? [];
             foreach (var member in node.Members)
             {
@@ -2544,7 +2564,7 @@ internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
                 if (!settable) continue;
                 string[] path = [.. prefix, member.WireName];
                 BridgeTypeMember[] next = [.. chain, member];
-                leaves.Add(new(path, next));
+                if (!HoldsBlob(member.Type)) leaves.Add(new(path, next));
                 if (member.Type.Kind != BridgeWireKind.Dto || prefix.Length >= 2 || member.Type == owner || chain.Any(step => step.Type == member.Type)) continue;
                 if (CopyOf(member.Type) is { Kind: BridgeFieldCopy.None } refused)
                 {
@@ -2575,6 +2595,16 @@ internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
             ? (BridgeFieldCopy.None, $"{BridgeTypeGraph.CSharpType(type)} has settable members the page does not see ({string.Join(", ", hidden)}) and no copy constructor or Clone()")
             : (BridgeFieldCopy.Wire, null);
     }
+
+    // Whether a value of the node can hold a blob, in itself or anywhere below it.
+    internal static bool HoldsBlob(BridgeTypeNode node) => HoldsBlob(node, []);
+
+    private static bool HoldsBlob(BridgeTypeNode node, HashSet<BridgeTypeNode> visited) =>
+        visited.Add(node) && (node.Kind == BridgeWireKind.Blob
+            || node.Members.Any(member => HoldsBlob(member.Type, visited))
+            || node.Element is { } element && HoldsBlob(element, visited)
+            || node.Value is { } value && HoldsBlob(value, visited)
+            || node.Cases.Any(@case => HoldsBlob(@case.Type, visited)));
 
     private static bool IsInitOnly(PropertyInfo property) =>
         property.SetMethod?.ReturnParameter.GetRequiredCustomModifiers().Any(modifier => modifier.FullName == "System.Runtime.CompilerServices.IsExternalInit") == true;

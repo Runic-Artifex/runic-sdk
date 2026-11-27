@@ -182,6 +182,38 @@
       "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     },
     {
+      "id": "messages.requests.route-with-dot",
+      "description": "A dot is allowed only after a reserved prefix, never in a root View's route.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"my.notes"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.route-of-128-characters",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.route-of-129-characters",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.reserved-route-of-128-characters",
+      "description": "A reserved route has 128 characters in all, its prefix included.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"runic.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.reserved-route-of-129-characters",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"runic.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
       "id": "messages.requests.start",
       "operation": "read-request",
       "input": {

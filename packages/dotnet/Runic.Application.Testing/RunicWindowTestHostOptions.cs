@@ -137,6 +137,14 @@ public sealed class RunicWindowTestHostOptions
     public long? MaximumPendingUploadBytes { get; init; }
 
     /// <summary>
+    /// The most unclaimed uploads, whatever their size, that the window holds at once
+    /// (<see cref="WindowContentSessionOptions.MaximumPendingUploads"/>), for Windows whose
+    /// <see cref="RunicWindowOptions.MaximumPendingUploads"/> is <see langword="null"/>. <see langword="null"/>, the
+    /// default, is 256.
+    /// </summary>
+    public int? MaximumPendingUploads { get; init; }
+
+    /// <summary>
     /// How long a driver waits for a state publication. Delivery runs off the calling
     /// thread, so this is real time. Defaults to five seconds.
     /// </summary>

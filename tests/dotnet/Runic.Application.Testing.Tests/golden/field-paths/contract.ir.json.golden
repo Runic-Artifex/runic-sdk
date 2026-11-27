@@ -7,6 +7,65 @@
   },
   "views": [
     {
+      "id": "Runic.Application.Testing.Tests.PathGalleryViewModel",
+      "name": "PathGallery",
+      "route": "pathGallery",
+      "fingerprint": "<fingerprint>",
+      "kinds": [
+        "pathGallery"
+      ],
+      "members": [
+        {
+          "name": "Pictures",
+          "wire": "pictures",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.PathPicture"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true,
+          "fieldPaths": [
+            {
+              "path": [
+                "caption"
+              ]
+            },
+            {
+              "path": [
+                "frame",
+                "color"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Stickers",
+          "wire": "stickers",
+          "kind": "value",
+          "value": {
+            "direction": "to-page",
+            "type": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "ref": "Runic.Application.Testing.Tests.PathSticker"
+              }
+            }
+          },
+          "collectionKey": "id",
+          "rowEditor": true
+        }
+      ],
+      "commands": []
+    },
+    {
       "id": "Runic.Application.Testing.Tests.PathInvoiceViewModel",
       "name": "PathInvoice",
       "route": "pathInvoice",
@@ -200,6 +259,35 @@
         }
       ]
     },
+    "Runic.Application.Testing.Tests.PathFrame": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.PathFrame",
+        "base": "PathFrame",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "mat",
+          "type": {
+            "kind": "blob",
+            "nullable": true
+          },
+          "optional": true
+        }
+      ]
+    },
     "Runic.Application.Testing.Tests.PathGeo": {
       "kind": "object",
       "name": {
@@ -265,11 +353,89 @@
           }
         }
       ]
+    },
+    "Runic.Application.Testing.Tests.PathPicture": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.PathPicture",
+        "base": "PathPicture",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "caption",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "image",
+          "type": {
+            "kind": "blob"
+          }
+        },
+        {
+          "wire": "frame",
+          "type": {
+            "kind": "named",
+            "ref": "Runic.Application.Testing.Tests.PathFrame"
+          }
+        }
+      ]
+    },
+    "Runic.Application.Testing.Tests.PathSticker": {
+      "kind": "object",
+      "name": {
+        "source": "Runic.Application.Testing.Tests.PathSticker",
+        "base": "PathSticker",
+        "qualifiers": [
+          "Tests",
+          "Testing",
+          "Application",
+          "Runic"
+        ]
+      },
+      "members": [
+        {
+          "wire": "id",
+          "type": {
+            "kind": "int32"
+          }
+        },
+        {
+          "wire": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "wire": "image",
+          "type": {
+            "kind": "blob",
+            "nullable": true
+          },
+          "optional": true
+        }
+      ]
     }
   },
   "sourceFiles": {
+    "Runic.Application.Testing.Tests.PathGalleryViewModel": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
     "Runic.Application.Testing.Tests.PathInvoiceViewModel": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
     "Runic.Application.Testing.Tests.PathRowsViewModel": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathGalleryViewModel/state/pictures": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
+    "Runic.Application.Testing.Tests.PathGalleryViewModel/state/stickers": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
     "Runic.Application.Testing.Tests.PathInvoiceViewModel/state/address": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
     "Runic.Application.Testing.Tests.PathInvoiceViewModel/state/lines": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",
     "Runic.Application.Testing.Tests.PathInvoiceViewModel/state/total": "tests/dotnet/Runic.Application.Testing.Tests/FieldPathsFixture.cs",

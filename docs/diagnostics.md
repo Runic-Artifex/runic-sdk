@@ -77,7 +77,7 @@ and severities are open.
 | [`RUNICBRIDGE023`](#runicbridge023) | Error | Build targets | The application references Runic ReactiveUI adapters of both ReactiveUI flavors |
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator; the analyzer while you type | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
-| [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
+| [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend, or its JavaScript workspace, declares dependencies but has no lock file for the default install |
 | [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator; the analyzer while you type | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
 | [`RUNICBRIDGE028`](#runicbridge028) | Warning | The analyzer, while you type and in the build; the generator without it | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
@@ -114,6 +114,11 @@ and severities are open.
 | [`RUNICBRIDGE084`](#runicbridge084) | Error | Build targets | The TypeScript emitter cannot run: no Node.js or Bun, or no emitter in the frontend's `@runic-artifex/views` |
 | [`RUNICBRIDGE085`](#runicbridge085) | Error | Build targets | A package of a former ID is in the package graph |
 | [`RUNICBRIDGE086`](#runicbridge086) | Error | Build targets | An environment variable of a former name is set |
+| [`RUNICBRIDGE087`](#runicbridge087) | Error | Build targets | The frontend is below a JavaScript workspace that does not list it |
+| [`RUNICBRIDGE088`](#runicbridge088) | Error | Build targets | A file that a frontend package exports does not exist after its build |
+| [`RUNICBRIDGE089`](#runicbridge089) | Warning | Build targets | A workspace member declares another package manager than its workspace |
+| [`RUNICBRIDGE090`](#runicbridge090) | Error | Build targets | The frontend's package manager or JavaScript runtime does not run |
+| [`RUNICBRIDGE091`](#runicbridge091) | Warning | Build targets | `RunicApplicationFrontendInstallMode` is not Auto, Always or Never |
 
 ### Errors and warnings while you type
 
@@ -595,8 +600,15 @@ so a newly published version of a dependency, malicious or not, would run in the
 frontend build. `--ignore-scripts` stops only install scripts, not a build plugin.
 Until 0.10 the build fell back to an unlocked `npm install`.
 
+Since 0.24 a frontend that is a member of a JavaScript workspace installs at the
+workspace root, so the lock file is the root's: the message then names the
+workspace (`…/App/Frontend is a member of the bun workspace at /repo, which has
+no bun.lock`). See
+[JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+
 **Fix:** run the package manager's install once (`npm install`, `pnpm install`
-or `bun install`) and commit the lock file it writes. To install without a lock
+or `bun install`) and commit the lock file it writes: in the frontend's folder,
+or, for a workspace member, in the workspace root. To install without a lock
 file anyway, set `RunicApplicationFrontendAllowUnlockedInstall` to `true`, which
 runs `npm install`, `pnpm install` or `bun install` with `--ignore-scripts`. A
 project that sets `RunicApplicationFrontendInstallCommand`,
@@ -1142,6 +1154,9 @@ imports the library's `runic-clients.ts`: a package export such as
 `@acme/shared-ui/generated`, or an alias of the frontend's tsconfig `paths` and
 bundler. Keep one item per assembly. See
 [MSBuild properties](msbuild.md#runicapplicationviews).
+`dotnet runic doctor` resolves each `Specifier` from the frontend, as Vite
+does, as its [`client-modules`](../tools/dotnet-runic/README.md#client-modules)
+check.
 
 ### RUNICBRIDGE083
 
@@ -1219,6 +1234,89 @@ environment variable.
 **Fix:** set the variable by its new name and remove the old one from the
 environment, for example from a `launchSettings.json`, a CI workflow or a shell
 profile.
+
+### RUNICBRIDGE087
+
+An error from the `Runic.Application.Views` build targets (since 0.24), before
+the frontend install. The frontend has no lock file of its own and sits below a
+folder that declares a JavaScript workspace (a `package.json` with
+`workspaces`, or `pnpm-workspace.yaml`), but the workspace's patterns do not
+include the frontend's folder. The build would install at the workspace root,
+which does not install the frontend's dependencies.
+
+**Fix:** add the frontend's folder to the root's `workspaces` (or to
+`packages` in `pnpm-workspace.yaml`) and run the install at the root once, so
+that its lock file covers the frontend. To install the frontend on its own
+instead, set `RunicApplicationFrontendWorkspaceRoot` to `none` and commit a
+lock file in the frontend's folder. See
+[JavaScript workspaces](../packages/dotnet/Runic.Application.Views/README.md#javascript-workspaces).
+`dotnet runic doctor` reports the same problem without a build, as its
+[`frontend-workspace`](../tools/dotnet-runic/README.md#frontend-workspace) check.
+
+### RUNICBRIDGE088
+
+An error from the `Runic.Application.Views` build targets (since 0.24). A
+frontend package's `package.json` names a file in `exports`, `main`, `module` or
+`types` that does not exist, so a frontend that imports the package would fail
+to resolve it. It is reported in two places:
+
+- **After a client library's package build** (or with the package current),
+  naming the library project: its build script did not write the file.
+- **Before an application's (or library's) own frontend build**, for each
+  package that its frontend depends on: a library's package whose build is off
+  (`RunicApplicationFrontendBuildEnabled=false`) or did not write the file, or a
+  workspace package that no .NET project owns, which the build builds itself
+  when it has a `build` script.
+
+**Fix:** make the package's build script write the file, correct `exports` in
+its `package.json`, or turn the owner's package build on. See
+[Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
+`dotnet runic doctor` checks the packages' exports without a build, as its
+[`frontend-dependencies`](../tools/dotnet-runic/README.md#frontend-dependencies) check.
+
+### RUNICBRIDGE089
+
+A warning from the `Runic.Application.Views` build targets (since 0.24): the
+frontend is a member of a JavaScript workspace and its `package.json` declares a
+`packageManager` other than the workspace's, which comes from the root's
+`packageManager` or lock file. The build installs and builds with the
+workspace's manager: the member's would not read the root's lock file, as npm
+fails on Bun's `workspace:*` protocol.
+
+**Fix:** remove `packageManager` from the member's `package.json`, or make it
+the workspace's. To choose the manager yourself, set
+`RunicApplicationFrontendPackageManager`. `dotnet runic doctor` checks every
+member and the packages that the page depends on, and the root's lock files,
+as its [`package-manager-agreement`](../tools/dotnet-runic/README.md#package-manager-agreement) check.
+
+### RUNICBRIDGE090
+
+An error from the `Runic.Application.Views` build targets (since 0.24): the
+package manager that the frontend uses does not run, usually because it is not
+installed or not on `PATH`. The build checks it before the frontend install
+(`<manager> --version`), and when the frontend build exits with the shell's
+"command not found" code (127, or 9009 on Windows). The message names the
+manager and where it was declared: `RunicApplicationFrontendPackageManager`,
+the `packageManager` of a `package.json`, a lock file, or npm as the default.
+It is also reported when the JavaScript runtime that resolves a frontend
+workspace, Bun for a Bun workspace and Node.js otherwise, does not run. Before
+0.24 the same failure was `RUNICBRIDGE016` with exit code 127.
+
+**Fix:** install the package manager (Bun 1.4.4 or later, pnpm, or Node.js,
+which includes npm) and make sure the build's environment finds it on `PATH`;
+an IDE may start the build with another `PATH` than your shell. To use another
+manager, set `RunicApplicationFrontendPackageManager`.
+
+### RUNICBRIDGE091
+
+A warning from the `Runic.Application.Views` build targets (since 0.24):
+`RunicApplicationFrontendInstallMode` is neither `Auto`, `Always` nor `Never`
+(compared without case). The build installs as with `Auto`: when the lock file,
+a `package.json` or the package manager changed, or `node_modules` is
+incomplete.
+
+**Fix:** set `Auto`, `Always` or `Never`, or remove the property. See
+[Fast iteration](../packages/dotnet/Runic.Application.Views/README.md#fast-iteration).
 
 ## dotnet runic
 
@@ -1322,9 +1420,13 @@ found. Exit code 1.
 ### RAPPDEV1002
 
 The project cannot be selected: the given project does not exist or is not a
-`.csproj`, or the directory has no `.csproj` or several. Exit code 1.
+`.csproj`, or the directory has no `.csproj` or several. Exit code 1. From a
+solution root, `dev` and `doctor` take the solution's one Window project (since
+0.24); they report this code when the directory holds several solutions, or
+when the solution has no Window project or several, which the message lists.
 
-**Fix:** pass the project with `--project`.
+**Fix:** pass the project with `--project`, for example
+`dotnet runic dev --project Acme.App/Acme.App.csproj`.
 
 ### RAPPDEV1003
 
@@ -1372,6 +1474,17 @@ loads. The message names the page and the server's response.
 check that the configured dev script starts with the frontend's own command,
 such as `npm run dev`.
 
+Since 0.24, `dev` stops waiting at once when Vite answers the application entry
+with HTTP 500 twice, such as for an import that Vite cannot resolve, and the
+message carries Vite's own error. When the import names a frontend package that the
+page depends on, it also says whether that package has been built. A server that
+exits before it is ready reports the first error line of its output.
+`dotnet runic doctor` resolves the page's imports of library and workspace
+packages without starting Vite, as its
+[`client-modules`](../tools/dotnet-runic/README.md#client-modules) check, and
+its [`views-dedupe`](../tools/dotnet-runic/README.md#views-dedupe) check asks
+for `resolve.dedupe` of `@runic-artifex/views` when a linked package imports it.
+
 For Vite, the application entry must come back as a JavaScript module. Vite
 answers a path that is not below its `root` with its `index.html` fallback, so
 `dev` stops at once when the entry's content type is not JavaScript (since
@@ -1400,11 +1513,13 @@ up to three times, and fails with this diagnostic only if every port was taken.
 
 ### RAPPDEV1008
 
-`--no-restore` was given but the frontend packages are not installed. Exit
-code 1.
+`--no-restore` was given but the frontend packages are not installed, or
+`--no-build` was given and no build has installed them yet (since 0.24 the build
+installs them, and `--no-build` runs no build). A `node_modules` at the
+JavaScript workspace root above the frontend counts. Exit code 1.
 
-**Fix:** install them with the frontend's package manager, or omit
-`--no-restore`.
+**Fix:** install them with the frontend's package manager (at the workspace
+root in a workspace), build the project once, or omit the option.
 
 ### RAPPDEV1009
 
@@ -1494,6 +1609,42 @@ Exit code 1. Since 0.21.
 **Fix:** stop the process that holds 9222, or run `dev` with
 `--no-debug-endpoint`. See
 [Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux).
+
+### RAPPDEV1018
+
+A frontend package that the page depends on failed (since 0.24): a client
+library's package, or a workspace package that no .NET project owns.
+
+- **At the start**, `dev` stops with exit code 1 when the package's build fails in
+  its initial build. The message quotes the build's error, such as
+  `shared-ui/src/index.ts(3,1): error TS1005`. It also stops when a compiled
+  package's exported file is missing after the build. The message names the file
+  and the reason: the package's build is off in its project
+  (`RunicApplicationFrontendBuildEnabled=false`), its build did not write the file,
+  or `--no-build` ran no build.
+- **While `dev` runs**, a rebuild that fails, a located error from the package's
+  watch script, or a watch script that exits is a line in MSBuild's form:
+  `<owner project> : error RAPPDEV1018: [shared-ui] …`. `dev` keeps running. After a
+  failed rebuild it puts the package's last good output folders back, so the page
+  keeps working, and the next change rebuilds the package.
+
+**Fix:** fix the package's error, shown in the output above the line. For a missing
+export, make the package's `build` script write every file that its `package.json`
+`exports`, or turn its build on. See
+[Library packages under dev](../tools/dotnet-runic/README.md#library-packages-under-dev).
+
+### RAPPDEV1019
+
+A warning from `dev` (since 0.24): the project's `Runic.Application.Views` build
+targets are older than the tool, so they do not read
+`RunicApplicationFrontendDevSessionProject`. `dev` falls back to the old
+behaviour: it installs the frontend packages itself and passes
+`RunicApplicationFrontendBuildEnabled=false` to every project it builds, so a
+client library's compiled frontend package is not built and the page can fail
+to resolve it.
+
+**Fix:** update the project's Runic packages to the tool's version. See
+[Library packages](../packages/dotnet/Runic.Application.Views/README.md#library-packages).
 
 ### RAPPPKG1001
 

@@ -130,6 +130,7 @@
             "street": "",
             "city": "Bern"
           },
+          "billing": null,
           "lines": [
             {
               "id": 1,
@@ -145,6 +146,9 @@
         },
         "fields": {
           "address": {
+            "version": 0
+          },
+          "billing": {
             "version": 0
           }
         },

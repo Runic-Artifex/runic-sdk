@@ -35,6 +35,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     internal const string RunicVitePluginPackage = "@runic-artifex/vite-plugin-runic";
     private readonly RunningProcess _process;
     private readonly string _viteRoot;
+    private readonly RepeatedLineFilter? _repeated;
+    private readonly FirstErrorLine? _errors;
+    private readonly IReadOnlyList<FrontendDependency> _dependencies;
 
     private ViteDevelopmentServer(
         RunningProcess process,
@@ -44,11 +47,17 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         string viteRoot,
         string diagnosticsPath,
         string hotReloadPath,
-        string projectPath)
+        string projectPath,
+        RepeatedLineFilter? repeated = null,
+        FirstErrorLine? errors = null,
+        IReadOnlyList<FrontendDependency>? dependencies = null)
     {
         _process = process;
         Origin = origin;
         _viteRoot = viteRoot;
+        _repeated = repeated;
+        _errors = errors;
+        _dependencies = dependencies ?? [];
         HostEnvironment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             [ServerEnvironmentVariable] = origin.AbsoluteUri,
@@ -65,6 +74,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     public IReadOnlyDictionary<string, string?> HostEnvironment { get; }
 
     public Task<int> Completion => _process.Completion;
+
+    /// <summary>The first error line of the server's output, for a failure message; null when it printed none.</summary>
+    internal string? FirstError => _errors?.Line;
 
     internal static async Task<ViteDevelopmentServer> StartAsync(
         DevProjectConfiguration configuration,
@@ -93,19 +105,34 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         // A new value for each attempt: a server from an earlier attempt cannot answer for this one.
         string session = CreateSession();
         bool confirmSession = ConfirmsSession(configuration);
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
         var conflict = new PortConflictWatch();
-        RunningProcess process = RunningProcess.Start(
-            "vite",
-            packageManager.Executable,
-            configuration.WorkspaceRoot,
-            arguments,
-            CreateEnvironment(configuration, session),
-            observeLine: conflict.Observe,
-            // The package manager, Node.js below it, and the runic-translations serve that Vite's plugin starts.
-            endTreeAtStop: true);
+        var errors = new FirstErrorLine();
+        // F6: Vite logged one unresolved import 1,107 times; each distinct line is printed once, then counted.
+        var repeated = new RepeatedLineFilter("vite", Console.WriteLine);
+        RunningProcess process;
+        try
+        {
+            process = RunningProcess.Start(
+                "vite",
+                packageManager.Executable,
+                configuration.WorkspaceRoot,
+                arguments,
+                CreateEnvironment(configuration, session),
+                suppressLine: repeated.Suppress,
+                observeLine: line =>
+                {
+                    conflict.Observe(line);
+                    errors.Observe(line);
+                },
+                // The package manager, Node.js below it, and the runic-translations serve that Vite's plugin starts.
+                endTreeAtStop: true);
+        }
+        catch
+        {
+            repeated.Dispose();
+            throw;
+        }
         var server = new ViteDevelopmentServer(
             process,
             origin,
@@ -114,7 +141,10 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             configuration.EffectiveViteRoot,
             configuration.FrontendCompilerDiagnosticsPath,
             configuration.FrontendCompilerHotReloadPath + ".ready",
-            configuration.ProjectPath);
+            configuration.ProjectPath,
+            repeated,
+            errors,
+            configuration.FrontendDependencies);
         try
         {
             await server.WaitUntilReadyAsync(confirmSession ? session : null, cancellationToken).ConfigureAwait(false);
@@ -232,9 +262,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         DevProjectConfiguration configuration,
         int port)
     {
-        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-            configuration.WorkspaceRoot,
-            configuration.FrontendPackageDirectory);
+        JavaScriptPackageManager packageManager = configuration.PackageManager;
         return packageManager.RunScriptArguments(
             "dev",
             configuration.Workspace,
@@ -255,7 +283,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         };
         Console.WriteLine($"[vite] Probing {Origin} for the Vite client and application entry.");
         await WaitUntilReadyAsync(Origin, HostEnvironment[EntryEnvironmentVariable]![1..],
-            Completion, client, TimeSpan.FromSeconds(30), cancellationToken, session, _viteRoot).ConfigureAwait(false);
+            Completion, client, TimeSpan.FromSeconds(30), cancellationToken, session, _viteRoot,
+            () => _errors?.Line, error => FrontendDependencies.Explain(_dependencies, error)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -263,10 +292,18 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     /// <paramref name="session"/>, answers <c>/__runic/state</c> with it. An entry Vite answers with another content
     /// type, such as the <c>index.html</c> fallback for a path that is not below its root, fails at once.
     /// </summary>
+    /// <remarks>
+    /// devtools-library-dx §3.5, fail fast: an entry that Vite answers with HTTP 500 twice, such as an import it cannot
+    /// resolve, fails at once with Vite's own error (the message of its error page, else the first error line of its
+    /// output), and <paramref name="explain"/> adds the dependency package it names. A server that exits before
+    /// readiness reports the first error line of its output (<paramref name="outputError"/>).
+    /// </remarks>
     internal static async Task WaitUntilReadyAsync(
         Uri origin, string entry, Task<int> completion, HttpClient client,
-        TimeSpan deadline, CancellationToken cancellationToken, string? session = null, string? viteRoot = null)
+        TimeSpan deadline, CancellationToken cancellationToken, string? session = null, string? viteRoot = null,
+        Func<string?>? outputError = null, Func<string, string?>? explain = null)
     {
+        int entryFailures = 0;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(deadline);
         Uri clientModule = new(origin, "@vite/client");
@@ -284,9 +321,12 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 if (completion.IsCompleted)
                 {
                     int exitCode = await completion.ConfigureAwait(false);
+                    string? output = outputError?.Invoke();
                     throw new DevDevelopmentException(
                         "RAPPDEV1007",
-                        $"The Vite development server exited before readiness with code {exitCode}.");
+                        $"The Vite development server exited before readiness with code {exitCode}" +
+                        (output is null ? "." : $": {output}") +
+                        (output is not null && explain?.Invoke(output) is { } named ? " " + named : ""));
                 }
 
                 try
@@ -305,6 +345,15 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                             .GetAsync(entryModule, timeout.Token)
                             .ConfigureAwait(false);
                         lastResponse = $"HTTP {(int)entryResponse.StatusCode}";
+                        if ((int)entryResponse.StatusCode == 500 && ++entryFailures >= 2)
+                        {
+                            string body = await entryResponse.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+                            string error = ReadErrorPage(body) ?? outputError?.Invoke() ?? "Vite printed the error above.";
+                            throw new DevDevelopmentException(
+                                "RAPPDEV1007",
+                                $"The Vite development server cannot serve the application entry '/{entry.TrimStart('/')}' (HTTP 500): {error}" +
+                                (explain?.Invoke(error) is { } named ? " " + named : ""));
+                        }
                         if (entryResponse.IsSuccessStatusCode)
                         {
                             RequireModule(entryResponse, entry, viteRoot);
@@ -381,6 +430,34 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             "module's path below that root, starting with '/', and run 'dotnet runic doctor'.");
     }
 
+    /// <summary>
+    /// The error of Vite's error page (its error middleware's HTTP 500 answer embeds <c>const error = {…}</c> for its
+    /// overlay): the message, with the plugin and file when Vite names them; null for another answer.
+    /// </summary>
+    internal static string? ReadErrorPage(string body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(body, @"const error = (?<json>\{.*?\})\s*\r?\n");
+        if (!match.Success) return null;
+        try
+        {
+            using JsonDocument error = JsonDocument.Parse(match.Groups["json"].Value);
+            string Text(string name) => error.RootElement.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()!.Trim()
+                : string.Empty;
+            string message = Text("message");
+            if (message.Length == 0) return null;
+            message = message.ReplaceLineEndings(" ");
+            if (Text("plugin") is { Length: > 0 } plugin && !message.Contains(plugin, StringComparison.Ordinal)) message = $"[{plugin}] {message}";
+            if (Text("id") is { Length: > 0 } id && !message.Contains(id, StringComparison.Ordinal)) message += $" (in {id})";
+            return message;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Whether a media type is one Vite and other servers send for JavaScript modules.</summary>
     internal static bool IsJavaScript(string? mediaType) =>
         mediaType?.Trim().ToLowerInvariant() is "text/javascript" or "application/javascript" or "application/x-javascript"
@@ -400,5 +477,14 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(answer), Encoding.ASCII.GetBytes(session));
 
     public async ValueTask DisposeAsync()
-        => await _process.DisposeAsync().ConfigureAwait(false);
+    {
+        try
+        {
+            await _process.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _repeated?.Dispose();
+        }
+    }
 }

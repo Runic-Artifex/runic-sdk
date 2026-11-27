@@ -64,6 +64,7 @@ internal sealed partial class DevSession
     private string? _browserCodeFile;
     private IReadOnlyList<BrowserEntry.ServedWindow> _browserWindows = [];
     private readonly List<DebugEndpoint> _windowEndpoints = [];
+    private readonly List<(FrontendDependency Dependency, DependencyState State)> _dependencies = [];
 
     internal DevSession(
         DevProjectConfiguration configuration,
@@ -271,6 +272,46 @@ internal sealed partial class DevSession
     {
         lock (_gate) _configuration = configuration;
         Write();
+    }
+
+    /// <summary>
+    /// The frontend packages that the page depends on, with their state (devtools-library-dx §4.1, written as
+    /// <c>dependencies</c> since 0.24): dev lists them once it read them after the build.
+    /// </summary>
+    internal void Dependencies(IReadOnlyList<FrontendDependency> dependencies, Func<FrontendDependency, DependencyState> state)
+    {
+        ArgumentNullException.ThrowIfNull(dependencies);
+        ArgumentNullException.ThrowIfNull(state);
+        lock (_gate)
+        {
+            _dependencies.Clear();
+            foreach (FrontendDependency dependency in dependencies) _dependencies.Add((dependency, state(dependency)));
+        }
+        Write();
+    }
+
+    /// <summary>A dependency package's state changed: it builds, built, or its build failed.</summary>
+    internal void DependencyChanged(FrontendDependency dependency, DependencyState state)
+    {
+        ArgumentNullException.ThrowIfNull(dependency);
+        ArgumentNullException.ThrowIfNull(state);
+        lock (_gate)
+        {
+            int index = _dependencies.FindIndex(entry => FrontendDependencies.PathComparer.Equals(entry.Dependency.Directory, dependency.Directory));
+            if (index < 0) _dependencies.Add((dependency, state));
+            else if (_dependencies[index].State == state) return;
+            else _dependencies[index] = (dependency, state);
+        }
+        Write();
+    }
+
+    /// <summary>The dependency packages and their state, as the file lists them.</summary>
+    internal IReadOnlyList<(FrontendDependency Dependency, DependencyState State)> DependencyStates
+    {
+        get
+        {
+            lock (_gate) return [.. _dependencies];
+        }
     }
 
     internal void FrontendReady(Uri? origin, bool confirmsSession)
@@ -593,6 +634,29 @@ internal sealed partial class DevSession
             // WebView2 Window's extension loading; null when the tool has none.
             WriteStringOrNull(json, "devtoolsExtension", DevToolsExtension);
             WriteStringOrNull(json, "devtoolsExtensionId", DevToolsExtension is null ? null : Tool.DevToolsExtension.Id);
+            // Since 0.24 (devtools-library-dx S5): the frontend packages that the page depends on, dependencies first,
+            // and what dev does with each. Empty until dev read them after the build, and for a page without any.
+            json.WriteStartArray("dependencies");
+            foreach ((FrontendDependency dependency, DependencyState state) in _dependencies)
+            {
+                json.WriteStartObject();
+                WriteStringOrNull(json, "package", dependency.PackageName.Length == 0 ? null : dependency.PackageName);
+                json.WriteString("directory", dependency.Directory);
+                json.WriteString("kind", dependency.Kind);
+                WriteStringOrNull(json, "owner", dependency.Owner);
+                WriteStringOrNull(json, "ownerName", dependency.OwnerName);
+                WriteStringOrNull(json, "specifier", dependency.Specifier);
+                WriteStringOrNull(json, "buildCommand", dependency.IsBuilt ? dependency.BuildCommand : null);
+                WriteStringOrNull(json, "watchCommand", dependency.IsBuilt && dependency.WatchCommand.Length != 0 ? dependency.WatchCommand : null);
+                json.WriteStartArray("exports");
+                foreach (string export in dependency.Exports) json.WriteStringValue(System.IO.Path.GetFullPath(export, dependency.Directory));
+                json.WriteEndArray();
+                json.WriteString("state", state.State);
+                json.WriteString("watch", state.Watch);
+                WriteStringOrNull(json, "message", state.Message);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
             json.WriteEndObject();
         }
         return stream.ToArray();

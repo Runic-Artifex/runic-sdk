@@ -7,3 +7,7 @@ Runic.Application.Views.RunicPublicationMode.Explicit = 1 -> Runic.Application.V
 Runic.Application.Views.RunicPublicationMode.Implicit = 0 -> Runic.Application.Views.RunicPublicationMode
 Runic.Application.Views.Generated.ViewModelBridge.ContractShape.get -> string?
 Runic.Application.Views.Generated.ViewModelBridge.ContractShape.init -> void
+Runic.Application.Views.RunicWindowOptions.MaximumPendingUploads.get -> int?
+Runic.Application.Views.RunicWindowOptions.MaximumPendingUploads.init -> void
+Runic.Application.Views.WindowContentSessionOptions.MaximumPendingUploads.get -> int?
+Runic.Application.Views.WindowContentSessionOptions.MaximumPendingUploads.init -> void
