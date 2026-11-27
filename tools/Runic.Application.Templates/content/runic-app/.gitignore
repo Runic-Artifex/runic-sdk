@@ -23,7 +23,7 @@ Frontend/.runic/
 #if (hasLibrary)
 **/artifacts/
 #endif
-#if (nix)
+#if (withNix)
 # nix build output
 /result
 /result-*

@@ -50,6 +50,15 @@ internal static partial class CreateApplication
         }
 
         bool Given(TemplateToggle toggle) => request.Toggles.TryGetValue(toggle.LongName, out bool on) && on;
+
+        // --library does not support some options yet (sdk#1386). dotnet new leaves them out with a warning; the creator
+        // refuses them, because its JSON output would otherwise report an option that the project does not have.
+        bool library = request.Texts.TryGetValue("library", out string? libraryName) && !string.IsNullOrWhiteSpace(libraryName);
+        if (library && LibraryUnsupported(model, request.Toggles) is { Length: > 0 } unsupported)
+        {
+            return Failure(CommandExitCategory.Validation, "RCREATE006",
+                $"--library does not support {string.Join(" or ", unsupported)} yet. Leave out {(unsupported.Length > 1 ? "them" : "it")}, or create the application without --library.");
+        }
         if (interactive && (explicitChoices.Count < model.Options.Count || !model.Toggles.All(Given)))
         {
             await prompts.IntroAsync($"Create a Runic application · {version}", cancellationToken).ConfigureAwait(false);
@@ -80,6 +89,7 @@ internal static partial class CreateApplication
         var enabled = new List<TemplateToggle>();
         foreach (TemplateToggle toggle in model.Toggles)
         {
+            if (library && LibraryUnsupportedToggles.Contains(toggle.LongName)) continue;
             if (Given(toggle) || (interactive && await AskAsync(prompts, toggle, cancellationToken).ConfigureAwait(false)))
                 enabled.Add(toggle);
         }
@@ -155,6 +165,16 @@ internal static partial class CreateApplication
         }
         return true;
     }
+
+    /// <summary>The toggles that <c>--library</c> does not support yet (sdk#1386): the template leaves them out.</summary>
+    internal static readonly string[] LibraryUnsupportedToggles = ["translations", "nix"];
+
+    /// <summary>The flags of the toggles given that <c>--library</c> does not support, such as <c>--translations</c>.</summary>
+    internal static string[] LibraryUnsupported(TemplateOptionModel model, IReadOnlyDictionary<string, bool> toggles) =>
+        model.Toggles
+            .Where(toggle => LibraryUnsupportedToggles.Contains(toggle.LongName) && toggles.TryGetValue(toggle.LongName, out bool on) && on)
+            .Select(toggle => toggle.Flag)
+            .ToArray();
 
     internal static bool IsValidName(string name) => ProjectName().IsMatch(name);
 

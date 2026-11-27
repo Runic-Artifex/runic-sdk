@@ -1295,6 +1295,19 @@ verify_package_names() {
     exit 1
   fi
   echo 'PACKAGING_RECIPES_OK'
+  # sdk#1386: --library does not support --translations or --nix yet. dotnet new creates the solution without them and
+  # warns, naming each option it left out.
+  local warned="$names_directory/library-unsupported.txt"
+  (cd "$names_directory" && dotnet new runic-app --name Shared --output library-unsupported --library Shared.Core \
+    --translations --nix) > "$warned"
+  grep -Fq 'Warning: --translations was left out. --library does not support Translations yet' "$warned"
+  grep -Fq 'Warning: --nix was left out. --library does not support the Nix flake yet' "$warned"
+  if [[ -e "$names_directory/library-unsupported/flake.nix" || -e "$names_directory/library-unsupported/Shared/Frontend/translations" ]] \
+    || grep -q 'Runic\.Translations' "$names_directory/library-unsupported/Shared/Shared.csproj"; then
+    echo "--library kept --translations or --nix." >&2
+    exit 1
+  fi
+  echo 'LIBRARY_UNSUPPORTED_OPTIONS_WARNED_OK'
 }
 
 # The project file declares the application ID once, and the icons are copied unchanged.
@@ -1502,7 +1515,8 @@ verify_library_template() {
   frontend_script "$manager" "$app/Frontend" test
 
   phase dev
-  # dotnet runic dev from a clean checkout again, without a build before it.
+  # dotnet runic dev from a clean checkout again, without a build before it, in the solution's folder: it takes the
+  # solution's one Window project, the application.
   if [[ "$host" == cswebui ]]; then
     git -C "$output" clean -fdXq
     test ! -e "$library/Frontend/dist"
@@ -1516,7 +1530,7 @@ verify_library_template() {
     esac
     served_module_expect="$library_name/Frontend/dist/index.js"
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
-      dotnet runic dev --project "$project_name/$project_name.csproj"
+      dotnet runic dev
     test -f "$library/Frontend/dist/index.js"
   fi
 

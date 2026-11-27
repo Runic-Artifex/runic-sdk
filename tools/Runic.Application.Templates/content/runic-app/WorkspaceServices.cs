@@ -10,7 +10,7 @@ using Runic.Application.Views.ReactiveUI;
 #if (hasLibrary)
 using RunicCoreNamespace;
 #endif
-#if (translations)
+#if (withTranslations)
 using Runic.Application.Views;
 using Runic.Platform;
 using Runic.Translations;
@@ -45,7 +45,7 @@ public static class WorkspaceServices
         // dialogs and the clipboard.
 #endif
         services.AddRunicPlatformServices();
-#if (translations)
+#if (withTranslations)
         // IRunicApplicationLocale, the application's language, which every Window follows.
         services.AddRunicWindowService();
         // The C# side of the catalog (Frontend/translations). It follows the application's language from its creation,
@@ -59,7 +59,7 @@ public static class WorkspaceServices
 #endif
         return services;
     }
-#if (translations)
+#if (withTranslations)
 
     /// <summary>
     /// Sets the application's language at start: <paramref name="requested"/> (Program.cs passes the RUNIC_LOCALE

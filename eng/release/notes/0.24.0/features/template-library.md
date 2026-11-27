@@ -7,7 +7,7 @@ one application can present, ready to run from a fresh clone:
 dotnet new runic-app -n MyApp --library MyApp.Core
 cd MyApp
 dotnet tool restore
-dotnet runic dev --project MyApp
+dotnet runic dev
 ```
 
 - **A solution:** `MyApp.slnx` lists the application first, so Visual Studio starts it, then the library and, with
@@ -23,6 +23,7 @@ dotnet runic dev --project MyApp
   `dotnet build` and `dotnet runic dev` install the workspace once at its root and build the library's package before
   the application's frontend, with no manual step.
 - Every frontend works with it: React, Vue, Svelte, SvelteKit, and Angular with the Angular CLI or Vite. It does not
-  combine with `--translations` or `--nix` yet; the template leaves them out.
+  support `--translations` or `--nix` yet: `dotnet new` leaves them out with a warning that names them, and
+  `dnx Runic.Create` refuses them (`RCREATE006`).
 
 The guide is [A solution with a library](../../../tools/Runic.Application.Templates/README.md#a-solution-with-a-library).

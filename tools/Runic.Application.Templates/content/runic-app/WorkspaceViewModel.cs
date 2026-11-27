@@ -4,7 +4,7 @@ using ReactiveUI.Primitives;
 #if (hasLibrary)
 using RunicCoreNamespace;
 #endif
-#if (translations)
+#if (withTranslations)
 using System.ComponentModel;
 using Runic.Application.Views;
 using Runic.Translations;
@@ -14,14 +14,14 @@ namespace RunicWindowApp;
 
 public interface IWorkspacePage { }
 
-#if (translations)
+#if (withTranslations)
 public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
 #else
 public sealed class WorkspaceViewModel : ReactiveObject
 #endif
 {
     private IWorkspacePage _main;
-#if (translations)
+#if (withTranslations)
     private readonly IRunicWindowLocale _locale;
     private string _language;
 #endif
@@ -31,7 +31,7 @@ public sealed class WorkspaceViewModel : ReactiveObject
     // so a command needs no scheduler argument. The generated Bridge logs a command's
     // unexpected exception, and a command needs disposing only when its canExecute
     // observes an object that outlives this ViewModel, so these need neither.
-#if (translations)
+#if (withTranslations)
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter,
         IRunicApplicationLocale application, IRunicWindowLocale locale, TranslationContext translations)
 #elif (hasLibrary)
@@ -46,7 +46,7 @@ public sealed class WorkspaceViewModel : ReactiveObject
 #endif
         ShowWelcomeCommand = ReactiveCommand.Create(() => { Main = welcome; });
         ShowCounterCommand = ReactiveCommand.Create(() => { Main = counter; });
-#if (translations)
+#if (withTranslations)
         // The Window follows the application's language; Language shows it to the page's language list.
         _locale = locale;
         _language = locale.Locale ?? AppTextCatalog.DefaultLocale;
@@ -75,7 +75,7 @@ public sealed class WorkspaceViewModel : ReactiveObject
     // shows it beside the Main page.
     public AboutViewModel About { get; }
 #endif
-#if (translations)
+#if (withTranslations)
 
     // The language every Window shows, such as "en" or "de".
     public string Language
@@ -98,7 +98,7 @@ public sealed class WorkspaceViewModel : ReactiveObject
 
 public sealed class WelcomeViewModel : ReactiveObject, IWorkspacePage
 {
-#if (translations)
+#if (withTranslations)
     // A text reference of the catalog (Frontend/translations): the page shows it in the Window's language.
     public TranslationReference Greeting { get; } = AppText.References.welcome_greeting();
 #else
@@ -145,7 +145,7 @@ using CommunityToolkit.Mvvm.Input;
 #if (hasLibrary)
 using RunicCoreNamespace;
 #endif
-#if (translations)
+#if (withTranslations)
 using System.ComponentModel;
 using Runic.Application.Views;
 using Runic.Translations;
@@ -155,7 +155,7 @@ namespace RunicWindowApp;
 
 public interface IWorkspacePage { }
 
-#if (translations)
+#if (withTranslations)
 public sealed partial class WorkspaceViewModel : ObservableObject, IDisposable
 #else
 public sealed partial class WorkspaceViewModel : ObservableObject
@@ -164,7 +164,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
     private readonly WelcomeViewModel _welcome;
     private readonly CounterViewModel _counter;
     private IWorkspacePage _main;
-#if (translations)
+#if (withTranslations)
     private readonly IRunicApplicationLocale _application;
     private readonly IRunicWindowLocale _locale;
     private readonly TranslationContext _translations;
@@ -216,7 +216,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
 
     [RelayCommand]
     private void ShowCounter() => Main = _counter;
-#if (translations)
+#if (withTranslations)
 
     // The language every Window shows, such as "en" or "de".
     [ObservableProperty]
@@ -243,7 +243,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
 
 public sealed partial class WelcomeViewModel : ObservableObject, IWorkspacePage
 {
-#if (translations)
+#if (withTranslations)
     // A text reference of the catalog (Frontend/translations): the page shows it in the Window's language.
     public TranslationReference Greeting { get; } = AppText.References.welcome_greeting();
 #else

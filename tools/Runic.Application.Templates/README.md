@@ -25,7 +25,7 @@ dotnet runic dev
 | `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from | `native` |
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
 | `--editor` | `none`, `vscode`: adds `.vscode/` with tasks for `dotnet runic dev`, debug configurations for the C# extension and the recommended extensions | `none` |
-| `--library` | A library project's name, such as `MyApp.Core`: creates a solution of the application and that library, which holds shared ViewModels and Views and a frontend package with their TypeScript clients, in one JavaScript workspace. See [A solution with a library](#a-solution-with-a-library). Not with `--translations` or `--nix` yet | One project, no solution |
+| `--library` | A library project's name, such as `MyApp.Core`: creates a solution of the application and that library, which holds shared ViewModels and Views and a frontend package with their TypeScript clients, in one JavaScript workspace. See [A solution with a library](#a-solution-with-a-library). Not with `--translations` or `--nix` yet: they are left out with a warning | One project, no solution |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 | `--translations` | Translates the application with [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk) 0.9: one catalog in English and German (`Frontend/translations`) for the page and C#, a language switch, the application's language for every window, `RUNIC_LOCALE` for test runs, and page and .NET tests of the translated text | English text in the code |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
@@ -99,8 +99,11 @@ more than one application can present.
 dotnet new runic-app -n MyApp --library MyApp.Core
 cd MyApp
 dotnet tool restore
-dotnet runic dev --project MyApp
+dotnet runic dev
 ```
+
+In the solution's folder, `dotnet runic dev` and `dotnet runic doctor` take
+its one Window project, the application.
 
 | Path | What it holds |
 | --- | --- |
@@ -120,6 +123,21 @@ package before the application's frontend. Every frontend and package manager
 has a workspace lock in the template. The
 [Views guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#share-viewmodels-and-their-clients-through-a-library)
 describes client libraries.
+
+`--library` does not support `--translations` or `--nix` yet. With either,
+`dotnet new` creates the solution without it and prints a warning that names
+each option it left out:
+
+```text
+Processing post-creation actions...
+Description: Warning: --translations was left out. --library does not support Translations yet, so the solution has no translation catalog.
+Manual instructions: Create the application without --library to translate it (…).
+```
+
+`dnx Runic.Create` refuses the combination with
+[`RCREATE006`](../../docs/diagnostics.md#rcreate006). Visual Studio and Rider
+offer both options beside a library project; their descriptions say that they
+do not apply to it. Create the application without `--library` to use them.
 
 ## Add a View to an existing project
 

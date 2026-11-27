@@ -5,7 +5,7 @@
     "dotnet-runic": {
       "version": "__RUNIC_NUGET_VERSION__",
       "commands": ["dotnet-runic"]
-//#if (translations)
+//#if (withTranslations)
     },
     "dotnet-runic-translations": {
       "version": "0.15.1",

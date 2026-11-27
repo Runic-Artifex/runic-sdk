@@ -2118,8 +2118,8 @@ A reference that arrives through another project or package is changed there.
 `dnx Runic.Create` reports these codes as the fault of a failed run. Human
 output prints the link to the entry above the fault line; JSON output carries
 the code in `fault.code`. Usage and validation errors (`RCREATE001`,
-`RCREATE002`) exit with code 2, other failures with code 1, and a cancelled run
-with code 130. See the
+`RCREATE002`, `RCREATE006`) exit with code 2, other failures with code 1, and a
+cancelled run with code 130. See the
 [Runic.Create guide](../tools/Runic.Create/README.md#exit-codes).
 
 ### RCREATE001
@@ -2161,6 +2161,16 @@ when none is installed.
 **Fix:** correct the problem the template reports, then run the creator again.
 With `--no-install`, install the template with the printed
 `dotnet new install` command, or run the creator without `--no-install`.
+
+### RCREATE006
+
+`--library` was given with `--translations` or `--nix`, which a solution with
+a library does not support yet (since 0.24). The message names the options.
+`dotnet new runic-app` itself creates the solution without them and prints a
+warning that names each one.
+
+**Fix:** leave out the named options, or create the application without
+`--library`.
 
 ## Privileged actions
 

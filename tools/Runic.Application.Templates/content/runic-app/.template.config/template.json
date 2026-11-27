@@ -35,7 +35,7 @@
       "copyOnly": [ "icons/*.png", "icons/*.ico" ],
       "modifiers": [
         { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] },
-        { "condition": "(!nix)", "exclude": [ "flake.nix" ] },
+        { "condition": "(!withNix)", "exclude": [ "flake.nix" ] },
         { "condition": "(hasLibrary)", "exclude": [ "flake.nix" ] },
         { "condition": "(!packaging)", "exclude": [ "packaging/**/*" ] },
         { "condition": "(editor != 'vscode')", "exclude": [ ".vscode/**/*" ] },
@@ -61,7 +61,7 @@
       "target": "./Frontend/",
       "condition": "(!hasLibrary && frontend == 'react')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
+        { "condition": "(withTranslations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -72,7 +72,7 @@
       "target": "./Frontend/",
       "condition": "(!hasLibrary && frontend == 'vue')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
+        { "condition": "(withTranslations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -83,7 +83,7 @@
       "target": "./Frontend/",
       "condition": "(!hasLibrary && frontend == 'svelte')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
+        { "condition": "(withTranslations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -94,7 +94,7 @@
       "target": "./Frontend/",
       "condition": "(!hasLibrary && frontend == 'sveltekit')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
+        { "condition": "(withTranslations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -105,7 +105,7 @@
       "target": "./Frontend/",
       "condition": "(!hasLibrary && frontend == 'angular')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts" ] },
+        { "condition": "(withTranslations)", "exclude": [ "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts" ] },
         { "condition": "(angularVite)", "exclude": [ "angular.json", "proxy.conf.mjs", "src/index.html", "src/main.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml", "pnpm-workspace.yaml" ] },
@@ -118,7 +118,7 @@
       "target": "./Frontend/",
       "condition": "(!hasLibrary && angularVite)",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
+        { "condition": "(withTranslations)", "exclude": [ "src/main.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -275,12 +275,12 @@
     {
       "source": "./translations/catalog/",
       "target": "./Frontend/translations/",
-      "condition": "(translations)"
+      "condition": "(withTranslations)"
     },
     {
       "source": "./translations/react/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'react')",
+      "condition": "(withTranslations && frontend == 'react')",
       "modifiers": [
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
@@ -290,7 +290,7 @@
     {
       "source": "./translations/vue/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'vue')",
+      "condition": "(withTranslations && frontend == 'vue')",
       "modifiers": [
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
@@ -300,7 +300,7 @@
     {
       "source": "./translations/svelte/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'svelte')",
+      "condition": "(withTranslations && frontend == 'svelte')",
       "modifiers": [
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
@@ -310,7 +310,7 @@
     {
       "source": "./translations/sveltekit/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'sveltekit')",
+      "condition": "(withTranslations && frontend == 'sveltekit')",
       "modifiers": [
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
@@ -320,7 +320,7 @@
     {
       "source": "./translations/angular/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'angular')",
+      "condition": "(withTranslations && frontend == 'angular')",
       "modifiers": [
         { "condition": "(angularVite)", "exclude": [ "src/main.ts", "src/translations.ts", "src/app/app.spec.ts" ] }
       ]
@@ -328,7 +328,7 @@
     {
       "source": "./translations/angular-vite/",
       "target": "./Frontend/",
-      "condition": "(translations && angularVite)",
+      "condition": "(withTranslations && angularVite)",
       "modifiers": [
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
@@ -472,7 +472,7 @@
       "replaces": "RunicCoreLibrary",
       "fileRename": "RunicCoreLibrary",
       "displayName": "Library project",
-      "description": "Creates a solution: the application in a folder of its own, and a library project with this name, such as Notes.Core, for ViewModels and Views that more applications can share. The library's build generates their TypeScript clients into its frontend package, which the application's page imports from one JavaScript workspace with a lock file at the solution's root. Not with --translations or --nix yet."
+      "description": "Creates a solution: the application in a folder of its own, and a library project with this name, such as Notes.Core, for ViewModels and Views that more applications can share. The library's build generates their TypeScript clients into its frontend package, which the application's page imports from one JavaScript workspace with a lock file at the solution's root. Not with --translations or --nix yet: with them, the template warns and leaves them out."
     },
     "hasLibrary": {
       "type": "computed",
@@ -531,22 +531,30 @@
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "false",
-      "isEnabled": "(library == '')",
       "displayName": "Translations",
-      "description": "Translates the application with Runic Translations 0.9: one catalog in English and German for the page and C#, a language switch, the application's language for every window, RUNIC_LOCALE for test runs, and a test of the translated text."
+      "description": "Translates the application with Runic Translations 0.9: one catalog in English and German for the page and C#, a language switch, the application's language for every window, RUNIC_LOCALE for test runs, and a test of the translated text. Not with --library yet."
+    },
+    "withTranslations": {
+      "type": "computed",
+      "value": "(translations && library == '')",
+      "description": "--translations applies: --library does not support it yet, and a post-action warns that it was left out (sdk#1386)."
     },
     "translationsVitePlugin": {
       "type": "computed",
-      "value": "(translations && (frontend != 'angular' || angularBuild == 'vite'))",
+      "value": "(withTranslations && (frontend != 'angular' || angularBuild == 'vite'))",
       "description": "The page compiles the catalog with the Translations Vite plugin (every frontend Vite builds); the Angular CLI imports the ESM that the .NET build generates."
     },
     "nix": {
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "false",
-      "isEnabled": "(library == '')",
       "displayName": "Nix flake",
-      "description": "Adds a Nix flake that builds the application in the Nix sandbox with the Runic SDK's buildRunicApplication, from packages.lock.json and the frontend's lock file."
+      "description": "Adds a Nix flake that builds the application in the Nix sandbox with the Runic SDK's buildRunicApplication, from packages.lock.json and the frontend's lock file. Not with --library yet."
+    },
+    "withNix": {
+      "type": "computed",
+      "value": "(nix && library == '')",
+      "description": "--nix applies: --library does not support it yet, and a post-action warns that it was left out (sdk#1386)."
     },
     "packaging": {
       "type": "parameter",
@@ -795,6 +803,20 @@
     }
   ],
   "postActions": [
+    {
+      "condition": "(hasLibrary && translations)",
+      "description": "Warning: --translations was left out. --library does not support Translations yet, so the solution has no translation catalog.",
+      "manualInstructions": [ { "text": "Create the application without --library to translate it (https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Application.Templates/README.md#a-solution-with-a-library)." } ],
+      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
+      "continueOnError": true
+    },
+    {
+      "condition": "(hasLibrary && nix)",
+      "description": "Warning: --nix was left out. --library does not support the Nix flake yet, so the solution has no flake.nix.",
+      "manualInstructions": [ { "text": "Create the application without --library to get the flake (https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Application.Templates/README.md#a-solution-with-a-library)." } ],
+      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
+      "continueOnError": true
+    },
     {
       "condition": "(restore)",
       "description": "Restores the NuGet packages of the created projects.",

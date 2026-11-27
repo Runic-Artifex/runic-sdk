@@ -36,7 +36,7 @@
     <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package.
          Commit it: a later restore that resolves a different package fails instead of using it. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-<!--#if (nix) -->
+<!--#if (withNix) -->
     <!-- dotnet restore -p:PublishAot=true writes packages.aot.lock.json, whose graph adds the NativeAOT compiler.
          flake.nix restores from both lock files in locked mode for linux-x64, so they list that runtime's packages
          too. -->
@@ -85,7 +85,7 @@
     <RunicApplicationFrontendClientModule Include="RunicCoreLibrary" Specifier="runic-library-starter/generated" />
   </ItemGroup>
 <!--#endif -->
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
   <!-- Runic Translations: one catalog, Frontend/translations/runic.json, for the page and C#. The build generates AppText
        (the messages, the References factories for ViewModels and AppTextCatalog.Registration) and checks every
        translation. https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.1/docs/guides/translations/runic-views.md -->

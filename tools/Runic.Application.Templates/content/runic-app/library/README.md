@@ -11,7 +11,7 @@ instead of generating copies.
 
 ```sh
 dotnet tool restore
-dotnet runic dev --project RunicWindowApp
+dotnet runic dev
 ```
 
 On a fresh clone nothing else is needed. `dotnet runic dev` and
@@ -19,7 +19,8 @@ On a fresh clone nothing else is needed. `dotnet runic dev` and
 once, at this folder, with __PACKAGE_MANAGER_NAME__ from its lock file. Then the
 library's build generates its clients into `RunicCoreLibrary/Frontend` and builds
 that package, before the application's frontend, which imports it, builds or
-is served. `dotnet runic dev` serves the application's frontend from the
+is served. In this folder, `dotnet runic dev` takes the solution's Window
+project, the application, and serves its frontend from the
 __DEVELOPMENT_SERVER_NAME__ development server and opens the Window.
 `dotnet build` builds the whole solution, `RunicWindowApp.slnx`. Visual Studio
 and Rider open it and start the application, its first project.

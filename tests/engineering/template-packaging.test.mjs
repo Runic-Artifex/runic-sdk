@@ -446,10 +446,13 @@ test("--library scaffolds a solution of the application and a library for every 
       const result = spawnSync("dotnet", [...args, "--debug:custom-hive", join(directory, "hive")],
         { cwd: directory, encoding: "utf8", env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1", DOTNET_NOLOGO: "1" } });
       assert.equal(result.status, 0, `dotnet ${args.join(" ")}\n${result.stdout}${result.stderr}`);
+      return result.stdout;
     };
     dotnet("new", "install", content);
+    // What dotnet new printed for the last project created: the post-actions' messages.
+    let printed = "";
     const create = (output, ...options) => {
-      dotnet("new", "runic-app", "--name", "Notes", "--output", output, ...options);
+      printed = dotnet("new", "runic-app", "--name", "Notes", "--output", output, ...options);
       return Object.fromEntries(readdirSync(join(directory, output), { recursive: true, withFileTypes: true })
         .filter(entry => entry.isFile())
         .map(entry => join(entry.parentPath, entry.name))
@@ -485,6 +488,7 @@ test("--library scaffolds a solution of the application and a library for every 
         assert.deepEqual(lockFiles, [lock], `${label}: lock files`);
         assert.equal(Object.hasOwn(files, "pnpm-workspace.yaml"), manager === "pnpm", `${label}: pnpm-workspace.yaml`);
         assert.ok(!Object.keys(files).some(path => path.endsWith("flake.nix") || path.includes("/translations/")), `${label}: --nix or --translations files`);
+        assert.doesNotMatch(printed, /Warning:/, `${label}: a warning without --translations or --nix`);
         // The solution: the application first, then the library and the tests.
         assert.deepEqual([...files["Notes.slnx"].matchAll(/<Project Path="([^"]+)"/g)].map(match => match[1]),
           ["Notes/Notes.csproj", "Notes.Core/Notes.Core.csproj", "Notes.Tests/Notes.Tests.csproj"], label);
@@ -530,10 +534,31 @@ test("--library scaffolds a solution of the application and a library for every 
         assert.doesNotMatch(plain["WorkspaceViewModel.cs"] + plain["Notes.csproj"], /About|ClientModule/, `${label}: plain project`);
       }
     }
-    // --translations and --nix do not combine with --library yet: the template leaves them out.
-    const combined = create("combined", "--library", "Notes.Core", "--translations", "--nix");
-    assert.ok(!Object.keys(combined).some(path => path.endsWith("flake.nix") || path.includes("translations/")), "--translations --nix --library");
-    assert.doesNotMatch(combined["Notes/Notes.csproj"], /Translation|RuntimeIdentifiers/);
+    // --translations and --nix do not combine with --library yet (sdk#1386): the template leaves them out and warns,
+    // naming each option it left out. The template engine cannot refuse a combination of parameters: a disabled
+    // parameter (isEnabled) is dropped silently, and a template constraint cannot read parameters.
+    const translationsWarning = /^Description: Warning: --translations was left out\. --library does not support Translations yet/m;
+    const nixWarning = /^Description: Warning: --nix was left out\. --library does not support the Nix flake yet/m;
+    for (const [output, options, warnings] of [
+      ["combined", ["--translations", "--nix"], [translationsWarning, nixWarning]],
+      ["combined-translations", ["--translations"], [translationsWarning]],
+      ["combined-nix", ["--nix"], [nixWarning]],
+    ]) {
+      const label = `--library ${options.join(" ")}`;
+      const combined = create(output, "--library", "Notes.Core", ...options);
+      assert.ok(!Object.keys(combined).some(path => path.endsWith("flake.nix") || path.includes("translations/")), label);
+      assert.doesNotMatch(combined["Notes/Notes.csproj"], /Translation|RuntimeIdentifiers/, label);
+      assert.doesNotMatch(combined["Notes/WorkspaceViewModel.cs"] + combined["Notes/Program.cs"], /Translation|Catalog/, label);
+      for (const warning of [translationsWarning, nixWarning]) {
+        assert.equal(warning.test(printed), warnings.includes(warning), `${label}: ${warning}\n${printed}`);
+      }
+      assert.match(printed, /Create the application without --library/, label);
+    }
+    // Without --library, the options apply and nothing warns.
+    const single = create("single", "--translations", "--nix");
+    assert.ok(single["flake.nix"] && single["Frontend/translations/en.rmf2"] !== undefined, "--translations --nix");
+    assert.match(single["Notes.csproj"], /Runic\.Translations/);
+    assert.doesNotMatch(printed, /Warning:/, "--translations --nix");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

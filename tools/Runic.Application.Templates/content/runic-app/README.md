@@ -334,7 +334,7 @@ Angular plugin (`@analogjs/vite-plugin-angular`), with the Runic Vite plugin
 the other frontends use. The project was created with `--angular-build vite`;
 the template's default is the Angular CLI. What Vite adds:
 
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
 - **The Translations development loop**: `runicTranslations()` compiles the
   catalog, and a message you edit, add or remove under `dotnet runic dev`
   reaches the page without a build. See [Translate it](#translate-it).
@@ -392,7 +392,7 @@ and the component build target.
 <!--#else -->
 | `ApplicationIdentity.cs` | The application ID and name from the project file. |
 <!--#endif -->
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
 <!--#if (translationsVitePlugin) -->
 | `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.15.1/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The .NET build generates `AppText` for C#, and `runicTranslations()` in `Frontend/vite.config.ts` compiles the page's modules into `Frontend/.runic/translations`. See [Translate it](#translate-it). |
 <!--#else -->
@@ -475,7 +475,7 @@ writes from the catalog whenever Vite runs (`dotnet build`, `dotnet runic dev`,
 the frontend's `build` script and its test). The `build` script runs
 `vite build` before the type check, so they exist when the check runs on a
 clean checkout.
-<!--#elif (translations) -->
+<!--#elif (withTranslations) -->
 The page's Runic Translations modules are not committed either: `.gitignore`
 excludes `Frontend/.runic`, and `dotnet build` writes them from the catalog, so
 build once before the type check or the frontend test.
@@ -485,7 +485,7 @@ modules that a Vite plugin generates exist when the check runs on a clean
 checkout.
 <!--#endif -->
 
-<!--#if (translations) -->
+<!--#if (withTranslations) -->
 ## Translate it
 
 The application shows one language in every window, English or German. Its
@@ -839,7 +839,7 @@ does not add it. On Windows these are app URI handlers: the MSIX manifest lists 
 host in a `uap3:AppUriHandler`, and each host serves
 `https://notes.example.org/.well-known/windows-app-web-link` with
 `[{"packageFamilyName":"<family name>","paths":["*"]}]`. Treat opened URLs and files as untrusted input.
-<!--#if (nix) -->
+<!--#if (withNix) -->
 
 ## Build it with Nix
 
