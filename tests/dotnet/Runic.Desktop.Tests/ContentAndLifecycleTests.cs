@@ -138,6 +138,60 @@ public sealed class ContentAndLifecycleTests
     }
 
     [Test]
+    public async Task UpgradeWithAnotherWebSocketVersionGets426NamingVersion13()
+    {
+        // The native server answers such an upgrade itself, before the host (runic-sdk#1414).
+        if (PresentationServers.UseNativeServer)
+        {
+            return;
+        }
+        await using var window = new WebUiWindow();
+        var url = await window.StartServerAsync("versions");
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
+
+        // RFC 6455 §4.2.2, §4.4 and RFC 9110 §15.5.22 (runic-sdk#1418).
+        foreach (var version in new[] { "8", "14" })
+        {
+            var head = await ExchangeRawAsync(url, $"Upgrade: websocket\r\nSec-WebSocket-Version: {version}\r\n" +
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n", timeout.Token);
+            Assert.StartsWith("http/1.1 426", head, StringComparison.Ordinal);
+            Assert.Contains("\r\nsec-websocket-version: 13\r\n", head, StringComparison.Ordinal);
+            Assert.Contains("\r\nupgrade: websocket\r\n", head, StringComparison.Ordinal);
+            Assert.Matches("\r\nconnection: [^\r]*upgrade", head);
+            Assert.Matches("\r\ncache-control: [^\r]*no-store", head);
+            Assert.Contains("\r\nx-content-type-options: nosniff\r\n", head, StringComparison.Ordinal);
+            Assert.DoesNotContain("sec-websocket-accept", head, StringComparison.Ordinal);
+        }
+
+        // An upgrade without a version, and a plain request, keep their 426, which names the protocol it requires.
+        foreach (var headers in new[] { "Upgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n", "" })
+        {
+            var head = await ExchangeRawAsync(url, headers, timeout.Token);
+            Assert.StartsWith("http/1.1 426", head, StringComparison.Ordinal);
+            Assert.Contains("\r\nupgrade: websocket\r\n", head, StringComparison.Ordinal);
+            Assert.DoesNotContain("sec-websocket-version", head, StringComparison.Ordinal);
+        }
+    }
+
+    // Sends GET on the surface's WebSocket path with the extra headers and Connection: Upgrade, close, and returns the
+    // response head in lower case.
+    private static async Task<string> ExchangeRawAsync(Uri surfaceUrl, string headers, CancellationToken cancellationToken)
+    {
+        using var client = new TcpClient(AddressFamily.InterNetwork);
+        await client.ConnectAsync(IPAddress.Loopback, surfaceUrl.Port, cancellationToken);
+        var stream = client.GetStream();
+        var connection = headers.Length == 0 ? "close" : "Upgrade, close";
+        var request = $"GET {surfaceUrl.AbsolutePath}_webui_ws_connect HTTP/1.1\r\nHost: {surfaceUrl.Authority}\r\n" +
+            $"Connection: {connection}\r\n{headers}\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(request), cancellationToken);
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+        var response = await reader.ReadToEndAsync(cancellationToken);
+        var end = response.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        Assert.True(end > 0, response);
+        return response[..(end + 2)].ToLowerInvariant();
+    }
+
+    [Test]
     public async Task ServesFoldersIndexesFilesMimeHeadAndNoCache()
     {
         var root = Directory.CreateTempSubdirectory("runic-desktop-content-");
