@@ -214,4 +214,14 @@ public sealed class WindowsMenuModelTests
         Assert.Null(WindowsMenuKeys.Parse(null, "t0k3n"));
         Assert.Null(WindowsMenuKeys.Parse(new string(' ', 2000), "t0k3n"));
     }
+
+    [Test]
+    public void KeyReportsMatchTheWholeToken()
+    {
+        static string Report(string token) => "{\"runicMenuKey\":\"" + token + "\",\"keyCode\":83,\"key\":\"s\"}";
+        Assert.NotNull(WindowsMenuKeys.Parse(Report("t0k3n"), "t0k3n"));
+        Assert.Null(WindowsMenuKeys.Parse(Report("t0k3x"), "t0k3n"));
+        Assert.Null(WindowsMenuKeys.Parse(Report("t0k3"), "t0k3n"));
+        Assert.Null(WindowsMenuKeys.Parse(Report("t0k3n0"), "t0k3n"));
+    }
 }

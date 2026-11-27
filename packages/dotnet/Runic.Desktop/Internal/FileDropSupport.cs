@@ -305,7 +305,7 @@ internal sealed record FileDropMessage(string? Target, DesktopDragEffects Effect
             if (root.ValueKind != System.Text.Json.JsonValueKind.Object
                 || !root.TryGetProperty("runicFileDrop", out var marker)
                 || marker.ValueKind != System.Text.Json.JsonValueKind.String
-                || !string.Equals(marker.GetString(), token, StringComparison.Ordinal))
+                || !FixedTimeText.Matches(marker.GetString(), token))
                 return null;
             return new FileDropMessage(FileDropSupport.ReadString(root, "target"),
                 FileDropSupport.ParseEffect(FileDropSupport.ReadString(root, "effect")));
