@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.a-body-of-the-wrong-size-is-invalid-request-after-its-connection-closed.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1"],
+  "description": "The host checks a body's length when the body ends, before it stores the upload (README, \"Uploads\"): of two uploads whose connection closed while the window was receiving them, the one whose body is shorter than its Content-Length is 400 invalid-request, and the one of the right length is 410 released.",
+  "view": "files",
+  "ids": {"c1":{"kind":"connection"},"hello-c1":{"kind":"request"},"open-files":{"kind":"request"},"session":{"kind":"wire","value":"s-1"},"presentation":{"kind":"wire","value":"p-1"},"short":{"kind":"upload"},"whole":{"kind":"upload"}},
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[]},"presentation":"ok"},"replyTo":"open-files"},
+    {"upload":{"name":"short.txt","type":"text/plain","text":"abc","size":5,"hold":"short"}},
+    {"upload":{"name":"whole.txt","type":"text/plain","text":"abc","hold":"whole"}},
+    {"disconnect":"c1"},
+    {"endUpload":"short","answer":{"status":400,"body":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}}}},
+    {"endUpload":"whole","answer":{"status":410,"body":{"ok":false,"error":{"kind":"released","reason":"released","message":{"$any":"string"}}}}}
+  ]
+}

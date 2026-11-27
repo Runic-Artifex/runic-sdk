@@ -53,9 +53,11 @@ Three kinds of names appear in the IR:
   emitter writes it unchanged ([values.md, Names](values.md#names)).
 - **`name`** of a member, command, interaction, view request or shared client member is **UpperCamelCase**. The
   emitter appends it to `set`, `write`, `can`, `is…Executing`, `start` and `recover` (`setStep`, `canIncrement`). A
-  producer converts its source name: a Rust producer its `snake_case` identifier (`step_size` is `StepSize`), a C#
-  producer the member name with an uppercase first letter (C# naming makes it UpperCamelCase already). The schema
-  requires a leading uppercase letter or `_`.
+  producer converts its source identifier by one rule: a `snake_case` identifier's words, each with an uppercase first
+  letter, joined (`step_size` is `StepSize`); any other identifier with an uppercase first letter (`stepSize` and
+  `StepSize` are `StepSize`). So a C# producer takes the member name with an uppercase first letter (C# naming makes
+  it UpperCamelCase already), and a Rust or C++ producer converts its `snake_case` identifier. The schema requires a
+  leading uppercase letter or `_`.
 - **`id`** of a View, shared client or named type is the producer's stable identity, such as the .NET full type name.
   A View id is the `{view}` of the contract string `{view}:{fingerprint}` (protocol [Operations](README.md#operations)),
   so it changes only when the type is renamed or moved.
@@ -82,12 +84,18 @@ Three kinds of names appear in the IR:
 
 ### Public names
 
-A producer derives a View's `name` from its source name, and MAY let the source choose another one:
+A producer derives a View's `name` from its source type's name, and MAY let the source choose another one. The rule
+is the same in every language: the type's name in UpperCamelCase, by the conversion of [names](#names), without the
+trailing suffix that the language's convention gives a View type. Each language names its suffixes:
 
-- the .NET producer takes the ViewModel type's name without a trailing `ViewModel` (`CounterViewModel` is `Counter`,
-  `Settings` stays `Settings`);
-- a Rust producer takes the struct's name without a trailing `ViewModel` or `View` (`CounterView` is `Counter`), and
-  its `name` attribute replaces it.
+| Producer | Source | Suffixes | Examples | Chosen by |
+| --- | --- | --- | --- | --- |
+| .NET | the ViewModel type's name | `ViewModel` | `CounterViewModel` is `Counter`, `CounterView` stays `CounterView`, `Settings` stays `Settings` | — |
+| Rust | the struct's name | `ViewModel`, else `View` | `CounterView` and `CounterViewModel` are `Counter` | its `name` attribute |
+| C++ | the class's name, converted from `snake_case` | `ViewModel`, else `View` | `notes_view` is `Notes`, `counter_view_model` is `Counter` | `name(…)` in its description |
+
+Only one suffix is removed, the first of the list that the name ends with. The C# writer takes the name so
+(`PublicName` in `Runic.Application.Views.Codegen`'s `Program.cs`).
 
 `route` is `name` with a lowercase first letter, and the [fingerprint](#fingerprint) covers it. Two producers that
 mean to describe the same View, such as the [conformance test Views](conformance/README.md#test-views), give it the same
@@ -196,6 +204,13 @@ the owner's qualifiers. Ids and name hints only name types: the fingerprint leav
 | `doc` | The type's documentation |
 | `cases` | `enum`: `{wire, value, doc}` in declaration order, where `value` is the case's integer value as decimal text. Aliases share a value; the wire name a producer writes for a value is the first case that has it. `union`: `{tag, object}`, where `tag` is the `$case` name and `object` the named object of its fields, or `null` for a case without fields. |
 | `members` | `object`: `{wire, type, optional, absent, doc}` in declaration order. `optional`: the producer fills the member in when a page leaves it out. `absent`: a `json` member left out of the object when it holds no value. |
+
+A member is `optional` exactly when a reader fills it in ([values.md](values.md#composite-values)): its type is
+nullable (`nullable: true`; C# `T?`, Rust `Option<T>`, C++ `std::optional<T>`), it has a default value (in C#, a
+constructor parameter with a default), or it is `absent`. The flag does not depend on the member's
+[direction](#values): a nullable member of an object that only goes to the page is `optional` too, and the fingerprint
+covers it. The C# writer decides it so (`BridgeTypeGraph.MarkOptionalMembers`); `eng/views-contract-ir.test.mjs`
+checks it on `views.ir.json`, the corpus and the C# writer's goldens.
 
 Type graphs are finite: a producer rejects a recursive type before it writes the IR.
 

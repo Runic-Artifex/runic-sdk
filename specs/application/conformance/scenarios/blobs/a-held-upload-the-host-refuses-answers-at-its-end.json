@@ -1,0 +1,23 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.a-held-upload-the-host-refuses-answers-at-its-end.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "requires": ["blobs/1"],
+  "description": "A held upload that the host refuses before its end, here for a Content-Length above maximumBytes, is not being received: the upload step returns once the host answered, its endUpload step gives that answer, 413 too-large, and the upload keeps no place of the window, so another one is stored meanwhile with a bound of 1.",
+  "view": "files",
+  "options": {"pendingUploads":1},
+  "ids": {"c1":{"kind":"connection"},"hello-c1":{"kind":"request"},"open-files":{"kind":"request"},"session":{"kind":"wire","value":"s-1"},"presentation":{"kind":"wire","value":"p-1"},"big":{"kind":"upload"},"after":{"kind":"provided"}},
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["blobs/1"]},"blobs":{"upload":{"$any":"string","default":"http://conformance.test/_runic/upload"},"token":{"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"maximumBytes":268435456}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null,"attachments":[]},"presentation":"ok"},"replyTo":"open-files"},
+    {"upload":{"name":"big.bin","type":"application/octet-stream","text":"","size":268435457,"hold":"big"},"note":"The host refuses the upload for its Content-Length before it reads the body; the step still returns."},
+    {"upload":{"name":"after.txt","type":"text/plain","text":""},"answer":{"status":201,"body":{"ok":true,"upload":{"id":{"$id":"after"},"name":"after.txt","type":"text/plain","size":0}}},"note":"The refused upload is not being received, so it takes none of the window's one place."},
+    {"endUpload":"big","answer":{"status":413,"body":{"ok":false,"error":{"kind":"rejected","reason":"too-large","message":{"$any":"string"}}}}}
+  ]
+}
