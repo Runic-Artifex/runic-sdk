@@ -1363,3 +1363,15 @@ Runic.Application.Views.RunicInteractionTimeoutAttribute.Milliseconds.get -> int
 Runic.Application.Views.RunicInteractionTimeoutAttribute.RunicInteractionTimeoutAttribute(int milliseconds) -> void
 Runic.Application.Views.RunicInteractionTimeoutAttribute.Timeout.get -> System.TimeSpan
 static Runic.Application.Views.RunicOperationProgress.Current.get -> System.IProgress<double>!
+Runic.Application.Views.RunicPublicationAttribute
+Runic.Application.Views.RunicPublicationAttribute.Mode.get -> Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.RunicPublicationAttribute.RunicPublicationAttribute(Runic.Application.Views.RunicPublicationMode mode) -> void
+Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.RunicPublicationMode.Explicit = 1 -> Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.RunicPublicationMode.Implicit = 0 -> Runic.Application.Views.RunicPublicationMode
+Runic.Application.Views.Generated.ViewModelBridge.ContractShape.get -> string?
+Runic.Application.Views.Generated.ViewModelBridge.ContractShape.init -> void
+Runic.Application.Views.RunicWindowOptions.MaximumPendingUploads.get -> int?
+Runic.Application.Views.RunicWindowOptions.MaximumPendingUploads.init -> void
+Runic.Application.Views.WindowContentSessionOptions.MaximumPendingUploads.get -> int?
+Runic.Application.Views.WindowContentSessionOptions.MaximumPendingUploads.init -> void

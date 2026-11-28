@@ -4,7 +4,7 @@
 // references in every committed NuGet packages.lock.json carry copies that
 // `check` compares and `bump` rewrites, as do the version constant that
 // @runic-artifex/views compares with the .NET Views version it connects to and
-// the native server's Cargo workspace version and its Cargo.lock entry.
+// the native server's Cargo workspace version and the Cargo.lock entries of its crates.
 // Directory.Packages.props and the template package read RunicSdkVersion, the
 // CLI compatibility metadata is regenerated, and template locks are stamped
 // from the packed archives. Runic.CommandLine is released independently.
@@ -40,8 +40,12 @@ const viewsVersion = /^(export const viewsVersion = ")([^"]*)(";)$/m;
 // The native Desktop server (Runic.Desktop.NativeServer) builds the runic-artifex-server crate (native/runic-server).
 const cargoCopies = {
   "native/Cargo.toml": [/^(\[workspace\.package\]\nversion = ")([^"]*)(")$/m, "[workspace.package] version"],
-  "native/Cargo.lock": [/^(name = "runic-artifex-server"\nversion = ")([^"]*)(")$/m, "runic-artifex-server entry"],
 };
+// Cargo.lock records each workspace crate (runic-artifex-server, runic-artifex-server-conformance, ...) without a
+// `source`, at the workspace version; registry and git dependencies have one.
+const cargoLock = "native/Cargo.lock";
+const cargoLockMember = /^(name = "([^"]+)"\nversion = ")([^"]*)("\n(?!source = ))/gm;
+const cargoLockMembers = text => [...text.matchAll(cargoLockMember)].map(match => ({ name: match[2], version: match[3] }));
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
 // The eng/Versions.props property that carries each separately versioned package's version.
 export const separateVersions = {
@@ -96,7 +100,7 @@ export function readVersionFiles(base = root) {
     "eng/workspace.json": workspace,
     "eng/Versions.props": read("eng/Versions.props"),
     "bun.lock": read("bun.lock"),
-    ...Object.fromEntries([viewsVersionFile, ...Object.keys(cargoCopies)].filter(path => existsSync(resolve(base, path))).map(path => [path, read(path)])),
+    ...Object.fromEntries([viewsVersionFile, ...Object.keys(cargoCopies), cargoLock].filter(path => existsSync(resolve(base, path))).map(path => [path, read(path)])),
     ...Object.fromEntries(JSON.parse(workspace).npm.map(p => [`${p.path}/package.json`, read(`${p.path}/package.json`)])),
     ...Object.fromEntries(execFileSync("git", ["ls-files", "-z", "--", "*packages*.lock.json"], { cwd: base, encoding: "utf8" })
       .split("\0").filter(isNugetLock).map(path => [path, read(path)])),
@@ -122,6 +126,11 @@ export function versionCopies(files) {
     copies[viewsVersionFile] = train(single(files[viewsVersionFile], viewsVersion, "viewsVersion"));
   for (const [path, [pattern, label]] of Object.entries(cargoCopies))
     if (files[path] !== undefined) copies[path] = train(single(files[path], pattern, `${path} ${label}`));
+  if (files[cargoLock] !== undefined) {
+    const members = cargoLockMembers(files[cargoLock]);
+    assert.ok(members.length > 0, `Expected a workspace crate in ${cargoLock}`);
+    for (const { name, version } of members) copies[`${cargoLock} ${name}`] = train(version);
+  }
   for (const [path, text] of Object.entries(files)) {
     if (isNugetLock(path)) {
       for (const { key, name, range } of nugetProjectRanges(text))
@@ -187,6 +196,7 @@ export function bumpVersionFiles(files, version, packageVersions = {}) {
     else if (path === "bun.lock") updated = npm.reduce((lock, entry) => replaceVersion(lock, lockVersion(entry), version), text);
     else if (path === viewsVersionFile) updated = replaceVersion(text, viewsVersion, version);
     else if (Object.hasOwn(cargoCopies, path)) updated = replaceVersion(text, cargoCopies[path][0], version);
+    else if (path === cargoLock) updated = text.replace(cargoLockMember, (_, prefix, _name, _old, suffix) => `${prefix}${version}${suffix}`);
     else if (isNugetLock(path))
       updated = [...new Set([...nugetProjectRanges(text)].map(({ name }) => name))]
         .reduce((lock, name) => lock.replaceAll(`"${name}": "[${packageVersion(before, name)}, )"`, `"${name}": "[${packageVersion(after, name)}, )"`), text);

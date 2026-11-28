@@ -1,7 +1,7 @@
 // The release of @runic-artifex/views, compared with the `release` a Runic producer names in its hello reply, or else
 // with the version of a producer under one of Runic's names (specs/application, "Handshake"). `bun run version:bump`
 // rewrites it with the package version.
-export const viewsVersion = "0.24.0";
+export const viewsVersion = "0.25.0";
 
 /** The Views protocol this runtime implements (specs/application/README.md). */
 export const bridgeProtocol = 4;

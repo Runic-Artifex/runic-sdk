@@ -58,3 +58,5 @@ Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.CloseDrain.get -> Runic.
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.CloseDrain.init -> void
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Placement.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Application.Views.RunicWindowPlacement?>?
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Placement.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumPendingUploads.get -> int?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumPendingUploads.init -> void

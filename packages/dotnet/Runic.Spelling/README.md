@@ -3,7 +3,7 @@
 An application's own spell checker: Hunspell dictionaries and a checker that marks the misspelled words of a text in the
 language it is written in, leaving out the ranges the application names, such as placeholders and markup.
 
-> **Preview.** Runic.Spelling ships on a prerelease version of its own (`0.23.0-preview.1`) and is outside the 1.0
+> **Preview.** Runic.Spelling ships on a prerelease version of its own (`0.24.0-preview.1`) and is outside the 1.0
 > compatibility promise, as `Runic.Application.Views.CsWebUi` is: its API may change in any release.
 
 A webview's spell checker cannot do this for an application. On WebKitGTK and macOS it belongs to the process and checks
